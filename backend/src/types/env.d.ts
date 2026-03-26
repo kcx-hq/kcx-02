@@ -3,6 +3,12 @@ declare namespace NodeJS {
     DB_URL?: string;
     PORT?: string;
     LOG_LEVEL?: "debug" | "info" | "warn" | "error";
+    MAILGUN_API_KEY?: string;
+    MAILGUN_DOMAIN?: string;
+    MAILGUN_FROM?: string;
+    FRONTEND_BASE_URL?: string;
+    RESET_TOKEN_TTL_MINUTES?: string;
+    SESSION_TTL_HOURS?: string;
     NODE_ENV?: "development" | "test" | "production";
     CAL_API_KEY?: string;
   }
