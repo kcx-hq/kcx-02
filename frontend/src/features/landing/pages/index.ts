@@ -6,4 +6,5 @@ export { DocumentationPage } from "@/features/landing/pages/resources/Documentat
 export { LeadershipPage } from "@/features/landing/pages/about/LeadershipPage"
 export { OurStoryPage } from "@/features/landing/pages/about/OurStoryPage"
 export { ClientAccessPage } from "@/features/landing/pages/client/ClientAccessPage"
-
+export { ScheduleDemoPage } from "@/features/landing/pages/demo/ScheduleDemoPage"
+export { LoginPage } from "@/features/landing/pages/auth/LoginPage"

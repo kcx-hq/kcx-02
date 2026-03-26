@@ -3,6 +3,8 @@ import { useSyncExternalStore } from "react"
 
 const STATIC_ROUTES = [
   "/",
+  "/schedule-demo",
+  "/login",
   "/about/our-story",
   "/about/leadership",
   "/about/careers",
@@ -25,9 +27,7 @@ const LEGACY_ROUTE_REDIRECTS: Record<string, StaticRoute> = {
   "/our-story": "/about/our-story",
   "/leadership": "/about/leadership",
   "/careers": "/about/careers",
-  "/demo": "/",
-  "/login": "/",
-  "/schedule-demo": "/",
+  "/demo": "/schedule-demo",
   "/client-sign-in": "/",
 }
 const VALID_PATH_SET = new Set<string>([...STATIC_ROUTES, ...Object.keys(LEGACY_ROUTE_REDIRECTS)])
