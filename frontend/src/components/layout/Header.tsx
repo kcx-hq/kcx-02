@@ -376,7 +376,7 @@ export function Header() {
               )}
               asChild
             >
-              <a href="/" onClick={(event) => handleAppLinkClick(event, "/", handleNavClose)}>
+              <a href="/login" onClick={(event) => handleAppLinkClick(event, "/login", handleNavClose)}>
                 Login
               </a>
             </Button>
@@ -388,7 +388,10 @@ export function Header() {
               )}
               asChild
             >
-              <a href="/" onClick={(event) => handleAppLinkClick(event, "/", handleNavClose)}>
+              <a
+                href="/schedule-demo"
+                onClick={(event) => handleAppLinkClick(event, "/schedule-demo", handleNavClose)}
+              >
                 Schedule a Demo
               </a>
             </Button>
@@ -490,12 +493,15 @@ export function Header() {
 
           <div className="mt-6 space-y-2">
             <Button variant="outline" className="w-full justify-start" asChild>
-              <a href="/" onClick={(event) => handleAppLinkClick(event, "/", handleMobileClose)}>
+              <a href="/login" onClick={(event) => handleAppLinkClick(event, "/login", handleMobileClose)}>
                 Login
               </a>
             </Button>
             <Button className="w-full justify-start bg-[#3e8a76] text-white hover:bg-[#357563]" asChild>
-              <a href="/" onClick={(event) => handleAppLinkClick(event, "/", handleMobileClose)}>
+              <a
+                href="/schedule-demo"
+                onClick={(event) => handleAppLinkClick(event, "/schedule-demo", handleMobileClose)}
+              >
                 Schedule a Demo
               </a>
             </Button>
