@@ -19,6 +19,16 @@ const optionalEnv = (value: string | undefined): string | undefined => {
   return trimmed.length > 0 ? trimmed : undefined;
 };
 
+const optionalPositiveNumber = (value: string | undefined, fallback: number): number => {
+  const normalized = optionalEnv(value);
+  if (!normalized) return fallback;
+
+  const parsed = Number(normalized);
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+
+  return parsed;
+};
+
 const rawPort = process.env.PORT;
 const parsedPort = Number(rawPort ?? 5000);
 
@@ -45,6 +55,16 @@ const env = {
   logLevel,
   nodeEnv,
   calApiKey: optionalEnv(process.env.CAL_API_KEY),
+  calApiBaseUrl: optionalEnv(process.env.CAL_API_BASE_URL),
+  calEventTypeId: optionalEnv(process.env.CAL_EVENT_TYPE_ID),
+  calTimezone: optionalEnv(process.env.CAL_TIMEZONE) ?? "UTC",
+  calReservationTtlMinutes: optionalPositiveNumber(process.env.CAL_RESERVATION_TTL_MINUTES, 15),
+  mailgunApiKey: optionalEnv(process.env.MAILGUN_API_KEY),
+  mailgunDomain: optionalEnv(process.env.MAILGUN_DOMAIN),
+  mailgunFrom: optionalEnv(process.env.MAILGUN_FROM),
+  frontendBaseUrl: optionalEnv(process.env.FRONTEND_BASE_URL),
+  resetTokenTtlMinutes: optionalPositiveNumber(process.env.RESET_TOKEN_TTL_MINUTES, 60),
+  sessionTtlHours: optionalPositiveNumber(process.env.SESSION_TTL_HOURS, 168),
 };
 
 export default env;
