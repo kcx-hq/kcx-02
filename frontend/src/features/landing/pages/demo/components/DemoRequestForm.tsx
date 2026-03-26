@@ -386,7 +386,7 @@ export function DemoRequestForm({
           >
             <MailIcon
               className={cn(
-                "h-7 w-7",
+                "h-10 w-10",
                 isLight ? "text-[#2f7f68]" : "text-[rgba(170,245,221,0.92)]"
               )}
             />
