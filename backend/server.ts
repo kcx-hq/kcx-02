@@ -1,6 +1,7 @@
 import { createServer, type Server } from "node:http";
 import app from "./app.js";
 import env from "./src/config/env.js";
+import { sequelize } from "./src/models/index.js";
 import { logger } from "./src/utils/logger.js";
 
 const PORT = env.port;
@@ -45,7 +46,17 @@ const shutdown = (signal: string): void => {
   });
 };
 
-const startServer = (): void => {
+const startServer = async (): Promise<void> => {
+  try {
+    await sequelize.authenticate();
+    logger.info("Database connected");
+  } catch (error) {
+    logger.error("Database connection failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    process.exit(1);
+  }
+
   server = createServer(app);
 
   server.listen(PORT, () => {
@@ -75,4 +86,4 @@ process.on("unhandledRejection", (reason: unknown) => {
   shutdown("unhandledRejection");
 });
 
-startServer();
+void startServer();

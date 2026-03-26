@@ -9,6 +9,7 @@ import { requestIdMiddleware } from "./src/middlewares/request-id.middleware.js"
 import { requestLoggerMiddleware } from "./src/middlewares/request-logger.middleware.js";
 import { sendSuccess } from "./src/utils/api-response.js";
 import { asyncHandler } from "./src/utils/async-handler.js";
+import routes from "./src/features/_app/app.routes.js";
 
 const app = express();
 
@@ -31,6 +32,8 @@ app.get(
     });
   }),
 );
+
+app.use(routes);
 
 app.use((req, _res, next) => {
   next(new NotFoundError(`Route not found: ${req.method} ${req.originalUrl}`));

@@ -10,6 +10,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { validateForm } from "@/lib/validateForm"
+import { apiPost, ApiError } from "@/lib/api"
 import { scheduleDemoSchema } from "@/schemas/demo.schema"
 
 type DemoFormState = {
@@ -197,6 +198,8 @@ export function DemoRequestForm({
 }) {
   const formId = useId()
   const [submitted, setSubmitted] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const [apiError, setApiError] = useState<string | null>(null)
   const [form, setForm] = useState<DemoFormState>({
     firstName: "",
     lastName: "",
@@ -249,7 +252,39 @@ export function DemoRequestForm({
     const ok = validateAndSet(form)
     if (!ok) return
 
-    setSubmitted(true)
+    setApiError(null)
+    setSubmitting(true)
+    void (async () => {
+      try {
+        type ScheduleDemoResponse = {
+          demoRequestId: number
+          userId: number
+          isNewUser: boolean
+          emailSent: boolean
+        }
+
+        const heardAboutUs =
+          form.discovery === "other" ? form.discoveryOther.trim() : form.discovery
+
+        await apiPost<ScheduleDemoResponse>("/schedule-demo", {
+          firstName: form.firstName,
+          lastName: form.lastName,
+          companyEmail: form.companyEmail,
+          companyName: form.companyName,
+          heardAboutUs,
+        })
+
+        setSubmitted(true)
+      } catch (error) {
+        if (error instanceof ApiError) {
+          setApiError(error.message || "Submission failed")
+          return
+        }
+        setApiError("Submission failed")
+      } finally {
+        setSubmitting(false)
+      }
+    })()
   }
 
   const isLight = tone === "light"
@@ -450,21 +485,27 @@ export function DemoRequestForm({
 
         <Button
           type="submit"
-          disabled={!isValid}
+          disabled={!isValid || submitting}
           className={cn(
             "mt-2 h-11 w-full rounded-xl text-sm font-semibold transition duration-200",
             isLight
               ? "bg-[#3E8A76] text-white hover:bg-[#357563] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(62,138,118,0.28)] focus-visible:ring-offset-2 focus-visible:ring-offset-white"
               : "border border-[rgba(189,255,233,0.55)] bg-[linear-gradient(135deg,rgba(96,191,163,0.95)_0%,rgba(79,165,142,0.9)_52%,rgba(70,142,188,0.8)_100%)] text-[#06111b] shadow-[0_16px_38px_rgba(72,169,145,0.18)] hover:-translate-y-0.5 hover:scale-[1.01] hover:shadow-[0_18px_48px_rgba(72,169,145,0.26)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(96,191,163,0.55)] focus-visible:ring-offset-2 focus-visible:ring-offset-[#06101a] motion-reduce:transform-none",
-            !isValid ? "cursor-not-allowed opacity-55 hover:scale-100 hover:-translate-y-0" : null
+            !isValid || submitting ? "cursor-not-allowed opacity-55 hover:scale-100 hover:-translate-y-0" : null
           )}
         >
-          Request Demo
+          {submitting ? "Submitting..." : "Request Demo"}
         </Button>
 
         <p className={cn("text-[11px] leading-5", isLight ? "text-[rgba(75,90,83,0.7)]" : "text-[rgba(214,230,226,0.6)]")}>
           By submitting, you agree to be contacted about KCX.
         </p>
+
+        {apiError ? (
+          <div role="status" className="rounded-xl border border-red-500/20 bg-red-500/5 px-4 py-3 text-sm text-[#0F1F1A]">
+            {apiError}
+          </div>
+        ) : null}
 
         {submitted ? (
           <div
@@ -476,7 +517,7 @@ export function DemoRequestForm({
                 : "border-[rgba(163,247,221,0.22)] bg-[rgba(62,138,118,0.12)] text-[rgba(230,244,240,0.86)]"
             )}
           >
-            Thanks — we'll reach out shortly to confirm a time.
+            Demo request submitted. Check your email for next steps.
           </div>
         ) : null}
       </form>
