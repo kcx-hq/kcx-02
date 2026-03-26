@@ -1,0 +1,33 @@
+{
+  "name": "backend",
+  "version": "1.0.0",
+  "description": "Minimal Express + Sequelize + PostgreSQL starter with migrations",
+  "main": "dist/server.js",
+  "scripts": {
+    "dev": "tsx watch server.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/server.js",
+    "db:migrate": "npm run build && sequelize db:migrate --config dist/src/config/db.config.js --migrations-path dist/src/migrations",
+    "db:migrate:undo": "npm run build && sequelize db:migrate:undo --config dist/src/config/db.config.js --migrations-path dist/src/migrations",
+    "db:seed": "npm run build && sequelize db:seed:all --config dist/src/config/db.config.js --seeders-path dist/src/seeders"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "dependencies": {
+    "dotenv": "^16.6.1",
+    "express": "^5.2.1",
+    "pg": "^8.16.3",
+    "pg-hstore": "^2.3.4",
+    "sequelize": "^6.37.7"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.3",
+    "@types/node": "^24.5.2",
+    "nodemon": "^3.1.10",
+    "sequelize-cli": "^6.6.3",
+    "tsx": "^4.20.5",
+    "typescript": "^5.9.2"
+  }
+}
