@@ -14,6 +14,7 @@ import {
   LeadershipPage,
   LoginPage,
   OurStoryPage,
+  ResetPasswordPage,
   ScheduleDemoPage,
 } from "@/features/landing/pages"
 
@@ -23,6 +24,7 @@ export function AppRouter() {
       <Route path="/" element={<HomePage />} />
       <Route path="/schedule-demo" element={<ScheduleDemoPage />} />
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/reset-password" element={<ResetPasswordPage />} />
       <Route path="/integrations/aws" element={<AwsIntegrationPage />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
@@ -49,10 +51,12 @@ export function App() {
   return (
     <main className="min-h-screen overflow-x-clip bg-background text-foreground">
       {route === "/schedule-demo" || route === "/login" || isClientWorkspaceRoute ? null : <Header />}
+      {route === "/schedule-demo" || route === "/login" || route === "/reset-password" ? null : <Header />}
 
       {route === "/" ? <HomePage /> : null}
       {route === "/schedule-demo" ? <ScheduleDemoPage /> : null}
       {route === "/login" ? <LoginPage /> : null}
+      {route === "/reset-password" ? <ResetPasswordPage /> : null}
       {route === "/about/our-story" ? <OurStoryPage /> : null}
       {route === "/about/leadership" ? <LeadershipPage /> : null}
       {route === "/about/careers" ? <CareersPage /> : null}

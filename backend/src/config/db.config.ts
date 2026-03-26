@@ -1,4 +1,4 @@
-import "dotenv/config";
+import env from "./env.js";
 
 type DialectSslConfig = {
   url: string;
@@ -11,13 +11,7 @@ type DialectSslConfig = {
   };
 };
 
-const rawDbUrl = process.env.DB_URL;
-
-if (!rawDbUrl) {
-  throw new Error("DB_URL is not set");
-}
-
-const dbUrl = new URL(rawDbUrl);
+const dbUrl = new URL(env.dbUrl);
 if (!dbUrl.searchParams.has("sslmode")) {
   dbUrl.searchParams.set("sslmode", "require");
 }

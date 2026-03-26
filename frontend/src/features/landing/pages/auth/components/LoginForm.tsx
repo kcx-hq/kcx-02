@@ -3,6 +3,7 @@ import { useId, useMemo, useState, type FocusEvent, type FormEvent, type HTMLAtt
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { validateForm } from "@/lib/validateForm"
+import { apiPost, ApiError } from "@/lib/api"
 import { loginSchema, type LoginValues } from "@/schemas/auth.schema"
 
 type LoginTouched = Partial<Record<keyof LoginValues, boolean>>
@@ -76,6 +77,8 @@ function TextField({
 export function LoginForm() {
   const formId = useId()
   const [submitted, setSubmitted] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const [apiError, setApiError] = useState<string | null>(null)
   const [form, setForm] = useState<LoginValues>({ email: "", password: "" })
   const [touched, setTouched] = useState<LoginTouched>({})
   const [errors, setErrors] = useState<Partial<Record<keyof LoginValues, string>>>({})
@@ -114,7 +117,32 @@ export function LoginForm() {
     const ok = validateAndSet(form)
     if (!ok) return
 
-    setSubmitted(true)
+    setApiError(null)
+    setSubmitting(true)
+    void (async () => {
+      try {
+        type LoginResponse = {
+          token: string
+          expiresAt: string
+          user: { id: number; email: string; firstName: string; lastName: string }
+        }
+
+        const data = await apiPost<LoginResponse>("/auth/login", {
+          email: form.email,
+          password: form.password,
+        })
+        localStorage.setItem("kcx_auth_token", data.token)
+        setSubmitted(true)
+      } catch (error) {
+        if (error instanceof ApiError) {
+          setApiError(error.message || "Login failed")
+          return
+        }
+        setApiError("Login failed")
+      } finally {
+        setSubmitting(false)
+      }
+    })()
   }
 
   return (
@@ -192,13 +220,13 @@ export function LoginForm() {
 
         <Button
           type="submit"
-          disabled={!isValid}
+          disabled={!isValid || submitting}
           className={cn(
             "mt-2 h-11 w-full rounded-xl bg-[#3E8A76] text-sm font-semibold text-white transition duration-200 hover:bg-[#357563] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(62,138,118,0.28)] focus-visible:ring-offset-2 focus-visible:ring-offset-white",
-            !isValid ? "cursor-not-allowed opacity-55 hover:bg-[#3E8A76]" : null
+            !isValid || submitting ? "cursor-not-allowed opacity-55 hover:bg-[#3E8A76]" : null
           )}
         >
-          Sign In
+          {submitting ? "Signing In..." : "Sign In"}
         </Button>
 
         <p id={`${formId}__help`} className="text-[11px] leading-5 text-[rgba(75,90,83,0.7)]">
@@ -209,12 +237,18 @@ export function LoginForm() {
           .
         </p>
 
+        {apiError ? (
+          <div role="status" className="rounded-xl border border-red-500/20 bg-red-500/5 px-4 py-3 text-sm text-[#0F1F1A]">
+            {apiError}
+          </div>
+        ) : null}
+
         {submitted ? (
           <div
             role="status"
             className="rounded-xl border border-[rgba(62,138,118,0.24)] bg-[rgba(62,138,118,0.08)] px-4 py-3 text-sm text-[#0F1F1A]"
           >
-            Login is currently disabled in this environment.
+            Logged in successfully.
           </div>
         ) : null}
       </form>

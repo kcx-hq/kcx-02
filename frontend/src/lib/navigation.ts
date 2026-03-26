@@ -9,6 +9,7 @@ const STATIC_ROUTES = [
   "/client-home",
   "/schedule-demo",
   "/login",
+  "/reset-password",
   "/about/our-story",
   "/about/leadership",
   "/about/careers",
