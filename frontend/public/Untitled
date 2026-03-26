@@ -1,0 +1,173 @@
+Build the full landing page structure for `variant-04` using the already selected stack and existing KCX theme direction.
+
+IMPORTANT:
+- Do NOT redesign the whole visual language from scratch.
+- Preserve the current KCX premium dark/futuristic feel already established in v2.
+- Keep the existing header and hero direction intact unless a section-level integration adjustment is needed.
+- This task is about implementing the exact PAGE STRUCTURE and section flow for v2.
+- v2 must feel structurally different from v1. Do not reuse the v1 storytelling pattern.
+- v2 should follow a “Why → How → Product Depth → Objection Handling” narrative model.
+
+## PAGE STRUCTURE TO IMPLEMENT
+
+### 1. Header
+- Keep the current v2 header system.
+- Floating / premium / modern feel.
+- Maintain the current KCX branding, nav logic, and CTA behavior already established.
+
+### 2. Hero
+- Keep the current v2 hero direction.
+- Preserve the premium dark hero, aurora/futuristic atmosphere, strong headline, and right-side visual/animation direction.
+- Do not flatten or simplify it.
+
+### 3. “Why KCX” Section
+This section replaces the traditional “problem/solution” flow.
+
+Goal:
+- Explain why a company should choose KCX.
+- This should be a value-proposition section, not a product spec dump.
+
+Structure:
+- Clear section heading like “Why KCX” / “Why teams choose KCX” / equivalent premium phrasing aligned to brand tone.
+- 3 to 4 strong cards or blocks.
+- Each card should communicate a high-level value theme relevant to Cloud FinOps.
+
+Suggested content direction:
+- Unified cloud cost visibility
+- Faster decision making
+- Actionable optimization insights
+- Better financial control across cloud spend
+
+Design direction:
+- Clean, premium, readable
+- Distinct from hero but visually connected
+- Should feel like a strong explanatory layer after hero
+
+### 4. “How KCX Helps” Section
+This is the next layer after “Why KCX”.
+
+Goal:
+- Show how the platform actually helps in practice.
+- This should feel more grounded and capability-oriented than the previous section.
+
+Structure:
+- A section heading like “How KCX helps” / “How KCX supports modern cloud teams” / equivalent
+- Use a stacked alternating layout similar in spirit to the Yotascale pattern:
+  - one side = capability explanation
+  - other side = proof-style block / visual / testimonial-style layout / supporting content card
+- Repeat for multiple capability rows
+
+Content direction:
+- Cost visibility and allocation
+- Optimization and savings opportunities
+- Budget awareness / anomaly visibility
+- Cloud cost clarity across teams / workloads / accounts
+
+IMPORTANT:
+- Do not blindly copy Yotascale visuals.
+- Use the structural idea only: “capability + supporting proof/content block”.
+- Keep it aligned to KCX branding and premium product feel.
+
+### 5. Bridge Section
+Add a small transition section between “How KCX Helps” and the Bento Grid.
+
+Goal:
+- Smoothly transition from explanation to product depth.
+- Prevent the page from jumping too abruptly into a dense feature grid.
+
+Structure:
+- Short section
+- 1 strong headline
+- 1 concise supporting paragraph
+- Optional small visual accent / divider / stat line / mini strip
+
+Tone:
+- Should feel like “from insight to action” or “turn cloud cost intelligence into measurable outcomes”
+- Keep it concise and elegant
+
+### 6. Bento Grid Section
+This is the product-depth section.
+
+Goal:
+- Show the actual capability surface of KCX in a modern, premium, product-marketing format.
+
+Structure:
+- Responsive bento grid
+- Varied card sizes
+- Strong hierarchy
+- Cards should not feel repetitive or mechanically identical
+
+Content themes for bento cards:
+- Cloud cost visibility
+- Optimization recommendations
+- Anomaly detection
+- Budgeting / forecasting
+- Cost allocation / tagging / attribution
+- AI-assisted insights (only if it fits naturally)
+- Multi-cloud context if relevant
+
+IMPORTANT:
+- This section should feel product-rich, not decorative.
+- Each card must communicate a real capability/value area.
+- Maintain premium design quality, spacing, typography, and interaction feel.
+- Hover states / subtle motion are welcome, but do not overdo gimmicks.
+
+### 7. FAQ Section
+Place FAQ after the bento grid.
+
+Goal:
+- Handle objections and reduce friction before footer.
+- This is not generic filler content.
+
+FAQ content should be shaped around real buyer concerns such as:
+- How KCX is different
+- Multi-cloud support
+- Integration effort
+- Cost visibility and savings value
+- Security / access model
+- Optimization workflow / recommendations
+- Billing data understanding / onboarding clarity
+
+Design direction:
+- Clean accordion layout
+- Easy to scan
+- Premium spacing and typography
+- Should visually fit the v2 system
+
+### 8. Footer
+- Add/keep a proper footer aligned with the KCX landing page system.
+- Clean, premium, professional.
+- Should feel complete and production-ready.
+
+## DESIGN / UX RULES
+- v2 must be structurally different from v1.
+- Do not fall back to generic “hero → problem → solution → features → testimonials” SaaS boilerplate.
+- Follow this exact v2 narrative:
+  1. Header
+  2. Hero
+  3. Why KCX
+  4. How KCX Helps
+  5. Bridge Section
+  6. Bento Grid
+  7. FAQ
+  8. Footer
+
+- The sections should feel intentionally connected, not like random blocks stacked vertically.
+- Maintain strong spacing rhythm between sections.
+- Preserve premium enterprise SaaS quality.
+- Keep the experience polished, modern, and market-ready.
+- Avoid overloading sections with too much text.
+- Avoid weak placeholder-style cards.
+- Avoid generic gradients or generic startup visuals that do not fit KCX.
+
+## IMPLEMENTATION EXPECTATION
+- Implement the full section structure in `variant-04`.
+- Reuse the current project’s stack and existing v2 foundation.
+- Create components cleanly and modularly.
+- Keep code production-grade and organized.
+- Ensure responsive behavior across desktop/tablet/mobile.
+- Add tasteful motion where it improves polish, but prioritize clarity and premium feel.
+
+Final outcome:
+The landing page should clearly feel like v2 has its own identity and structure:
+not v1 reshuffled, but a distinct “Why → How → Product Depth → FAQ” KCX Cloud FinOps landing page.
