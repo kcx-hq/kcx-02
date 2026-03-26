@@ -1,19 +1,9 @@
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
-import { ActionCard } from "@/features/client-home/components/ActionCard"
 import { ActivityList } from "@/features/client-home/components/ActivityList"
-import { ClientTopNavbar } from "@/features/client-home/components/ClientTopNavbar"
-import { StatCard } from "@/features/client-home/components/StatCard"
 import { mockData } from "@/features/client-home/data/mockData"
-
-function formatCurrency(value: number) {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: 2,
-  }).format(value)
-}
+import { Cloud, Upload } from "lucide-react"
 
 function getUploadStatusBadge(status: "success" | "failed" | "processing") {
   if (status === "success") {
@@ -87,186 +77,133 @@ function getAnnouncementBadge(type: "maintenance" | "feature" | "sla") {
 
 export function ClientOverviewPage() {
   const uploads = mockData.uploads
-  const awsStatus = mockData.awsConnection.status
 
-  const hasSpendData = uploads.length > 0 || awsStatus === "connected"
   const hasFailedUploads = uploads.some((upload) => upload.status === "failed")
-  const isOnboardingState = uploads.length === 0 && awsStatus === "not_connected"
-
-  const uploadStats = {
-    total: uploads.length,
-    success: uploads.filter((upload) => upload.status === "success").length,
-    failed: uploads.filter((upload) => upload.status === "failed").length,
-  }
 
   return (
-    <div className="min-h-screen bg-[color:var(--bg-main)] text-text-primary">
-      <ClientTopNavbar orgName="Acme Cloud Services" />
-
-      <div className="mx-auto w-full max-w-[1440px] px-6 py-6">
-        <div className="space-y-6">
-          <section aria-label="FinOps status strip" className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-            <StatCard
-              title="Total 30 Day Spend"
-              value={formatCurrency(mockData.spend.total30d)}
-              subtext="Trend available after data ingestion"
-              hasData={hasSpendData}
-            />
-            <StatCard
-              title="Month-to-Date Spend"
-              value={formatCurrency(mockData.spend.mtd)}
-              subtext="Trend available after data ingestion"
-              hasData={hasSpendData}
-            />
-            <StatCard
-              title="Anomaly Status"
-              value={mockData.spend.anomalies > 0 ? formatCurrency(mockData.spend.anomalies) : "No anomalies"}
-              subtext={
-                mockData.spend.anomalies > 0
-                  ? "Review anomaly monitor for current month"
-                  : "No anomaly signals detected"
-              }
-              hasData={hasSpendData}
-            />
-          </section>
-
-          {isOnboardingState ? (
-            <section aria-label="Get started with KCX">
-              <Card className="rounded-md border-[color:var(--kcx-border-soft)] bg-[color:var(--kcx-card-light)] shadow-sm-custom">
-                <CardContent className="grid gap-6 p-6 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
-                  <div className="space-y-4">
-                    <p className="kcx-eyebrow text-brand-primary">Onboarding</p>
-                    <h1 className="kcx-heading text-2xl font-semibold tracking-tight text-text-primary">Get started with KCX</h1>
-                    <ol className="space-y-2 text-sm text-text-secondary">
-                      <li>1. Upload your billing CSV</li>
-                      <li>2. Or connect AWS</li>
-                    </ol>
-                  </div>
-                  <div className="flex flex-col gap-3 sm:flex-row md:flex-col md:items-stretch lg:flex-row">
-                    <Button className="h-11 rounded-md">Upload CSV</Button>
-                    <Button
-                      variant="outline"
-                      className="h-11 rounded-md border-[color:var(--border-light)] bg-transparent"
-                    >
-                      Connect AWS
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            </section>
-          ) : (
-            <>
-              <section aria-label="Start FinOps" className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-                <ActionCard
-                  title="Upload Billing Data"
-                  description="Upload your latest billing CSV to begin spend analysis and trend visibility."
-                  ctaLabel="Upload CSV"
-                  emphasized
-                  stats={[
-                    { label: "Total uploads", value: String(uploadStats.total) },
-                    { label: "Successful uploads", value: String(uploadStats.success) },
-                    { label: "Failed uploads", value: String(uploadStats.failed) },
-                  ]}
-                />
-
-                <ActionCard
-                  title="Connect AWS Account"
-                  description="Set up automated billing ingestion."
-                  ctaLabel="Start Setup"
-                  status={
-                    <Badge variant="outline" className="rounded-md border-[color:var(--kcx-border-soft)] bg-[color:var(--highlight-green)] text-brand-primary">
-                      {awsStatus === "connected"
-                        ? "Connected"
-                        : awsStatus === "pending"
-                          ? "Pending"
-                          : "Not Connected"}
-                    </Badge>
-                  }
-                />
-              </section>
-
-              <section aria-label="Activity panels" className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
-                <ActivityList
-                  title="Recent Uploads"
-                  rows={uploads}
-                  emptyText="No uploads yet. Upload your first billing CSV to activate cost tracking."
-                  columns={[
-                    {
-                      key: "file",
-                      label: "File Name",
-                      render: (row) => <span className="font-medium text-text-primary">{row.fileName}</span>,
-                    },
-                    {
-                      key: "status",
-                      label: "Status",
-                      render: (row) => getUploadStatusBadge(row.status),
-                    },
-                    {
-                      key: "time",
-                      label: "Time",
-                      render: (row) => row.time,
-                    },
-                  ]}
-                />
-
-                <ActivityList
-                  title="Ticket Activity"
-                  rows={mockData.tickets}
-                  emptyText="No ticket activity yet."
-                  columns={[
-                    {
-                      key: "title",
-                      label: "Title",
-                      render: (row) => <span className="text-text-primary">{row.title}</span>,
-                    },
-                    {
-                      key: "status",
-                      label: "Status",
-                      render: (row) => getTicketStatusBadge(row.status),
-                    },
-                  ]}
-                />
-
-                <ActivityList
-                  title="Announcements"
-                  rows={mockData.announcements}
-                  emptyText="No announcements available."
-                  columns={[
-                    {
-                      key: "update",
-                      label: "Update",
-                      render: (row) => <span className="text-text-primary">{row.title}</span>,
-                    },
-                    {
-                      key: "type",
-                      label: "Type",
-                      render: (row) => getAnnouncementBadge(row.type),
-                    },
-                  ]}
-                />
-              </section>
-
-              <section aria-label="Quick actions">
-                <Card className="rounded-md border-[color:var(--border-light)] bg-[color:var(--kcx-card-light)] shadow-sm-custom">
-                  <CardContent className="flex flex-col gap-3 p-5 md:flex-row">
-                    <Button variant="outline" className="h-10 rounded-md border-[color:var(--border-light)] bg-transparent">
-                      Create Ticket
-                    </Button>
-                    <Button variant="outline" className="h-10 rounded-md border-[color:var(--border-light)] bg-transparent">
-                      Schedule Support Call
-                    </Button>
-                    {hasFailedUploads ? (
-                      <Button variant="outline" className="h-10 rounded-md border-[color:var(--border-light)] bg-transparent">
-                        Retry Failed Upload
-                      </Button>
-                    ) : null}
-                  </CardContent>
-                </Card>
-              </section>
-            </>
-          )}
+    <div className="space-y-5">
+      <section aria-label="Get Started" className="space-y-4 rounded-md border border-[color:var(--border-light)] bg-[linear-gradient(180deg,#ffffff_0%,#f9fbfa_100%)] p-6 shadow-sm-custom">
+        <div className="space-y-2">
+          <p className="kcx-eyebrow text-brand-primary">Start Here</p>
+          <h1 className="kcx-heading text-2xl font-semibold tracking-tight text-text-primary">Connect Your Billing Data</h1>
+          <p className="max-w-3xl text-sm text-text-secondary">
+            Get started by connecting your billing data to unlock insights and cost visibility.
+          </p>
         </div>
-      </div>
+
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <Card className="rounded-md border-[color:var(--border-light)] bg-white shadow-sm-custom">
+            <CardContent className="space-y-4 p-5">
+              <span className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-[color:var(--border-light)] bg-[color:var(--bg-surface)] text-text-secondary">
+                <Upload className="h-4 w-4" />
+              </span>
+              <div className="space-y-2">
+                <h2 className="text-lg font-semibold text-text-primary">Upload Billing CSV</h2>
+                <p className="text-sm leading-6 text-text-secondary">
+                  Upload your billing data manually to start analyzing costs instantly.
+                </p>
+              </div>
+              <Button className="h-10 rounded-md">Upload CSV</Button>
+            </CardContent>
+          </Card>
+
+          <Card className="rounded-md border-[color:var(--border-light)] bg-white shadow-sm-custom">
+            <CardContent className="space-y-4 p-5">
+              <span className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-[color:var(--border-light)] bg-[color:var(--bg-surface)] text-text-secondary">
+                <Cloud className="h-4 w-4" />
+              </span>
+              <div className="space-y-2">
+                <h2 className="text-lg font-semibold text-text-primary">Connect Cloud Account</h2>
+                <p className="text-sm leading-6 text-text-secondary">
+                  Connect AWS or other providers for automated billing ingestion.
+                </p>
+              </div>
+              <Button variant="outline" className="h-10 rounded-md border-[color:var(--border-light)] bg-transparent">
+                Connect AWS
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+      </section>
+
+      <section aria-label="Activity panels" className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
+        <ActivityList
+          title="Recent Uploads"
+          rows={uploads}
+          emptyText="No uploads yet. Upload your first billing CSV to activate cost tracking."
+          columns={[
+            {
+              key: "file",
+              label: "File Name",
+              render: (row) => <span className="font-medium text-text-primary">{row.fileName}</span>,
+            },
+            {
+              key: "status",
+              label: "Status",
+              render: (row) => getUploadStatusBadge(row.status),
+            },
+            {
+              key: "time",
+              label: "Time",
+              render: (row) => row.time,
+            },
+          ]}
+        />
+
+        <ActivityList
+          title="Ticket Activity"
+          rows={mockData.tickets}
+          emptyText="No ticket activity yet."
+          columns={[
+            {
+              key: "title",
+              label: "Title",
+              render: (row) => <span className="text-text-primary">{row.title}</span>,
+            },
+            {
+              key: "status",
+              label: "Status",
+              render: (row) => getTicketStatusBadge(row.status),
+            },
+          ]}
+        />
+
+        <ActivityList
+          title="Announcements"
+          rows={mockData.announcements}
+          emptyText="No announcements available."
+          columns={[
+            {
+              key: "update",
+              label: "Update",
+              render: (row) => <span className="text-text-primary">{row.title}</span>,
+            },
+            {
+              key: "type",
+              label: "Type",
+              render: (row) => getAnnouncementBadge(row.type),
+            },
+          ]}
+        />
+      </section>
+
+      <section aria-label="Quick actions">
+        <Card className="rounded-md border-[color:var(--border-light)] bg-[color:var(--kcx-card-light)] shadow-sm-custom">
+          <CardContent className="flex flex-col gap-3 p-5 md:flex-row">
+            <Button variant="outline" className="h-10 rounded-md border-[color:var(--border-light)] bg-transparent">
+              Create Ticket
+            </Button>
+            <Button variant="outline" className="h-10 rounded-md border-[color:var(--border-light)] bg-transparent">
+              Schedule Support Call
+            </Button>
+            {hasFailedUploads ? (
+              <Button variant="outline" className="h-10 rounded-md border-[color:var(--border-light)] bg-transparent">
+                Retry Failed Upload
+              </Button>
+            ) : null}
+          </CardContent>
+        </Card>
+      </section>
     </div>
   )
 }

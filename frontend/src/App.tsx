@@ -1,10 +1,13 @@
-﻿import { useEffect } from "react"
-import { Navigate, Route, Routes } from "react-router-dom"
+import { useEffect } from "react"
 
 import { Header } from "@/components/layout/Header"
-import { ClientOverviewPage } from "@/features/client-home"
-import { getBlogSlugFromPath, getRouteRedirectTarget, navigateTo, useCurrentRoute } from "@/lib/navigation"
-import { HomePage } from "@/pages/HomePage"
+import {
+  ClientBillingPage,
+  ClientLayout,
+  ClientOverviewPage,
+  ClientSupportPage,
+  ClientUsersPage,
+} from "@/features/client-home"
 import {
   AwsIntegrationPage,
   BlogDetailPage,
@@ -17,25 +20,31 @@ import {
   ResetPasswordPage,
   ScheduleDemoPage,
 } from "@/features/landing/pages"
+import { getBlogSlugFromPath, getRouteRedirectTarget, navigateTo, useCurrentRoute } from "@/lib/navigation"
+import { HomePage } from "@/pages/HomePage"
 
-export function AppRouter() {
-  return (
-    <Routes>
-      <Route path="/" element={<HomePage />} />
-      <Route path="/schedule-demo" element={<ScheduleDemoPage />} />
-      <Route path="/login" element={<LoginPage />} />
-      <Route path="/reset-password" element={<ResetPasswordPage />} />
-      <Route path="/integrations/aws" element={<AwsIntegrationPage />} />
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
-  )
-}
+const CLIENT_WORKSPACE_ROUTES = new Set([
+  "/client",
+  "/client/overview",
+  "/client/billing",
+  "/client/billing/uploads",
+  "/client/billing/connections",
+  "/client/billing/connections/add",
+  "/client/billing/connections/manual-setup",
+  "/client/support",
+  "/client/support/tickets",
+  "/client/support/schedule-call",
+  "/client/support/live-chat",
+  "/client/users",
+  "/clienthome",
+  "/client-home",
+])
+const HEADERLESS_ROUTES = new Set(["/schedule-demo", "/login", "/reset-password", ...CLIENT_WORKSPACE_ROUTES])
 
 export function App() {
   const route = useCurrentRoute()
   const blogSlug = getBlogSlugFromPath(route)
-  const isClientWorkspaceRoute =
-    route === "/client" || route === "/client/overview" || route === "/clienthome" || route === "/client-home"
+  const showMarketingHeader = !HEADERLESS_ROUTES.has(route)
 
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "auto" })
@@ -50,8 +59,7 @@ export function App() {
 
   return (
     <main className="min-h-screen overflow-x-clip bg-background text-foreground">
-      {route === "/schedule-demo" || route === "/login" || isClientWorkspaceRoute ? null : <Header />}
-      {route === "/schedule-demo" || route === "/login" || route === "/reset-password" ? null : <Header />}
+      {showMarketingHeader ? <Header /> : null}
 
       {route === "/" ? <HomePage /> : null}
       {route === "/schedule-demo" ? <ScheduleDemoPage /> : null}
@@ -64,11 +72,28 @@ export function App() {
       {route === "/resources/blog" || route === "/resources/blogs" ? <BlogPage /> : null}
       {blogSlug ? <BlogDetailPage slug={blogSlug} /> : null}
       {route === "/resources/documentation" ? <DocumentationPage /> : null}
-      {isClientWorkspaceRoute ? <ClientOverviewPage /> : null}
+      {route === "/client" || route === "/client/overview" || route === "/clienthome" || route === "/client-home" ? (
+        <ClientLayout>
+          <ClientOverviewPage />
+        </ClientLayout>
+      ) : null}
+      {route === "/client/billing" || route === "/client/billing/uploads" || route === "/client/billing/connections" || route === "/client/billing/connections/add" || route === "/client/billing/connections/manual-setup" ? (
+        <ClientLayout>
+          <ClientBillingPage />
+        </ClientLayout>
+      ) : null}
+      {route === "/client/support" || route === "/client/support/tickets" || route === "/client/support/schedule-call" || route === "/client/support/live-chat" ? (
+        <ClientLayout>
+          <ClientSupportPage />
+        </ClientLayout>
+      ) : null}
+      {route === "/client/users" ? (
+        <ClientLayout>
+          <ClientUsersPage />
+        </ClientLayout>
+      ) : null}
     </main>
   )
 }
 
 export default App
-
-
