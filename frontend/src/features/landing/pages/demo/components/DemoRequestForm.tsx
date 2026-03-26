@@ -1,4 +1,4 @@
-import {
+﻿import {
   useId,
   useMemo,
   useState,
@@ -11,13 +11,16 @@ import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { validateForm } from "@/lib/validateForm"
 import { apiPost, ApiError } from "@/lib/api"
-import { scheduleDemoSchema } from "@/schemas/demo.schema"
+import { scheduleDemoBaseSchema, scheduleDemoSchema } from "@/schemas/demo.schema"
+import { SlotPickerDialog } from "@/features/landing/pages/demo/components/SlotPickerDialog"
 
 type DemoFormState = {
   firstName: string
   lastName: string
   companyName: string
   companyEmail: string
+  slotDate: string
+  slotTime: string
   discovery: string
   discoveryOther: string
 }
@@ -48,6 +51,27 @@ function FieldError({ id, children }: { id: string; children: string }) {
     <p id={id} className="mt-1 text-xs text-red-600">
       {children}
     </p>
+  )
+}
+
+function MailIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" className={className}>
+      <path
+        d="M4 7.5A2.5 2.5 0 0 1 6.5 5h11A2.5 2.5 0 0 1 20 7.5v9A2.5 2.5 0 0 1 17.5 19h-11A2.5 2.5 0 0 1 4 16.5v-9Z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+      />
+      <path
+        d="M5.6 7.2 12 12l6.4-4.8"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
   )
 }
 
@@ -205,14 +229,17 @@ export function DemoRequestForm({
     lastName: "",
     companyName: "",
     companyEmail: "",
+    slotDate: "",
+    slotTime: "",
     discovery: "",
     discoveryOther: "",
   })
   const [touched, setTouched] = useState<DemoTouched>({})
   const [errors, setErrors] = useState<DemoErrors>({})
+  const [slotDialogOpen, setSlotDialogOpen] = useState(false)
 
   const parsed = useMemo(() => scheduleDemoSchema.safeParse(form as unknown), [form])
-  const isValid = parsed.success
+  void parsed
 
   function validateAndSet(nextValues: DemoFormState) {
     const result = validateForm(scheduleDemoSchema, nextValues)
@@ -241,6 +268,11 @@ export function DemoRequestForm({
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    void event
+  }
+
+  function openSlotPicker() {
+    setApiError(null)
     setTouched({
       firstName: true,
       lastName: true,
@@ -249,7 +281,22 @@ export function DemoRequestForm({
       discovery: true,
       discoveryOther: true,
     })
-    const ok = validateAndSet(form)
+
+    const baseResult = validateForm(scheduleDemoBaseSchema, form)
+    if (!baseResult.success) {
+      setErrors(baseResult.errors as DemoErrors)
+      return
+    }
+
+    setSlotDialogOpen(true)
+  }
+
+  function submitWithSlot(slot: { date: string; time: string }) {
+    setSlotDialogOpen(false)
+    const nextValues: DemoFormState = { ...form, slotDate: slot.date, slotTime: slot.time }
+    setForm(nextValues)
+
+    const ok = validateAndSet(nextValues)
     if (!ok) return
 
     setApiError(null)
@@ -263,15 +310,16 @@ export function DemoRequestForm({
           emailSent: boolean
         }
 
-        const heardAboutUs =
-          form.discovery === "other" ? form.discoveryOther.trim() : form.discovery
+        const heardAboutUs = form.discovery === "other" ? form.discoveryOther.trim() : form.discovery
 
         await apiPost<ScheduleDemoResponse>("/schedule-demo", {
-          firstName: form.firstName,
-          lastName: form.lastName,
-          companyEmail: form.companyEmail,
-          companyName: form.companyName,
+          firstName: nextValues.firstName,
+          lastName: nextValues.lastName,
+          companyEmail: nextValues.companyEmail,
+          companyName: nextValues.companyName,
           heardAboutUs,
+          slotDate: nextValues.slotDate,
+          slotTime: nextValues.slotTime,
         })
 
         setSubmitted(true)
@@ -298,229 +346,270 @@ export function DemoRequestForm({
 
   return (
     <div className={chromeClassName}>
-      <p
-        className={cn(
-          "text-[11px] font-semibold uppercase tracking-[0.22em]",
-          isLight ? "text-[#3E8A76]" : "text-[rgba(170,225,207,0.92)]"
-        )}
-      >
-        Request demo
-      </p>
-      <h2
-        className={cn(
-          "mt-3 text-balance text-[1.35rem] font-semibold leading-[1.1] tracking-[-0.03em]",
-          isLight ? "text-[#0F1F1A]" : "text-white"
-        )}
-      >
-        Tell us a bit about you
-      </h2>
-      <p className={cn("mt-3 text-sm leading-7", isLight ? "text-[rgba(75,90,83,0.9)]" : "text-[rgba(214,230,226,0.82)]")}>
-        We'll reach out to schedule a quick walkthrough.
-      </p>
+      {!submitted ? (
+        <>
+          <p
+            className={cn(
+              "text-[11px] font-semibold uppercase tracking-[0.22em]",
+              isLight ? "text-[#3E8A76]" : "text-[rgba(170,225,207,0.92)]"
+            )}
+          >
+            Request demo
+          </p>
+          <h2
+            className={cn(
+              "mt-3 text-balance text-[1.35rem] font-semibold leading-[1.1] tracking-[-0.03em]",
+              isLight ? "text-[#0F1F1A]" : "text-white"
+            )}
+          >
+            Tell us a bit about you
+          </h2>
+          <p
+            className={cn(
+              "mt-3 text-sm leading-7",
+              isLight ? "text-[rgba(75,90,83,0.9)]" : "text-[rgba(214,230,226,0.82)]"
+            )}
+          >
+            We'll reach out to schedule a quick walkthrough.
+          </p>
+        </>
+      ) : null}
 
       <form className="mt-6 space-y-4" onSubmit={onSubmit} noValidate>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div>
-            <TextField
-              id={`${formId}-firstName`}
-              label="First Name"
-              value={form.firstName}
-              onChange={(next) => {
-                const nextValues = { ...form, firstName: next }
-                setForm(nextValues)
-                if (touched.firstName) validateField("firstName", nextValues)
-              }}
-              onBlur={() => {
-                setTouched((prev) => ({ ...prev, firstName: true }))
-                validateField("firstName", form)
-              }}
-              autoComplete="given-name"
-              required
-              placeholder="Ava"
-              tone={tone}
-              invalid={touched.firstName && Boolean(errors.firstName)}
-              errorId={errors.firstName ? `${formId}-firstName__error` : undefined}
-            />
-            {touched.firstName && errors.firstName ? (
-              <FieldError id={`${formId}-firstName__error`}>{errors.firstName}</FieldError>
-            ) : null}
-          </div>
-
-          <div>
-            <TextField
-              id={`${formId}-lastName`}
-              label="Last Name"
-              value={form.lastName}
-              onChange={(next) => {
-                const nextValues = { ...form, lastName: next }
-                setForm(nextValues)
-                if (touched.lastName) validateField("lastName", nextValues)
-              }}
-              onBlur={() => {
-                setTouched((prev) => ({ ...prev, lastName: true }))
-                validateField("lastName", form)
-              }}
-              autoComplete="family-name"
-              required
-              placeholder="Jordan"
-              tone={tone}
-              invalid={touched.lastName && Boolean(errors.lastName)}
-              errorId={errors.lastName ? `${formId}-lastName__error` : undefined}
-            />
-            {touched.lastName && errors.lastName ? (
-              <FieldError id={`${formId}-lastName__error`}>{errors.lastName}</FieldError>
-            ) : null}
-          </div>
-        </div>
-
-        <div>
-          <TextField
-            id={`${formId}-companyEmail`}
-            label="Company Email"
-            value={form.companyEmail}
-            onChange={(next) => {
-              const nextValues = { ...form, companyEmail: next }
-              setForm(nextValues)
-              if (touched.companyEmail) validateField("companyEmail", nextValues)
-            }}
-            onBlur={() => {
-              setTouched((prev) => ({ ...prev, companyEmail: true }))
-              validateField("companyEmail", form)
-            }}
-            type="email"
-            autoComplete="email"
-            inputMode="email"
-            required
-            placeholder="ava@company.com"
-            tone={tone}
-            invalid={touched.companyEmail && Boolean(errors.companyEmail)}
-            errorId={errors.companyEmail ? `${formId}-companyEmail__error` : undefined}
-          />
-          {touched.companyEmail && errors.companyEmail ? (
-            <FieldError id={`${formId}-companyEmail__error`}>{errors.companyEmail}</FieldError>
-          ) : null}
-        </div>
-
-        <div>
-          <TextField
-            id={`${formId}-companyName`}
-            label="Company Name"
-            value={form.companyName}
-            onChange={(next) => {
-              const nextValues = { ...form, companyName: next }
-              setForm(nextValues)
-              if (touched.companyName) validateField("companyName", nextValues)
-            }}
-            onBlur={() => {
-              setTouched((prev) => ({ ...prev, companyName: true }))
-              validateField("companyName", form)
-            }}
-            autoComplete="organization"
-            required
-            placeholder="KCX Labs"
-            tone={tone}
-            invalid={touched.companyName && Boolean(errors.companyName)}
-            errorId={errors.companyName ? `${formId}-companyName__error` : undefined}
-          />
-          {touched.companyName && errors.companyName ? (
-            <FieldError id={`${formId}-companyName__error`}>{errors.companyName}</FieldError>
-          ) : null}
-        </div>
-
-        <div>
-          <SelectField
-            id={`${formId}-discovery`}
-            label="Where did you hear about us?"
-            value={form.discovery}
-            onChange={(next) => {
-              const nextValues = {
-                ...form,
-                discovery: next,
-                discoveryOther: next === "other" ? form.discoveryOther : "",
-              }
-              setForm(nextValues)
-              if (touched.discovery) validateField("discovery", nextValues)
-            }}
-            onBlur={() => {
-              setTouched((prev) => ({ ...prev, discovery: true }))
-              validateField("discovery", form)
-            }}
-            required
-            options={DISCOVERY_OPTIONS}
-            tone={tone}
-            invalid={touched.discovery && Boolean(errors.discovery)}
-            errorId={errors.discovery ? `${formId}-discovery__error` : undefined}
-          />
-          {touched.discovery && errors.discovery ? (
-            <FieldError id={`${formId}-discovery__error`}>{errors.discovery}</FieldError>
-          ) : null}
-        </div>
-
-        {form.discovery === "other" ? (
-          <div>
-            <TextField
-              id={`${formId}-discoveryOther`}
-              label="Other"
-              value={form.discoveryOther}
-              onChange={(next) => {
-                const nextValues = { ...form, discoveryOther: next }
-                setForm(nextValues)
-                if (touched.discoveryOther) validateField("discoveryOther", nextValues)
-              }}
-              onBlur={() => {
-                setTouched((prev) => ({ ...prev, discoveryOther: true }))
-                validateField("discoveryOther", form)
-              }}
-              required
-              placeholder="Please specify"
-              tone={tone}
-              invalid={touched.discoveryOther && Boolean(errors.discoveryOther)}
-              errorId={errors.discoveryOther ? `${formId}-discoveryOther__error` : undefined}
-            />
-            {touched.discoveryOther && errors.discoveryOther ? (
-              <FieldError id={`${formId}-discoveryOther__error`}>{errors.discoveryOther}</FieldError>
-            ) : null}
-          </div>
-        ) : null}
-
-        <Button
-          type="submit"
-          disabled={!isValid || submitting}
-          className={cn(
-            "mt-2 h-11 w-full rounded-xl text-sm font-semibold transition duration-200",
-            isLight
-              ? "bg-[#3E8A76] text-white hover:bg-[#357563] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(62,138,118,0.28)] focus-visible:ring-offset-2 focus-visible:ring-offset-white"
-              : "border border-[rgba(189,255,233,0.55)] bg-[linear-gradient(135deg,rgba(96,191,163,0.95)_0%,rgba(79,165,142,0.9)_52%,rgba(70,142,188,0.8)_100%)] text-[#06111b] shadow-[0_16px_38px_rgba(72,169,145,0.18)] hover:-translate-y-0.5 hover:scale-[1.01] hover:shadow-[0_18px_48px_rgba(72,169,145,0.26)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(96,191,163,0.55)] focus-visible:ring-offset-2 focus-visible:ring-offset-[#06101a] motion-reduce:transform-none",
-            !isValid || submitting ? "cursor-not-allowed opacity-55 hover:scale-100 hover:-translate-y-0" : null
-          )}
-        >
-          {submitting ? "Submitting..." : "Request Demo"}
-        </Button>
-
-        <p className={cn("text-[11px] leading-5", isLight ? "text-[rgba(75,90,83,0.7)]" : "text-[rgba(214,230,226,0.6)]")}>
-          By submitting, you agree to be contacted about KCX.
-        </p>
-
-        {apiError ? (
-          <div role="status" className="rounded-xl border border-red-500/20 bg-red-500/5 px-4 py-3 text-sm text-[#0F1F1A]">
-            {apiError}
-          </div>
-        ) : null}
-
         {submitted ? (
           <div
             role="status"
             className={cn(
-              "rounded-xl border px-4 py-3 text-sm",
-              isLight
-                ? "border-[rgba(62,138,118,0.24)] bg-[rgba(62,138,118,0.08)] text-[#0F1F1A]"
-                : "border-[rgba(163,247,221,0.22)] bg-[rgba(62,138,118,0.12)] text-[rgba(230,244,240,0.86)]"
+              "flex min-h-[26rem] flex-col items-center justify-center text-center",
+              isLight ? "text-[#0F1F1A]" : "text-white"
             )}
           >
-            Demo request submitted. Check your email for next steps.
+            <MailIcon
+              className={cn(
+                "h-7 w-7",
+                isLight ? "text-[#2f7f68]" : "text-[rgba(170,245,221,0.92)]"
+              )}
+            />
+            <p
+              className={cn(
+                "mt-4 max-w-[44ch] text-sm font-semibold leading-6",
+                isLight ? "text-[#0F1F1A]" : "text-[rgba(230,244,240,0.92)]"
+              )}
+            >
+              Check your email for next steps.
+            </p>
           </div>
-        ) : null}
+        ) : (
+          <>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <TextField
+                  id={`${formId}-firstName`}
+                  label="First Name"
+                  value={form.firstName}
+                  onChange={(next) => {
+                    const nextValues = { ...form, firstName: next }
+                    setForm(nextValues)
+                    if (touched.firstName) validateField("firstName", nextValues)
+                  }}
+                  onBlur={() => {
+                    setTouched((prev) => ({ ...prev, firstName: true }))
+                    validateField("firstName", form)
+                  }}
+                  autoComplete="given-name"
+                  required
+                  placeholder="Ava"
+                  tone={tone}
+                  invalid={touched.firstName && Boolean(errors.firstName)}
+                  errorId={errors.firstName ? `${formId}-firstName__error` : undefined}
+                />
+                {touched.firstName && errors.firstName ? (
+                  <FieldError id={`${formId}-firstName__error`}>{errors.firstName}</FieldError>
+                ) : null}
+              </div>
+
+              <div>
+                <TextField
+                  id={`${formId}-lastName`}
+                  label="Last Name"
+                  value={form.lastName}
+                  onChange={(next) => {
+                    const nextValues = { ...form, lastName: next }
+                    setForm(nextValues)
+                    if (touched.lastName) validateField("lastName", nextValues)
+                  }}
+                  onBlur={() => {
+                    setTouched((prev) => ({ ...prev, lastName: true }))
+                    validateField("lastName", form)
+                  }}
+                  autoComplete="family-name"
+                  required
+                  placeholder="Jordan"
+                  tone={tone}
+                  invalid={touched.lastName && Boolean(errors.lastName)}
+                  errorId={errors.lastName ? `${formId}-lastName__error` : undefined}
+                />
+                {touched.lastName && errors.lastName ? (
+                  <FieldError id={`${formId}-lastName__error`}>{errors.lastName}</FieldError>
+                ) : null}
+              </div>
+            </div>
+
+            <div>
+              <TextField
+                id={`${formId}-companyEmail`}
+                label="Company Email"
+                value={form.companyEmail}
+                onChange={(next) => {
+                  const nextValues = { ...form, companyEmail: next }
+                  setForm(nextValues)
+                  if (touched.companyEmail) validateField("companyEmail", nextValues)
+                }}
+                onBlur={() => {
+                  setTouched((prev) => ({ ...prev, companyEmail: true }))
+                  validateField("companyEmail", form)
+                }}
+                type="email"
+                autoComplete="email"
+                inputMode="email"
+                required
+                placeholder="ava@company.com"
+                tone={tone}
+                invalid={touched.companyEmail && Boolean(errors.companyEmail)}
+                errorId={errors.companyEmail ? `${formId}-companyEmail__error` : undefined}
+              />
+              {touched.companyEmail && errors.companyEmail ? (
+                <FieldError id={`${formId}-companyEmail__error`}>{errors.companyEmail}</FieldError>
+              ) : null}
+            </div>
+
+            <div>
+              <TextField
+                id={`${formId}-companyName`}
+                label="Company Name"
+                value={form.companyName}
+                onChange={(next) => {
+                  const nextValues = { ...form, companyName: next }
+                  setForm(nextValues)
+                  if (touched.companyName) validateField("companyName", nextValues)
+                }}
+                onBlur={() => {
+                  setTouched((prev) => ({ ...prev, companyName: true }))
+                  validateField("companyName", form)
+                }}
+                autoComplete="organization"
+                required
+                placeholder="KCX Labs"
+                tone={tone}
+                invalid={touched.companyName && Boolean(errors.companyName)}
+                errorId={errors.companyName ? `${formId}-companyName__error` : undefined}
+              />
+              {touched.companyName && errors.companyName ? (
+                <FieldError id={`${formId}-companyName__error`}>{errors.companyName}</FieldError>
+              ) : null}
+            </div>
+
+            <div>
+              <SelectField
+                id={`${formId}-discovery`}
+                label="Where did you hear about us?"
+                value={form.discovery}
+                onChange={(next) => {
+                  const nextValues = {
+                    ...form,
+                    discovery: next,
+                    discoveryOther: next === "other" ? form.discoveryOther : "",
+                  }
+                  setForm(nextValues)
+                  if (touched.discovery) validateField("discovery", nextValues)
+                }}
+                onBlur={() => {
+                  setTouched((prev) => ({ ...prev, discovery: true }))
+                  validateField("discovery", form)
+                }}
+                required
+                options={DISCOVERY_OPTIONS}
+                tone={tone}
+                invalid={touched.discovery && Boolean(errors.discovery)}
+                errorId={errors.discovery ? `${formId}-discovery__error` : undefined}
+              />
+              {touched.discovery && errors.discovery ? (
+                <FieldError id={`${formId}-discovery__error`}>{errors.discovery}</FieldError>
+              ) : null}
+            </div>
+
+            {form.discovery === "other" ? (
+              <div>
+                <TextField
+                  id={`${formId}-discoveryOther`}
+                  label="Other"
+                  value={form.discoveryOther}
+                  onChange={(next) => {
+                    const nextValues = { ...form, discoveryOther: next }
+                    setForm(nextValues)
+                    if (touched.discoveryOther) validateField("discoveryOther", nextValues)
+                  }}
+                  onBlur={() => {
+                    setTouched((prev) => ({ ...prev, discoveryOther: true }))
+                    validateField("discoveryOther", form)
+                  }}
+                  required
+                  placeholder="Please specify"
+                  tone={tone}
+                  invalid={touched.discoveryOther && Boolean(errors.discoveryOther)}
+                  errorId={errors.discoveryOther ? `${formId}-discoveryOther__error` : undefined}
+                />
+                {touched.discoveryOther && errors.discoveryOther ? (
+                  <FieldError id={`${formId}-discoveryOther__error`}>{errors.discoveryOther}</FieldError>
+                ) : null}
+              </div>
+            ) : null}
+
+            <Button
+              type="button"
+              disabled={submitting || submitted}
+              onClick={openSlotPicker}
+              className={cn(
+                "mt-2 h-11 w-full rounded-xl text-sm font-semibold transition duration-200",
+                isLight
+                  ? "bg-[#3E8A76] text-white hover:bg-[#357563] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(62,138,118,0.28)] focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+                  : "border border-[rgba(189,255,233,0.55)] bg-[linear-gradient(135deg,rgba(96,191,163,0.95)_0%,rgba(79,165,142,0.9)_52%,rgba(70,142,188,0.8)_100%)] text-[#06111b] shadow-[0_16px_38px_rgba(72,169,145,0.18)] hover:-translate-y-0.5 hover:scale-[1.01] hover:shadow-[0_18px_48px_rgba(72,169,145,0.26)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(96,191,163,0.55)] focus-visible:ring-offset-2 focus-visible:ring-offset-[#06101a] motion-reduce:transform-none",
+                submitting || submitted ? "cursor-not-allowed opacity-55 hover:scale-100 hover:-translate-y-0" : null
+              )}
+            >
+              {submitted ? "Submitted" : submitting ? "Submitting..." : "Select Date & Time"}
+            </Button>
+
+            <p
+              className={cn(
+                "text-[11px] leading-5",
+                isLight ? "text-[rgba(75,90,83,0.7)]" : "text-[rgba(214,230,226,0.6)]"
+              )}
+            >
+              By submitting, you agree to be contacted about KCX.
+            </p>
+
+            {apiError ? (
+              <div
+                role="status"
+                className="rounded-xl border border-red-500/20 bg-red-500/5 px-4 py-3 text-sm text-[#0F1F1A]"
+              >
+                {apiError}
+              </div>
+            ) : null}
+          </>
+        )}
       </form>
+
+      <SlotPickerDialog
+        open={slotDialogOpen}
+        onOpenChange={setSlotDialogOpen}
+        value={form.slotDate && form.slotTime ? { date: form.slotDate, time: form.slotTime } : null}
+        onSelect={(next) => {
+          if (!next) return
+          submitWithSlot(next)
+        }}
+      />
     </div>
   )
 }
