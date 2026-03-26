@@ -2,6 +2,7 @@
 import { Navigate, Route, Routes } from "react-router-dom"
 
 import { Header } from "@/components/layout/Header"
+import { ClientOverviewPage } from "@/features/client-home"
 import { getBlogSlugFromPath, getRouteRedirectTarget, navigateTo, useCurrentRoute } from "@/lib/navigation"
 import { HomePage } from "@/pages/HomePage"
 import {
@@ -33,6 +34,8 @@ export function AppRouter() {
 export function App() {
   const route = useCurrentRoute()
   const blogSlug = getBlogSlugFromPath(route)
+  const isClientWorkspaceRoute =
+    route === "/client" || route === "/client/overview" || route === "/clienthome" || route === "/client-home"
 
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "auto" })
@@ -47,6 +50,7 @@ export function App() {
 
   return (
     <main className="min-h-screen overflow-x-clip bg-background text-foreground">
+      {route === "/schedule-demo" || route === "/login" || isClientWorkspaceRoute ? null : <Header />}
       {route === "/schedule-demo" || route === "/login" || route === "/reset-password" ? null : <Header />}
 
       {route === "/" ? <HomePage /> : null}
@@ -60,6 +64,7 @@ export function App() {
       {route === "/resources/blog" || route === "/resources/blogs" ? <BlogPage /> : null}
       {blogSlug ? <BlogDetailPage slug={blogSlug} /> : null}
       {route === "/resources/documentation" ? <DocumentationPage /> : null}
+      {isClientWorkspaceRoute ? <ClientOverviewPage /> : null}
     </main>
   )
 }
