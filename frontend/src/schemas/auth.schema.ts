@@ -12,3 +12,21 @@ export const loginSchema = z.object({
 
 export type LoginValues = z.input<typeof loginSchema>
 export type LoginData = z.output<typeof loginSchema>
+
+export const resetPasswordSchema = z
+  .object({
+    newPassword: trimmed.pipe(z.string().min(6, "Password must be at least 6 characters.")),
+    confirmPassword: trimmed.pipe(z.string().min(6, "Confirm your password.")),
+  })
+  .superRefine((value, ctx) => {
+    if (value.newPassword !== value.confirmPassword) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["confirmPassword"],
+        message: "Passwords do not match.",
+      })
+    }
+  })
+
+export type ResetPasswordValues = z.input<typeof resetPasswordSchema>
+export type ResetPasswordData = z.output<typeof resetPasswordSchema>

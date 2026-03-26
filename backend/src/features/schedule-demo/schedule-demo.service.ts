@@ -6,7 +6,7 @@ import { sendEmail } from "../_shared/mail/mailgun.service.js";
 import { logger } from "../../utils/logger.js";
 import { buildFrontendUrl } from "../../utils/frontend-url.js";
 
-import type { ScheduleDemoInput } from "./schedule-demo.validator.js";
+import type { ScheduleDemoInput } from "./schedule-demo.schema.js";
 
 type SubmitScheduleDemoResult = {
   demoRequestId: number;
