@@ -10,6 +10,15 @@ const requiredEnv = (value: string | undefined, key: keyof NodeJS.ProcessEnv): s
   return value;
 };
 
+const optionalEnv = (value: string | undefined): string | undefined => {
+  if (!value) {
+    return undefined;
+  }
+
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+};
+
 const rawPort = process.env.PORT;
 const parsedPort = Number(rawPort ?? 5000);
 
@@ -23,10 +32,19 @@ const logLevel: LogLevel =
     ? process.env.LOG_LEVEL
     : "info";
 
+const nodeEnv: "development" | "test" | "production" =
+  process.env.NODE_ENV === "production" ||
+  process.env.NODE_ENV === "test" ||
+  process.env.NODE_ENV === "development"
+    ? process.env.NODE_ENV
+    : "development";
+
 const env = {
   dbUrl: requiredEnv(process.env.DB_URL, "DB_URL"),
   port,
   logLevel,
+  nodeEnv,
+  calApiKey: optionalEnv(process.env.CAL_API_KEY),
 };
 
 export default env;
