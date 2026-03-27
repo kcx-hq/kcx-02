@@ -7,12 +7,12 @@ import {
   type Sequelize,
 } from "sequelize";
 
-class AuthSession extends Model<
-  InferAttributes<AuthSession, { omit: "createdAt" | "updatedAt" }>,
-  InferCreationAttributes<AuthSession, { omit: "createdAt" | "updatedAt" }>
+class AdminAuthSession extends Model<
+  InferAttributes<AdminAuthSession, { omit: "createdAt" | "updatedAt" }>,
+  InferCreationAttributes<AdminAuthSession, { omit: "createdAt" | "updatedAt" }>
 > {
   declare id: CreationOptional<number>;
-  declare clientId: number;
+  declare adminUserId: number;
   declare tokenHash: string;
   declare expiresAt: Date;
   declare revokedAt: Date | null;
@@ -20,24 +20,25 @@ class AuthSession extends Model<
   declare updatedAt: CreationOptional<Date>;
 }
 
-const createAuthSessionModel = (sequelize: Sequelize): typeof AuthSession => {
-  AuthSession.init(
+const createAdminAuthSessionModel = (sequelize: Sequelize): typeof AdminAuthSession => {
+  AdminAuthSession.init(
     {
       id: { type: DataTypes.INTEGER, autoIncrement: true, primaryKey: true },
-      clientId: { type: DataTypes.INTEGER, allowNull: false },
+      adminUserId: { type: DataTypes.INTEGER, allowNull: false },
       tokenHash: { type: DataTypes.STRING, allowNull: false, unique: true },
       expiresAt: { type: DataTypes.DATE, allowNull: false },
       revokedAt: { type: DataTypes.DATE, allowNull: true, defaultValue: null },
     },
     {
       sequelize,
-      modelName: "AuthSession",
-      tableName: "AuthSessions",
+      modelName: "AdminAuthSession",
+      tableName: "AdminAuthSessions",
       timestamps: true,
     },
   );
-  return AuthSession;
+  return AdminAuthSession;
 };
 
-export { AuthSession };
-export default createAuthSessionModel;
+export { AdminAuthSession };
+export default createAdminAuthSessionModel;
+

@@ -2,8 +2,8 @@ import { timingSafeEqual } from "node:crypto";
 
 import env from "../../config/env.js";
 import { UnauthorizedError, InternalServerError } from "../../errors/http-errors.js";
-import { AuthSession, User as UserModel } from "../../models/index.js";
-import type { User } from "../../models/user.js";
+import { AdminAuthSession, AdminUser } from "../../models/index.js";
+import type { AdminUser as AdminUserType } from "../../models/admin-user.js";
 import { hashPassword, verifyPassword } from "../../utils/password.js";
 import { generateOpaqueToken, hashToken } from "../../utils/token.js";
 
@@ -32,39 +32,36 @@ const getAdminConfig = (): { email: string; password: string } => {
   return { email: env.adminEmail, password: env.adminPassword };
 };
 
-const ensureAdminUser = async (adminEmail: string, adminPassword: string): Promise<User> => {
-  const existing = await UserModel.findOne({ where: { email: adminEmail } });
+const ensureAdminUser = async (
+  adminEmail: string,
+  adminPassword: string,
+): Promise<AdminUserType> => {
+  const existing = await AdminUser.findOne({ where: { email: adminEmail } });
 
   if (!existing) {
-    return UserModel.create({
-      firstName: "Admin",
-      lastName: "User",
+    return AdminUser.create({
       email: adminEmail,
       passwordHash: await hashPassword(adminPassword),
-      companyName: null,
       role: "admin",
       status: "active",
-      source: "admin",
     });
   }
 
   const needsPasswordUpdate = !(await verifyPassword(adminPassword, existing.passwordHash));
   const needsRoleUpdate = existing.role !== "admin";
-  const needsSourceUpdate = existing.source !== "admin";
   const needsStatusUpdate = existing.status !== "active";
 
-  if (needsPasswordUpdate || needsRoleUpdate || needsSourceUpdate || needsStatusUpdate) {
-    await UserModel.update(
+  if (needsPasswordUpdate || needsRoleUpdate || needsStatusUpdate) {
+    await AdminUser.update(
       {
         ...(needsPasswordUpdate ? { passwordHash: await hashPassword(adminPassword) } : {}),
         ...(needsRoleUpdate ? { role: "admin" } : {}),
-        ...(needsSourceUpdate ? { source: "admin" } : {}),
         ...(needsStatusUpdate ? { status: "active" } : {}),
       },
       { where: { id: existing.id } },
     );
 
-    const refreshed = await UserModel.findByPk(existing.id);
+    const refreshed = await AdminUser.findByPk(existing.id);
     if (refreshed) {
       return refreshed;
     }
@@ -92,8 +89,8 @@ export async function loginAdminWithEmailPassword(
   const tokenHash = hashToken(token);
   const expiresAt = new Date(Date.now() + env.sessionTtlHours * 60 * 60_000);
 
-  await AuthSession.create({
-    userId: adminUser.id,
+  await AdminAuthSession.create({
+    adminUserId: adminUser.id,
     tokenHash,
     expiresAt,
     revokedAt: null,

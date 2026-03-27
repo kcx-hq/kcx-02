@@ -1,12 +1,5 @@
-import type { QueryInterface } from "sequelize";
-
-type MigrationDataTypes = typeof import("sequelize").DataTypes;
-
 const migration = {
-  async up(
-    queryInterface: QueryInterface,
-    Sequelize: MigrationDataTypes
-  ): Promise<void> {
+  async up(queryInterface: any, Sequelize: any) {
     await queryInterface.createTable("Temps", {
       id: {
         type: Sequelize.INTEGER,
@@ -29,9 +22,10 @@ const migration = {
     });
   },
 
-  async down(queryInterface: QueryInterface): Promise<void> {
+  async down(queryInterface: any) {
     await queryInterface.dropTable("Temps");
   },
 };
 
 export default migration;
+

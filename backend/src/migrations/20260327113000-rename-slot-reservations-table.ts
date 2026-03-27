@@ -1,13 +1,12 @@
-import type { QueryInterface } from "sequelize";
-
 const migration = {
-  async up(queryInterface: QueryInterface): Promise<void> {
+  async up(queryInterface: any) {
     await queryInterface.renameTable("slot_reservations", "SlotReservations");
   },
 
-  async down(queryInterface: QueryInterface): Promise<void> {
+  async down(queryInterface: any) {
     await queryInterface.renameTable("SlotReservations", "slot_reservations");
   },
 };
 
 export default migration;
+

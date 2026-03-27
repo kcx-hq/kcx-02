@@ -1,11 +1,11 @@
 import { ConflictError, NotFoundError } from "../../errors/http-errors.js";
-import { DemoRequest, SlotReservation, User, sequelize } from "../../models/index.js";
+import { Client, DemoRequest, SlotReservation, sequelize } from "../../models/index.js";
 import { createBooking } from "../_shared/calcom/calcom.service.js";
 import { sendDemoConfirmedEmail, sendDemoRejectedEmail } from "../_shared/mail/demo-email.service.js";
 
 type DemoRequestInstance = InstanceType<typeof DemoRequest>;
 type SlotReservationInstance = InstanceType<typeof SlotReservation>;
-type UserInstance = InstanceType<typeof User>;
+type ClientInstance = InstanceType<typeof Client>;
 
 type DemoRequestSummary = {
   id: number;
@@ -17,12 +17,13 @@ type DemoRequestSummary = {
   meetingUrl: string | null;
   createdAt: string;
   updatedAt: string;
-  user: {
+  client: {
     id: number;
     firstName: string;
     lastName: string;
     email: string;
     companyName: string | null;
+    heardAboutUs: string | null;
   };
   reservation: {
     id: number;
@@ -42,10 +43,10 @@ type DemoRequestActionResult = {
 
 const toIso = (value: Date | null): string | null => (value ? value.toISOString() : null);
 
-const getUserOrThrow = async (userId: number): Promise<UserInstance> => {
-  const user = await User.findByPk(userId);
-  if (!user) throw new NotFoundError("Demo request user not found");
-  return user;
+const getClientOrThrow = async (clientId: number): Promise<ClientInstance> => {
+  const client = await Client.findByPk(clientId);
+  if (!client) throw new NotFoundError("Demo request client not found");
+  return client;
 };
 
 const getLatestReservation = async (
@@ -59,7 +60,7 @@ const getLatestReservation = async (
 const toDemoRequestSummary = async (
   demoRequest: DemoRequestInstance,
 ): Promise<DemoRequestSummary> => {
-  const user = await getUserOrThrow(demoRequest.userId);
+  const client = await getClientOrThrow(demoRequest.clientId);
   const reservation = await getLatestReservation(demoRequest.id);
 
   return {
@@ -72,12 +73,13 @@ const toDemoRequestSummary = async (
     meetingUrl: demoRequest.meetingUrl,
     createdAt: demoRequest.createdAt.toISOString(),
     updatedAt: demoRequest.updatedAt.toISOString(),
-    user: {
-      id: user.id,
-      firstName: user.firstName,
-      lastName: user.lastName,
-      email: user.email,
-      companyName: user.companyName,
+    client: {
+      id: client.id,
+      firstName: client.firstName,
+      lastName: client.lastName,
+      email: client.email,
+      companyName: client.companyName,
+      heardAboutUs: client.heardAboutUs,
     },
     reservation: reservation
       ? {
@@ -104,7 +106,7 @@ const getPendingRequestForAction = async (
 ): Promise<{
   demoRequest: DemoRequestInstance;
   reservation: SlotReservationInstance;
-  user: UserInstance;
+  client: ClientInstance;
 }> => {
   const demoRequest = await getDemoRequestOrThrow(id);
 
@@ -115,7 +117,7 @@ const getPendingRequestForAction = async (
     throw new ConflictError("Demo request does not have a valid slot");
   }
 
-  const user = await getUserOrThrow(demoRequest.userId);
+  const client = await getClientOrThrow(demoRequest.clientId);
   const reservation = await SlotReservation.findOne({
     where: {
       demoRequestId: id,
@@ -126,7 +128,7 @@ const getPendingRequestForAction = async (
 
   if (!reservation) throw new ConflictError("Reserved slot not found for this request");
 
-  return { demoRequest, reservation, user };
+  return { demoRequest, reservation, client };
 };
 
 export async function getAdminDemoRequests(): Promise<DemoRequestSummary[]> {
@@ -143,7 +145,7 @@ export async function getAdminDemoRequestById(id: number): Promise<DemoRequestSu
 }
 
 export async function confirmAdminDemoRequest(id: number): Promise<DemoRequestActionResult> {
-  const { demoRequest, reservation, user } = await getPendingRequestForAction(id);
+  const { demoRequest, reservation, client } = await getPendingRequestForAction(id);
   const slotStart = demoRequest.slotStart as Date;
   const slotEnd = demoRequest.slotEnd as Date;
   const now = new Date();
@@ -163,8 +165,8 @@ export async function confirmAdminDemoRequest(id: number): Promise<DemoRequestAc
   }
 
   const booking = await createBooking({
-    name: `${user.firstName} ${user.lastName}`.trim(),
-    email: user.email,
+    name: `${client.firstName} ${client.lastName}`.trim(),
+    email: client.email,
     slotStart,
     slotEnd,
     reservationId: reservation.calcomReservationId,
@@ -206,8 +208,8 @@ export async function confirmAdminDemoRequest(id: number): Promise<DemoRequestAc
   });
 
   const emailSent = await sendDemoConfirmedEmail({
-    firstName: user.firstName,
-    email: user.email,
+    firstName: client.firstName,
+    email: client.email,
     slotStart,
     slotEnd,
     meetingType: booking.meetingType,
@@ -221,7 +223,7 @@ export async function confirmAdminDemoRequest(id: number): Promise<DemoRequestAc
 }
 
 export async function rejectAdminDemoRequest(id: number): Promise<DemoRequestActionResult> {
-  const { demoRequest, reservation, user } = await getPendingRequestForAction(id);
+  const { demoRequest, reservation, client } = await getPendingRequestForAction(id);
   const slotStart = demoRequest.slotStart as Date;
   const slotEnd = demoRequest.slotEnd as Date;
 
@@ -258,8 +260,8 @@ export async function rejectAdminDemoRequest(id: number): Promise<DemoRequestAct
   });
 
   const emailSent = await sendDemoRejectedEmail({
-    firstName: user.firstName,
-    email: user.email,
+    firstName: client.firstName,
+    email: client.email,
     slotStart,
     slotEnd,
   });

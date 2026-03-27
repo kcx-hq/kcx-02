@@ -1,29 +1,29 @@
-import type { QueryInterface } from "sequelize";
-
-type MigrationDataTypes = typeof import("sequelize").DataTypes;
-
 const migration = {
-  async up(queryInterface: QueryInterface, Sequelize: MigrationDataTypes): Promise<void> {
+  async up(queryInterface: any, Sequelize: any) {
     await queryInterface.addColumn("DemoRequests", "slotStart", {
       type: Sequelize.DATE,
       allowNull: true,
       defaultValue: null,
     });
+
     await queryInterface.addColumn("DemoRequests", "slotEnd", {
       type: Sequelize.DATE,
       allowNull: true,
       defaultValue: null,
     });
+
     await queryInterface.addColumn("DemoRequests", "calcomBookingId", {
       type: Sequelize.STRING,
       allowNull: true,
       defaultValue: null,
     });
+
     await queryInterface.addColumn("DemoRequests", "calcomReservationId", {
       type: Sequelize.STRING,
       allowNull: true,
       defaultValue: null,
     });
+
     await queryInterface.changeColumn("DemoRequests", "status", {
       type: Sequelize.STRING,
       allowNull: false,
@@ -51,7 +51,7 @@ const migration = {
     await queryInterface.addIndex("slot_reservations", ["demoRequestId"]);
   },
 
-  async down(queryInterface: QueryInterface, Sequelize: MigrationDataTypes): Promise<void> {
+  async down(queryInterface: any, Sequelize: any) {
     await queryInterface.dropTable("slot_reservations");
 
     await queryInterface.changeColumn("DemoRequests", "status", {
@@ -59,6 +59,7 @@ const migration = {
       allowNull: false,
       defaultValue: "submitted",
     });
+
     await queryInterface.removeColumn("DemoRequests", "calcomReservationId");
     await queryInterface.removeColumn("DemoRequests", "calcomBookingId");
     await queryInterface.removeColumn("DemoRequests", "slotEnd");
@@ -67,3 +68,4 @@ const migration = {
 };
 
 export default migration;
+

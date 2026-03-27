@@ -1,4 +1,4 @@
-import { DemoRequest, SlotReservation, User, sequelize } from "../../models/index.js";
+import { Client, DemoRequest, SlotReservation, sequelize } from "../../models/index.js";
 import { generateTemporaryPassword, hashPassword } from "../../utils/password.js";
 import {
   getAvailableSlots as fetchAvailableSlotsFromCalcom,
@@ -10,7 +10,7 @@ import type { ScheduleDemoInput } from "./schedule-demo.schema.js";
 
 type SubmitScheduleDemoResult = {
   demoRequestId: number;
-  userId: number;
+  clientId: number;
   slotReservationId: number;
   status: string;
   emailSent: boolean;
@@ -40,22 +40,23 @@ export async function submitScheduleDemo(
     timeZone: input.timeZone,
   });
 
-  const { demoRequest, user, slotReservation } = await sequelize.transaction(async (transaction) => {
-    const existing = await User.findOne({
+  const { demoRequest, client, slotReservation } = await sequelize.transaction(async (transaction) => {
+    const existing = await Client.findOne({
       where: { email: input.companyEmail },
       transaction,
       lock: transaction.LOCK.UPDATE,
     });
 
-    const user =
+    const client =
       existing ??
-      (await User.create(
+      (await Client.create(
         {
           firstName: input.firstName,
           lastName: input.lastName,
           email: input.companyEmail,
           passwordHash: await hashPassword(generateTemporaryPassword()),
           companyName: input.companyName,
+          heardAboutUs: input.heardAboutUs,
           role: "client",
           status: "active",
           source: "schedule_demo",
@@ -68,6 +69,7 @@ export async function submitScheduleDemo(
         firstName?: string;
         lastName?: string;
         companyName?: string | null;
+        heardAboutUs?: string | null;
       } = {};
       if (!existing.firstName || existing.firstName.trim().length === 0) {
         updates.firstName = input.firstName;
@@ -78,6 +80,9 @@ export async function submitScheduleDemo(
       if (!existing.companyName && input.companyName) {
         updates.companyName = input.companyName;
       }
+      if (!existing.heardAboutUs && input.heardAboutUs) {
+        updates.heardAboutUs = input.heardAboutUs;
+      }
       if (Object.keys(updates).length > 0) {
         await existing.update(updates, { transaction });
       }
@@ -85,7 +90,7 @@ export async function submitScheduleDemo(
 
     const demoRequest = await DemoRequest.create(
       {
-        userId: user.id,
+        clientId: client.id,
         slotStart: input.slotStart,
         slotEnd: input.slotEnd,
         status: "PENDING",
@@ -106,12 +111,12 @@ export async function submitScheduleDemo(
       { transaction },
     );
 
-    return { demoRequest, user, slotReservation };
+    return { demoRequest, client, slotReservation };
   });
 
   const emailSent = await sendDemoRequestReceivedEmail({
-    firstName: user.firstName,
-    email: user.email,
+    firstName: client.firstName,
+    email: client.email,
     slotStart: input.slotStart,
     slotEnd: input.slotEnd,
     timeZone: input.timeZone,
@@ -119,7 +124,7 @@ export async function submitScheduleDemo(
 
   return {
     demoRequestId: demoRequest.id,
-    userId: user.id,
+    clientId: client.id,
     slotReservationId: slotReservation.id,
     status: demoRequest.status,
     emailSent,

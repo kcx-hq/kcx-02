@@ -16,6 +16,7 @@ export const scheduleDemoSchema = z
     email: workEmailSchema.optional(),
     companyEmail: workEmailSchema.optional(),
     companyName: z.string().optional().transform((value) => value?.trim() ?? ""),
+    heardAboutUs: z.string().optional().transform((value) => value?.trim() ?? ""),
     slotStart: z.coerce.date().optional(),
     slotEnd: z.coerce.date().optional(),
     slotDate: z.string().optional(),
@@ -38,6 +39,14 @@ export const scheduleDemoSchema = z
         code: z.ZodIssueCode.custom,
         path: ["name"],
         message: "Name is required.",
+      });
+    }
+
+    if (!value.heardAboutUs || value.heardAboutUs.trim().length === 0) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["heardAboutUs"],
+        message: "heardAboutUs is required.",
       });
     }
 
@@ -115,6 +124,7 @@ export const scheduleDemoSchema = z
       lastName,
       companyEmail: value.companyEmail ?? value.email ?? "",
       companyName: value.companyName || null,
+      heardAboutUs: value.heardAboutUs || null,
       slotStart: slotRange.slotStart,
       slotEnd: slotRange.slotEnd,
       timeZone: effectiveTimeZone,

@@ -1,6 +1,6 @@
 import env from "../../config/env.js";
 import { BadRequestError, UnauthorizedError } from "../../errors/http-errors.js";
-import { AuthSession, PasswordResetToken, User, sequelize } from "../../models/index.js";
+import { AuthSession, Client, PasswordResetToken, sequelize } from "../../models/index.js";
 import { hashPassword, verifyPassword } from "../../utils/password.js";
 import { generateOpaqueToken, hashToken } from "../../utils/token.js";
 import { buildFrontendUrl } from "../../utils/frontend-url.js";
@@ -23,11 +23,11 @@ type LoginResult = {
 };
 
 export async function loginWithEmailPassword(email: string, password: string): Promise<LoginResult> {
-  const user = await User.findOne({ where: { email } });
-  if (!user) throw new UnauthorizedError("Invalid credentials");
-  if (user.status === "blocked") throw new UnauthorizedError("Account is blocked");
+  const client = await Client.findOne({ where: { email } });
+  if (!client) throw new UnauthorizedError("Invalid credentials");
+  if (client.status === "blocked") throw new UnauthorizedError("Account is blocked");
 
-  const ok = await verifyPassword(password, user.passwordHash);
+  const ok = await verifyPassword(password, client.passwordHash);
   if (!ok) throw new UnauthorizedError("Invalid credentials");
 
   const token = generateOpaqueToken(32);
@@ -35,7 +35,7 @@ export async function loginWithEmailPassword(email: string, password: string): P
   const expiresAt = new Date(Date.now() + env.sessionTtlHours * 60 * 60_000);
 
   await AuthSession.create({
-    userId: user.id,
+    clientId: client.id,
     tokenHash,
     expiresAt,
     revokedAt: null,
@@ -45,21 +45,21 @@ export async function loginWithEmailPassword(email: string, password: string): P
     token,
     expiresAt: expiresAt.toISOString(),
     user: {
-      id: user.id,
-      email: user.email,
-      firstName: user.firstName,
-      lastName: user.lastName,
-      companyName: user.companyName,
-      role: user.role,
-      status: user.status,
-      source: user.source,
+      id: client.id,
+      email: client.email,
+      firstName: client.firstName,
+      lastName: client.lastName,
+      companyName: client.companyName,
+      role: client.role,
+      status: client.status,
+      source: client.source,
     },
   };
 }
 
 export async function requestPasswordReset(email: string): Promise<{ emailSent: boolean }> {
-  const user = await User.findOne({ where: { email } });
-  if (!user) {
+  const client = await Client.findOne({ where: { email } });
+  if (!client) {
     return { emailSent: true };
   }
 
@@ -68,7 +68,7 @@ export async function requestPasswordReset(email: string): Promise<{ emailSent: 
   const expiresAt = new Date(Date.now() + env.resetTokenTtlMinutes * 60_000);
 
   await PasswordResetToken.create({
-    userId: user.id,
+    clientId: client.id,
     tokenHash,
     expiresAt,
     usedAt: null,
@@ -78,10 +78,10 @@ export async function requestPasswordReset(email: string): Promise<{ emailSent: 
 
   try {
     await sendEmail({
-      to: user.email,
+      to: client.email,
       subject: "Reset your KCX password",
       text: [
-        `Hi ${user.firstName},`,
+        `Hi ${client.firstName},`,
         "",
         "We received a request to reset your KCX password.",
         ...(resetLink ? [`Reset link: ${resetLink}`] : ["Reset link is currently unavailable (missing FRONTEND_BASE_URL)."]),
@@ -117,29 +117,29 @@ export async function resetPasswordWithToken(
   if (!record) throw new BadRequestError("Reset token is invalid or expired");
   if (record.expiresAt.getTime() <= now.getTime()) throw new BadRequestError("Reset token is invalid or expired");
 
-  const user = await User.findByPk(record.userId);
-  if (!user) throw new BadRequestError("Reset token is invalid or expired");
+  const client = await Client.findByPk(record.clientId);
+  if (!client) throw new BadRequestError("Reset token is invalid or expired");
 
   await sequelize.transaction(async (transaction) => {
-    await User.update(
+    await Client.update(
       { passwordHash: await hashPassword(newPassword) },
-      { where: { id: user.id }, transaction },
+      { where: { id: client.id }, transaction },
     );
 
     await PasswordResetToken.update({ usedAt: new Date() }, { where: { id: record.id }, transaction });
 
     await AuthSession.update(
       { revokedAt: new Date() },
-      { where: { userId: user.id, revokedAt: null }, transaction },
+      { where: { clientId: client.id, revokedAt: null }, transaction },
     );
   });
 
   try {
     await sendEmail({
-      to: user.email,
+      to: client.email,
       subject: "Your KCX password was changed",
       text: [
-        `Hi ${user.firstName},`,
+        `Hi ${client.firstName},`,
         "",
         "Your KCX password has been updated successfully.",
         "",
@@ -150,7 +150,7 @@ export async function resetPasswordWithToken(
     });
   } catch (error) {
     logger.warn("Failed to send password changed email", {
-      email: user.email,
+      email: client.email,
       error: error instanceof Error ? error.message : String(error),
     });
   }
