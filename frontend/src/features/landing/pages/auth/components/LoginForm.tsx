@@ -4,6 +4,8 @@ import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { validateForm } from "@/lib/validateForm"
 import { apiPost, ApiError } from "@/lib/api"
+import { navigateTo } from "@/lib/navigation"
+import { setAuthSession } from "@/lib/auth"
 import { loginSchema, type LoginValues } from "@/schemas/auth.schema"
 
 type LoginTouched = Partial<Record<keyof LoginValues, boolean>>
@@ -76,7 +78,6 @@ function TextField({
 
 export function LoginForm() {
   const formId = useId()
-  const [submitted, setSubmitted] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [apiError, setApiError] = useState<string | null>(null)
   const [form, setForm] = useState<LoginValues>({ email: "", password: "" })
@@ -124,15 +125,24 @@ export function LoginForm() {
         type LoginResponse = {
           token: string
           expiresAt: string
-          user: { id: number; email: string; firstName: string; lastName: string }
+          user: {
+            id: number
+            email: string
+            firstName: string
+            lastName: string
+            companyName: string | null
+            role: string
+            status: string
+            source: string
+          }
         }
 
         const data = await apiPost<LoginResponse>("/auth/login", {
           email: form.email,
           password: form.password,
         })
-        localStorage.setItem("kcx_auth_token", data.token)
-        setSubmitted(true)
+        setAuthSession({ token: data.token, user: data.user })
+        navigateTo("/client/overview")
       } catch (error) {
         if (error instanceof ApiError) {
           setApiError(error.message || "Login failed")
@@ -211,7 +221,7 @@ export function LoginForm() {
 
         <div className="flex items-center justify-end">
           <a
-            href="#"
+            href="/reset-password"
             className="text-xs font-semibold text-[#3E8A76] underline-offset-4 hover:text-[#357563] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(62,138,118,0.22)] focus-visible:ring-offset-2 focus-visible:ring-offset-white"
           >
             Reset password
@@ -243,14 +253,6 @@ export function LoginForm() {
           </div>
         ) : null}
 
-        {submitted ? (
-          <div
-            role="status"
-            className="rounded-xl border border-[rgba(62,138,118,0.24)] bg-[rgba(62,138,118,0.08)] px-4 py-3 text-sm text-[#0F1F1A]"
-          >
-            Logged in successfully.
-          </div>
-        ) : null}
       </form>
     </div>
   )

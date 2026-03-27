@@ -4,3 +4,4 @@ export { ClientBillingPage } from "@/features/client-home/pages/ClientBillingPag
 export { ClientTicketsPage } from "@/features/client-home/pages/ClientTicketsPage"
 export { ClientSupportPage } from "@/features/client-home/pages/ClientSupportPage"
 export { ClientUsersPage } from "@/features/client-home/pages/ClientUsersPage"
+export { ClientProfilePage } from "@/features/client-home/pages/ClientProfilePage"
