@@ -2,7 +2,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { CheckCircle2, Cloud, FileSpreadsheet, Plus, Sparkles, Wrench } from "lucide-react"
+import { ArrowRight, CheckCircle2, Cloud, FileSpreadsheet, Plus, Wrench } from "lucide-react"
 
 import { ClientPageHeader } from "@/features/client-home/components/ClientPageHeader"
 import { handleAppLinkClick, navigateTo, useCurrentRoute } from "@/lib/navigation"
@@ -12,45 +12,122 @@ const BILLING_OPTIONS = [
   {
     label: "Upload CSV",
     href: "/client/billing/uploads",
-    description: "Track CSV upload jobs, outcomes, and retries.",
-    panelTitle: "Upload History",
-    panelDescription: "Recent upload activity and processing outcomes will appear in this panel.",
-    cta: "View Uploads",
+    description: "Track CSV upload jobs and processing status.",
+    icon: FileSpreadsheet,
   },
   {
     label: "Cloud Connections",
     href: "/client/billing/connections",
-    description: "Monitor providers, connection health, and setup.",
-    panelTitle: "Cloud Connections",
-    panelDescription: "Manage provider integrations and billing ingestion setup.",
-    cta: "Manage Connections",
+    description: "Manage providers and integration setup paths.",
+    icon: Cloud,
   },
 ] as const
 
-const CONNECTIONS = [
-  { name: "Prod AWS Billing", provider: "AWS", lastChecked: "Mar 26, 2026 · 09:21 UTC", lastSuccess: "Pending first ingest", status: "Pending" },
-  { name: "Stage AWS Billing", provider: "AWS", lastChecked: "Mar 26, 2026 · 09:21 UTC", lastSuccess: "Mar 25, 2026 · 19:39 UTC", status: "Healthy" },
-] as const
+const CONNECTIONS: Array<{
+  name: string
+  provider: string
+  status: string
+  lastChecked: string
+  stage: string
+}> = [
+  {
+    name: "Primary-AWS-Connection",
+    provider: "AWS",
+    status: "Healthy",
+    lastChecked: "Mar 26, 2026 - 09:21 UTC",
+    stage: "Ingestion Active",
+  },
+  {
+    name: "Billing-AWS-Connection",
+    provider: "AWS",
+    status: "Pending First Ingest",
+    lastChecked: "Mar 26, 2026 - 09:20 UTC",
+    stage: "Pending First Ingest",
+  },
+  {
+    name: "Sandbox-Connection",
+    provider: "AWS",
+    status: "Not Available",
+    lastChecked: "Mar 25, 2026 - 19:10 UTC",
+    stage: "Needs Reconnect",
+  },
+]
 
 const PROVIDERS = [
-  { name: "AWS", icon: "/aws.svg", state: "Connected" },
-  { name: "Azure", icon: "/azure.svg", state: "Available" },
-  { name: "GCP", icon: "/gcp.svg", state: "Available" },
-  { name: "Oracle", icon: "/oracle.svg", state: "Available" },
+  { name: "AWS", icon: "/aws.svg", availability: "Available", href: "/client/billing/connections/aws" },
+  { name: "Azure", icon: "/azure.svg", availability: "Available Soon" },
+  { name: "GCP", icon: "/gcp.svg", availability: "Available Soon" },
+  { name: "Oracle Cloud", icon: "/oracle.svg", availability: "Planned" },
+  { name: "Custom", icon: "/icons/core-platform.png", availability: "Planned" },
 ] as const
 
 function isCloudConnectionsRoute(path: string) {
   return path.startsWith("/client/billing/connections")
 }
 
+function ConnectionStatusBadge({ status }: { status: string }) {
+  if (status === "Healthy") {
+    return <Badge variant="outline" className="rounded-md border-emerald-200 bg-emerald-50 text-emerald-700">Healthy</Badge>
+  }
+  if (status === "Pending First Ingest") {
+    return <Badge variant="outline" className="rounded-md border-amber-200 bg-amber-50 text-amber-700">Pending</Badge>
+  }
+  if (status === "Failed") {
+    return <Badge variant="outline" className="rounded-md border-rose-200 bg-rose-50 text-rose-700">Failed</Badge>
+  }
+  return <Badge variant="outline" className="rounded-md border-slate-300 bg-slate-100 text-slate-700">Not Available</Badge>
+}
+
+function ProviderCard({
+  name,
+  icon,
+  availability,
+  href,
+}: {
+  name: string
+  icon: string
+  availability: string
+  href?: string
+}) {
+  const isClickable = Boolean(href)
+  const cardClassName = cn(
+    "rounded-md border border-[color:var(--border-light)] bg-white p-4 transition-colors",
+    isClickable ? "hover:border-[color:var(--kcx-border-soft)] hover:bg-[color:var(--bg-surface)]" : "opacity-90"
+  )
+
+  const content = (
+    <div className={cardClassName}>
+      <div className="flex items-center justify-between">
+        <span className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-[color:var(--border-light)] bg-[color:var(--bg-surface)]">
+          <img src={icon} alt={name} className="h-5 w-5 object-contain" />
+        </span>
+        <Badge
+          variant="outline"
+          className={cn(
+            "rounded-md",
+            availability === "Available"
+              ? "border-[color:var(--kcx-border-soft)] bg-[color:var(--highlight-green)] text-brand-primary"
+              : "border-[color:var(--border-light)] bg-[color:var(--bg-surface)] text-text-muted"
+          )}
+        >
+          {availability}
+        </Badge>
+      </div>
+      <p className="mt-3 text-sm font-semibold text-text-primary">{name}</p>
+    </div>
+  )
+
+  if (!href) return content
+  return (
+    <a href={href} onClick={(event) => handleAppLinkClick(event, href)}>
+      {content}
+    </a>
+  )
+}
+
 export function ClientBillingPage() {
   const route = useCurrentRoute()
-  const activeRoute = route === "/client/billing" ? "/client/billing/uploads" : route
-  const activeOption = isCloudConnectionsRoute(activeRoute)
-    ? BILLING_OPTIONS[1]
-    : BILLING_OPTIONS.find((option) => option.href === activeRoute) ?? BILLING_OPTIONS[0]
-
-  const ActiveIcon = activeOption.href === "/client/billing/connections" ? Cloud : FileSpreadsheet
+  const activeRoute = route === "/client/billing" ? "/client/billing/connections" : route
 
   return (
     <>
@@ -67,11 +144,8 @@ export function ClientBillingPage() {
             <ul className="space-y-1.5">
               {BILLING_OPTIONS.map((option) => {
                 const isActive =
-                  option.href === "/client/billing/connections"
-                    ? isCloudConnectionsRoute(activeRoute)
-                    : option.href === activeRoute
-                const OptionIcon =
-                  option.href === "/client/billing/connections" ? Cloud : FileSpreadsheet
+                  option.href === "/client/billing/connections" ? isCloudConnectionsRoute(activeRoute) : option.href === activeRoute
+                const OptionIcon = option.icon
 
                 return (
                   <li key={option.href}>
@@ -112,124 +186,118 @@ export function ClientBillingPage() {
         </Card>
 
         <Card className="rounded-md border-[color:var(--border-light)] bg-white shadow-sm-custom">
-          <CardContent className="space-y-4 p-6">
+          <CardContent className="space-y-6 p-6">
             {activeRoute === "/client/billing/uploads" ? (
               <>
-                <div className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-[color:var(--border-light)] bg-[color:var(--bg-surface)] text-text-secondary">
-                  <ActiveIcon className="h-4 w-4" />
-                </div>
                 <div className="space-y-2">
-                  <h2 className="text-lg font-semibold text-text-primary">{activeOption.panelTitle}</h2>
-                  <p className="text-sm leading-6 text-text-secondary">{activeOption.panelDescription}</p>
+                  <p className="kcx-eyebrow text-brand-primary">Upload CSV</p>
+                  <h2 className="text-lg font-semibold text-text-primary">Upload History</h2>
+                  <p className="text-sm text-text-secondary">
+                    CSV upload history and parsing diagnostics will appear here in the next billing sprint.
+                  </p>
                 </div>
                 <div className="rounded-md border border-dashed border-[color:var(--border-light)] bg-[color:var(--bg-surface)] p-4 text-sm text-text-muted">
-                  Upload history table will appear here with job status and ingestion diagnostics.
+                  No upload records available yet.
                 </div>
-                <Button variant="outline" className="h-10 rounded-md border-[color:var(--border-light)]">
-                  {activeOption.cta}
-                </Button>
               </>
             ) : null}
 
             {activeRoute === "/client/billing/connections" ? (
-              <div className="space-y-6">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <>
+                <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                   <div className="space-y-2">
-                    <h2 className="text-lg font-semibold text-text-primary">Cloud Connections Overview</h2>
+                    <p className="kcx-eyebrow text-brand-primary">Cloud Connections</p>
+                    <h2 className="text-2xl font-semibold tracking-tight text-text-primary">Cloud Connections</h2>
                     <p className="text-sm text-text-secondary">
-                      Review connection health, sync recency, and provider coverage for billing ingestion.
+                      Manage connected cloud accounts, monitor setup status, and start new billing integrations.
                     </p>
                   </div>
-                  <Button
-                    className="h-10 rounded-md"
-                    onClick={() => navigateTo("/client/billing/connections/add")}
-                  >
+                  <Button className="h-10 rounded-md" onClick={() => navigateTo("/client/billing/connections/aws")}>
                     <Plus className="mr-1.5 h-4 w-4" />
                     Add Connection
                   </Button>
                 </div>
 
-                <div className="rounded-md border border-[color:var(--border-light)]">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Name</TableHead>
-                        <TableHead>Provider</TableHead>
-                        <TableHead>Last Checked</TableHead>
-                        <TableHead>Last Success</TableHead>
-                        <TableHead>Status</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {CONNECTIONS.map((connection) => (
-                        <TableRow key={connection.name}>
-                          <TableCell className="font-medium text-text-primary">{connection.name}</TableCell>
-                          <TableCell>{connection.provider}</TableCell>
-                          <TableCell>{connection.lastChecked}</TableCell>
-                          <TableCell>{connection.lastSuccess}</TableCell>
-                          <TableCell>
-                            <Badge
-                              variant="outline"
-                              className={cn(
-                                "rounded-md",
-                                connection.status === "Healthy"
-                                  ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                                  : "border-amber-200 bg-amber-50 text-amber-700"
-                              )}
-                            >
-                              {connection.status}
-                            </Badge>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <p className="text-sm font-semibold text-text-primary">Provider Catalog</p>
-                    <p className="text-xs text-text-muted">Select a provider when adding a new connection</p>
+                <section className="space-y-3">
+                  <div className="space-y-1">
+                    <h3 className="text-base font-semibold text-text-primary">Current Connections</h3>
+                    <p className="text-sm text-text-secondary">Live view of billing integration health and ingestion state.</p>
                   </div>
-                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                  {CONNECTIONS.length < 1 ? (
+                    <div className="rounded-md border border-dashed border-[color:var(--border-light)] bg-[color:var(--bg-surface)] p-6">
+                      <p className="text-sm text-text-secondary">No cloud connections yet.</p>
+                      <Button className="mt-3 h-10 rounded-md" onClick={() => navigateTo("/client/billing/connections/aws")}>
+                        Add Your First Connection
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="rounded-md border border-[color:var(--border-light)]">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Connection Name</TableHead>
+                            <TableHead>Provider</TableHead>
+                            <TableHead>Status</TableHead>
+                            <TableHead>Last Checked</TableHead>
+                            <TableHead>Last Success / Stage</TableHead>
+                            <TableHead>Action</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {CONNECTIONS.map((connection) => (
+                            <TableRow key={connection.name}>
+                              <TableCell className="font-medium text-text-primary">{connection.name}</TableCell>
+                              <TableCell>{connection.provider}</TableCell>
+                              <TableCell><ConnectionStatusBadge status={connection.status} /></TableCell>
+                              <TableCell>{connection.lastChecked}</TableCell>
+                              <TableCell>{connection.stage}</TableCell>
+                              <TableCell>
+                                <Button variant="ghost" className="h-8 rounded-md px-2 text-sm text-text-secondary">
+                                  View
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  )}
+                </section>
+
+                <section className="space-y-3">
+                  <div className="space-y-1">
+                    <h3 className="text-base font-semibold text-text-primary">Add a New Connection</h3>
+                    <p className="text-sm text-text-secondary">Choose a provider to begin a new billing connection.</p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
                     {PROVIDERS.map((provider) => (
-                      <div
-                        key={provider.name}
-                        className="rounded-md border border-[color:var(--border-light)] bg-[color:var(--bg-surface)] p-3"
-                      >
-                        <div className="flex items-center gap-2.5">
-                          <span className="inline-flex h-8 w-8 items-center justify-center rounded-md bg-white">
-                            <img src={provider.icon} alt={provider.name} className="h-5 w-5 object-contain" />
-                          </span>
-                          <div>
-                            <p className="text-sm font-medium text-text-primary">{provider.name}</p>
-                            <p className="text-xs text-text-muted">{provider.state}</p>
-                          </div>
-                        </div>
-                      </div>
+                      <ProviderCard key={provider.name} {...provider} />
                     ))}
                   </div>
-                </div>
-              </div>
+                </section>
+              </>
             ) : null}
 
-            {activeRoute === "/client/billing/connections/add" ? (
-              <div className="space-y-5">
+            {activeRoute === "/client/billing/connections/aws" ? (
+              <>
                 <div className="space-y-2">
-                  <h2 className="text-lg font-semibold text-text-primary">Add Connection</h2>
+                  <p className="kcx-eyebrow text-brand-primary">AWS Setup Choice</p>
+                  <h2 className="text-2xl font-semibold tracking-tight text-text-primary">Choose Setup Method</h2>
                   <p className="text-sm text-text-secondary">
-                    Choose how you want to create a new cloud billing connection.
+                    Select how you want to connect AWS billing data into KCX.
                   </p>
                 </div>
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   <Card className="rounded-md border-[color:var(--border-light)] bg-[color:var(--bg-surface)]">
                     <CardContent className="space-y-3 p-5">
                       <span className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-[color:var(--border-light)] bg-white text-text-secondary">
-                        <Sparkles className="h-4 w-4" />
+                        <Cloud className="h-4 w-4" />
                       </span>
-                      <h3 className="text-base font-semibold text-text-primary">Auto Setup</h3>
-                      <p className="text-sm text-text-secondary">Guided auto configuration flow with secure provider handoff.</p>
-                      <Button variant="outline" className="h-10 rounded-md border-[color:var(--border-light)]">Coming Soon</Button>
+                      <h3 className="text-base font-semibold text-text-primary">Automatic Setup</h3>
+                      <p className="text-sm text-text-secondary">Guided cloud-native onboarding with secure automated provisioning.</p>
+                      <Button variant="outline" className="h-10 rounded-md border-[color:var(--border-light)]" disabled>
+                        Coming Soon
+                      </Button>
                     </CardContent>
                   </Card>
                   <Card className="rounded-md border-[color:var(--kcx-border-soft)] bg-[color:var(--highlight-green)]">
@@ -238,39 +306,36 @@ export function ClientBillingPage() {
                         <Wrench className="h-4 w-4" />
                       </span>
                       <h3 className="text-base font-semibold text-text-primary">Manual Setup</h3>
-                      <p className="text-sm text-text-secondary">Configure IAM and ingestion details manually for immediate onboarding.</p>
-                      <Button
-                        className="h-10 rounded-md"
-                        onClick={() => navigateTo("/client/billing/connections/manual-setup")}
-                      >
+                      <p className="text-sm text-text-secondary">Use account details and IAM role configuration to connect billing manually.</p>
+                      <Button className="h-10 rounded-md" onClick={() => navigateTo("/client/billing/connections/aws/manual")}>
                         Start Manual Setup
                       </Button>
                     </CardContent>
                   </Card>
                 </div>
-              </div>
+              </>
             ) : null}
 
-            {activeRoute === "/client/billing/connections/manual-setup" ? (
-              <div className="space-y-5">
+            {activeRoute === "/client/billing/connections/aws/manual" ? (
+              <>
                 <div className="space-y-2">
-                  <h2 className="text-lg font-semibold text-text-primary">Manual Setup</h2>
+                  <p className="kcx-eyebrow text-brand-primary">AWS Manual Setup</p>
+                  <h2 className="text-2xl font-semibold tracking-tight text-text-primary">Manual Setup</h2>
                   <p className="text-sm text-text-secondary">
-                    Enter cloud account and role details to configure manual billing ingestion.
+                    Provide AWS account details to configure billing ingestion.
                   </p>
                 </div>
-
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   <label className="space-y-1.5">
                     <span className="text-xs font-semibold uppercase tracking-[0.08em] text-text-muted">Connection Name</span>
-                    <input className="h-10 w-full rounded-md border border-[color:var(--border-light)] bg-white px-3 text-sm outline-none focus:border-[color:var(--kcx-border-strong)]" placeholder="Example: Production AWS Billing" />
+                    <input className="h-10 w-full rounded-md border border-[color:var(--border-light)] bg-white px-3 text-sm outline-none focus:border-[color:var(--kcx-border-strong)]" placeholder="Primary-AWS-Connection" />
                   </label>
                   <label className="space-y-1.5">
                     <span className="text-xs font-semibold uppercase tracking-[0.08em] text-text-muted">Provider</span>
                     <input className="h-10 w-full rounded-md border border-[color:var(--border-light)] bg-white px-3 text-sm outline-none focus:border-[color:var(--kcx-border-strong)]" value="AWS" readOnly />
                   </label>
                   <label className="space-y-1.5">
-                    <span className="text-xs font-semibold uppercase tracking-[0.08em] text-text-muted">Account ID</span>
+                    <span className="text-xs font-semibold uppercase tracking-[0.08em] text-text-muted">AWS Account ID</span>
                     <input className="h-10 w-full rounded-md border border-[color:var(--border-light)] bg-white px-3 text-sm outline-none focus:border-[color:var(--kcx-border-strong)]" placeholder="123456789012" />
                   </label>
                   <label className="space-y-1.5">
@@ -282,26 +347,21 @@ export function ClientBillingPage() {
                     <input className="h-10 w-full rounded-md border border-[color:var(--border-light)] bg-white px-3 text-sm outline-none focus:border-[color:var(--kcx-border-strong)]" placeholder="kcx-external-id" />
                   </label>
                 </div>
-
                 <div className="rounded-md border border-dashed border-[color:var(--border-light)] bg-[color:var(--bg-surface)] p-4">
                   <p className="flex items-center gap-2 text-sm text-text-secondary">
                     <CheckCircle2 className="h-4 w-4 text-brand-primary" />
-                    Save details and validate permissions to activate ingestion.
+                    Validate access before activating ingestion.
                   </p>
                 </div>
-
                 <div className="flex flex-wrap gap-3">
                   <Button className="h-10 rounded-md">Save Connection</Button>
                   <Button variant="outline" className="h-10 rounded-md border-[color:var(--border-light)]">Test Access</Button>
-                  <Button
-                    variant="ghost"
-                    className="h-10 rounded-md"
-                    onClick={() => navigateTo("/client/billing/connections")}
-                  >
+                  <Button variant="ghost" className="h-10 rounded-md" onClick={() => navigateTo("/client/billing/connections")}>
                     Back to Connections
+                    <ArrowRight className="ml-1.5 h-4 w-4" />
                   </Button>
                 </div>
-              </div>
+              </>
             ) : null}
           </CardContent>
         </Card>

@@ -5,6 +5,7 @@ import {
   ClientBillingPage,
   ClientLayout,
   ClientOverviewPage,
+  ClientProfilePage,
   ClientSupportPage,
   ClientUsersPage,
 } from "@/features/client-home"
@@ -20,6 +21,7 @@ import {
   ResetPasswordPage,
   ScheduleDemoPage,
 } from "@/features/landing/pages"
+import { isAuthenticated } from "@/lib/auth"
 import { getBlogSlugFromPath, getRouteRedirectTarget, navigateTo, useCurrentRoute } from "@/lib/navigation"
 import { HomePage } from "@/pages/HomePage"
 
@@ -29,13 +31,14 @@ const CLIENT_WORKSPACE_ROUTES = new Set([
   "/client/billing",
   "/client/billing/uploads",
   "/client/billing/connections",
-  "/client/billing/connections/add",
-  "/client/billing/connections/manual-setup",
+  "/client/billing/connections/aws",
+  "/client/billing/connections/aws/manual",
   "/client/support",
   "/client/support/tickets",
   "/client/support/schedule-call",
   "/client/support/live-chat",
   "/client/users",
+  "/client/profile",
   "/clienthome",
   "/client-home",
 ])
@@ -43,6 +46,7 @@ const HEADERLESS_ROUTES = new Set(["/schedule-demo", "/login", "/reset-password"
 
 export function App() {
   const route = useCurrentRoute()
+  const authenticated = isAuthenticated()
   const blogSlug = getBlogSlugFromPath(route)
   const showMarketingHeader = !HEADERLESS_ROUTES.has(route)
 
@@ -56,6 +60,17 @@ export function App() {
       navigateTo(redirectTarget, { replace: true })
     }
   }, [route])
+
+  useEffect(() => {
+    if (CLIENT_WORKSPACE_ROUTES.has(route) && !authenticated) {
+      navigateTo("/login", { replace: true })
+      return
+    }
+
+    if (route === "/login" && authenticated) {
+      navigateTo("/client/overview", { replace: true })
+    }
+  }, [route, authenticated])
 
   return (
     <main className="min-h-screen overflow-x-clip bg-background text-foreground">
@@ -77,7 +92,7 @@ export function App() {
           <ClientOverviewPage />
         </ClientLayout>
       ) : null}
-      {route === "/client/billing" || route === "/client/billing/uploads" || route === "/client/billing/connections" || route === "/client/billing/connections/add" || route === "/client/billing/connections/manual-setup" ? (
+      {route === "/client/billing" || route === "/client/billing/uploads" || route === "/client/billing/connections" || route === "/client/billing/connections/aws" || route === "/client/billing/connections/aws/manual" ? (
         <ClientLayout>
           <ClientBillingPage />
         </ClientLayout>
@@ -90,6 +105,11 @@ export function App() {
       {route === "/client/users" ? (
         <ClientLayout>
           <ClientUsersPage />
+        </ClientLayout>
+      ) : null}
+      {route === "/client/profile" ? (
+        <ClientLayout>
+          <ClientProfilePage />
         </ClientLayout>
       ) : null}
     </main>
