@@ -18,6 +18,7 @@ class DemoRequest extends Model<
   declare status: CreationOptional<string>;
   declare calcomBookingId: string | null;
   declare calcomReservationId: string | null;
+  declare meetingUrl: string | null;
   declare createdAt: CreationOptional<Date>;
   declare updatedAt: CreationOptional<Date>;
 }
@@ -32,6 +33,7 @@ const createDemoRequestModel = (sequelize: Sequelize): typeof DemoRequest => {
       status: { type: DataTypes.STRING, allowNull: false, defaultValue: "PENDING" },
       calcomBookingId: { type: DataTypes.STRING, allowNull: true, defaultValue: null },
       calcomReservationId: { type: DataTypes.STRING, allowNull: true, defaultValue: null },
+      meetingUrl: { type: DataTypes.STRING, allowNull: true, defaultValue: null },
     },
     {
       sequelize,

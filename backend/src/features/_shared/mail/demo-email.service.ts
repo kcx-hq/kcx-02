@@ -10,6 +10,11 @@ type DemoEmailParams = {
   timeZone?: string;
 };
 
+type DemoConfirmedEmailParams = DemoEmailParams & {
+  meetingType?: string | null;
+  meetingUrl?: string | null;
+};
+
 export async function sendDemoRequestReceivedEmail(params: DemoEmailParams): Promise<boolean> {
   try {
     await sendEmail({
@@ -36,8 +41,17 @@ export async function sendDemoRequestReceivedEmail(params: DemoEmailParams): Pro
   }
 }
 
-export async function sendDemoConfirmedEmail(params: DemoEmailParams): Promise<boolean> {
+export async function sendDemoConfirmedEmail(params: DemoConfirmedEmailParams): Promise<boolean> {
   try {
+    const normalizedMeetingUrl =
+      typeof params.meetingUrl === "string" && params.meetingUrl.trim().length > 0
+        ? params.meetingUrl.trim()
+        : null;
+    const normalizedMeetingType =
+      typeof params.meetingType === "string" && params.meetingType.trim().length > 0
+        ? params.meetingType.trim()
+        : "Google Meet";
+
     await sendEmail({
       to: params.email,
       subject: "Your KCX demo is confirmed",
@@ -47,6 +61,9 @@ export async function sendDemoConfirmedEmail(params: DemoEmailParams): Promise<b
         "Your KCX demo request has been confirmed.",
         `Confirmed slot: ${formatUtcSlotRangeForEmail(params.slotStart, params.slotEnd, params.timeZone)}`,
         "",
+        ...(normalizedMeetingUrl
+          ? [`Where: ${normalizedMeetingType}`, `Meeting URL: ${normalizedMeetingUrl}`, ""]
+          : []),
         "We look forward to speaking with you.",
         "",
         "- KCX",

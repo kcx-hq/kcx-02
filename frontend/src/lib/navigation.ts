@@ -8,13 +8,14 @@ const STATIC_ROUTES = [
   "/client/billing",
   "/client/billing/uploads",
   "/client/billing/connections",
-  "/client/billing/connections/add",
-  "/client/billing/connections/manual-setup",
+  "/client/billing/connections/aws",
+  "/client/billing/connections/aws/manual",
   "/client/support",
   "/client/support/tickets",
   "/client/support/schedule-call",
   "/client/support/live-chat",
   "/client/users",
+  "/client/profile",
   "/clienthome",
   "/client-home",
   "/schedule-demo",
@@ -49,6 +50,8 @@ const LEGACY_ROUTE_REDIRECTS: Record<string, StaticRoute> = {
   "/client/tickets": "/client/support/tickets",
   "/client/billing": "/client/billing/uploads",
   "/client/billing/manual-setup": "/client/billing/connections",
+  "/client/billing/connections/add": "/client/billing/connections/aws",
+  "/client/billing/connections/manual-setup": "/client/billing/connections/aws/manual",
 }
 const VALID_PATH_SET = new Set<string>([...STATIC_ROUTES, ...Object.keys(LEGACY_ROUTE_REDIRECTS)])
 const BLOG_DETAIL_PATH_REGEX = /^\/resources\/blogs?\/([^/]+)$/

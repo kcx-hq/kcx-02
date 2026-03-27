@@ -34,10 +34,14 @@ type CreateBookingInput = {
 
 type CreateBookingResult = {
   bookingId: string;
+  meetingType: string | null;
+  meetingUrl: string | null;
 };
 
 const CALCOM_BASE_URL = env.calApiBaseUrl ?? "https://api.cal.com/v2";
-const CALCOM_API_VERSION = "2024-09-04";
+const CALCOM_API_VERSION = env.calApiVersion;
+const CALCOM_SLOTS_API_VERSION = env.calSlotsApiVersion;
+const CALCOM_BOOKINGS_API_VERSION = env.calBookingsApiVersion;
 const DEFAULT_SLOT_WINDOW_DAYS = 14;
 const DEFAULT_SLOT_DURATION_MINUTES = 30;
 
@@ -93,12 +97,14 @@ async function callCalcomApi<TBody = unknown>({
   query,
   body,
   conflictMessage,
+  apiVersion,
 }: {
   method: "GET" | "POST";
   path: string;
   query?: Record<string, string>;
   body?: TBody;
   conflictMessage?: string;
+  apiVersion?: string;
 }): Promise<unknown> {
   const apiKey = getRequiredCalApiKey();
   const url = buildCalcomUrl(path);
@@ -115,7 +121,7 @@ async function callCalcomApi<TBody = unknown>({
       method,
       headers: {
         Authorization: `Bearer ${apiKey}`,
-        "cal-api-version": CALCOM_API_VERSION,
+        "cal-api-version": apiVersion ?? CALCOM_API_VERSION,
         ...(body ? { "Content-Type": "application/json" } : {}),
       },
       ...(body ? { body: JSON.stringify(body) } : {}),
@@ -152,7 +158,11 @@ async function callCalcomApi<TBody = unknown>({
     }
 
     if (response.status >= 400 && response.status < 500) {
-      throw new BadRequestError("Invalid scheduling request");
+      throw new BadRequestError(
+        "Invalid scheduling request",
+        parsedBody ??
+          (rawBody.length > 0 ? { providerResponse: rawBody.slice(0, 500) } : undefined),
+      );
     }
 
     throw new InternalServerError("Scheduling provider error");
@@ -198,7 +208,6 @@ const parseSlots = (payload: unknown): CalcomSlot[] => {
     if (Array.isArray(value)) flattened.push(...value);
   }
 
-  console.log(flattened)
   return parseSlotsFromArray(flattened);
 };
 
@@ -241,7 +250,113 @@ const parseBookingResult = (payload: unknown): CreateBookingResult => {
     throw new InternalServerError("Scheduling provider did not return booking id");
   }
 
-  return { bookingId };
+  const { meetingType, meetingUrl } = extractMeetingInfo(apiBody);
+
+  return { bookingId, meetingType, meetingUrl };
+};
+
+const isValidUrl = (value: string): boolean => {
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === "https:" || parsed.protocol === "http:";
+  } catch {
+    return false;
+  }
+};
+
+const normalizeUrl = (value: unknown): string | null => {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!trimmed || !isValidUrl(trimmed)) return null;
+  return trimmed;
+};
+
+const normalizeLabel = (value: unknown): string | null => {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+};
+
+const inferMeetingTypeFromUrl = (meetingUrl: string): string | null => {
+  const normalized = meetingUrl.toLowerCase();
+  if (normalized.includes("meet.google.com")) return "Google Meet";
+  if (normalized.includes("zoom.us")) return "Zoom";
+  if (normalized.includes("teams.microsoft.com")) return "Microsoft Teams";
+  return null;
+};
+
+const extractMeetingInfoFromLocation = (
+  locationValue: unknown,
+): { meetingType: string | null; meetingUrl: string | null } => {
+  if (!locationValue) {
+    return { meetingType: null, meetingUrl: null };
+  }
+
+  if (typeof locationValue === "string") {
+    const asUrl = normalizeUrl(locationValue);
+    if (asUrl) {
+      return {
+        meetingType: inferMeetingTypeFromUrl(asUrl),
+        meetingUrl: asUrl,
+      };
+    }
+    return { meetingType: normalizeLabel(locationValue), meetingUrl: null };
+  }
+
+  if (!isRecord(locationValue)) {
+    return { meetingType: null, meetingUrl: null };
+  }
+
+  const nestedLocation = readNestedRecord(locationValue, ["location", "data", "value"]);
+  if (nestedLocation) {
+    const nested = extractMeetingInfoFromLocation(nestedLocation);
+    if (nested.meetingUrl || nested.meetingType) return nested;
+  }
+
+  const meetingUrl =
+    normalizeUrl(readString(locationValue, ["url", "meetingUrl", "meetingLink", "link", "href"])) ??
+    null;
+  const meetingType =
+    normalizeLabel(readString(locationValue, ["type", "label", "displayName", "name"])) ??
+    (meetingUrl ? inferMeetingTypeFromUrl(meetingUrl) : null);
+
+  return { meetingType, meetingUrl };
+};
+
+const extractMeetingInfo = (apiBody: JsonRecord): { meetingType: string | null; meetingUrl: string | null } => {
+  const bookingRecord = readNestedRecord(apiBody, ["booking"]) ?? apiBody;
+
+  const locationCandidate =
+    bookingRecord.location ?? apiBody.location ?? readNestedRecord(bookingRecord, ["location"]);
+  const fromLocation = extractMeetingInfoFromLocation(locationCandidate);
+  if (fromLocation.meetingUrl) {
+    return fromLocation;
+  }
+
+  const fallbackMeetingUrl =
+    normalizeUrl(
+      readString(bookingRecord, [
+        "meetingUrl",
+        "meetingLink",
+        "videoCallUrl",
+        "hangoutLink",
+        "joinUrl",
+      ]),
+    ) ??
+    normalizeUrl(
+      readString(apiBody, ["meetingUrl", "meetingLink", "videoCallUrl", "hangoutLink", "joinUrl"]),
+    );
+
+  const fallbackMeetingType =
+    fromLocation.meetingType ??
+    normalizeLabel(readString(bookingRecord, ["locationType", "locationLabel", "meetingType"])) ??
+    normalizeLabel(readString(apiBody, ["locationType", "locationLabel", "meetingType"])) ??
+    (fallbackMeetingUrl ? inferMeetingTypeFromUrl(fallbackMeetingUrl) : null);
+
+  return {
+    meetingType: fallbackMeetingType,
+    meetingUrl: fallbackMeetingUrl,
+  };
 };
 
 export async function getAvailableSlots(
@@ -256,6 +371,7 @@ export async function getAvailableSlots(
   const payload = await callCalcomApi({
     method: "GET",
     path: "/slots",
+    apiVersion: CALCOM_SLOTS_API_VERSION,
     query: {
       start: from.toISOString(),
       end: to.toISOString(),
@@ -263,8 +379,6 @@ export async function getAvailableSlots(
       ...(env.calEventTypeId ? { eventTypeId: String(env.calEventTypeId) } : {}),
     },
   });
-
-   console.log(payload)
 
   return parseSlots(payload).map((slot) => ({
     slotStart: slot.slotStart.toISOString(),
@@ -279,6 +393,7 @@ export async function reserveSlot(input: ReserveSlotInput): Promise<ReserveSlotR
   const payload = await callCalcomApi({
     method: "POST",
     path: "/slots/reservations",
+    apiVersion: CALCOM_SLOTS_API_VERSION,
     conflictMessage: "Selected slot is unavailable",
     body: {
       name: input.name,
@@ -298,13 +413,19 @@ export async function createBooking(input: CreateBookingInput): Promise<CreateBo
   const payload = await callCalcomApi({
     method: "POST",
     path: "/bookings",
+    apiVersion: CALCOM_BOOKINGS_API_VERSION,
     body: {
-      name: input.name,
-      email: input.email,
-      reservationId: input.reservationId,
-      slotStart: input.slotStart.toISOString(),
-      slotEnd: input.slotEnd.toISOString(),
-      timeZone: effectiveTimeZone,
+      start: input.slotStart.toISOString(),
+      attendee: {
+        name: input.name,
+        email: input.email,
+        timeZone: effectiveTimeZone,
+        language: "en",
+      },
+      metadata: {
+        reservationId: input.reservationId,
+        requestedSlotEnd: input.slotEnd.toISOString(),
+      },
       ...(env.calEventTypeId ? { eventTypeId: env.calEventTypeId } : {}),
     },
   });

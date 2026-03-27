@@ -36,7 +36,7 @@ const createSlotReservationModel = (sequelize: Sequelize): typeof SlotReservatio
     {
       sequelize,
       modelName: "SlotReservation",
-      tableName: "slot_reservations",
+      tableName: "SlotReservations",
       timestamps: true,
     },
   );

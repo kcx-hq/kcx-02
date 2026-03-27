@@ -1,4 +1,5 @@
 import { appEnv } from "@/lib/env"
+import { getAuthToken } from "@/lib/auth"
 
 type ApiSuccess<T> = {
   success: true
@@ -36,9 +37,14 @@ function joinUrl(base: string, path: string) {
 
 export async function apiPost<TData>(path: string, body: unknown, init?: RequestInit): Promise<TData> {
   const url = joinUrl(appEnv.apiBaseUrl, path)
+  const token = getAuthToken()
   const response = await fetch(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(init?.headers ?? {}),
+    },
     body: JSON.stringify(body),
     ...init,
   })
