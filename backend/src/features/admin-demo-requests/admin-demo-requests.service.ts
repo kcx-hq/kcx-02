@@ -14,6 +14,7 @@ type DemoRequestSummary = {
   slotEnd: string | null;
   calcomBookingId: string | null;
   calcomReservationId: string | null;
+  meetingUrl: string | null;
   createdAt: string;
   updatedAt: string;
   user: {
@@ -68,6 +69,7 @@ const toDemoRequestSummary = async (
     slotEnd: toIso(demoRequest.slotEnd),
     calcomBookingId: demoRequest.calcomBookingId,
     calcomReservationId: demoRequest.calcomReservationId,
+    meetingUrl: demoRequest.meetingUrl,
     createdAt: demoRequest.createdAt.toISOString(),
     updatedAt: demoRequest.updatedAt.toISOString(),
     user: {
@@ -144,6 +146,21 @@ export async function confirmAdminDemoRequest(id: number): Promise<DemoRequestAc
   const { demoRequest, reservation, user } = await getPendingRequestForAction(id);
   const slotStart = demoRequest.slotStart as Date;
   const slotEnd = demoRequest.slotEnd as Date;
+  const now = new Date();
+
+  if (reservation.reservationExpiresAt.getTime() <= now.getTime()) {
+    await SlotReservation.update(
+      { status: "RELEASED" },
+      {
+        where: {
+          id: reservation.id,
+          demoRequestId: demoRequest.id,
+          status: "RESERVED",
+        },
+      },
+    );
+    throw new ConflictError("Reserved slot has expired. Please ask the client to book a new slot.");
+  }
 
   const booking = await createBooking({
     name: `${user.firstName} ${user.lastName}`.trim(),
@@ -158,6 +175,8 @@ export async function confirmAdminDemoRequest(id: number): Promise<DemoRequestAc
       {
         status: "CONFIRMED",
         calcomBookingId: booking.bookingId,
+        calcomReservationId: reservation.calcomReservationId,
+        meetingUrl: booking.meetingUrl,
       },
       {
         where: { id: demoRequest.id, status: "PENDING" },
@@ -191,6 +210,8 @@ export async function confirmAdminDemoRequest(id: number): Promise<DemoRequestAc
     email: user.email,
     slotStart,
     slotEnd,
+    meetingType: booking.meetingType,
+    meetingUrl: booking.meetingUrl,
   });
 
   return {

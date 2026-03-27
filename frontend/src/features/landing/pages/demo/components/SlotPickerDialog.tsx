@@ -1,5 +1,6 @@
-import { useMemo, useState } from "react"
-import { ChevronLeft, ChevronRight } from "lucide-react"
+import { useEffect, useMemo, useState } from "react"
+import { DayPicker } from "react-day-picker"
+import "react-day-picker/dist/style.css"
 
 import {
   Dialog,
@@ -8,236 +9,363 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { fetchScheduleDemoSlotsForDate } from "@/features/landing/pages/demo/api/schedule-demo.api"
+import { ApiError } from "@/lib/api"
 import { cn } from "@/lib/utils"
 
 type SlotValue = { date: string; time: string } | null
 
-const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const
-
-const TIME_SLOTS = [
-  "09:00 AM",
-  "09:30 AM",
-  "10:00 AM",
-  "10:30 AM",
-  "11:00 AM",
-  "11:30 AM",
-  "01:00 PM",
-  "01:30 PM",
-  "02:00 PM",
-  "02:30 PM",
-  "03:00 PM",
-  "03:30 PM",
-] as const
-
-function startOfMonth(date: Date) {
-  return new Date(date.getFullYear(), date.getMonth(), 1)
+type BackendSlot = {
+  time: string
+  available: boolean
+  slotStart: string
+  slotEnd: string
 }
 
-function addMonths(date: Date, delta: number) {
-  return new Date(date.getFullYear(), date.getMonth() + delta, 1)
-}
+const FALLBACK_TIME_ZONE = "Asia/Kolkata"
 
-function pad2(n: number) {
-  return String(n).padStart(2, "0")
-}
-
-function toISODate(date: Date) {
-  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`
-}
-
-function formatPrettyDate(date: Date) {
-  return date.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })
-}
-
-function getCalendarDays(month: Date) {
-  const first = startOfMonth(month)
-  const startDay = (first.getDay() + 6) % 7 // Monday=0
-  const daysInMonth = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate()
-
-  const cells: Array<{ date: Date; inMonth: boolean }> = []
-  for (let i = 0; i < startDay; i++) {
-    const d = new Date(first)
-    d.setDate(d.getDate() - (startDay - i))
-    cells.push({ date: d, inMonth: false })
+function detectUserTimeZone() {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || FALLBACK_TIME_ZONE
+  } catch {
+    return FALLBACK_TIME_ZONE
   }
-  for (let day = 1; day <= daysInMonth; day++) {
-    cells.push({ date: new Date(month.getFullYear(), month.getMonth(), day), inMonth: true })
+}
+
+function getDatePartsInTimeZone(date: Date, timeZone: string) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date)
+
+  let year = ""
+  let month = ""
+  let day = ""
+
+  for (const part of parts) {
+    if (part.type === "year") year = part.value
+    if (part.type === "month") month = part.value
+    if (part.type === "day") day = part.value
   }
-  while (cells.length % 7 !== 0) {
-    const last = cells[cells.length - 1].date
-    const d = new Date(last)
-    d.setDate(d.getDate() + 1)
-    cells.push({ date: d, inMonth: false })
-  }
-  return cells
+
+  return { year, month, day }
+}
+
+function toISODate(date: Date, timeZone: string) {
+  const { year, month, day } = getDatePartsInTimeZone(date, timeZone)
+  return `${year}-${month}-${day}`
+}
+
+function fromISODate(iso: string | null) {
+  if (!iso) return undefined
+  const [y, m, d] = iso.split("-").map(Number)
+  if (!y || !m || !d) return undefined
+  return new Date(y, m - 1, d)
+}
+
+function formatPrettyDate(date: Date, timeZone: string) {
+  return date.toLocaleDateString("en-US", {
+    timeZone,
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  })
+}
+
+function todayInTimeZone(timeZone: string) {
+  const { year, month, day } = getDatePartsInTimeZone(new Date(), timeZone)
+  return new Date(Number(year), Number(month) - 1, Number(day))
 }
 
 export function SlotPickerDialog({
   open,
   onOpenChange,
   value,
-  onSelect,
+  onConfirm,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   value: SlotValue
-  onSelect: (next: SlotValue) => void
+  onConfirm: (next: {
+    date: string
+    time: string
+    timeZone: string
+    slotStart?: string
+    slotEnd?: string
+  }) => Promise<void>
 }) {
+  const detectedTimeZone = useMemo(() => detectUserTimeZone(), [])
   const today = useMemo(() => {
-    const now = new Date()
-    return new Date(now.getFullYear(), now.getMonth(), now.getDate())
-  }, [])
+    return todayInTimeZone(detectedTimeZone)
+  }, [detectedTimeZone])
 
-  const [month, setMonth] = useState(() => startOfMonth(today))
   const [selectedDateIso, setSelectedDateIso] = useState<string | null>(value?.date ?? null)
   const [selectedTime, setSelectedTime] = useState<string | null>(value?.time ?? null)
+  const [slots, setSlots] = useState<BackendSlot[]>([])
+  const [slotsTimeZone, setSlotsTimeZone] = useState<string>(detectedTimeZone)
+  const [loadingSlots, setLoadingSlots] = useState(false)
+  const [slotsError, setSlotsError] = useState<string | null>(null)
+  const [submitError, setSubmitError] = useState<string | null>(null)
+  const [confirming, setConfirming] = useState(false)
 
-  const days = useMemo(() => getCalendarDays(month), [month])
+  useEffect(() => {
+    setSelectedDateIso(value?.date ?? null)
+    setSelectedTime(value?.time ?? null)
+    setSubmitError(null)
+  }, [value, open])
 
-  const selectedDate = useMemo(() => {
-    if (!selectedDateIso) return null
-    const [y, m, d] = selectedDateIso.split("-").map((v) => Number(v))
-    if (!y || !m || !d) return null
-    return new Date(y, m - 1, d)
-  }, [selectedDateIso])
+  const selectedDate = useMemo(() => fromISODate(selectedDateIso), [selectedDateIso])
 
-  function commitSelection() {
-    if (!selectedDateIso || !selectedTime) return
-    onSelect({ date: selectedDateIso, time: selectedTime })
-    onOpenChange(false)
+  useEffect(() => {
+    if (!open || !selectedDateIso) {
+      setSlots([])
+      setLoadingSlots(false)
+      setSlotsError(null)
+      return
+    }
+
+    let cancelled = false
+    setSlotsError(null)
+    setLoadingSlots(true)
+
+    void (async () => {
+      try {
+        const response = await fetchScheduleDemoSlotsForDate(selectedDateIso, detectedTimeZone)
+        if (cancelled) return
+
+        setSlots(response.slots ?? [])
+        setSlotsTimeZone(response.timeZone || detectedTimeZone)
+
+        if (selectedTime && !response.slots?.some((slot) => slot.time === selectedTime && slot.available)) {
+          setSelectedTime(null)
+        }
+      } catch (error) {
+        if (cancelled) return
+
+        setSlots([])
+
+        if (error instanceof ApiError) {
+          setSlotsError(error.message || "Could not load slots.")
+        } else {
+          setSlotsError("Could not load slots.")
+        }
+      } finally {
+        if (!cancelled) setLoadingSlots(false)
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [detectedTimeZone, open, selectedDateIso, selectedTime])
+
+  const selectedSlot = useMemo(() => {
+    if (!selectedTime) return null
+    return slots.find((slot) => slot.time === selectedTime && slot.available) ?? null
+  }, [slots, selectedTime])
+
+  const selectedSlotAvailable = useMemo(() => {
+    return Boolean(selectedSlot)
+  }, [selectedSlot])
+
+  async function commitSelection() {
+    if (!selectedDateIso || !selectedTime || !selectedSlotAvailable) return
+
+    setSubmitError(null)
+    setConfirming(true)
+
+    try {
+      await onConfirm({
+        date: selectedDateIso,
+        time: selectedTime,
+        timeZone: slotsTimeZone || detectedTimeZone,
+        slotStart: selectedSlot?.slotStart,
+        slotEnd: selectedSlot?.slotEnd,
+      })
+      onOpenChange(false)
+    } catch (error) {
+      if (error instanceof ApiError) {
+        setSubmitError(error.message || "Booking failed. Please try another slot.")
+      } else {
+        setSubmitError("Booking failed. Please try another slot.")
+      }
+    } finally {
+      setConfirming(false)
+    }
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="p-6">
-        <DialogHeader>
-          <DialogTitle>Select a slot</DialogTitle>
-          <DialogDescription>Pick a date and time for your demo.</DialogDescription>
-        </DialogHeader>
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (confirming) return
+        onOpenChange(nextOpen)
+      }}
+    >
+      <DialogContent className="max-w-[900px] rounded-[28px] border border-[rgba(21,37,49,0.12)] bg-white p-0 shadow-xl">
+        <div className="p-6">
+          <DialogHeader className="text-left">
+            <DialogTitle className="text-lg font-semibold text-[#0F1F1A]">
+              Select a slot
+            </DialogTitle>
+            <DialogDescription className="mt-1 text-sm text-[rgba(75,90,83,0.75)]">
+              Pick a date and time for your demo.
+            </DialogDescription>
+          </DialogHeader>
 
-        <div className="mt-5 grid gap-5 md:grid-cols-[1.1fr_0.9fr]">
-          {/* Calendar */}
-          <div className="rounded-2xl border border-[rgba(21,37,49,0.12)] bg-[rgba(21,37,49,0.02)] p-4">
-            <div className="flex items-center justify-between">
-              <button
-                type="button"
-                onClick={() => setMonth((m) => addMonths(m, -1))}
-                className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-[rgba(21,37,49,0.12)] bg-white text-[#0F1F1A] hover:bg-[rgba(21,37,49,0.04)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(62,138,118,0.22)]"
-              >
-                <ChevronLeft className="h-4 w-4" aria-hidden="true" />
-                <span className="sr-only">Previous month</span>
-              </button>
+          <div className="mt-5 grid gap-5 md:grid-cols-[1.1fr_0.9fr]">
+            <div className="rounded-2xl border border-[rgba(21,37,49,0.12)] bg-[rgba(21,37,49,0.02)] p-4">
+              <DayPicker
+                mode="single"
+                timeZone={detectedTimeZone}
+                selected={selectedDate}
+                onSelect={(date) => {
+                  if (!date) return
+                  setSelectedDateIso(toISODate(date, detectedTimeZone))
+                  setSelectedTime(null)
+                  setSubmitError(null)
+                }}
+                disabled={{ before: today }}
+                showOutsideDays
+                weekStartsOn={1}
+                className="w-full"
+                classNames={{
+                  months: "flex w-full",
+                  month: "w-full",
+                  caption: "flex items-center justify-between mb-4",
+                  caption_label: "text-sm font-semibold text-[#0F1F1A]",
+                  nav: "flex items-center gap-2",
+                  button_previous:
+                    "inline-flex h-9 w-9 items-center justify-center rounded-xl border border-[rgba(21,37,49,0.12)] bg-white hover:bg-[rgba(21,37,49,0.04)]",
+                  button_next:
+                    "inline-flex h-9 w-9 items-center justify-center rounded-xl border border-[rgba(21,37,49,0.12)] bg-white hover:bg-[rgba(21,37,49,0.04)]",
+                  table: "w-full border-collapse",
+                  head_row: "grid grid-cols-7",
+                  head_cell:
+                    "px-1 py-1.5 text-center text-[11px] font-semibold text-[rgba(75,90,83,0.75)]",
+                  row: "grid grid-cols-7 mt-1",
+                  cell: "p-0 text-center",
+                  day: cn(
+                    "h-10 w-10 rounded-xl text-sm font-medium transition duration-150 mx-auto",
+                    "text-[#0F1F1A] hover:bg-[rgba(62,138,118,0.10)]"
+                  ),
+                  day_selected:
+                    "bg-[rgba(62,138,118,0.18)] ring-2 ring-[rgba(62,138,118,0.28)] hover:bg-[rgba(62,138,118,0.18)]",
+                  day_today: "font-semibold",
+                  day_outside: "text-[rgba(75,90,83,0.28)] opacity-100",
+                  day_disabled: "text-[rgba(75,90,83,0.28)]",
+                }}
+              />
+            </div>
 
-              <p className="text-sm font-semibold text-[#0F1F1A]">
-                {month.toLocaleDateString(undefined, { month: "long", year: "numeric" })}
+            <div className="rounded-2xl border border-[rgba(21,37,49,0.12)] bg-white p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[rgba(75,90,83,0.75)]">
+                Time slots
               </p>
 
+              <p className="mt-1 text-sm font-semibold text-[#0F1F1A]">
+                {selectedDate ? formatPrettyDate(selectedDate, detectedTimeZone) : "Select a date"}
+              </p>
+
+              <p className="mt-1 text-[11px] text-[rgba(75,90,83,0.72)]">
+                Timezone: {slotsTimeZone || detectedTimeZone}
+              </p>
+
+              {!loadingSlots && !slotsError && selectedDateIso && slots.length > 0 ? (
+                <div className="mt-4 grid grid-cols-2 gap-2">
+                  {slots.map((slot) => {
+                    const active = selectedTime === slot.time
+                    const disabled = !selectedDate || loadingSlots || !slot.available
+
+                    return (
+                      <button
+                        key={slot.time}
+                        type="button"
+                        disabled={disabled || confirming}
+                        onClick={() => {
+                          if (disabled || confirming) return
+                          setSelectedTime(slot.time)
+                        }}
+                        className={cn(
+                          "h-10 rounded-xl border text-sm font-semibold",
+                          disabled
+                            ? "cursor-not-allowed border-[rgba(21,37,49,0.10)] bg-[rgba(21,37,49,0.03)] text-[rgba(75,90,83,0.35)]"
+                            : "border-[rgba(21,37,49,0.14)] bg-white text-[#0F1F1A] hover:bg-[rgba(21,37,49,0.04)]",
+                          active
+                            ? "border-[rgba(62,138,118,0.42)] bg-[rgba(62,138,118,0.10)]"
+                            : "",
+                          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(62,138,118,0.22)]"
+                        )}
+                      >
+                        {slot.time}
+                      </button>
+                    )
+                  })}
+                </div>
+              ) : null}
+
+              {loadingSlots ? (
+                <p className="mt-3 text-xs text-[rgba(75,90,83,0.75)]">Loading slots...</p>
+              ) : null}
+
+              {!loadingSlots && slotsError ? (
+                <div className="mt-3 rounded-xl border border-red-500/25 bg-red-500/5 px-3 py-2">
+                  <p className="text-xs text-red-700">{slotsError}</p>
+                </div>
+              ) : null}
+
+              {!loadingSlots && !slotsError && selectedDateIso && slots.length === 0 ? (
+                <p className="mt-3 text-xs text-[rgba(75,90,83,0.75)]">
+                  No slots available for this day.
+                </p>
+              ) : null}
+
               <button
                 type="button"
-                onClick={() => setMonth((m) => addMonths(m, 1))}
-                className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-[rgba(21,37,49,0.12)] bg-white text-[#0F1F1A] hover:bg-[rgba(21,37,49,0.04)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(62,138,118,0.22)]"
+                onClick={() => {
+                  void commitSelection()
+                }}
+                disabled={
+                  !selectedDateIso ||
+                  !selectedTime ||
+                  !selectedSlotAvailable ||
+                  loadingSlots ||
+                  Boolean(slotsError) ||
+                  confirming
+                }
+                className={cn(
+                  "mt-4 h-11 w-full rounded-xl text-sm font-semibold text-white",
+                  "bg-[#3E8A76] hover:bg-[#357563]",
+                  "transition duration-200",
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(62,138,118,0.28)] focus-visible:ring-offset-2 focus-visible:ring-offset-white",
+                  !selectedDateIso ||
+                    !selectedTime ||
+                    !selectedSlotAvailable ||
+                    loadingSlots ||
+                    Boolean(slotsError) ||
+                    confirming
+                    ? "cursor-not-allowed opacity-55 hover:bg-[#3E8A76]"
+                    : ""
+                )}
               >
-                <ChevronRight className="h-4 w-4" aria-hidden="true" />
-                <span className="sr-only">Next month</span>
+                {confirming ? "Booking..." : "Confirm slot"}
               </button>
-            </div>
 
-            <div className="mt-4 grid grid-cols-7 gap-1 text-[11px] font-semibold text-[rgba(75,90,83,0.75)]">
-              {WEEKDAYS.map((w) => (
-                <div key={w} className="px-1 py-1.5 text-center">
-                  {w}
+              {submitError ? (
+                <div className="mt-3 rounded-xl border border-red-500/25 bg-red-500/5 px-3 py-2">
+                  <p className="text-xs text-red-700">{submitError}</p>
                 </div>
-              ))}
+              ) : null}
+
+              <p className="mt-3 text-[11px] leading-5 text-[rgba(75,90,83,0.7)]">
+                Select an available time to confirm your demo booking.
+              </p>
             </div>
-
-            <div className="mt-1 grid grid-cols-7 gap-1">
-              {days.map(({ date, inMonth }) => {
-                const iso = toISODate(date)
-                const isSelected = selectedDateIso === iso
-                const isPast = date.getTime() < today.getTime()
-                const isDisabled = isPast || !inMonth
-
-                return (
-                  <button
-                    key={iso}
-                    type="button"
-                    disabled={isDisabled}
-                    onClick={() => {
-                      setSelectedDateIso(iso)
-                      setSelectedTime(null)
-                    }}
-                    className={cn(
-                      "h-10 rounded-xl text-sm font-medium",
-                      "transition duration-150",
-                      isDisabled
-                        ? "cursor-not-allowed text-[rgba(75,90,83,0.28)]"
-                        : "text-[#0F1F1A] hover:bg-[rgba(62,138,118,0.10)]",
-                      isSelected ? "bg-[rgba(62,138,118,0.18)] ring-2 ring-[rgba(62,138,118,0.28)]" : null
-                    )}
-                  >
-                    {date.getDate()}
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-
-          {/* Slots */}
-          <div className="rounded-2xl border border-[rgba(21,37,49,0.12)] bg-white p-4">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[rgba(75,90,83,0.75)]">
-              Time slots
-            </p>
-            <p className="mt-1 text-sm font-semibold text-[#0F1F1A]">
-              {selectedDate ? formatPrettyDate(selectedDate) : "Select a date"}
-            </p>
-
-            <div className="mt-4 grid grid-cols-2 gap-2">
-              {TIME_SLOTS.map((slot) => {
-                const active = selectedTime === slot
-                const disabled = !selectedDate
-                return (
-                  <button
-                    key={slot}
-                    type="button"
-                    disabled={disabled}
-                    onClick={() => setSelectedTime(slot)}
-                    className={cn(
-                      "h-10 rounded-xl border text-sm font-semibold",
-                      disabled
-                        ? "cursor-not-allowed border-[rgba(21,37,49,0.10)] bg-[rgba(21,37,49,0.03)] text-[rgba(75,90,83,0.35)]"
-                        : "border-[rgba(21,37,49,0.14)] bg-white text-[#0F1F1A] hover:bg-[rgba(21,37,49,0.04)]",
-                      active ? "border-[rgba(62,138,118,0.42)] bg-[rgba(62,138,118,0.10)]" : null,
-                      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(62,138,118,0.22)]"
-                    )}
-                  >
-                    {slot}
-                  </button>
-                )
-              })}
-            </div>
-
-            <button
-              type="button"
-              onClick={commitSelection}
-              disabled={!selectedDateIso || !selectedTime}
-              className={cn(
-                "mt-4 h-11 w-full rounded-xl text-sm font-semibold text-white",
-                "bg-[#3E8A76] hover:bg-[#357563]",
-                "transition duration-200",
-                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(62,138,118,0.28)] focus-visible:ring-offset-2 focus-visible:ring-offset-white",
-                !selectedDateIso || !selectedTime ? "cursor-not-allowed opacity-55 hover:bg-[#3E8A76]" : null
-              )}
-            >
-              Confirm slot
-            </button>
-
-            <p className="mt-3 text-[11px] leading-5 text-[rgba(75,90,83,0.7)]">
-              Availability is illustrative for now — backend scheduling comes next.
-            </p>
           </div>
         </div>
       </DialogContent>
     </Dialog>
   )
 }
-

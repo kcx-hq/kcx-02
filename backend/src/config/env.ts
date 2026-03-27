@@ -36,6 +36,18 @@ const optionalPositiveNumber = (value: string | undefined, fallback: number): nu
   return parsed;
 };
 
+const optionalPositiveInteger = (value: string | undefined): number | undefined => {
+  const normalized = optionalEnv(value);
+  if (!normalized) return undefined;
+
+  const parsed = Number(normalized);
+  if (!Number.isFinite(parsed) || parsed <= 0 || !Number.isInteger(parsed)) {
+    return undefined;
+  }
+
+  return parsed;
+};
+
 const rawPort = process.env.PORT;
 const parsedPort = Number(rawPort ?? 5000);
 
@@ -65,7 +77,10 @@ const env = {
   adminPassword: optionalEnv(process.env.ADMIN_PASSWORD),
   calApiKey: optionalEnv(process.env.CAL_API_KEY),
   calApiBaseUrl: optionalEnv(process.env.CAL_API_BASE_URL),
-  calEventTypeId: optionalEnv(process.env.CAL_EVENT_TYPE_ID),
+  calApiVersion: optionalEnv(process.env.CAL_API_VERSION) ?? "2024-08-13",
+  calSlotsApiVersion: optionalEnv(process.env.CAL_SLOTS_API_VERSION) ?? "2024-09-04",
+  calBookingsApiVersion: optionalEnv(process.env.CAL_BOOKINGS_API_VERSION) ?? "2024-08-13",
+  calEventTypeId: optionalPositiveInteger(process.env.CAL_EVENT_TYPE_ID),
   calTimezone: optionalEnv(process.env.CAL_TIMEZONE) ?? "UTC",
   calReservationTtlMinutes: optionalPositiveNumber(process.env.CAL_RESERVATION_TTL_MINUTES, 15),
   mailgunApiKey: optionalEnv(process.env.MAILGUN_API_KEY),

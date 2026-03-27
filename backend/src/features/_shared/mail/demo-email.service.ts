@@ -1,4 +1,5 @@
 import { logger } from "../../../utils/logger.js";
+import { formatUtcSlotRangeForEmail } from "../../../utils/slot-display.js";
 import { sendEmail } from "./email.service.js";
 
 type DemoEmailParams = {
@@ -6,10 +7,13 @@ type DemoEmailParams = {
   email: string;
   slotStart: Date;
   slotEnd: Date;
+  timeZone?: string;
 };
 
-const formatSlot = (slotStart: Date, slotEnd: Date): string =>
-  `${slotStart.toISOString()} to ${slotEnd.toISOString()}`;
+type DemoConfirmedEmailParams = DemoEmailParams & {
+  meetingType?: string | null;
+  meetingUrl?: string | null;
+};
 
 export async function sendDemoRequestReceivedEmail(params: DemoEmailParams): Promise<boolean> {
   try {
@@ -20,7 +24,7 @@ export async function sendDemoRequestReceivedEmail(params: DemoEmailParams): Pro
         `Hi ${params.firstName},`,
         "",
         "Thanks for requesting a KCX demo.",
-        `Requested slot: ${formatSlot(params.slotStart, params.slotEnd)}`,
+        `Requested slot: ${formatUtcSlotRangeForEmail(params.slotStart, params.slotEnd, params.timeZone)}`,
         "",
         "Our team will review your request and confirm shortly.",
         "",
@@ -37,8 +41,17 @@ export async function sendDemoRequestReceivedEmail(params: DemoEmailParams): Pro
   }
 }
 
-export async function sendDemoConfirmedEmail(params: DemoEmailParams): Promise<boolean> {
+export async function sendDemoConfirmedEmail(params: DemoConfirmedEmailParams): Promise<boolean> {
   try {
+    const normalizedMeetingUrl =
+      typeof params.meetingUrl === "string" && params.meetingUrl.trim().length > 0
+        ? params.meetingUrl.trim()
+        : null;
+    const normalizedMeetingType =
+      typeof params.meetingType === "string" && params.meetingType.trim().length > 0
+        ? params.meetingType.trim()
+        : "Google Meet";
+
     await sendEmail({
       to: params.email,
       subject: "Your KCX demo is confirmed",
@@ -46,8 +59,11 @@ export async function sendDemoConfirmedEmail(params: DemoEmailParams): Promise<b
         `Hi ${params.firstName},`,
         "",
         "Your KCX demo request has been confirmed.",
-        `Confirmed slot: ${formatSlot(params.slotStart, params.slotEnd)}`,
+        `Confirmed slot: ${formatUtcSlotRangeForEmail(params.slotStart, params.slotEnd, params.timeZone)}`,
         "",
+        ...(normalizedMeetingUrl
+          ? [`Where: ${normalizedMeetingType}`, `Meeting URL: ${normalizedMeetingUrl}`, ""]
+          : []),
         "We look forward to speaking with you.",
         "",
         "- KCX",
@@ -72,7 +88,7 @@ export async function sendDemoRejectedEmail(params: DemoEmailParams): Promise<bo
         `Hi ${params.firstName},`,
         "",
         "We are sorry, but we could not confirm your selected demo slot.",
-        `Requested slot: ${formatSlot(params.slotStart, params.slotEnd)}`,
+        `Requested slot: ${formatUtcSlotRangeForEmail(params.slotStart, params.slotEnd, params.timeZone)}`,
         "",
         "Please submit another request and pick a different slot.",
         "",
