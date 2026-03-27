@@ -1,1 +1,6 @@
+export { ClientLayout } from "@/features/client-home/components/ClientLayout"
 export { ClientOverviewPage } from "@/features/client-home/pages/ClientOverviewPage"
+export { ClientBillingPage } from "@/features/client-home/pages/ClientBillingPage"
+export { ClientTicketsPage } from "@/features/client-home/pages/ClientTicketsPage"
+export { ClientSupportPage } from "@/features/client-home/pages/ClientSupportPage"
+export { ClientUsersPage } from "@/features/client-home/pages/ClientUsersPage"

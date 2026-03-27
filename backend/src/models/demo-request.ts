@@ -13,12 +13,11 @@ class DemoRequest extends Model<
 > {
   declare id: CreationOptional<number>;
   declare userId: number;
-  declare firstName: string;
-  declare lastName: string;
-  declare companyEmail: string;
-  declare companyName: string;
-  declare heardAboutUs: string;
-  declare status: string;
+  declare slotStart: Date | null;
+  declare slotEnd: Date | null;
+  declare status: CreationOptional<string>;
+  declare calcomBookingId: string | null;
+  declare calcomReservationId: string | null;
   declare createdAt: CreationOptional<Date>;
   declare updatedAt: CreationOptional<Date>;
 }
@@ -28,12 +27,11 @@ const createDemoRequestModel = (sequelize: Sequelize): typeof DemoRequest => {
     {
       id: { type: DataTypes.INTEGER, autoIncrement: true, primaryKey: true },
       userId: { type: DataTypes.INTEGER, allowNull: false },
-      firstName: { type: DataTypes.STRING, allowNull: false },
-      lastName: { type: DataTypes.STRING, allowNull: false },
-      companyEmail: { type: DataTypes.STRING, allowNull: false },
-      companyName: { type: DataTypes.STRING, allowNull: false },
-      heardAboutUs: { type: DataTypes.STRING, allowNull: false },
-      status: { type: DataTypes.STRING, allowNull: false, defaultValue: "submitted" },
+      slotStart: { type: DataTypes.DATE, allowNull: true, defaultValue: null },
+      slotEnd: { type: DataTypes.DATE, allowNull: true, defaultValue: null },
+      status: { type: DataTypes.STRING, allowNull: false, defaultValue: "PENDING" },
+      calcomBookingId: { type: DataTypes.STRING, allowNull: true, defaultValue: null },
+      calcomReservationId: { type: DataTypes.STRING, allowNull: true, defaultValue: null },
     },
     {
       sequelize,
