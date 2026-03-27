@@ -17,17 +17,11 @@ export function AdminSidebar({ mobile, onNavigate }: { mobile?: boolean; onNavig
           : "fixed bottom-0 left-0 top-0 z-30 w-[240px] bg-[linear-gradient(180deg,#0B1B2B_0%,#08192A_65%,#071625_100%)] pt-16 shadow-[0_18px_50px_-26px_rgba(2,6,23,0.65)] ring-1 ring-[color:rgba(148,163,184,0.14)]"
       )}
     >
-      {!isMobile ? (
-        <>
-          <div className="pointer-events-none absolute inset-x-0 top-16 h-10 bg-[radial-gradient(120%_70%_at_15%_0%,rgba(47,125,106,0.22)_0%,transparent_55%)]" />
-        </>
-      ) : null}
-
       <div className={cn(isMobile ? "mt-6" : "mt-5 px-3 pt-3")}>
         <nav className={cn("grid", isMobile ? "gap-1.5" : "gap-1")}>
           <SidebarItem
             to="/"
-            label="Overview"
+            label="Dashboard"
             icon={<LayoutGrid className="h-4 w-4" aria-hidden="true" />}
             isMobile={isMobile}
             onNavigate={onNavigate}
@@ -86,7 +80,13 @@ function SidebarItem({
           <span className={cn("text-white/80 transition-colors group-hover:text-white/90", isActive && "text-white")}>{icon}</span>
 
           <span className="min-w-0">
-            <span className={cn("block truncate text-[13px] font-semibold tracking-[-0.01em] text-white/90", isActive && "text-white")}>
+            <span
+              className={cn(
+                "block truncate text-[13px] font-medium tracking-[-0.01em] text-[color:rgba(226,232,240,0.84)]",
+                "group-hover:text-[color:rgba(241,245,249,0.92)]",
+                isActive && "font-semibold text-white"
+              )}
+            >
               {label}
             </span>
           </span>

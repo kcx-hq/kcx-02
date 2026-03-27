@@ -1,5 +1,13 @@
 import type { ComponentType } from "react"
-import { AnnouncementIcon, BillingUploadsIcon, MeetingIcon, TicketIcon, UserIcon } from "@/components/ui/icons"
+import {
+  AnnouncementIcon,
+  BillingUploadsIcon,
+  ClientManagementIcon,
+  CloudConnectionsIcon,
+  MeetingIcon,
+  TicketIcon,
+  UserIcon,
+} from "@/components/ui/icons"
 
 export type AdminNavItem = {
   label: string
@@ -10,10 +18,22 @@ export type AdminNavItem = {
 
 export const ADMIN_NAV: AdminNavItem[] = [
   {
-    label: "User",
-    to: "/user",
-    Icon: UserIcon,
-    description: "Access, roles, onboarding",
+    label: "Client Management",
+    to: "/clients",
+    Icon: ClientManagementIcon,
+    description: "Accounts, status, notes",
+  },
+  {
+    label: "Cloud Connections",
+    to: "/cloud-connections",
+    Icon: CloudConnectionsIcon,
+    description: "AWS, Azure, GCP links",
+  },
+  {
+    label: "Meetings & Demos",
+    to: "/scheduled-meeting",
+    Icon: MeetingIcon,
+    description: "Schedule, prep, follow-up",
   },
   {
     label: "Billing Uploads",
@@ -22,21 +42,21 @@ export const ADMIN_NAV: AdminNavItem[] = [
     description: "Upload, validate, reconcile",
   },
   {
-    label: "Issue Management",
-    to: "/issue-management",
-    Icon: TicketIcon,
-    description: "Triage, assign, resolve",
+    label: "Users & Roles",
+    to: "/user",
+    Icon: UserIcon,
+    description: "Access, roles, onboarding",
   },
   {
-    label: "Announcement",
+    label: "Announcements",
     to: "/announcement",
     Icon: AnnouncementIcon,
     description: "Draft, publish, audit",
   },
   {
-    label: "Scheduled Meeting",
-    to: "/scheduled-meeting",
-    Icon: MeetingIcon,
-    description: "Schedule, prep, follow-up",
+    label: "Issue Management",
+    to: "/issue-management",
+    Icon: TicketIcon,
+    description: "Triage, assign, resolve",
   },
 ]

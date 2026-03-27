@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { asyncHandler } from "../../utils/async-handler.js";
+import { requireAdminAuth } from "../../middlewares/auth.middleware.js";
 import {
   handleAdminConfirmDemoRequest,
   handleAdminGetDemoRequestById,
@@ -8,6 +9,8 @@ import {
 } from "./admin-demo-requests.controller.js";
 
 const router = Router();
+
+router.use(requireAdminAuth);
 
 router.get("/admin/demo-requests", asyncHandler(handleAdminGetDemoRequests));
 router.get("/admin/demo-requests/:id", asyncHandler(handleAdminGetDemoRequestById));

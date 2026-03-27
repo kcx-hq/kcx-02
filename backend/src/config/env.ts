@@ -1,4 +1,11 @@
-import "dotenv/config";
+import dotenv from "dotenv";
+import { fileURLToPath } from "node:url";
+import { dirname, resolve } from "node:path";
+
+dotenv.config();
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+dotenv.config({ path: resolve(__dirname, "../../../.env") });
 
 import type { LogLevel } from "../utils/logger.js";
 
@@ -54,6 +61,8 @@ const env = {
   port,
   logLevel,
   nodeEnv,
+  adminEmail: optionalEnv(process.env.ADMIN_EMAIL),
+  adminPassword: optionalEnv(process.env.ADMIN_PASSWORD),
   calApiKey: optionalEnv(process.env.CAL_API_KEY),
   calApiBaseUrl: optionalEnv(process.env.CAL_API_BASE_URL),
   calEventTypeId: optionalEnv(process.env.CAL_EVENT_TYPE_ID),

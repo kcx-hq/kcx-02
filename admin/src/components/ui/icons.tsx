@@ -1,4 +1,4 @@
-import { CalendarClock, Megaphone, Ticket, Upload, Users } from "lucide-react"
+import { Briefcase, CalendarClock, Cloud, Megaphone, Ticket, Upload, Users } from "lucide-react"
 
 export function UserIcon({ className }: { className?: string }) {
   return <Users className={className} aria-hidden="true" />
@@ -20,3 +20,10 @@ export function BillingUploadsIcon({ className }: { className?: string }) {
   return <Upload className={className} aria-hidden="true" />
 }
 
+export function ClientManagementIcon({ className }: { className?: string }) {
+  return <Briefcase className={className} aria-hidden="true" />
+}
+
+export function CloudConnectionsIcon({ className }: { className?: string }) {
+  return <Cloud className={className} aria-hidden="true" />
+}
