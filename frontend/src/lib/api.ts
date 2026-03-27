@@ -55,3 +55,22 @@ export async function apiPost<TData>(path: string, body: unknown, init?: Request
   return payload.data
 }
 
+export async function apiGet<TData>(path: string, init?: RequestInit): Promise<TData> {
+  const url = joinUrl(appEnv.apiBaseUrl, path)
+  const response = await fetch(url, {
+    method: "GET",
+    ...init,
+  })
+
+  const payload = (await response.json().catch(() => null)) as ApiResponse<TData> | null
+
+  if (!response.ok) {
+    throw new ApiError(payload?.message ?? "Request failed", response.status, payload)
+  }
+  if (!payload || payload.success !== true) {
+    throw new ApiError(payload?.message ?? "Request failed", response.status, payload)
+  }
+
+  return payload.data
+}
+

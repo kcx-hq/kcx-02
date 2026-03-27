@@ -1,4 +1,5 @@
 import { logger } from "../../../utils/logger.js";
+import { formatUtcSlotRangeForEmail } from "../../../utils/slot-display.js";
 import { sendEmail } from "./email.service.js";
 
 type DemoEmailParams = {
@@ -6,10 +7,8 @@ type DemoEmailParams = {
   email: string;
   slotStart: Date;
   slotEnd: Date;
+  timeZone?: string;
 };
-
-const formatSlot = (slotStart: Date, slotEnd: Date): string =>
-  `${slotStart.toISOString()} to ${slotEnd.toISOString()}`;
 
 export async function sendDemoRequestReceivedEmail(params: DemoEmailParams): Promise<boolean> {
   try {
@@ -20,7 +19,7 @@ export async function sendDemoRequestReceivedEmail(params: DemoEmailParams): Pro
         `Hi ${params.firstName},`,
         "",
         "Thanks for requesting a KCX demo.",
-        `Requested slot: ${formatSlot(params.slotStart, params.slotEnd)}`,
+        `Requested slot: ${formatUtcSlotRangeForEmail(params.slotStart, params.slotEnd, params.timeZone)}`,
         "",
         "Our team will review your request and confirm shortly.",
         "",
@@ -46,7 +45,7 @@ export async function sendDemoConfirmedEmail(params: DemoEmailParams): Promise<b
         `Hi ${params.firstName},`,
         "",
         "Your KCX demo request has been confirmed.",
-        `Confirmed slot: ${formatSlot(params.slotStart, params.slotEnd)}`,
+        `Confirmed slot: ${formatUtcSlotRangeForEmail(params.slotStart, params.slotEnd, params.timeZone)}`,
         "",
         "We look forward to speaking with you.",
         "",
@@ -72,7 +71,7 @@ export async function sendDemoRejectedEmail(params: DemoEmailParams): Promise<bo
         `Hi ${params.firstName},`,
         "",
         "We are sorry, but we could not confirm your selected demo slot.",
-        `Requested slot: ${formatSlot(params.slotStart, params.slotEnd)}`,
+        `Requested slot: ${formatUtcSlotRangeForEmail(params.slotStart, params.slotEnd, params.timeZone)}`,
         "",
         "Please submit another request and pick a different slot.",
         "",

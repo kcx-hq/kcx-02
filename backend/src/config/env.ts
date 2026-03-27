@@ -29,6 +29,18 @@ const optionalPositiveNumber = (value: string | undefined, fallback: number): nu
   return parsed;
 };
 
+const optionalPositiveInteger = (value: string | undefined): number | undefined => {
+  const normalized = optionalEnv(value);
+  if (!normalized) return undefined;
+
+  const parsed = Number(normalized);
+  if (!Number.isFinite(parsed) || parsed <= 0 || !Number.isInteger(parsed)) {
+    return undefined;
+  }
+
+  return parsed;
+};
+
 const rawPort = process.env.PORT;
 const parsedPort = Number(rawPort ?? 5000);
 
@@ -56,7 +68,7 @@ const env = {
   nodeEnv,
   calApiKey: optionalEnv(process.env.CAL_API_KEY),
   calApiBaseUrl: optionalEnv(process.env.CAL_API_BASE_URL),
-  calEventTypeId: optionalEnv(process.env.CAL_EVENT_TYPE_ID),
+  calEventTypeId: optionalPositiveInteger(process.env.CAL_EVENT_TYPE_ID),
   calTimezone: optionalEnv(process.env.CAL_TIMEZONE) ?? "UTC",
   calReservationTtlMinutes: optionalPositiveNumber(process.env.CAL_RESERVATION_TTL_MINUTES, 15),
   mailgunApiKey: optionalEnv(process.env.MAILGUN_API_KEY),
