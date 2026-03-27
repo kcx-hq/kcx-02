@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useState, type CSSProperties } from "react"
 import { DayPicker } from "react-day-picker"
-import "react-day-picker/dist/style.css"
+import "react-day-picker/src/style.css"
+import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp } from "lucide-react"
 
 import {
   Dialog,
@@ -216,11 +217,16 @@ export function SlotPickerDialog({
           </DialogHeader>
 
           <div className="mt-5 grid gap-5 md:grid-cols-[1.1fr_0.9fr]">
-            <div className="rounded-2xl border border-[rgba(21,37,49,0.12)] bg-[rgba(21,37,49,0.02)] p-4">
+            <div className="rounded-[28px] border border-[rgba(21,37,49,0.12)] bg-white p-6">
               <DayPicker
                 mode="single"
                 timeZone={detectedTimeZone}
                 selected={selectedDate}
+                style={
+                  {
+                    ["--rdp-accent-color" as any]: "#3E8A76",
+                  } as CSSProperties
+                }
                 onSelect={(date) => {
                   if (!date) return
                   setSelectedDateIso(toISODate(date, detectedTimeZone))
@@ -231,31 +237,59 @@ export function SlotPickerDialog({
                 showOutsideDays
                 weekStartsOn={1}
                 className="w-full"
+                components={{
+                  Chevron: ({ orientation, className, size = 20 }) => {
+                    const props = {
+                      className: cn("fill-none stroke-current", className),
+                      size,
+                      "aria-hidden": true as const,
+                    }
+
+                    switch (orientation) {
+                      case "left":
+                        return <ChevronLeft {...props} />
+                      case "right":
+                        return <ChevronRight {...props} />
+                      case "up":
+                        return <ChevronUp {...props} />
+                      case "down":
+                        return <ChevronDown {...props} />
+                      default:
+                        return <ChevronRight {...props} />
+                    }
+                  },
+                }}
                 classNames={{
-                  months: "flex w-full",
-                  month: "w-full",
-                  caption: "flex items-center justify-between mb-4",
-                  caption_label: "text-sm font-semibold text-[#0F1F1A]",
-                  nav: "flex items-center gap-2",
+                  root: "rdp-root w-full",
+                  months: "rdp-months w-full max-w-none justify-center",
+                  month: "rdp-month w-full",
+                  month_caption: "rdp-month_caption relative flex items-center justify-center pb-6 pt-2",
+                  caption_label:
+                    "rdp-caption_label pointer-events-none text-[15px] font-semibold text-[#0F1F1A]",
+                  nav: "rdp-nav !left-0 !right-0 !top-2 !inset-auto z-10 flex w-full items-center justify-between px-1",
                   button_previous:
-                    "inline-flex h-9 w-9 items-center justify-center rounded-xl border border-[rgba(21,37,49,0.12)] bg-white hover:bg-[rgba(21,37,49,0.04)]",
+                    "rdp-button_previous inline-flex h-12 w-12 items-center justify-center rounded-full border border-[rgba(21,37,49,0.14)] bg-white text-[#0F1F1A] shadow-sm hover:bg-[rgba(21,37,49,0.03)] active:text-[#3E8A76]",
                   button_next:
-                    "inline-flex h-9 w-9 items-center justify-center rounded-xl border border-[rgba(21,37,49,0.12)] bg-white hover:bg-[rgba(21,37,49,0.04)]",
-                  table: "w-full border-collapse",
-                  head_row: "grid grid-cols-7",
-                  head_cell:
-                    "px-1 py-1.5 text-center text-[11px] font-semibold text-[rgba(75,90,83,0.75)]",
-                  row: "grid grid-cols-7 mt-1",
-                  cell: "p-0 text-center",
-                  day: cn(
-                    "h-10 w-10 rounded-xl text-sm font-medium transition duration-150 mx-auto",
-                    "text-[#0F1F1A] hover:bg-[rgba(62,138,118,0.10)]"
+                    "rdp-button_next inline-flex h-12 w-12 items-center justify-center rounded-full border border-[rgba(21,37,49,0.14)] bg-white text-[#0F1F1A] shadow-sm hover:bg-[rgba(21,37,49,0.03)] active:text-[#3E8A76]",
+                  month_grid: "rdp-month_grid w-full",
+                  weekdays: "rdp-weekdays",
+                  weekday:
+                    "rdp-weekday py-2 text-center text-xs font-medium text-[rgba(75,90,83,0.65)]",
+                  weeks: "rdp-weeks",
+                  week: "rdp-week",
+                  day: "rdp-day py-1 text-center",
+                  day_button: cn(
+                    "rdp-day_button mx-auto flex h-11 w-11 items-center justify-center rounded-full text-sm font-medium",
+                    "text-[rgba(15,31,26,0.95)] hover:bg-[rgba(15,31,26,0.06)]",
+                    "transition duration-150",
+                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(15,31,26,0.18)]"
                   ),
-                  day_selected:
-                    "bg-[rgba(62,138,118,0.18)] ring-2 ring-[rgba(62,138,118,0.28)] hover:bg-[rgba(62,138,118,0.18)]",
-                  day_today: "font-semibold",
-                  day_outside: "text-[rgba(75,90,83,0.28)] opacity-100",
-                  day_disabled: "text-[rgba(75,90,83,0.28)]",
+                  selected:
+                    "rdp-selected [&>.rdp-day_button]:bg-[#0F1F1A] [&>.rdp-day_button]:text-white [&>.rdp-day_button]:hover:bg-[#0F1F1A]",
+                  today: "rdp-today [&>.rdp-day_button]:font-semibold",
+                  outside: "rdp-outside [&>.rdp-day_button]:text-[rgba(75,90,83,0.22)]",
+                  disabled:
+                    "rdp-disabled [&>.rdp-day_button]:text-[rgba(75,90,83,0.22)] [&>.rdp-day_button]:hover:bg-transparent",
                 }}
               />
             </div>
