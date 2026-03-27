@@ -16,16 +16,16 @@ export const ADMIN_NAV: AdminNavItem[] = [
     description: "Access, roles, onboarding",
   },
   {
-    label: "Ticket Management",
-    to: "/ticket-management",
-    Icon: TicketIcon,
-    description: "Triage, assign, resolve",
+    label: "Billing Uploads",
+    to: "/billing-uploads",
+    Icon: BillingUploadsIcon,
+    description: "Upload, validate, reconcile",
   },
   {
-    label: "Meeting",
-    to: "/meeting",
-    Icon: MeetingIcon,
-    description: "Schedule, prep, follow-up",
+    label: "Issue Management",
+    to: "/issue-management",
+    Icon: TicketIcon,
+    description: "Triage, assign, resolve",
   },
   {
     label: "Announcement",
@@ -34,10 +34,9 @@ export const ADMIN_NAV: AdminNavItem[] = [
     description: "Draft, publish, audit",
   },
   {
-    label: "Billing Uploads",
-    to: "/billing-uploads",
-    Icon: BillingUploadsIcon,
-    description: "Upload, validate, reconcile",
+    label: "Scheduled Meeting",
+    to: "/scheduled-meeting",
+    Icon: MeetingIcon,
+    description: "Schedule, prep, follow-up",
   },
 ]
-

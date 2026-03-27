@@ -7,11 +7,11 @@ const badgeVariants = cva("inline-flex items-center rounded-full border px-2 py-
   variants: {
     variant: {
       default: "border-transparent bg-primary text-primary-foreground",
-      outline: "border-[color:rgba(255,255,255,0.14)] bg-[color:rgba(255,255,255,0.04)] text-foreground",
+      outline: "border-[color:rgba(15,23,42,0.12)] bg-white text-foreground",
       subtle:
-        "border-[color:rgba(118,177,157,0.18)] bg-[color:rgba(62,138,118,0.12)] text-[color:rgba(172,238,214,0.95)]",
+        "border-[color:rgba(47,125,106,0.22)] bg-[color:rgba(47,125,106,0.10)] text-[color:rgba(38,107,90,0.98)]",
       warning:
-        "border-[color:rgba(251,191,36,0.22)] bg-[color:rgba(251,191,36,0.10)] text-[color:rgba(253,230,138,0.98)]",
+        "border-[color:rgba(217,119,6,0.26)] bg-[color:rgba(217,119,6,0.10)] text-[color:rgba(146,64,14,0.98)]",
     },
   },
   defaultVariants: {
@@ -24,4 +24,3 @@ export interface BadgeProps extends React.HTMLAttributes<HTMLDivElement>, Varian
 export function Badge({ className, variant, ...props }: BadgeProps) {
   return <div className={cn(badgeVariants({ variant }), className)} {...props} />
 }
-

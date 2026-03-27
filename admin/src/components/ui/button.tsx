@@ -10,12 +10,14 @@ const buttonVariants = cva(
     variants: {
       variant: {
         default:
-          "bg-primary text-primary-foreground shadow-sm shadow-[rgba(0,0,0,0.25)] hover:bg-[color:rgba(62,138,118,0.9)]",
+          "bg-primary text-primary-foreground shadow-sm shadow-[rgba(15,23,42,0.18)] hover:bg-[color:rgba(38,107,90,0.96)]",
         secondary:
-          "bg-[color:rgba(255,255,255,0.06)] text-foreground ring-1 ring-[color:rgba(255,255,255,0.10)] hover:bg-[color:rgba(255,255,255,0.09)]",
+          "bg-white text-foreground ring-1 ring-[color:rgba(15,23,42,0.10)] hover:bg-[color:rgba(15,23,42,0.03)]",
         outline:
-          "bg-transparent text-foreground ring-1 ring-[color:rgba(255,255,255,0.12)] hover:bg-[color:rgba(255,255,255,0.05)]",
-        ghost: "bg-transparent text-foreground hover:bg-[color:rgba(255,255,255,0.06)]",
+          "bg-transparent text-foreground ring-1 ring-[color:rgba(15,23,42,0.12)] hover:bg-[color:rgba(15,23,42,0.03)]",
+        ghost: "bg-transparent text-foreground hover:bg-[color:rgba(15,23,42,0.04)]",
+        topbar:
+          "bg-[color:rgba(255,255,255,0.07)] text-white ring-1 ring-[color:rgba(255,255,255,0.14)] hover:bg-[color:rgba(255,255,255,0.11)]",
       },
       size: {
         default: "h-10 px-4",
@@ -45,4 +47,3 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(({ className, va
 Button.displayName = "Button"
 
 export { Button, buttonVariants }
-

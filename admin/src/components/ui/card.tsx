@@ -14,7 +14,7 @@ export function CardTitle({ className, ...props }: React.ComponentProps<"div">) 
 }
 
 export function CardDescription({ className, ...props }: React.ComponentProps<"div">) {
-  return <div className={cn("text-sm text-text-on-dark-muted", className)} {...props} />
+  return <div className={cn("text-sm text-muted-foreground", className)} {...props} />
 }
 
 export function CardContent({ className, ...props }: React.ComponentProps<"div">) {
@@ -24,4 +24,3 @@ export function CardContent({ className, ...props }: React.ComponentProps<"div">
 export function CardFooter({ className, ...props }: React.ComponentProps<"div">) {
   return <div className={cn("flex items-center justify-between gap-3 p-5 pt-0", className)} {...props} />
 }
-
