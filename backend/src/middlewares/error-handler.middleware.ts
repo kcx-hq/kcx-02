@@ -1,12 +1,13 @@
 import type { ErrorRequestHandler } from "express";
 import { ERROR_CODE } from "../constants/error-codes.js";
 import { RESPONSE_MESSAGE } from "../constants/response-messages.js";
+import env from "../config/env.js";
 import { AppError } from "../errors/app-error.js";
 import { InternalServerError } from "../errors/http-errors.js";
 import { sendError } from "../utils/api-response.js";
 import { logger } from "../utils/logger.js";
 
-const isProduction = process.env.NODE_ENV === "production";
+const isProduction = env.nodeEnv === "production";
 
 export const errorHandlerMiddleware: ErrorRequestHandler = (
   error,

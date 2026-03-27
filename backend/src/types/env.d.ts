@@ -9,5 +9,11 @@ declare namespace NodeJS {
     FRONTEND_BASE_URL?: string;
     RESET_TOKEN_TTL_MINUTES?: string;
     SESSION_TTL_HOURS?: string;
+    NODE_ENV?: "development" | "test" | "production";
+    CAL_API_KEY?: string;
+    CAL_API_BASE_URL?: string;
+    CAL_EVENT_TYPE_ID?: string;
+    CAL_TIMEZONE?: string;
+    CAL_RESERVATION_TTL_MINUTES?: string;
   }
 }
