@@ -20,6 +20,7 @@ const STATIC_ROUTES = [
   "/client-home",
   "/schedule-demo",
   "/login",
+  "/forgot-password",
   "/reset-password",
   "/about/our-story",
   "/about/leadership",

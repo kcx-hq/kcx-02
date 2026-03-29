@@ -15,6 +15,7 @@ import {
   BlogPage,
   CareersPage,
   DocumentationPage,
+  ForgotPasswordPage,
   LeadershipPage,
   LoginPage,
   OurStoryPage,
@@ -42,7 +43,7 @@ const CLIENT_WORKSPACE_ROUTES = new Set([
   "/clienthome",
   "/client-home",
 ])
-const HEADERLESS_ROUTES = new Set(["/schedule-demo", "/login", "/reset-password", ...CLIENT_WORKSPACE_ROUTES])
+const HEADERLESS_ROUTES = new Set(["/schedule-demo", "/login", "/forgot-password", "/reset-password", ...CLIENT_WORKSPACE_ROUTES])
 
 export function App() {
   const route = useCurrentRoute()
@@ -79,6 +80,7 @@ export function App() {
       {route === "/" ? <HomePage /> : null}
       {route === "/schedule-demo" ? <ScheduleDemoPage /> : null}
       {route === "/login" ? <LoginPage /> : null}
+      {route === "/forgot-password" ? <ForgotPasswordPage /> : null}
       {route === "/reset-password" ? <ResetPasswordPage /> : null}
       {route === "/about/our-story" ? <OurStoryPage /> : null}
       {route === "/about/leadership" ? <LeadershipPage /> : null}

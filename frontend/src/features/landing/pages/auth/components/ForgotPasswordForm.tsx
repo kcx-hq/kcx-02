@@ -1,14 +1,12 @@
 import { useId, useMemo, useState, type FocusEvent, type FormEvent, type HTMLAttributes } from "react"
 
 import { Button } from "@/components/ui/button"
+import { ApiError, apiPost } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import { validateForm } from "@/lib/validateForm"
-import { apiPost, ApiError } from "@/lib/api"
-import { navigateTo } from "@/lib/navigation"
-import { setAuthSession } from "@/lib/auth"
-import { loginSchema, type LoginValues } from "@/schemas/auth.schema"
+import { forgotPasswordSchema, type ForgotPasswordValues } from "@/schemas/auth.schema"
 
-type LoginTouched = Partial<Record<keyof LoginValues, boolean>>
+type ForgotTouched = Partial<Record<keyof ForgotPasswordValues, boolean>>
 
 function FieldLabel({ htmlFor, children }: { htmlFor: string; children: string }) {
   return (
@@ -76,29 +74,30 @@ function TextField({
   )
 }
 
-export function LoginForm() {
+export function ForgotPasswordForm() {
   const formId = useId()
   const [submitting, setSubmitting] = useState(false)
+  const [submitted, setSubmitted] = useState(false)
   const [apiError, setApiError] = useState<string | null>(null)
-  const [form, setForm] = useState<LoginValues>({ email: "", password: "" })
-  const [touched, setTouched] = useState<LoginTouched>({})
-  const [errors, setErrors] = useState<Partial<Record<keyof LoginValues, string>>>({})
+  const [form, setForm] = useState<ForgotPasswordValues>({ email: "" })
+  const [touched, setTouched] = useState<ForgotTouched>({})
+  const [errors, setErrors] = useState<Partial<Record<keyof ForgotPasswordValues, string>>>({})
 
-  const parsed = useMemo(() => loginSchema.safeParse(form), [form])
+  const parsed = useMemo(() => forgotPasswordSchema.safeParse(form), [form])
   const isValid = parsed.success
 
-  function validateAndSet(nextValues: LoginValues) {
-    const result = validateForm(loginSchema, nextValues)
+  function validateAndSet(nextValues: ForgotPasswordValues) {
+    const result = validateForm(forgotPasswordSchema, nextValues)
     if (result.success) {
       setErrors({})
       return true
     }
-    setErrors(result.errors as Partial<Record<keyof LoginValues, string>>)
+    setErrors(result.errors as Partial<Record<keyof ForgotPasswordValues, string>>)
     return false
   }
 
-  function validateField(field: keyof LoginValues, nextValues: LoginValues) {
-    const result = validateForm(loginSchema, nextValues)
+  function validateField(field: keyof ForgotPasswordValues, nextValues: ForgotPasswordValues) {
+    const result = validateForm(forgotPasswordSchema, nextValues)
     if (result.success) {
       setErrors((prev) => {
         if (!prev[field]) return prev
@@ -114,7 +113,8 @@ export function LoginForm() {
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    setTouched({ email: true, password: true })
+    setTouched({ email: true })
+
     const ok = validateAndSet(form)
     if (!ok) return
 
@@ -122,33 +122,14 @@ export function LoginForm() {
     setSubmitting(true)
     void (async () => {
       try {
-        type LoginResponse = {
-          token: string
-          expiresAt: string
-          user: {
-            id: number
-            email: string
-            firstName: string
-            lastName: string
-            companyName: string | null
-            role: string
-            status: string
-            source: string
-          }
-        }
-
-        const data = await apiPost<LoginResponse>("/auth/login", {
-          email: form.email,
-          password: form.password,
-        })
-        setAuthSession({ token: data.token, user: data.user })
-        navigateTo("/client/overview")
+        await apiPost("/auth/forgot-password", { email: form.email })
+        setSubmitted(true)
       } catch (error) {
         if (error instanceof ApiError) {
-          setApiError(error.message || "Login failed")
+          setApiError(error.message || "Request failed")
           return
         }
-        setApiError("Login failed")
+        setApiError("Request failed")
       } finally {
         setSubmitting(false)
       }
@@ -157,15 +138,15 @@ export function LoginForm() {
 
   return (
     <div>
-      <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#3E8A76]">Login</p>
+      <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#3E8A76]">Reset password</p>
       <h2 className="mt-3 text-balance text-[1.35rem] font-semibold leading-[1.1] tracking-[-0.03em] text-[#0F1F1A]">
-        Sign in to KCX
+        Get a reset link
       </h2>
       <p className="mt-3 text-sm leading-7 text-[rgba(75,90,83,0.9)]">
-        Enter your email and password to continue.
+        Enter your email and we’ll send you a password reset link.
       </p>
 
-      <form className="mt-6 space-y-4" onSubmit={onSubmit} aria-describedby={`${formId}__help`}>
+      <form className="mt-6 space-y-4" onSubmit={onSubmit} aria-describedby={`${formId}__help`} noValidate>
         <TextField
           id={`${formId}-email`}
           label="Email"
@@ -193,56 +174,21 @@ export function LoginForm() {
           </p>
         ) : null}
 
-        <TextField
-          id={`${formId}-password`}
-          label="Password"
-          value={form.password}
-          onChange={(next) => {
-            const nextValues = { ...form, password: next }
-            setForm(nextValues)
-            if (touched.password) validateField("password", nextValues)
-          }}
-          onBlur={() => {
-            setTouched((prev) => ({ ...prev, password: true }))
-            validateField("password", form)
-          }}
-          type="password"
-          autoComplete="current-password"
-          required
-          placeholder="••••••••"
-          invalid={touched.password && Boolean(errors.password)}
-          errorId={errors.password ? `${formId}-password__error` : undefined}
-        />
-        {touched.password && errors.password ? (
-          <p id={`${formId}-password__error`} className="text-xs text-red-600">
-            {errors.password}
-          </p>
-        ) : null}
-
-        <div className="flex items-center justify-end">
-          <a
-            href="/forgot-password"
-            className="text-xs font-semibold text-[#3E8A76] underline-offset-4 hover:text-[#357563] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(62,138,118,0.22)] focus-visible:ring-offset-2 focus-visible:ring-offset-white"
-          >
-            Reset password
-          </a>
-        </div>
-
         <Button
           type="submit"
-          disabled={!isValid || submitting}
+          disabled={!isValid || submitting || submitted}
           className={cn(
             "mt-2 h-11 w-full rounded-xl bg-[#3E8A76] text-sm font-semibold text-white transition duration-200 hover:bg-[#357563] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(62,138,118,0.28)] focus-visible:ring-offset-2 focus-visible:ring-offset-white",
-            !isValid || submitting ? "cursor-not-allowed opacity-55 hover:bg-[#3E8A76]" : null
+            !isValid || submitting || submitted ? "cursor-not-allowed opacity-55 hover:bg-[#3E8A76]" : null
           )}
         >
-          {submitting ? "Signing In..." : "Sign In"}
+          {submitted ? "Email Sent" : submitting ? "Sending..." : "Send Reset Link"}
         </Button>
 
         <p id={`${formId}__help`} className="text-[11px] leading-5 text-[rgba(75,90,83,0.7)]">
-          Need access?{" "}
-          <a href="/schedule-demo" className="font-semibold text-[#3E8A76] hover:underline underline-offset-4">
-            Request a demo
+          Remembered your password?{" "}
+          <a href="/login" className="font-semibold text-[#3E8A76] hover:underline underline-offset-4">
+            Sign in
           </a>
           .
         </p>
@@ -253,6 +199,14 @@ export function LoginForm() {
           </div>
         ) : null}
 
+        {submitted ? (
+          <div
+            role="status"
+            className="rounded-xl border border-[rgba(62,138,118,0.24)] bg-[rgba(62,138,118,0.08)] px-4 py-3 text-sm text-[#0F1F1A]"
+          >
+            If the email exists, a reset link has been sent.
+          </div>
+        ) : null}
       </form>
     </div>
   )

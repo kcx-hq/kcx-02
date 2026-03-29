@@ -93,14 +93,15 @@ export async function requestPasswordReset(email: string): Promise<{ emailSent: 
         "— KCX",
       ].join("\n"),
     });
-    return { emailSent: true };
   } catch (error) {
     logger.error("Failed to send reset email", {
       email,
       error: error instanceof Error ? error.message : String(error),
     });
-    return { emailSent: false };
   }
+
+  // Always return success to avoid leaking whether a user exists or whether email delivery is configured.
+  return { emailSent: true };
 }
 
 export async function resetPasswordWithToken(
