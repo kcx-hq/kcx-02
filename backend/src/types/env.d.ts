@@ -12,6 +12,9 @@ declare namespace NodeJS {
     NODE_ENV?: "development" | "test" | "production";
     CAL_API_KEY?: string;
     CAL_API_BASE_URL?: string;
+    CAL_API_VERSION?: string;
+    CAL_SLOTS_API_VERSION?: string;
+    CAL_BOOKINGS_API_VERSION?: string;
     CAL_EVENT_TYPE_ID?: string;
     CAL_TIMEZONE?: string;
     CAL_RESERVATION_TTL_MINUTES?: string;

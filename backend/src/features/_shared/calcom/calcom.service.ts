@@ -1,12 +1,13 @@
 import env from "../../../config/env.js";
 import { BadRequestError, ConflictError, InternalServerError } from "../../../errors/http-errors.js";
+import { BUSINESS_TIMEZONE, resolveTimeZone } from "../../../utils/timezone.js";
 import { logger } from "../../../utils/logger.js";
 
 type JsonRecord = Record<string, unknown>;
 
 type CalcomSlot = {
   slotStart: Date;
-  slotEnd: Date;
+  slotEnd: Date | undefined;
 };
 
 type ReserveSlotInput = {
@@ -14,6 +15,7 @@ type ReserveSlotInput = {
   email: string;
   slotStart: Date;
   slotEnd: Date;
+  timeZone?: string;
 };
 
 type ReserveSlotResult = {
@@ -27,14 +29,21 @@ type CreateBookingInput = {
   slotStart: Date;
   slotEnd: Date;
   reservationId: string;
+  timeZone?: string;
 };
 
 type CreateBookingResult = {
   bookingId: string;
+  meetingType: string | null;
+  meetingUrl: string | null;
 };
 
 const CALCOM_BASE_URL = env.calApiBaseUrl ?? "https://api.cal.com/v2";
+const CALCOM_API_VERSION = env.calApiVersion;
+const CALCOM_SLOTS_API_VERSION = env.calSlotsApiVersion;
+const CALCOM_BOOKINGS_API_VERSION = env.calBookingsApiVersion;
 const DEFAULT_SLOT_WINDOW_DAYS = 14;
+const DEFAULT_SLOT_DURATION_MINUTES = 30;
 
 const isRecord = (value: unknown): value is JsonRecord =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -88,12 +97,14 @@ async function callCalcomApi<TBody = unknown>({
   query,
   body,
   conflictMessage,
+  apiVersion,
 }: {
   method: "GET" | "POST";
   path: string;
   query?: Record<string, string>;
   body?: TBody;
   conflictMessage?: string;
+  apiVersion?: string;
 }): Promise<unknown> {
   const apiKey = getRequiredCalApiKey();
   const url = buildCalcomUrl(path);
@@ -110,6 +121,7 @@ async function callCalcomApi<TBody = unknown>({
       method,
       headers: {
         Authorization: `Bearer ${apiKey}`,
+        "cal-api-version": apiVersion ?? CALCOM_API_VERSION,
         ...(body ? { "Content-Type": "application/json" } : {}),
       },
       ...(body ? { body: JSON.stringify(body) } : {}),
@@ -146,7 +158,11 @@ async function callCalcomApi<TBody = unknown>({
     }
 
     if (response.status >= 400 && response.status < 500) {
-      throw new BadRequestError("Invalid scheduling request");
+      throw new BadRequestError(
+        "Invalid scheduling request",
+        parsedBody ??
+          (rawBody.length > 0 ? { providerResponse: rawBody.slice(0, 500) } : undefined),
+      );
     }
 
     throw new InternalServerError("Scheduling provider error");
@@ -164,9 +180,10 @@ const parseSlotsFromArray = (items: unknown[]): CalcomSlot[] =>
         readDate(readNestedRecord(item, ["time", "slot"]) ?? {}, ["start", "startTime"]);
       const slotEnd =
         readDate(item, ["slotEnd", "end", "endTime"]) ??
-        readDate(readNestedRecord(item, ["time", "slot"]) ?? {}, ["end", "endTime"]);
+        readDate(readNestedRecord(item, ["time", "slot"]) ?? {}, ["end", "endTime"]) ??
+        undefined;
 
-      if (!slotStart || !slotEnd) return null;
+      if (!slotStart) return null;
       return { slotStart, slotEnd };
     })
     .filter((slot): slot is CalcomSlot => slot !== null);
@@ -190,6 +207,7 @@ const parseSlots = (payload: unknown): CalcomSlot[] => {
   for (const value of Object.values(apiBody)) {
     if (Array.isArray(value)) flattened.push(...value);
   }
+
   return parseSlotsFromArray(flattened);
 };
 
@@ -200,12 +218,12 @@ const parseReservationResult = (payload: unknown): ReserveSlotResult => {
   }
 
   const reservationId =
-    readString(apiBody, ["reservationId", "id", "uid"]) ??
-    readString(readNestedRecord(apiBody, ["reservation"]) ?? {}, ["id", "uid"]);
+    readString(apiBody, ["reservationId", "reservationUid", "id", "uid"]) ??
+    readString(readNestedRecord(apiBody, ["reservation"]) ?? {}, ["id", "uid", "reservationUid"]);
 
   const reservationExpiresAt =
-    readDate(apiBody, ["reservationExpiresAt", "expiresAt"]) ??
-    readDate(readNestedRecord(apiBody, ["reservation"]) ?? {}, ["expiresAt"]);
+    readDate(apiBody, ["reservationExpiresAt", "reservationUntil", "expiresAt"]) ??
+    readDate(readNestedRecord(apiBody, ["reservation"]) ?? {}, ["expiresAt", "reservationUntil"]);
 
   if (!reservationId) {
     throw new InternalServerError("Scheduling provider did not return reservation id");
@@ -232,44 +250,157 @@ const parseBookingResult = (payload: unknown): CreateBookingResult => {
     throw new InternalServerError("Scheduling provider did not return booking id");
   }
 
-  return { bookingId };
+  const { meetingType, meetingUrl } = extractMeetingInfo(apiBody);
+
+  return { bookingId, meetingType, meetingUrl };
+};
+
+const isValidUrl = (value: string): boolean => {
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === "https:" || parsed.protocol === "http:";
+  } catch {
+    return false;
+  }
+};
+
+const normalizeUrl = (value: unknown): string | null => {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!trimmed || !isValidUrl(trimmed)) return null;
+  return trimmed;
+};
+
+const normalizeLabel = (value: unknown): string | null => {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+};
+
+const inferMeetingTypeFromUrl = (meetingUrl: string): string | null => {
+  const normalized = meetingUrl.toLowerCase();
+  if (normalized.includes("meet.google.com")) return "Google Meet";
+  if (normalized.includes("zoom.us")) return "Zoom";
+  if (normalized.includes("teams.microsoft.com")) return "Microsoft Teams";
+  return null;
+};
+
+const extractMeetingInfoFromLocation = (
+  locationValue: unknown,
+): { meetingType: string | null; meetingUrl: string | null } => {
+  if (!locationValue) {
+    return { meetingType: null, meetingUrl: null };
+  }
+
+  if (typeof locationValue === "string") {
+    const asUrl = normalizeUrl(locationValue);
+    if (asUrl) {
+      return {
+        meetingType: inferMeetingTypeFromUrl(asUrl),
+        meetingUrl: asUrl,
+      };
+    }
+    return { meetingType: normalizeLabel(locationValue), meetingUrl: null };
+  }
+
+  if (!isRecord(locationValue)) {
+    return { meetingType: null, meetingUrl: null };
+  }
+
+  const nestedLocation = readNestedRecord(locationValue, ["location", "data", "value"]);
+  if (nestedLocation) {
+    const nested = extractMeetingInfoFromLocation(nestedLocation);
+    if (nested.meetingUrl || nested.meetingType) return nested;
+  }
+
+  const meetingUrl =
+    normalizeUrl(readString(locationValue, ["url", "meetingUrl", "meetingLink", "link", "href"])) ??
+    null;
+  const meetingType =
+    normalizeLabel(readString(locationValue, ["type", "label", "displayName", "name"])) ??
+    (meetingUrl ? inferMeetingTypeFromUrl(meetingUrl) : null);
+
+  return { meetingType, meetingUrl };
+};
+
+const extractMeetingInfo = (apiBody: JsonRecord): { meetingType: string | null; meetingUrl: string | null } => {
+  const bookingRecord = readNestedRecord(apiBody, ["booking"]) ?? apiBody;
+
+  const locationCandidate =
+    bookingRecord.location ?? apiBody.location ?? readNestedRecord(bookingRecord, ["location"]);
+  const fromLocation = extractMeetingInfoFromLocation(locationCandidate);
+  if (fromLocation.meetingUrl) {
+    return fromLocation;
+  }
+
+  const fallbackMeetingUrl =
+    normalizeUrl(
+      readString(bookingRecord, [
+        "meetingUrl",
+        "meetingLink",
+        "videoCallUrl",
+        "hangoutLink",
+        "joinUrl",
+      ]),
+    ) ??
+    normalizeUrl(
+      readString(apiBody, ["meetingUrl", "meetingLink", "videoCallUrl", "hangoutLink", "joinUrl"]),
+    );
+
+  const fallbackMeetingType =
+    fromLocation.meetingType ??
+    normalizeLabel(readString(bookingRecord, ["locationType", "locationLabel", "meetingType"])) ??
+    normalizeLabel(readString(apiBody, ["locationType", "locationLabel", "meetingType"])) ??
+    (fallbackMeetingUrl ? inferMeetingTypeFromUrl(fallbackMeetingUrl) : null);
+
+  return {
+    meetingType: fallbackMeetingType,
+    meetingUrl: fallbackMeetingUrl,
+  };
 };
 
 export async function getAvailableSlots(
   start?: Date,
   end?: Date,
+  timeZone?: string,
 ): Promise<Array<{ slotStart: string; slotEnd: string }>> {
   const from = start ?? new Date();
   const to = end ?? new Date(from.getTime() + DEFAULT_SLOT_WINDOW_DAYS * 24 * 60 * 60_000);
+  const effectiveTimeZone = resolveTimeZone(timeZone, BUSINESS_TIMEZONE);
 
   const payload = await callCalcomApi({
     method: "GET",
     path: "/slots",
+    apiVersion: CALCOM_SLOTS_API_VERSION,
     query: {
       start: from.toISOString(),
       end: to.toISOString(),
-      timeZone: env.calTimezone,
-      ...(env.calEventTypeId ? { eventTypeId: env.calEventTypeId } : {}),
+      timeZone: effectiveTimeZone,
+      ...(env.calEventTypeId ? { eventTypeId: String(env.calEventTypeId) } : {}),
     },
   });
 
   return parseSlots(payload).map((slot) => ({
     slotStart: slot.slotStart.toISOString(),
-    slotEnd: slot.slotEnd.toISOString(),
+    slotEnd: (
+      slot.slotEnd ?? new Date(slot.slotStart.getTime() + DEFAULT_SLOT_DURATION_MINUTES * 60_000)
+    ).toISOString(),
   }));
 }
 
 export async function reserveSlot(input: ReserveSlotInput): Promise<ReserveSlotResult> {
+  const effectiveTimeZone = resolveTimeZone(input.timeZone, BUSINESS_TIMEZONE);
   const payload = await callCalcomApi({
     method: "POST",
-    path: "/slots/reserve",
+    path: "/slots/reservations",
+    apiVersion: CALCOM_SLOTS_API_VERSION,
     conflictMessage: "Selected slot is unavailable",
     body: {
       name: input.name,
       email: input.email,
       slotStart: input.slotStart.toISOString(),
       slotEnd: input.slotEnd.toISOString(),
-      timeZone: env.calTimezone,
+      timeZone: effectiveTimeZone,
       ...(env.calEventTypeId ? { eventTypeId: env.calEventTypeId } : {}),
     },
   });
@@ -278,16 +409,23 @@ export async function reserveSlot(input: ReserveSlotInput): Promise<ReserveSlotR
 }
 
 export async function createBooking(input: CreateBookingInput): Promise<CreateBookingResult> {
+  const effectiveTimeZone = resolveTimeZone(input.timeZone, BUSINESS_TIMEZONE);
   const payload = await callCalcomApi({
     method: "POST",
     path: "/bookings",
+    apiVersion: CALCOM_BOOKINGS_API_VERSION,
     body: {
-      name: input.name,
-      email: input.email,
-      reservationId: input.reservationId,
-      slotStart: input.slotStart.toISOString(),
-      slotEnd: input.slotEnd.toISOString(),
-      timeZone: env.calTimezone,
+      start: input.slotStart.toISOString(),
+      attendee: {
+        name: input.name,
+        email: input.email,
+        timeZone: effectiveTimeZone,
+        language: "en",
+      },
+      metadata: {
+        reservationId: input.reservationId,
+        requestedSlotEnd: input.slotEnd.toISOString(),
+      },
       ...(env.calEventTypeId ? { eventTypeId: env.calEventTypeId } : {}),
     },
   });

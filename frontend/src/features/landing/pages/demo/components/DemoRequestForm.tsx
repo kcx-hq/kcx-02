@@ -10,8 +10,9 @@
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { validateForm } from "@/lib/validateForm"
-import { apiPost, ApiError } from "@/lib/api"
+import { ApiError } from "@/lib/api"
 import { scheduleDemoBaseSchema, scheduleDemoSchema } from "@/schemas/demo.schema"
+import { submitScheduleDemoBooking } from "@/features/landing/pages/demo/api/schedule-demo.api"
 import { SlotPickerDialog } from "@/features/landing/pages/demo/components/SlotPickerDialog"
 
 type DemoFormState = {
@@ -291,48 +292,50 @@ export function DemoRequestForm({
     setSlotDialogOpen(true)
   }
 
-  function submitWithSlot(slot: { date: string; time: string }) {
-    setSlotDialogOpen(false)
+  async function submitWithSlot(slot: {
+    date: string
+    time: string
+    timeZone: string
+    slotStart?: string
+    slotEnd?: string
+  }) {
     const nextValues: DemoFormState = { ...form, slotDate: slot.date, slotTime: slot.time }
     setForm(nextValues)
 
     const ok = validateAndSet(nextValues)
-    if (!ok) return
+    if (!ok) {
+      throw new Error("Form validation failed")
+    }
 
     setApiError(null)
     setSubmitting(true)
-    void (async () => {
-      try {
-        type ScheduleDemoResponse = {
-          demoRequestId: number
-          userId: number
-          isNewUser: boolean
-          emailSent: boolean
-        }
+    try {
+      const heardAboutUs = form.discovery === "other" ? form.discoveryOther.trim() : form.discovery
 
-        const heardAboutUs = form.discovery === "other" ? form.discoveryOther.trim() : form.discovery
+      await submitScheduleDemoBooking({
+        firstName: nextValues.firstName,
+        lastName: nextValues.lastName,
+        companyEmail: nextValues.companyEmail,
+        companyName: nextValues.companyName,
+        heardAboutUs,
+        slotDate: nextValues.slotDate,
+        slotTime: nextValues.slotTime,
+        slotStart: slot.slotStart,
+        slotEnd: slot.slotEnd,
+        timeZone: slot.timeZone,
+      })
 
-        await apiPost<ScheduleDemoResponse>("/schedule-demo", {
-          firstName: nextValues.firstName,
-          lastName: nextValues.lastName,
-          companyEmail: nextValues.companyEmail,
-          companyName: nextValues.companyName,
-          heardAboutUs,
-          slotDate: nextValues.slotDate,
-          slotTime: nextValues.slotTime,
-        })
-
-        setSubmitted(true)
-      } catch (error) {
-        if (error instanceof ApiError) {
-          setApiError(error.message || "Submission failed")
-          return
-        }
+      setSubmitted(true)
+    } catch (error) {
+      if (error instanceof ApiError) {
+        setApiError(error.message || "Submission failed")
+      } else {
         setApiError("Submission failed")
-      } finally {
-        setSubmitting(false)
       }
-    })()
+      throw error
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   const isLight = tone === "light"
@@ -386,7 +389,7 @@ export function DemoRequestForm({
           >
             <MailIcon
               className={cn(
-                "h-7 w-7",
+                "h-10 w-10",
                 isLight ? "text-[#2f7f68]" : "text-[rgba(170,245,221,0.92)]"
               )}
             />
@@ -605,10 +608,7 @@ export function DemoRequestForm({
         open={slotDialogOpen}
         onOpenChange={setSlotDialogOpen}
         value={form.slotDate && form.slotTime ? { date: form.slotDate, time: form.slotTime } : null}
-        onSelect={(next) => {
-          if (!next) return
-          submitWithSlot(next)
-        }}
+        onConfirm={submitWithSlot}
       />
     </div>
   )

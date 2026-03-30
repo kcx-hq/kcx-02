@@ -24,8 +24,9 @@ type GetAvailableSlotsResult = {
 export async function getAvailableSlots(
   start?: Date,
   end?: Date,
+  timeZone?: string,
 ): Promise<GetAvailableSlotsResult[]> {
-  return fetchAvailableSlotsFromCalcom(start, end);
+  return fetchAvailableSlotsFromCalcom(start, end, timeZone);
 }
 
 export async function submitScheduleDemo(
@@ -36,6 +37,7 @@ export async function submitScheduleDemo(
     email: input.companyEmail,
     slotStart: input.slotStart,
     slotEnd: input.slotEnd,
+    timeZone: input.timeZone,
   });
 
   const { demoRequest, user, slotReservation } = await sequelize.transaction(async (transaction) => {
@@ -112,6 +114,7 @@ export async function submitScheduleDemo(
     email: user.email,
     slotStart: input.slotStart,
     slotEnd: input.slotEnd,
+    timeZone: input.timeZone,
   });
 
   return {
