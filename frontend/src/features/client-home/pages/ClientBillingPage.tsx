@@ -374,13 +374,15 @@ export function ClientBillingPage() {
     setAutoSubmitting(true)
     void (async () => {
       try {
-        await apiPost<CloudConnection>("/cloud-connections", {
+        const created = await apiPost<CloudConnection>("/cloud-connections", {
           connection_name: autoConnectionName.trim(),
           provider: "aws",
           status: "draft",
           account_type: autoAccountType,
         })
-        navigateTo("/integrations/aws")
+
+        const setup = await apiGet<{ url: string }>(`/cloud-connections/${created.id}/aws-cloudformation-url`)
+        window.location.assign(setup.url)
       } catch (error) {
         if (error instanceof ApiError) {
           setAutoError(error.message || "Failed to create connection")

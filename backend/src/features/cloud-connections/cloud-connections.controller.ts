@@ -6,6 +6,10 @@ import { ConflictError, NotFoundError, UnauthorizedError } from "../../errors/ht
 import { CloudConnectionV2, CloudProvider } from "../../models/index.js";
 import { sendSuccess } from "../../utils/api-response.js";
 import { parseWithSchema } from "../_shared/validation/zod-validate.js";
+import {
+  buildAwsCloudFormationCreateStackUrl,
+  KCX_AWS_CLOUDFORMATION_TEMPLATE_URL,
+} from "./aws-cloudformation-url.js";
 import { createCloudConnectionSchema } from "./cloud-connections.schema.js";
 
 const requireUserId = (req: Request) => {
@@ -40,17 +44,40 @@ export async function handleCreateCloudConnection(req: Request, res: Response): 
   const providerCode = payload.provider.trim().toLowerCase();
   const providerName = PROVIDER_NAME_BY_CODE[providerCode] ?? providerCode.toUpperCase();
 
+  const existing = await CloudConnectionV2.findOne({
+    where: { tenantId, connectionName: payload.connection_name.trim() },
+    include: [{ model: CloudProvider }],
+  });
+  if (existing) {
+    const existingProviderCode =
+      (existing as unknown as { CloudProvider?: { code?: string } }).CloudProvider?.code?.toLowerCase() ?? null;
+
+    if (existingProviderCode && existingProviderCode !== providerCode) {
+      throw new ConflictError("Connection name already exists for a different provider");
+    }
+
+    sendSuccess({
+      res,
+      req,
+      statusCode: HTTP_STATUS.OK,
+      message: "Cloud connection already exists",
+      data: {
+        id: existing.id,
+        tenant_id: existing.tenantId,
+        provider_id: existing.providerId,
+        connection_name: existing.connectionName,
+        provider: existingProviderCode ?? providerCode,
+        status: existing.status,
+        account_type: existing.accountType,
+      },
+    });
+    return;
+  }
+
   const [provider] = await CloudProvider.findOrCreate({
     where: { code: providerCode },
     defaults: { code: providerCode, name: providerName, status: "active" },
   });
-
-  const existing = await CloudConnectionV2.findOne({
-    where: { tenantId, connectionName: payload.connection_name.trim() },
-  });
-  if (existing) {
-    throw new ConflictError("Cloud connection already exists with this name");
-  }
 
   const connectionId = crypto.randomUUID();
   const externalId = `kcx-${crypto.randomUUID()}`;
@@ -118,5 +145,40 @@ export async function handleGetCloudConnection(req: Request, res: Response): Pro
       status: connection.status,
       account_type: connection.accountType,
     },
+  });
+}
+
+export async function handleGetAwsCloudFormationSetupUrl(req: Request, res: Response): Promise<void> {
+  requireUserId(req);
+  const tenantId = requireTenantId(req);
+  const id = req.params.id;
+  if (typeof id !== "string" || id.trim().length === 0) throw new NotFoundError("Connection not found");
+
+  const connection = await CloudConnectionV2.findOne({ where: { id, tenantId } });
+  if (!connection) throw new NotFoundError("Connection not found");
+
+  const stackName = connection.stackName;
+  const externalId = connection.externalId;
+  const connectionName = connection.connectionName;
+  const region = connection.region;
+
+  if (!stackName || !externalId || !connectionName || !region) {
+    throw new NotFoundError("CloudFormation setup is not available for this connection");
+  }
+
+  const url = buildAwsCloudFormationCreateStackUrl({
+    templateUrl: KCX_AWS_CLOUDFORMATION_TEMPLATE_URL,
+    stackName,
+    externalId,
+    connectionName,
+    region,
+  });
+
+  sendSuccess({
+    res,
+    req,
+    statusCode: HTTP_STATUS.OK,
+    message: "AWS CloudFormation setup URL generated",
+    data: { url },
   });
 }

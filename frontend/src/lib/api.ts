@@ -74,8 +74,13 @@ export async function apiPost<TData>(path: string, body: unknown, init?: Request
 
 export async function apiGet<TData>(path: string, init?: RequestInit): Promise<TData> {
   const url = joinUrl(appEnv.apiBaseUrl, path)
+  const token = getAuthToken()
   const response = await fetch(url, {
     method: "GET",
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(init?.headers ?? {}),
+    },
     ...init,
   })
 
