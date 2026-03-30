@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react"
+import { useEffect, useMemo , useState } from "react"
 // STEP 1:
 // Client prepares billing data source (S3 bucket)
 // This feeds into cross-account access setup in Step 2
@@ -57,10 +57,10 @@ function isCloudConnectionsRoute(path: string) {
   return path.startsWith("/client/billing/connections")
 }
 
-const AWS_SETUP_ROUTE_REGEX = /^\/client\/billing\/connections\/aws\/setup\/(\d+)$/
+const AWS_SETUP_ROUTE_REGEX = /^\/client\/billing\/connections\/aws\/setup\/([0-9a-fA-F-]{36})$/
 
 type CloudConnection = {
-  id: number
+  id: string
   connection_name: string
   provider: string
   status: string
@@ -326,6 +326,7 @@ export function ClientBillingPage() {
   const activeRoute = route === "/client/billing" ? "/client/billing/connections" : route
 
   const [autoConnectionName, setAutoConnectionName] = useState("")
+  const [autoAccountType, setAutoAccountType] = useState<"payer" | "member">("payer")
   const [autoTouched, setAutoTouched] = useState(false)
   const [autoSubmitting, setAutoSubmitting] = useState(false)
   const [autoError, setAutoError] = useState<string | null>(null)
@@ -333,8 +334,7 @@ export function ClientBillingPage() {
   const setupConnectionId = useMemo(() => {
     const match = AWS_SETUP_ROUTE_REGEX.exec(activeRoute)
     if (!match) return null
-    const parsed = Number(match[1])
-    return Number.isFinite(parsed) ? parsed : null
+    return match[1]
   }, [activeRoute])
 
   const [setupConnection, setSetupConnection] = useState<CloudConnection | null>(null)
@@ -374,13 +374,13 @@ export function ClientBillingPage() {
     setAutoSubmitting(true)
     void (async () => {
       try {
-        const created = await apiPost<CloudConnection>("/cloud-connections", {
+        await apiPost<CloudConnection>("/cloud-connections", {
           connection_name: autoConnectionName.trim(),
           provider: "aws",
           status: "draft",
-          account_type: "payer",
+          account_type: autoAccountType,
         })
-        navigateTo(`/client/billing/connections/aws/setup/${created.id}`)
+        navigateTo("/integrations/aws")
       } catch (error) {
         if (error instanceof ApiError) {
           setAutoError(error.message || "Failed to create connection")
@@ -577,7 +577,7 @@ export function ClientBillingPage() {
                       <span className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-[color:var(--border-light)] bg-white text-text-secondary">
                         <Cloud className="h-4 w-4" />
                       </span>
-                      <h3 className="text-base font-semibold text-text-primary">Automatic Setup <span className="text-text-muted">(Payer Accounts)</span></h3>
+                      <h3 className="text-base font-semibold text-text-primary">Automatic Setup </h3>
                       <p className="text-sm text-text-secondary">Guided cloud-native onboarding with secure automated provisioning.</p>
                       <Button
                         variant="outline"
@@ -609,7 +609,7 @@ export function ClientBillingPage() {
                 <div className="space-y-2">
                   <p className="kcx-eyebrow text-brand-primary">AWS Automatic Setup</p>
                   <h2 className="text-2xl font-semibold tracking-tight text-text-primary">Start Automatic Setup</h2>
-                  <p className="text-sm text-text-secondary">Create an AWS payer connection to begin guided setup.</p>
+                  <p className="text-sm text-text-secondary">Create an AWS connection to begin guided setup.</p>
                 </div>
 
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -631,12 +631,42 @@ export function ClientBillingPage() {
                       onBlur={() => setAutoTouched(true)}
                       required
                     />
-                    <p className="text-xs text-text-muted">Example: prod-aws-account</p>
                     {autoTouched && !validateAutoConnectionName(autoConnectionName) ? (
                       <p className="text-xs text-rose-600">Connection Name is required.</p>
                     ) : null}
                     {autoError ? <p className="text-xs text-rose-600">{autoError}</p> : null}
                   </label>
+
+                  <fieldset className="space-y-2 md:col-span-2">
+                    <legend className="text-xs font-semibold uppercase tracking-[0.08em] text-text-muted">
+                      Account Type
+                      <span className="ml-2 align-middle text-[11px] font-semibold text-brand-primary">Required</span>
+                    </legend>
+                    <div className="space-y-2 rounded-md border border-[color:var(--border-light)] bg-white p-3">
+                      <label className="flex items-center gap-2 text-sm text-text-primary">
+                        <input
+                          type="radio"
+                          name="aws-account-type"
+                          value="payer"
+                          checked={autoAccountType === "payer"}
+                          onChange={() => setAutoAccountType("payer")}
+                          className="h-4 w-4 accent-[color:var(--brand-primary)]"
+                        />
+                        <span className="font-medium">Payer Account</span>
+                      </label>
+                      <label className="flex items-center gap-2 text-sm text-text-primary">
+                        <input
+                          type="radio"
+                          name="aws-account-type"
+                          value="member"
+                          checked={autoAccountType === "member"}
+                          onChange={() => setAutoAccountType("member")}
+                          className="h-4 w-4 accent-[color:var(--brand-primary)]"
+                        />
+                        <span className="font-medium">Member Account</span>
+                      </label>
+                    </div>
+                  </fieldset>
                 </div>
 
                 <div className="flex flex-wrap gap-3">

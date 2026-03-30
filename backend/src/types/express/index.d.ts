@@ -9,6 +9,7 @@ declare global {
           id: string | number;
           email: string;
           role: string;
+          tenantId?: string;
         };
       };
     }

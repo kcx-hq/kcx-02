@@ -55,6 +55,7 @@ export const requireAuth: RequestHandler = async (req, _res, next) => {
       id: user.id,
       email: user.email,
       role: user.role,
+      tenantId: user.tenantId,
     },
   };
 

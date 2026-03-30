@@ -45,7 +45,7 @@ const CLIENT_WORKSPACE_ROUTES = new Set([
   "/clienthome",
   "/client-home",
 ])
-const AWS_CONNECTION_SETUP_ROUTE_REGEX = /^\/client\/billing\/connections\/aws\/setup\/\d+$/
+const AWS_CONNECTION_SETUP_ROUTE_REGEX = /^\/client\/billing\/connections\/aws\/setup\/[0-9a-fA-F-]{36}$/
 
 function isClientWorkspaceRoute(route: string) {
   return CLIENT_WORKSPACE_ROUTES.has(route) || AWS_CONNECTION_SETUP_ROUTE_REGEX.test(route)
@@ -103,7 +103,7 @@ export function App() {
         </ClientLayout>
       ) : null}
       {route === "/client/billing" ||
-      route === "/client/billing/uploads" ||
+      // route === "/client/billing/uploads" ||
       route === "/client/billing/connections" ||
       route === "/client/billing/connections/add" ||
       route === "/client/billing/connections/aws" ||

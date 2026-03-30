@@ -1,0 +1,34 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: KCX AWS Connection Template
+
+Parameters:
+  ExternalId:
+    Type: String
+
+  ConnectionName:
+    Type: String
+
+Resources:
+
+  KCXReadOnlyRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub kcx-${ConnectionName}-role
+
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: "275017715736"
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                sts:ExternalId: !Ref ExternalId
+
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/ReadOnlyAccess
+
+Outputs:
+  RoleArn:
+    Value: !GetAtt KCXReadOnlyRole.Arn

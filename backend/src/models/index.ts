@@ -8,6 +8,8 @@ import createPasswordResetTokenModel from "./password-reset-token.js";
 import createSlotReservationModel from "./slot-reservation.js";
 import createAdminUserModel from "./admin-user.js";
 import createCloudConnectionModel from "./cloud-connection.js";
+import createCloudConnectionV2Model from "./cloud-connection-v2.js";
+import createCloudProviderModel from "./cloud-provider.js";
 import createTenantModel from "./tenant.js";
 import createUserModel from "./user.js";
 
@@ -35,6 +37,8 @@ const AdminUser = createAdminUserModel(sequelize);
 const AdminAuthSession = createAdminAuthSessionModel(sequelize);
 const SlotReservation = createSlotReservationModel(sequelize);
 const CloudConnection = createCloudConnectionModel(sequelize);
+const CloudProvider = createCloudProviderModel(sequelize);
+const CloudConnectionV2 = createCloudConnectionV2Model(sequelize);
 const Tenant = createTenantModel(sequelize);
 const User = createUserModel(sequelize);
 
@@ -51,6 +55,13 @@ AuthSession.belongsTo(User, { foreignKey: "userId" });
 
 User.hasMany(CloudConnection, { foreignKey: "userId" });
 CloudConnection.belongsTo(User, { foreignKey: "userId" });
+
+Tenant.hasMany(CloudConnectionV2, { foreignKey: "tenantId" });
+CloudConnectionV2.belongsTo(Tenant, { foreignKey: "tenantId" });
+CloudProvider.hasMany(CloudConnectionV2, { foreignKey: "providerId" });
+CloudConnectionV2.belongsTo(CloudProvider, { foreignKey: "providerId" });
+User.hasMany(CloudConnectionV2, { foreignKey: "createdBy" });
+CloudConnectionV2.belongsTo(User, { foreignKey: "createdBy" });
 
 AdminUser.hasMany(AdminAuthSession, { foreignKey: "adminUserId" });
 AdminAuthSession.belongsTo(AdminUser, { foreignKey: "adminUserId" });
@@ -69,6 +80,8 @@ export {
   AdminUser,
   AdminAuthSession,
   CloudConnection,
+  CloudProvider,
+  CloudConnectionV2,
   Tenant,
   User,
 };
