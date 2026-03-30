@@ -5,11 +5,11 @@ import kcxLogo from "@/assets/logos/kcx-logo.svg"
 import { clearAuthSession } from "@/lib/auth"
 import { handleAppLinkClick, navigateTo, useCurrentRoute } from "@/lib/navigation"
 import { cn } from "@/lib/utils"
-import { Bell, ChevronDown, LifeBuoy, LogOut, Sparkles, UserCircle2 } from "lucide-react"
+import { Bell, ChevronDown, LifeBuoy, LogOut, Megaphone, User, UserCircle2 } from "lucide-react"
 
 const NAV_ITEMS = [
   { label: "Overview", href: "/client/overview", matches: ["/client", "/client/overview", "/clienthome", "/client-home"] },
-  { label: "Billing", href: "/client/billing/uploads", matches: ["/client/billing", "/client/billing/uploads", "/client/billing/connections", "/client/billing/connections/aws", "/client/billing/connections/aws/manual"] },
+  { label: "Billing", href: "/client/billing/uploads", matches: ["/client/billing", "/client/billing/uploads", "/client/billing/connections", "/client/billing/connections/add", "/client/billing/connections/aws", "/client/billing/connections/aws/manual"] },
   { label: "Support", href: "/client/support/tickets", matches: ["/client/support", "/client/support/tickets", "/client/support/schedule-call", "/client/support/live-chat"] },
   { label: "Users", href: "/client/users", matches: ["/client/users"] },
 ] as const
@@ -25,7 +25,6 @@ function HeaderIconTooltip({ label }: { label: string }) {
 type ClientTopNavbarProps = {
   orgName: string
   userDisplayName: string
-  avatarLabel: string
   userEmail: string
   userRole: string
 }
@@ -42,7 +41,6 @@ function toRoleLabel(role: string) {
 export function ClientTopNavbar({
   orgName,
   userDisplayName,
-  avatarLabel,
   userEmail,
   userRole,
 }: ClientTopNavbarProps) {
@@ -135,12 +133,12 @@ export function ClientTopNavbar({
           <div className="group relative hidden xl:block">
             <Button
               variant="ghost"
-              aria-label="What's New"
+              aria-label="Announcements"
               className="h-9 rounded-md border border-[rgba(164,192,181,0.3)] px-2 text-[rgba(228,240,235,0.9)] hover:bg-[rgba(158,191,178,0.11)] hover:text-white"
             >
-              <Sparkles className="h-3.5 w-3.5" />
+              <Megaphone className="h-3.5 w-3.5" />
             </Button>
-            <HeaderIconTooltip label="What's New" />
+            <HeaderIconTooltip label="Announcements" />
           </div>
           <div className="group relative">
             <Button
@@ -168,7 +166,7 @@ export function ClientTopNavbar({
               >
                 <span className="sr-only">Open user menu</span>
                 <span className="flex h-8 w-8 items-center justify-center rounded-md bg-[rgba(209,226,219,0.14)] text-sm font-semibold text-[rgba(231,242,238,0.94)]">
-                  {avatarLabel}
+                  <User className="h-4 w-4" />
                 </span>
                 <ChevronDown className="ml-1 h-4 w-4 opacity-80" />
               </Button>

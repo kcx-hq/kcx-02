@@ -31,6 +31,7 @@ const CLIENT_WORKSPACE_ROUTES = new Set([
   "/client/billing",
   "/client/billing/uploads",
   "/client/billing/connections",
+  "/client/billing/connections/add",
   "/client/billing/connections/aws",
   "/client/billing/connections/aws/manual",
   "/client/support",
@@ -92,7 +93,7 @@ export function App() {
           <ClientOverviewPage />
         </ClientLayout>
       ) : null}
-      {route === "/client/billing" || route === "/client/billing/uploads" || route === "/client/billing/connections" || route === "/client/billing/connections/aws" || route === "/client/billing/connections/aws/manual" ? (
+      {route === "/client/billing" || route === "/client/billing/uploads" || route === "/client/billing/connections" || route === "/client/billing/connections/add" || route === "/client/billing/connections/aws" || route === "/client/billing/connections/aws/manual" ? (
         <ClientLayout>
           <ClientBillingPage />
         </ClientLayout>

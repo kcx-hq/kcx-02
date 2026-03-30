@@ -1,8 +1,13 @@
+// STEP 1:
+// Client prepares billing data source (S3 bucket)
+// This feeds into cross-account access setup in Step 2
+
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { ArrowRight, CheckCircle2, Cloud, FileSpreadsheet, Plus, Wrench } from "lucide-react"
+import { ArrowRight, CheckCircle2, Cloud, ExternalLink, FileSpreadsheet, Plus, Wrench } from "lucide-react"
+import { useMemo, useState } from "react"
 
 import { ClientPageHeader } from "@/features/client-home/components/ClientPageHeader"
 import { handleAppLinkClick, navigateTo, useCurrentRoute } from "@/lib/navigation"
@@ -29,36 +34,22 @@ const CONNECTIONS: Array<{
   status: string
   lastChecked: string
   stage: string
-}> = [
-  {
-    name: "Primary-AWS-Connection",
-    provider: "AWS",
-    status: "Healthy",
-    lastChecked: "Mar 26, 2026 - 09:21 UTC",
-    stage: "Ingestion Active",
-  },
-  {
-    name: "Billing-AWS-Connection",
-    provider: "AWS",
-    status: "Pending First Ingest",
-    lastChecked: "Mar 26, 2026 - 09:20 UTC",
-    stage: "Pending First Ingest",
-  },
-  {
-    name: "Sandbox-Connection",
-    provider: "AWS",
-    status: "Not Available",
-    lastChecked: "Mar 25, 2026 - 19:10 UTC",
-    stage: "Needs Reconnect",
-  },
-]
+}> = []
 
 const PROVIDERS = [
   { name: "AWS", icon: "/aws.svg", availability: "Available", href: "/client/billing/connections/aws" },
-  { name: "Azure", icon: "/azure.svg", availability: "Available Soon" },
+  { name: "Azure", icon: "/azure.svg", availability: "Beta" },
   { name: "GCP", icon: "/gcp.svg", availability: "Available Soon" },
   { name: "Oracle Cloud", icon: "/oracle.svg", availability: "Planned" },
   { name: "Custom", icon: "/icons/core-platform.png", availability: "Planned" },
+] as const
+
+const ADD_CONNECTION_PROVIDERS = [
+  { name: "AWS", icon: "/aws.svg", availability: "Available", description: "Connect AWS billing for cost ingestion.", href: "/client/billing/connections/aws" },
+  { name: "Azure", icon: "/azure.svg", availability: "Beta", description: "Azure billing integration is currently in beta." },
+  { name: "GCP", icon: "/gcp.svg", availability: "Planned", description: "GCP billing integration will be available soon." },
+  { name: "Oracle Cloud", icon: "/oracle.svg", availability: "Planned", description: "Oracle billing integration will be available soon." },
+  { name: "Custom", icon: "/icons/core-platform.png", availability: "Planned", description: "Custom source ingestion is planned." },
 ] as const
 
 function isCloudConnectionsRoute(path: string) {
@@ -122,6 +113,200 @@ function ProviderCard({
     <a href={href} onClick={(event) => handleAppLinkClick(event, href)}>
       {content}
     </a>
+  )
+}
+
+function AddConnectionProviderCard({
+  name,
+  icon,
+  availability,
+  description,
+  href,
+}: {
+  name: string
+  icon: string
+  availability: string
+  description: string
+  href?: string
+}) {
+  const isEnabled = availability === "Available" && Boolean(href)
+  const className = cn(
+    "h-full rounded-md border bg-white p-5 transition-colors",
+    isEnabled
+      ? "border-[color:var(--kcx-border-soft)] hover:bg-[color:var(--bg-surface)] hover:border-[color:var(--kcx-border-strong)]"
+      : "border-[color:var(--border-light)]"
+  )
+
+  const content = (
+    <div className={className}>
+      <div className="flex items-center justify-between">
+        <span className="inline-flex h-10 w-10 items-center justify-center rounded-md border border-[color:var(--border-light)] bg-[color:var(--bg-surface)]">
+          <img src={icon} alt={name} className="h-5 w-5 object-contain" />
+        </span>
+        <Badge
+          variant="outline"
+          className={cn(
+            "rounded-md",
+            isEnabled
+              ? "border-[color:var(--kcx-border-soft)] bg-[color:var(--highlight-green)] text-brand-primary"
+              : "border-[color:var(--border-light)] bg-[color:var(--bg-surface)] text-text-muted"
+          )}
+        >
+          {availability}
+        </Badge>
+      </div>
+      <h3 className="mt-4 text-base font-semibold text-text-primary">{name}</h3>
+      <p className="mt-1.5 min-h-[3rem] text-sm leading-6 text-text-secondary">{description}</p>
+    </div>
+  )
+
+  if (!isEnabled || !href) return content
+
+  return (
+    <a href={href} onClick={(event) => handleAppLinkClick(event, href)} className="block h-full">
+      {content}
+    </a>
+  )
+}
+
+function AwsLoginSection() {
+  const billingConsoleUrl = "https://console.aws.amazon.com/costmanagement/home#/bcm-data-exports"
+
+  return (
+    <section className="space-y-3 rounded-md border border-gray-200 bg-white p-5">
+      <div className="space-y-1">
+        <h4 className="text-base font-semibold text-text-primary">Access AWS Console</h4>
+        <p className="text-sm text-text-secondary">
+          Log in to your AWS account to configure billing data export.
+        </p>
+      </div>
+      <div>
+        <a href={billingConsoleUrl} target="_blank" rel="noreferrer">
+          <Button variant="outline" className="h-10 rounded-md border-gray-200">
+            Open AWS Billing Console
+            <ExternalLink className="ml-1.5 h-4 w-4" />
+          </Button>
+        </a>
+      </div>
+    </section>
+  )
+}
+
+function DataExportChecklist() {
+  return (
+    <section className="space-y-3 rounded-md border border-gray-200 bg-white p-5">
+      <div className="space-y-1">
+        <h4 className="text-base font-semibold text-text-primary">Set up billing data export</h4>
+        <p className="text-sm text-text-secondary">
+          Ensure your Cost &amp; Usage data is configured to be delivered to an S3 bucket.
+        </p>
+      </div>
+      <ul className="space-y-2">
+        <li className="flex items-center gap-2 text-sm text-text-secondary">
+          <CheckCircle2 className="h-4 w-4 text-text-muted" />
+          Data export is enabled
+        </li>
+        <li className="flex items-center gap-2 text-sm text-text-secondary">
+          <CheckCircle2 className="h-4 w-4 text-text-muted" />
+          Delivery is configured to S3
+        </li>
+        <li className="flex items-center gap-2 text-sm text-text-secondary">
+          <CheckCircle2 className="h-4 w-4 text-text-muted" />
+          Data is updated regularly
+        </li>
+      </ul>
+      <p className="text-xs text-text-muted">
+        If you have already configured billing export, you can proceed.
+      </p>
+    </section>
+  )
+}
+
+function S3InputSection({
+  bucketName,
+  pathPrefix,
+  onBucketNameChange,
+  onPathPrefixChange,
+  showBucketFormatHint,
+}: {
+  bucketName: string
+  pathPrefix: string
+  onBucketNameChange: (value: string) => void
+  onPathPrefixChange: (value: string) => void
+  showBucketFormatHint: boolean
+}) {
+  return (
+    <section className="space-y-4 rounded-md border border-gray-200 bg-white p-5">
+      <label className="block space-y-1.5">
+        <span className="text-xs font-semibold uppercase tracking-[0.08em] text-text-muted">S3 Bucket Name</span>
+        <input
+          className="h-10 w-full rounded-md border border-gray-200 bg-white px-3 text-sm outline-none focus:border-[color:var(--kcx-border-strong)]"
+          placeholder="e.g. my-company-billing-bucket"
+          value={bucketName}
+          onChange={(event) => onBucketNameChange(event.target.value)}
+        />
+      </label>
+      {showBucketFormatHint ? (
+        <p className="text-xs text-text-muted">Bucket names should not contain spaces.</p>
+      ) : null}
+      <label className="block space-y-1.5">
+        <span className="text-xs font-semibold uppercase tracking-[0.08em] text-text-muted">S3 Path Prefix (optional)</span>
+        <input
+          className="h-10 w-full rounded-md border border-gray-200 bg-white px-3 text-sm outline-none focus:border-[color:var(--kcx-border-strong)]"
+          placeholder="e.g. billing-reports/"
+          value={pathPrefix}
+          onChange={(event) => onPathPrefixChange(event.target.value)}
+        />
+      </label>
+      <p className="text-xs text-text-muted">
+        Specify a folder path if your billing files are stored inside a subdirectory.
+      </p>
+    </section>
+  )
+}
+
+function ManualSetupStepOne() {
+  const [bucketName, setBucketName] = useState("")
+  const [pathPrefix, setPathPrefix] = useState("")
+
+  const hasBucketName = bucketName.trim().length > 0
+  const hasNoSpacesInBucketName = !/\s/.test(bucketName)
+  const showBucketFormatHint = hasBucketName && !hasNoSpacesInBucketName
+
+  const canContinue = useMemo(() => {
+    return hasBucketName && hasNoSpacesInBucketName
+  }, [hasBucketName, hasNoSpacesInBucketName])
+
+  return (
+    <Card className="rounded-md border-gray-200 bg-[color:var(--bg-surface)] shadow-none">
+      <CardContent className="space-y-5 p-6">
+        <div className="space-y-2">
+          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-text-muted">Step 1</p>
+          <h3 className="text-lg font-semibold text-text-primary">Prepare your billing data</h3>
+          <p className="text-sm text-text-secondary">
+            Before connecting your AWS account, ensure your billing data is exported to an S3 bucket.
+          </p>
+        </div>
+        <AwsLoginSection />
+        <DataExportChecklist />
+        <S3InputSection
+          bucketName={bucketName}
+          pathPrefix={pathPrefix}
+          onBucketNameChange={setBucketName}
+          onPathPrefixChange={setPathPrefix}
+          showBucketFormatHint={showBucketFormatHint}
+        />
+        <div className="flex justify-end">
+          <Button
+            className="h-10 rounded-md"
+            disabled={!canContinue}
+            onClick={() => navigateTo("/client/billing/connections/aws/manual/step-2")}
+          >
+            Continue to Step 2
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
   )
 }
 
@@ -212,7 +397,7 @@ export function ClientBillingPage() {
                       Manage connected cloud accounts, monitor setup status, and start new billing integrations.
                     </p>
                   </div>
-                  <Button className="h-10 rounded-md" onClick={() => navigateTo("/client/billing/connections/aws")}>
+                  <Button className="h-10 rounded-md" onClick={() => navigateTo("/client/billing/connections/add")}>
                     <Plus className="mr-1.5 h-4 w-4" />
                     Add Connection
                   </Button>
@@ -225,10 +410,7 @@ export function ClientBillingPage() {
                   </div>
                   {CONNECTIONS.length < 1 ? (
                     <div className="rounded-md border border-dashed border-[color:var(--border-light)] bg-[color:var(--bg-surface)] p-6">
-                      <p className="text-sm text-text-secondary">No cloud connections yet.</p>
-                      <Button className="mt-3 h-10 rounded-md" onClick={() => navigateTo("/client/billing/connections/aws")}>
-                        Add Your First Connection
-                      </Button>
+                      <p className="text-sm text-text-secondary">No active cloud connections found. Connected accounts will appear here once billing integration is configured.</p>
                     </div>
                   ) : (
                     <div className="rounded-md border border-[color:var(--border-light)]">
@@ -278,6 +460,29 @@ export function ClientBillingPage() {
               </>
             ) : null}
 
+            {activeRoute === "/client/billing/connections/add" ? (
+              <>
+                <div className="space-y-2">
+                  <p className="kcx-eyebrow text-brand-primary">Add Connection</p>
+                  <h2 className="text-2xl font-semibold tracking-tight text-text-primary">Choose Cloud Provider</h2>
+                  <p className="text-sm text-text-secondary">
+                    Select a cloud provider to begin a new billing integration setup.
+                  </p>
+                </div>
+                <div className="grid grid-cols-1 auto-rows-fr gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                  {ADD_CONNECTION_PROVIDERS.map((provider) => (
+                    <AddConnectionProviderCard key={provider.name} {...provider} />
+                  ))}
+                </div>
+                <div className="border-t border-[color:var(--border-light)] pt-4">
+                  <Button variant="ghost" className="h-10 rounded-md" onClick={() => navigateTo("/client/billing/connections")}>
+                    <ArrowRight className="mr-1.5 h-4 w-4 rotate-180" />
+                    Back to Cloud Connections
+                  </Button>
+                </div>
+              </>
+            ) : null}
+
             {activeRoute === "/client/billing/connections/aws" ? (
               <>
                 <div className="space-y-2">
@@ -296,7 +501,7 @@ export function ClientBillingPage() {
                       <h3 className="text-base font-semibold text-text-primary">Automatic Setup</h3>
                       <p className="text-sm text-text-secondary">Guided cloud-native onboarding with secure automated provisioning.</p>
                       <Button variant="outline" className="h-10 rounded-md border-[color:var(--border-light)]" disabled>
-                        Coming Soon
+                        Beta
                       </Button>
                     </CardContent>
                   </Card>
@@ -319,48 +524,13 @@ export function ClientBillingPage() {
             {activeRoute === "/client/billing/connections/aws/manual" ? (
               <>
                 <div className="space-y-2">
-                  <p className="kcx-eyebrow text-brand-primary">AWS Manual Setup</p>
+                  <p className="kcx-eyebrow text-brand-primary">AWS MANUAL SETUP</p>
                   <h2 className="text-2xl font-semibold tracking-tight text-text-primary">Manual Setup</h2>
                   <p className="text-sm text-text-secondary">
-                    Provide AWS account details to configure billing ingestion.
+                    Connect your AWS billing data step-by-step.
                   </p>
                 </div>
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                  <label className="space-y-1.5">
-                    <span className="text-xs font-semibold uppercase tracking-[0.08em] text-text-muted">Connection Name</span>
-                    <input className="h-10 w-full rounded-md border border-[color:var(--border-light)] bg-white px-3 text-sm outline-none focus:border-[color:var(--kcx-border-strong)]" placeholder="Primary-AWS-Connection" />
-                  </label>
-                  <label className="space-y-1.5">
-                    <span className="text-xs font-semibold uppercase tracking-[0.08em] text-text-muted">Provider</span>
-                    <input className="h-10 w-full rounded-md border border-[color:var(--border-light)] bg-white px-3 text-sm outline-none focus:border-[color:var(--kcx-border-strong)]" value="AWS" readOnly />
-                  </label>
-                  <label className="space-y-1.5">
-                    <span className="text-xs font-semibold uppercase tracking-[0.08em] text-text-muted">AWS Account ID</span>
-                    <input className="h-10 w-full rounded-md border border-[color:var(--border-light)] bg-white px-3 text-sm outline-none focus:border-[color:var(--kcx-border-strong)]" placeholder="123456789012" />
-                  </label>
-                  <label className="space-y-1.5">
-                    <span className="text-xs font-semibold uppercase tracking-[0.08em] text-text-muted">IAM Role ARN</span>
-                    <input className="h-10 w-full rounded-md border border-[color:var(--border-light)] bg-white px-3 text-sm outline-none focus:border-[color:var(--kcx-border-strong)]" placeholder="arn:aws:iam::123456789012:role/kcx-billing-role" />
-                  </label>
-                  <label className="space-y-1.5 md:col-span-2">
-                    <span className="text-xs font-semibold uppercase tracking-[0.08em] text-text-muted">External ID</span>
-                    <input className="h-10 w-full rounded-md border border-[color:var(--border-light)] bg-white px-3 text-sm outline-none focus:border-[color:var(--kcx-border-strong)]" placeholder="kcx-external-id" />
-                  </label>
-                </div>
-                <div className="rounded-md border border-dashed border-[color:var(--border-light)] bg-[color:var(--bg-surface)] p-4">
-                  <p className="flex items-center gap-2 text-sm text-text-secondary">
-                    <CheckCircle2 className="h-4 w-4 text-brand-primary" />
-                    Validate access before activating ingestion.
-                  </p>
-                </div>
-                <div className="flex flex-wrap gap-3">
-                  <Button className="h-10 rounded-md">Save Connection</Button>
-                  <Button variant="outline" className="h-10 rounded-md border-[color:var(--border-light)]">Test Access</Button>
-                  <Button variant="ghost" className="h-10 rounded-md" onClick={() => navigateTo("/client/billing/connections")}>
-                    Back to Connections
-                    <ArrowRight className="ml-1.5 h-4 w-4" />
-                  </Button>
-                </div>
+                <ManualSetupStepOne />
               </>
             ) : null}
           </CardContent>

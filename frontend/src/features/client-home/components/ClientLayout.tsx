@@ -15,7 +15,6 @@ export function ClientLayout({ children, orgName = "Your Organization" }: Client
   const lastName = user?.lastName?.trim() ?? ""
   const fullName = `${firstName} ${lastName}`.trim() || fallbackName
   const userDisplayName = fullName
-  const avatarLabel = `${firstName.charAt(0)}${lastName.charAt(0)}`.trim().toUpperCase() || fullName.charAt(0).toUpperCase()
   const organizationName = user?.companyName?.trim() || orgName
   const userEmail = user?.email ?? "no-email@kcx.local"
   const userRole = user?.role ?? "client"
@@ -25,7 +24,6 @@ export function ClientLayout({ children, orgName = "Your Organization" }: Client
       <ClientTopNavbar
         orgName={organizationName}
         userDisplayName={userDisplayName}
-        avatarLabel={avatarLabel}
         userEmail={userEmail}
         userRole={userRole}
       />
