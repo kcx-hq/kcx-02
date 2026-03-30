@@ -6,7 +6,7 @@ declare global {
         token: string;
         sessionId: number;
         user: {
-          id: number;
+          id: string | number;
           email: string;
           role: string;
         };

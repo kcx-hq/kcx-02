@@ -16,7 +16,7 @@ class CloudConnection extends Model<
   InferCreationAttributes<CloudConnection, { omit: "createdAt" | "updatedAt" }>
 > {
   declare id: CreationOptional<number>;
-  declare clientId: number;
+  declare userId: string;
   declare connectionName: string;
   declare provider: CloudConnectionProvider | string;
   declare status: CloudConnectionStatus | string;
@@ -29,7 +29,7 @@ const createCloudConnectionModel = (sequelize: Sequelize): typeof CloudConnectio
   CloudConnection.init(
     {
       id: { type: DataTypes.INTEGER, autoIncrement: true, primaryKey: true },
-      clientId: { type: DataTypes.INTEGER, allowNull: false, field: "client_id" },
+      userId: { type: DataTypes.UUID, allowNull: false, field: "user_id" },
       connectionName: { type: DataTypes.STRING, allowNull: false, field: "connection_name" },
       provider: { type: DataTypes.STRING, allowNull: false },
       status: { type: DataTypes.STRING, allowNull: false, defaultValue: "draft" },
@@ -48,4 +48,3 @@ const createCloudConnectionModel = (sequelize: Sequelize): typeof CloudConnectio
 
 export { CloudConnection };
 export default createCloudConnectionModel;
-

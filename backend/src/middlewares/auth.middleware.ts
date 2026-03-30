@@ -5,10 +5,10 @@ import {
   AdminAuthSession,
   AdminUser as AdminUserModel,
   AuthSession,
-  Client as ClientModel,
+  User as UserModel,
 } from "../models/index.js";
 import type { AdminUser } from "../models/admin-user.js";
-import type { Client } from "../models/client.js";
+import type { User } from "../models/user.js";
 import { hashToken } from "../utils/token.js";
 
 const getBearerToken = (headerValue: string | undefined): string | null => {
@@ -28,7 +28,7 @@ export const requireAuth: RequestHandler = async (req, _res, next) => {
 
   const session = await AuthSession.findOne({
     where: { tokenHash: hashToken(token), revokedAt: null },
-    include: [{ model: ClientModel }],
+    include: [{ model: UserModel }],
   });
 
   if (!session) {
@@ -42,8 +42,8 @@ export const requireAuth: RequestHandler = async (req, _res, next) => {
     return;
   }
 
-  const client = (session as unknown as { Client?: Client }).Client;
-  if (!client) {
+  const user = (session as unknown as { User?: User }).User;
+  if (!user) {
     next(new UnauthorizedError("Invalid session"));
     return;
   }
@@ -52,9 +52,9 @@ export const requireAuth: RequestHandler = async (req, _res, next) => {
     token,
     sessionId: session.id,
     user: {
-      id: client.id,
-      email: client.email,
-      role: client.role,
+      id: user.id,
+      email: user.email,
+      role: user.role,
     },
   };
 

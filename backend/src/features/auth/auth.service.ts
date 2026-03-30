@@ -1,6 +1,6 @@
 import env from "../../config/env.js";
 import { BadRequestError, UnauthorizedError } from "../../errors/http-errors.js";
-import { AuthSession, Client, PasswordResetToken, sequelize } from "../../models/index.js";
+import { AuthSession, PasswordResetToken, Tenant, User, sequelize } from "../../models/index.js";
 import { hashPassword, verifyPassword } from "../../utils/password.js";
 import { generateOpaqueToken, hashToken } from "../../utils/token.js";
 import { buildFrontendUrl } from "../../utils/frontend-url.js";
@@ -10,24 +10,27 @@ import { logger } from "../../utils/logger.js";
 type LoginResult = {
   token: string;
   user: {
-    id: number;
+    id: string;
     email: string;
-    firstName: string;
-    lastName: string;
-    companyName: string | null;
+    fullName: string;
+    tenant: { id: string; name: string; slug: string } | null;
     role: string;
     status: string;
-    source: string;
   };
   expiresAt: string;
 };
 
-export async function loginWithEmailPassword(email: string, password: string): Promise<LoginResult> {
-  const client = await Client.findOne({ where: { email } });
-  if (!client) throw new UnauthorizedError("Invalid credentials");
-  if (client.status === "blocked") throw new UnauthorizedError("Account is blocked");
+const firstNameFromFullName = (fullName: string): string => {
+  const first = fullName.trim().split(/\s+/)[0];
+  return first && first.length > 0 ? first : "there";
+};
 
-  const ok = await verifyPassword(password, client.passwordHash);
+export async function loginWithEmailPassword(email: string, password: string): Promise<LoginResult> {
+  const user = await User.findOne({ where: { email }, include: [{ model: Tenant }] });
+  if (!user) throw new UnauthorizedError("Invalid credentials");
+  if (user.status !== "active") throw new UnauthorizedError("Account is not active");
+
+  const ok = await verifyPassword(password, user.passwordHash);
   if (!ok) throw new UnauthorizedError("Invalid credentials");
 
   const token = generateOpaqueToken(32);
@@ -35,31 +38,31 @@ export async function loginWithEmailPassword(email: string, password: string): P
   const expiresAt = new Date(Date.now() + env.sessionTtlHours * 60 * 60_000);
 
   await AuthSession.create({
-    clientId: client.id,
+    userId: user.id,
     tokenHash,
     expiresAt,
     revokedAt: null,
   });
 
+  const tenant = (user as unknown as { Tenant?: InstanceType<typeof Tenant> }).Tenant ?? null;
+
   return {
     token,
     expiresAt: expiresAt.toISOString(),
     user: {
-      id: client.id,
-      email: client.email,
-      firstName: client.firstName,
-      lastName: client.lastName,
-      companyName: client.companyName,
-      role: client.role,
-      status: client.status,
-      source: client.source,
+      id: user.id,
+      email: user.email,
+      fullName: user.fullName,
+      tenant: tenant ? { id: tenant.id, name: tenant.name, slug: tenant.slug } : null,
+      role: user.role,
+      status: user.status,
     },
   };
 }
 
 export async function requestPasswordReset(email: string): Promise<{ emailSent: boolean }> {
-  const client = await Client.findOne({ where: { email } });
-  if (!client) {
+  const user = await User.findOne({ where: { email } });
+  if (!user) {
     return { emailSent: true };
   }
 
@@ -68,7 +71,7 @@ export async function requestPasswordReset(email: string): Promise<{ emailSent: 
   const expiresAt = new Date(Date.now() + env.resetTokenTtlMinutes * 60_000);
 
   await PasswordResetToken.create({
-    clientId: client.id,
+    userId: user.id,
     tokenHash,
     expiresAt,
     usedAt: null,
@@ -78,10 +81,10 @@ export async function requestPasswordReset(email: string): Promise<{ emailSent: 
 
   try {
     await sendEmail({
-      to: client.email,
+      to: user.email,
       subject: "Reset your KCX password",
       text: [
-        `Hi ${client.firstName},`,
+        `Hi ${firstNameFromFullName(user.fullName)},`,
         "",
         "We received a request to reset your KCX password.",
         ...(resetLink ? [`Reset link: ${resetLink}`] : ["Reset link is currently unavailable (missing FRONTEND_BASE_URL)."]),
@@ -118,29 +121,29 @@ export async function resetPasswordWithToken(
   if (!record) throw new BadRequestError("Reset token is invalid or expired");
   if (record.expiresAt.getTime() <= now.getTime()) throw new BadRequestError("Reset token is invalid or expired");
 
-  const client = await Client.findByPk(record.clientId);
-  if (!client) throw new BadRequestError("Reset token is invalid or expired");
+  const user = await User.findByPk(record.userId);
+  if (!user) throw new BadRequestError("Reset token is invalid or expired");
 
   await sequelize.transaction(async (transaction) => {
-    await Client.update(
+    await User.update(
       { passwordHash: await hashPassword(newPassword) },
-      { where: { id: client.id }, transaction },
+      { where: { id: user.id }, transaction },
     );
 
     await PasswordResetToken.update({ usedAt: new Date() }, { where: { id: record.id }, transaction });
 
     await AuthSession.update(
       { revokedAt: new Date() },
-      { where: { clientId: client.id, revokedAt: null }, transaction },
+      { where: { userId: user.id, revokedAt: null }, transaction },
     );
   });
 
   try {
     await sendEmail({
-      to: client.email,
+      to: user.email,
       subject: "Your KCX password was changed",
       text: [
-        `Hi ${client.firstName},`,
+        `Hi ${firstNameFromFullName(user.fullName)},`,
         "",
         "Your KCX password has been updated successfully.",
         "",
@@ -151,7 +154,7 @@ export async function resetPasswordWithToken(
     });
   } catch (error) {
     logger.warn("Failed to send password changed email", {
-      email: client.email,
+      email: user.email,
       error: error instanceof Error ? error.message : String(error),
     });
   }

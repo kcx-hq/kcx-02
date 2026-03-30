@@ -6,9 +6,10 @@ import createAdminAuthSessionModel from "./admin-auth-session.js";
 import createDemoRequestModel from "./demo-request.js";
 import createPasswordResetTokenModel from "./password-reset-token.js";
 import createSlotReservationModel from "./slot-reservation.js";
-import createClientModel from "./client.js";
 import createAdminUserModel from "./admin-user.js";
 import createCloudConnectionModel from "./cloud-connection.js";
+import createTenantModel from "./tenant.js";
+import createUserModel from "./user.js";
 
 const dbUrl = new URL(env.dbUrl);
 if (!dbUrl.searchParams.has("sslmode")) {
@@ -27,7 +28,6 @@ const sequelize = new Sequelize(dbUrl.toString(), {
 });
 
 const Temp = createTempModel(sequelize);
-const Client = createClientModel(sequelize);
 const DemoRequest = createDemoRequestModel(sequelize);
 const PasswordResetToken = createPasswordResetTokenModel(sequelize);
 const AuthSession = createAuthSessionModel(sequelize);
@@ -35,29 +35,33 @@ const AdminUser = createAdminUserModel(sequelize);
 const AdminAuthSession = createAdminAuthSessionModel(sequelize);
 const SlotReservation = createSlotReservationModel(sequelize);
 const CloudConnection = createCloudConnectionModel(sequelize);
+const Tenant = createTenantModel(sequelize);
+const User = createUserModel(sequelize);
 
-Client.hasMany(DemoRequest, { foreignKey: "clientId" });
-DemoRequest.belongsTo(Client, { foreignKey: "clientId" });
+User.hasMany(DemoRequest, { foreignKey: "userId" });
+DemoRequest.belongsTo(User, { foreignKey: "userId" });
 DemoRequest.hasMany(SlotReservation, { foreignKey: "demoRequestId" });
 SlotReservation.belongsTo(DemoRequest, { foreignKey: "demoRequestId" });
 
-Client.hasMany(PasswordResetToken, { foreignKey: "clientId" });
-PasswordResetToken.belongsTo(Client, { foreignKey: "clientId" });
+User.hasMany(PasswordResetToken, { foreignKey: "userId" });
+PasswordResetToken.belongsTo(User, { foreignKey: "userId" });
 
-Client.hasMany(AuthSession, { foreignKey: "clientId" });
-AuthSession.belongsTo(Client, { foreignKey: "clientId" });
+User.hasMany(AuthSession, { foreignKey: "userId" });
+AuthSession.belongsTo(User, { foreignKey: "userId" });
 
-Client.hasMany(CloudConnection, { foreignKey: "clientId" });
-CloudConnection.belongsTo(Client, { foreignKey: "clientId" });
+User.hasMany(CloudConnection, { foreignKey: "userId" });
+CloudConnection.belongsTo(User, { foreignKey: "userId" });
 
 AdminUser.hasMany(AdminAuthSession, { foreignKey: "adminUserId" });
 AdminAuthSession.belongsTo(AdminUser, { foreignKey: "adminUserId" });
+
+Tenant.hasMany(User, { foreignKey: "tenantId" });
+User.belongsTo(Tenant, { foreignKey: "tenantId" });
 
 export {
   sequelize,
   Sequelize,
   Temp,
-  Client,
   DemoRequest,
   SlotReservation,
   PasswordResetToken,
@@ -65,4 +69,6 @@ export {
   AdminUser,
   AdminAuthSession,
   CloudConnection,
+  Tenant,
+  User,
 };

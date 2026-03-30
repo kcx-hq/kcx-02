@@ -1,39 +1,52 @@
-import { Client } from "../../models/index.js";
+import { Tenant, User } from "../../models/index.js";
 
-type ClientInstance = InstanceType<typeof Client>;
+type UserInstance = InstanceType<typeof User>;
+type TenantInstance = InstanceType<typeof Tenant>;
 
 export type AdminClientSummary = {
-  id: number;
+  id: string;
   firstName: string;
   lastName: string;
   email: string;
   companyName: string | null;
-  heardAboutUs: string | null;
   status: string;
-  source: string;
+  role: string;
   createdAt: string;
   updatedAt: string;
 };
 
-const toClientSummary = (client: ClientInstance): AdminClientSummary => {
+const splitFullName = (fullName: string): { firstName: string; lastName: string } => {
+  const parts = fullName.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return { firstName: "", lastName: "" };
+  if (parts.length === 1) return { firstName: parts[0], lastName: "" };
+  return { firstName: parts[0], lastName: parts.slice(1).join(" ") };
+};
+
+const getTenant = (user: UserInstance): TenantInstance | null => {
+  return (user as unknown as { Tenant?: TenantInstance }).Tenant ?? null;
+};
+
+const toClientSummary = (user: UserInstance): AdminClientSummary => {
+  const { firstName, lastName } = splitFullName(user.fullName);
+  const tenant = getTenant(user);
   return {
-    id: client.id,
-    firstName: client.firstName,
-    lastName: client.lastName,
-    email: client.email,
-    companyName: client.companyName,
-    heardAboutUs: client.heardAboutUs,
-    status: client.status,
-    source: client.source,
-    createdAt: client.createdAt.toISOString(),
-    updatedAt: client.updatedAt.toISOString(),
+    id: user.id,
+    firstName,
+    lastName,
+    email: user.email,
+    companyName: tenant?.name ?? null,
+    status: user.status,
+    role: user.role,
+    createdAt: user.createdAt.toISOString(),
+    updatedAt: user.updatedAt.toISOString(),
   };
 };
 
 export async function getAdminClients(): Promise<AdminClientSummary[]> {
-  const clients = await Client.findAll({
+  const users = await User.findAll({
     order: [["createdAt", "DESC"]],
+    include: [{ model: Tenant }],
   });
 
-  return clients.map((client) => toClientSummary(client));
+  return users.map((user) => toClientSummary(user));
 }

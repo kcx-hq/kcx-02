@@ -1,11 +1,12 @@
 import { ConflictError, NotFoundError } from "../../errors/http-errors.js";
-import { Client, DemoRequest, SlotReservation, sequelize } from "../../models/index.js";
+import { DemoRequest, SlotReservation, Tenant, User, sequelize } from "../../models/index.js";
 import { createBooking } from "../_shared/calcom/calcom.service.js";
 import { sendDemoConfirmedEmail, sendDemoRejectedEmail } from "../_shared/mail/demo-email.service.js";
 
 type DemoRequestInstance = InstanceType<typeof DemoRequest>;
 type SlotReservationInstance = InstanceType<typeof SlotReservation>;
-type ClientInstance = InstanceType<typeof Client>;
+type UserInstance = InstanceType<typeof User>;
+type TenantInstance = InstanceType<typeof Tenant>;
 
 type DemoRequestSummary = {
   id: number;
@@ -18,7 +19,7 @@ type DemoRequestSummary = {
   createdAt: string;
   updatedAt: string;
   client: {
-    id: number;
+    id: string;
     firstName: string;
     lastName: string;
     email: string;
@@ -43,10 +44,21 @@ type DemoRequestActionResult = {
 
 const toIso = (value: Date | null): string | null => (value ? value.toISOString() : null);
 
-const getClientOrThrow = async (clientId: number): Promise<ClientInstance> => {
-  const client = await Client.findByPk(clientId);
-  if (!client) throw new NotFoundError("Demo request client not found");
-  return client;
+const splitFullName = (fullName: string): { firstName: string; lastName: string } => {
+  const parts = fullName.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return { firstName: "", lastName: "" };
+  if (parts.length === 1) return { firstName: parts[0], lastName: "" };
+  return { firstName: parts[0], lastName: parts.slice(1).join(" ") };
+};
+
+const getTenant = (user: UserInstance): TenantInstance | null => {
+  return (user as unknown as { Tenant?: TenantInstance }).Tenant ?? null;
+};
+
+const getUserOrThrow = async (userId: string): Promise<UserInstance> => {
+  const user = await User.findByPk(userId, { include: [{ model: Tenant }] });
+  if (!user) throw new NotFoundError("Demo request user not found");
+  return user;
 };
 
 const getLatestReservation = async (
@@ -60,7 +72,9 @@ const getLatestReservation = async (
 const toDemoRequestSummary = async (
   demoRequest: DemoRequestInstance,
 ): Promise<DemoRequestSummary> => {
-  const client = await getClientOrThrow(demoRequest.clientId);
+  const user = await getUserOrThrow(demoRequest.userId);
+  const tenant = getTenant(user);
+  const { firstName, lastName } = splitFullName(user.fullName);
   const reservation = await getLatestReservation(demoRequest.id);
 
   return {
@@ -74,12 +88,12 @@ const toDemoRequestSummary = async (
     createdAt: demoRequest.createdAt.toISOString(),
     updatedAt: demoRequest.updatedAt.toISOString(),
     client: {
-      id: client.id,
-      firstName: client.firstName,
-      lastName: client.lastName,
-      email: client.email,
-      companyName: client.companyName,
-      heardAboutUs: client.heardAboutUs,
+      id: user.id,
+      firstName,
+      lastName,
+      email: user.email,
+      companyName: tenant?.name ?? null,
+      heardAboutUs: demoRequest.heardAboutUs,
     },
     reservation: reservation
       ? {
@@ -106,7 +120,7 @@ const getPendingRequestForAction = async (
 ): Promise<{
   demoRequest: DemoRequestInstance;
   reservation: SlotReservationInstance;
-  client: ClientInstance;
+  user: UserInstance;
 }> => {
   const demoRequest = await getDemoRequestOrThrow(id);
 
@@ -117,7 +131,7 @@ const getPendingRequestForAction = async (
     throw new ConflictError("Demo request does not have a valid slot");
   }
 
-  const client = await getClientOrThrow(demoRequest.clientId);
+  const user = await getUserOrThrow(demoRequest.userId);
   const reservation = await SlotReservation.findOne({
     where: {
       demoRequestId: id,
@@ -128,7 +142,7 @@ const getPendingRequestForAction = async (
 
   if (!reservation) throw new ConflictError("Reserved slot not found for this request");
 
-  return { demoRequest, reservation, client };
+  return { demoRequest, reservation, user };
 };
 
 export async function getAdminDemoRequests(): Promise<DemoRequestSummary[]> {
@@ -145,7 +159,7 @@ export async function getAdminDemoRequestById(id: number): Promise<DemoRequestSu
 }
 
 export async function confirmAdminDemoRequest(id: number): Promise<DemoRequestActionResult> {
-  const { demoRequest, reservation, client } = await getPendingRequestForAction(id);
+  const { demoRequest, reservation, user } = await getPendingRequestForAction(id);
   const slotStart = demoRequest.slotStart as Date;
   const slotEnd = demoRequest.slotEnd as Date;
   const now = new Date();
@@ -165,8 +179,8 @@ export async function confirmAdminDemoRequest(id: number): Promise<DemoRequestAc
   }
 
   const booking = await createBooking({
-    name: `${client.firstName} ${client.lastName}`.trim(),
-    email: client.email,
+    name: user.fullName.trim(),
+    email: user.email,
     slotStart,
     slotEnd,
     reservationId: reservation.calcomReservationId,
@@ -208,8 +222,8 @@ export async function confirmAdminDemoRequest(id: number): Promise<DemoRequestAc
   });
 
   const emailSent = await sendDemoConfirmedEmail({
-    firstName: client.firstName,
-    email: client.email,
+    firstName: splitFullName(user.fullName).firstName,
+    email: user.email,
     slotStart,
     slotEnd,
     meetingType: booking.meetingType,
@@ -223,7 +237,7 @@ export async function confirmAdminDemoRequest(id: number): Promise<DemoRequestAc
 }
 
 export async function rejectAdminDemoRequest(id: number): Promise<DemoRequestActionResult> {
-  const { demoRequest, reservation, client } = await getPendingRequestForAction(id);
+  const { demoRequest, reservation, user } = await getPendingRequestForAction(id);
   const slotStart = demoRequest.slotStart as Date;
   const slotEnd = demoRequest.slotEnd as Date;
 
@@ -260,8 +274,8 @@ export async function rejectAdminDemoRequest(id: number): Promise<DemoRequestAct
   });
 
   const emailSent = await sendDemoRejectedEmail({
-    firstName: client.firstName,
-    email: client.email,
+    firstName: splitFullName(user.fullName).firstName,
+    email: user.email,
     slotStart,
     slotEnd,
   });

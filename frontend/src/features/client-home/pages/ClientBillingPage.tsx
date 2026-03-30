@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo } from "react"
 // STEP 1:
 // Client prepares billing data source (S3 bucket)
 // This feeds into cross-account access setup in Step 2
@@ -8,7 +8,6 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { ArrowRight, CheckCircle2, Cloud, ExternalLink, FileSpreadsheet, Plus, Wrench } from "lucide-react"
-import { useMemo, useState } from "react"
 
 import { ClientPageHeader } from "@/features/client-home/components/ClientPageHeader"
 import { ApiError, apiGet, apiPost } from "@/lib/api"
@@ -580,13 +579,12 @@ export function ClientBillingPage() {
                       </span>
                       <h3 className="text-base font-semibold text-text-primary">Automatic Setup <span className="text-text-muted">(Payer Accounts)</span></h3>
                       <p className="text-sm text-text-secondary">Guided cloud-native onboarding with secure automated provisioning.</p>
-<<<<<<< HEAD
-                      <Button variant="outline" className="h-10 rounded-md border-[color:var(--border-light)]" onClick={() => navigateTo("/client/billing/connections/aws/automatic")}>
+                      <Button
+                        variant="outline"
+                        className="h-10 rounded-md border-[color:var(--border-light)]"
+                        onClick={() => navigateTo("/client/billing/connections/aws/automatic")}
+                      >
                         Start Automatic Setup
-=======
-                      <Button variant="outline" className="h-10 rounded-md border-[color:var(--border-light)]" disabled>
-                        Beta
->>>>>>> 838887befb8865684f67da26ae15097a24d13a2f
                       </Button>
                     </CardContent>
                   </Card>

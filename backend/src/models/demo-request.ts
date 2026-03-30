@@ -12,7 +12,8 @@ class DemoRequest extends Model<
   InferCreationAttributes<DemoRequest, { omit: "createdAt" | "updatedAt" }>
 > {
   declare id: CreationOptional<number>;
-  declare clientId: number;
+  declare userId: string;
+  declare heardAboutUs: string | null;
   declare slotStart: Date | null;
   declare slotEnd: Date | null;
   declare status: CreationOptional<string>;
@@ -27,7 +28,8 @@ const createDemoRequestModel = (sequelize: Sequelize): typeof DemoRequest => {
   DemoRequest.init(
     {
       id: { type: DataTypes.INTEGER, autoIncrement: true, primaryKey: true },
-      clientId: { type: DataTypes.INTEGER, allowNull: false },
+      userId: { type: DataTypes.UUID, allowNull: false },
+      heardAboutUs: { type: DataTypes.STRING(255), allowNull: true, defaultValue: null },
       slotStart: { type: DataTypes.DATE, allowNull: true, defaultValue: null },
       slotEnd: { type: DataTypes.DATE, allowNull: true, defaultValue: null },
       status: { type: DataTypes.STRING, allowNull: false, defaultValue: "PENDING" },
