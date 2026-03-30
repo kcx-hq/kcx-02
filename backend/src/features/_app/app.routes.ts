@@ -4,11 +4,13 @@ import adminDemoRequestsRoutes from "../admin-demo-requests/admin-demo-requests.
 import adminAuthRoutes from "../admin-auth/admin-auth.routes.js";
 import authRoutes from "../auth/auth.routes.js";
 import scheduleDemoRoutes from "../schedule-demo/schedule-demo.routes.js";
+import cloudConnectionsRoutes from "../cloud-connections/cloud-connections.routes.js";
 
 const router = Router();
 
 router.use(scheduleDemoRoutes);
 router.use(authRoutes);
+router.use(cloudConnectionsRoutes);
 router.use(adminAuthRoutes);
 router.use(adminClientsRoutes);
 router.use(adminDemoRequestsRoutes);

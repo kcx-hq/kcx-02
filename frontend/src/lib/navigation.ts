@@ -9,6 +9,7 @@ const STATIC_ROUTES = [
   "/client/billing/uploads",
   "/client/billing/connections",
   "/client/billing/connections/aws",
+  "/client/billing/connections/aws/automatic",
   "/client/billing/connections/aws/manual",
   "/client/support",
   "/client/support/tickets",
@@ -56,6 +57,7 @@ const LEGACY_ROUTE_REDIRECTS: Record<string, StaticRoute> = {
 }
 const VALID_PATH_SET = new Set<string>([...STATIC_ROUTES, ...Object.keys(LEGACY_ROUTE_REDIRECTS)])
 const BLOG_DETAIL_PATH_REGEX = /^\/resources\/blogs?\/([^/]+)$/
+const AWS_CONNECTION_SETUP_PATH_REGEX = /^\/client\/billing\/connections\/aws\/setup\/(\d+)$/
 
 function normalizePathname(pathname: string): string {
   if (!pathname.startsWith("/")) return `/${pathname}`
@@ -75,6 +77,10 @@ function resolvePathname(pathname: string): RouteResolution {
   }
 
   if (BLOG_DETAIL_PATH_REGEX.test(normalized)) {
+    return { route: normalized, redirectTo: null }
+  }
+
+  if (AWS_CONNECTION_SETUP_PATH_REGEX.test(normalized)) {
     return { route: normalized, redirectTo: null }
   }
 
@@ -123,7 +129,10 @@ export function handleAppLinkClick(
   if (isModifiedClick || event.defaultPrevented) return
 
   const normalizedHref = normalizePathname(href)
-  const isKnownPath = VALID_PATH_SET.has(normalizedHref) || BLOG_DETAIL_PATH_REGEX.test(normalizedHref)
+  const isKnownPath =
+    VALID_PATH_SET.has(normalizedHref) ||
+    BLOG_DETAIL_PATH_REGEX.test(normalizedHref) ||
+    AWS_CONNECTION_SETUP_PATH_REGEX.test(normalizedHref)
   if (!isKnownPath) return
 
   event.preventDefault()

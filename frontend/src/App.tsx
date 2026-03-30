@@ -33,6 +33,7 @@ const CLIENT_WORKSPACE_ROUTES = new Set([
   "/client/billing/uploads",
   "/client/billing/connections",
   "/client/billing/connections/aws",
+  "/client/billing/connections/aws/automatic",
   "/client/billing/connections/aws/manual",
   "/client/support",
   "/client/support/tickets",
@@ -43,13 +44,19 @@ const CLIENT_WORKSPACE_ROUTES = new Set([
   "/clienthome",
   "/client-home",
 ])
+const AWS_CONNECTION_SETUP_ROUTE_REGEX = /^\/client\/billing\/connections\/aws\/setup\/\d+$/
+
+function isClientWorkspaceRoute(route: string) {
+  return CLIENT_WORKSPACE_ROUTES.has(route) || AWS_CONNECTION_SETUP_ROUTE_REGEX.test(route)
+}
+
 const HEADERLESS_ROUTES = new Set(["/schedule-demo", "/login", "/forgot-password", "/reset-password", ...CLIENT_WORKSPACE_ROUTES])
 
 export function App() {
   const route = useCurrentRoute()
   const authenticated = isAuthenticated()
   const blogSlug = getBlogSlugFromPath(route)
-  const showMarketingHeader = !HEADERLESS_ROUTES.has(route)
+  const showMarketingHeader = !HEADERLESS_ROUTES.has(route) && !AWS_CONNECTION_SETUP_ROUTE_REGEX.test(route)
 
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "auto" })
@@ -63,7 +70,7 @@ export function App() {
   }, [route])
 
   useEffect(() => {
-    if (CLIENT_WORKSPACE_ROUTES.has(route) && !authenticated) {
+    if (isClientWorkspaceRoute(route) && !authenticated) {
       navigateTo("/login", { replace: true })
       return
     }
@@ -94,7 +101,13 @@ export function App() {
           <ClientOverviewPage />
         </ClientLayout>
       ) : null}
-      {route === "/client/billing" || route === "/client/billing/uploads" || route === "/client/billing/connections" || route === "/client/billing/connections/aws" || route === "/client/billing/connections/aws/manual" ? (
+      {route === "/client/billing" ||
+      route === "/client/billing/uploads" ||
+      route === "/client/billing/connections" ||
+      route === "/client/billing/connections/aws" ||
+      route === "/client/billing/connections/aws/automatic" ||
+      route === "/client/billing/connections/aws/manual" ||
+      AWS_CONNECTION_SETUP_ROUTE_REGEX.test(route) ? (
         <ClientLayout>
           <ClientBillingPage />
         </ClientLayout>

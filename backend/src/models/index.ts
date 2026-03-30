@@ -8,6 +8,7 @@ import createPasswordResetTokenModel from "./password-reset-token.js";
 import createSlotReservationModel from "./slot-reservation.js";
 import createClientModel from "./client.js";
 import createAdminUserModel from "./admin-user.js";
+import createCloudConnectionModel from "./cloud-connection.js";
 
 const dbUrl = new URL(env.dbUrl);
 if (!dbUrl.searchParams.has("sslmode")) {
@@ -33,6 +34,7 @@ const AuthSession = createAuthSessionModel(sequelize);
 const AdminUser = createAdminUserModel(sequelize);
 const AdminAuthSession = createAdminAuthSessionModel(sequelize);
 const SlotReservation = createSlotReservationModel(sequelize);
+const CloudConnection = createCloudConnectionModel(sequelize);
 
 Client.hasMany(DemoRequest, { foreignKey: "clientId" });
 DemoRequest.belongsTo(Client, { foreignKey: "clientId" });
@@ -44,6 +46,9 @@ PasswordResetToken.belongsTo(Client, { foreignKey: "clientId" });
 
 Client.hasMany(AuthSession, { foreignKey: "clientId" });
 AuthSession.belongsTo(Client, { foreignKey: "clientId" });
+
+Client.hasMany(CloudConnection, { foreignKey: "clientId" });
+CloudConnection.belongsTo(Client, { foreignKey: "clientId" });
 
 AdminUser.hasMany(AdminAuthSession, { foreignKey: "adminUserId" });
 AdminAuthSession.belongsTo(AdminUser, { foreignKey: "adminUserId" });
@@ -59,4 +64,5 @@ export {
   AuthSession,
   AdminUser,
   AdminAuthSession,
+  CloudConnection,
 };

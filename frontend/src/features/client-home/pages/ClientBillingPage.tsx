@@ -1,3 +1,5 @@
+import { useEffect, useMemo, useState } from "react"
+
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -5,6 +7,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { ArrowRight, CheckCircle2, Cloud, FileSpreadsheet, Plus, Wrench } from "lucide-react"
 
 import { ClientPageHeader } from "@/features/client-home/components/ClientPageHeader"
+import { ApiError, apiGet, apiPost } from "@/lib/api"
 import { handleAppLinkClick, navigateTo, useCurrentRoute } from "@/lib/navigation"
 import { cn } from "@/lib/utils"
 
@@ -63,6 +66,16 @@ const PROVIDERS = [
 
 function isCloudConnectionsRoute(path: string) {
   return path.startsWith("/client/billing/connections")
+}
+
+const AWS_SETUP_ROUTE_REGEX = /^\/client\/billing\/connections\/aws\/setup\/(\d+)$/
+
+type CloudConnection = {
+  id: number
+  connection_name: string
+  provider: string
+  status: string
+  account_type: string
 }
 
 function ConnectionStatusBadge({ status }: { status: string }) {
@@ -128,6 +141,74 @@ function ProviderCard({
 export function ClientBillingPage() {
   const route = useCurrentRoute()
   const activeRoute = route === "/client/billing" ? "/client/billing/connections" : route
+
+  const [autoConnectionName, setAutoConnectionName] = useState("")
+  const [autoTouched, setAutoTouched] = useState(false)
+  const [autoSubmitting, setAutoSubmitting] = useState(false)
+  const [autoError, setAutoError] = useState<string | null>(null)
+
+  const setupConnectionId = useMemo(() => {
+    const match = AWS_SETUP_ROUTE_REGEX.exec(activeRoute)
+    if (!match) return null
+    const parsed = Number(match[1])
+    return Number.isFinite(parsed) ? parsed : null
+  }, [activeRoute])
+
+  const [setupConnection, setSetupConnection] = useState<CloudConnection | null>(null)
+  const [setupLoading, setSetupLoading] = useState(false)
+  const [setupError, setSetupError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!setupConnectionId) return
+    setSetupLoading(true)
+    setSetupError(null)
+    void (async () => {
+      try {
+        const connection = await apiGet<CloudConnection>(`/cloud-connections/${setupConnectionId}`)
+        setSetupConnection(connection)
+      } catch (error) {
+        if (error instanceof ApiError) {
+          setSetupError(error.message || "Failed to load connection")
+        } else {
+          setSetupError("Failed to load connection")
+        }
+        setSetupConnection(null)
+      } finally {
+        setSetupLoading(false)
+      }
+    })()
+  }, [setupConnectionId])
+
+  function validateAutoConnectionName(value: string) {
+    return value.trim().length > 0
+  }
+
+  function onSubmitAutomaticSetup() {
+    setAutoTouched(true)
+    setAutoError(null)
+    if (!validateAutoConnectionName(autoConnectionName)) return
+
+    setAutoSubmitting(true)
+    void (async () => {
+      try {
+        const created = await apiPost<CloudConnection>("/cloud-connections", {
+          connection_name: autoConnectionName.trim(),
+          provider: "aws",
+          status: "draft",
+          account_type: "payer",
+        })
+        navigateTo(`/client/billing/connections/aws/setup/${created.id}`)
+      } catch (error) {
+        if (error instanceof ApiError) {
+          setAutoError(error.message || "Failed to create connection")
+        } else {
+          setAutoError("Failed to create connection")
+        }
+      } finally {
+        setAutoSubmitting(false)
+      }
+    })()
+  }
 
   return (
     <>
@@ -293,10 +374,10 @@ export function ClientBillingPage() {
                       <span className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-[color:var(--border-light)] bg-white text-text-secondary">
                         <Cloud className="h-4 w-4" />
                       </span>
-                      <h3 className="text-base font-semibold text-text-primary">Automatic Setup</h3>
+                      <h3 className="text-base font-semibold text-text-primary">Automatic Setup <span className="text-text-muted">(Payer Accounts)</span></h3>
                       <p className="text-sm text-text-secondary">Guided cloud-native onboarding with secure automated provisioning.</p>
-                      <Button variant="outline" className="h-10 rounded-md border-[color:var(--border-light)]" disabled>
-                        Coming Soon
+                      <Button variant="outline" className="h-10 rounded-md border-[color:var(--border-light)]" onClick={() => navigateTo("/client/billing/connections/aws/automatic")}>
+                        Start Automatic Setup
                       </Button>
                     </CardContent>
                   </Card>
@@ -309,6 +390,126 @@ export function ClientBillingPage() {
                       <p className="text-sm text-text-secondary">Use account details and IAM role configuration to connect billing manually.</p>
                       <Button className="h-10 rounded-md" onClick={() => navigateTo("/client/billing/connections/aws/manual")}>
                         Start Manual Setup
+                      </Button>
+                    </CardContent>
+                  </Card>
+                </div>
+              </>
+            ) : null}
+
+            {activeRoute === "/client/billing/connections/aws/automatic" ? (
+              <>
+                <div className="space-y-2">
+                  <p className="kcx-eyebrow text-brand-primary">AWS Automatic Setup</p>
+                  <h2 className="text-2xl font-semibold tracking-tight text-text-primary">Start Automatic Setup</h2>
+                  <p className="text-sm text-text-secondary">Create an AWS payer connection to begin guided setup.</p>
+                </div>
+
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  <label className="space-y-1.5 md:col-span-2">
+                    <span className="text-xs font-semibold uppercase tracking-[0.08em] text-text-muted">
+                      Connection Name
+                      <span className="ml-2 align-middle text-[11px] font-semibold text-brand-primary">Required</span>
+                    </span>
+                    <input
+                      className={cn(
+                        "h-10 w-full rounded-md border bg-white px-3 text-sm outline-none focus:border-[color:var(--kcx-border-strong)]",
+                        autoTouched && !validateAutoConnectionName(autoConnectionName)
+                          ? "border-rose-300"
+                          : "border-[color:var(--border-light)]"
+                      )}
+                      placeholder="prod-aws-account"
+                      value={autoConnectionName}
+                      onChange={(event) => setAutoConnectionName(event.target.value)}
+                      onBlur={() => setAutoTouched(true)}
+                      required
+                    />
+                    <p className="text-xs text-text-muted">Example: prod-aws-account</p>
+                    {autoTouched && !validateAutoConnectionName(autoConnectionName) ? (
+                      <p className="text-xs text-rose-600">Connection Name is required.</p>
+                    ) : null}
+                    {autoError ? <p className="text-xs text-rose-600">{autoError}</p> : null}
+                  </label>
+                </div>
+
+                <div className="flex flex-wrap gap-3">
+                  <Button className="h-10 rounded-md" disabled={autoSubmitting} onClick={onSubmitAutomaticSetup}>
+                    {autoSubmitting ? "Saving..." : "Continue Setup"}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    className="h-10 rounded-md"
+                    onClick={() => navigateTo("/client/billing/connections/aws")}
+                  >
+                    Back
+                    <ArrowRight className="ml-1.5 h-4 w-4" />
+                  </Button>
+                </div>
+              </>
+            ) : null}
+
+            {setupConnectionId ? (
+              <>
+                <div className="space-y-2">
+                  <p className="kcx-eyebrow text-brand-primary">Setup AWS Connection</p>
+                  <h2 className="text-2xl font-semibold tracking-tight text-text-primary">Setup AWS Connection</h2>
+                  <p className="text-sm text-text-secondary">Review connection details and launch guided setup.</p>
+                </div>
+
+                <div className="grid grid-cols-1 gap-4">
+                  <Card className="rounded-md border-[color:var(--border-light)] bg-white">
+                    <CardContent className="space-y-4 p-5">
+                      <div className="space-y-1">
+                        <p className="text-sm font-semibold text-text-primary">Connection Info</p>
+                        <p className="text-sm text-text-secondary">Connection Name, provider, and status.</p>
+                      </div>
+
+                      {setupLoading ? (
+                        <p className="text-sm text-text-secondary">Loading connection...</p>
+                      ) : setupError ? (
+                        <p className="text-sm text-rose-600">{setupError}</p>
+                      ) : setupConnection ? (
+                        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                          <div className="space-y-1">
+                            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-text-muted">Connection Name</p>
+                            <p className="text-sm font-medium text-text-primary">{setupConnection.connection_name}</p>
+                          </div>
+                          <div className="space-y-1">
+                            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-text-muted">Provider</p>
+                            <p className="text-sm font-medium text-text-primary">{setupConnection.provider.toUpperCase()}</p>
+                          </div>
+                          <div className="space-y-1">
+                            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-text-muted">Status</p>
+                            <p className="text-sm font-medium text-text-primary">
+                              {setupConnection.status.charAt(0).toUpperCase() + setupConnection.status.slice(1)}
+                            </p>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-sm text-text-secondary">Connection not found.</p>
+                      )}
+                    </CardContent>
+                  </Card>
+
+                  <Card className="rounded-md border-[color:var(--kcx-border-soft)] bg-[color:var(--highlight-green)]">
+                    <CardContent className="space-y-3 p-5">
+                      <div className="space-y-1">
+                        <p className="text-sm font-semibold text-text-primary">Setup Button</p>
+                        <p className="text-sm text-text-secondary">Launch AWS setup in a new window.</p>
+                      </div>
+                      <Button
+                        className="h-10 rounded-md"
+                        onClick={() => window.open("/integrations/aws", "_blank", "noopener,noreferrer")}
+                      >
+                        Launch AWS Setup
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        className="h-10 rounded-md"
+                        onClick={() => navigateTo("/client/billing/connections/aws")}
+                      >
+                        Back to Setup Choice
+                        <ArrowRight className="ml-1.5 h-4 w-4" />
                       </Button>
                     </CardContent>
                   </Card>

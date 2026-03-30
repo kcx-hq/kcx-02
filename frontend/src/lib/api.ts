@@ -1,5 +1,6 @@
 import { appEnv } from "@/lib/env"
-import { getAuthToken } from "@/lib/auth"
+import { clearAuthSession, getAuthToken } from "@/lib/auth"
+import { navigateTo } from "@/lib/navigation"
 
 type ApiSuccess<T> = {
   success: true
@@ -35,6 +36,14 @@ function joinUrl(base: string, path: string) {
   return `${normalizedBase}${normalizedPath}`
 }
 
+function handleUnauthorized(path: string, status: number) {
+  if (status !== 401) return
+  if (path.startsWith("/auth/") || path.startsWith("/admin/auth/")) return
+
+  clearAuthSession()
+  navigateTo("/login", { replace: true })
+}
+
 export async function apiPost<TData>(path: string, body: unknown, init?: RequestInit): Promise<TData> {
   const url = joinUrl(appEnv.apiBaseUrl, path)
   const token = getAuthToken()
@@ -52,9 +61,11 @@ export async function apiPost<TData>(path: string, body: unknown, init?: Request
   const payload = (await response.json().catch(() => null)) as ApiResponse<TData> | null
 
   if (!response.ok) {
+    handleUnauthorized(path, response.status)
     throw new ApiError(payload?.message ?? "Request failed", response.status, payload)
   }
   if (!payload || payload.success !== true) {
+    handleUnauthorized(path, response.status)
     throw new ApiError(payload?.message ?? "Request failed", response.status, payload)
   }
 
@@ -71,9 +82,11 @@ export async function apiGet<TData>(path: string, init?: RequestInit): Promise<T
   const payload = (await response.json().catch(() => null)) as ApiResponse<TData> | null
 
   if (!response.ok) {
+    handleUnauthorized(path, response.status)
     throw new ApiError(payload?.message ?? "Request failed", response.status, payload)
   }
   if (!payload || payload.success !== true) {
+    handleUnauthorized(path, response.status)
     throw new ApiError(payload?.message ?? "Request failed", response.status, payload)
   }
 
