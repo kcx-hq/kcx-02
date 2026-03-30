@@ -1,8 +1,12 @@
+import { useEffect, useMemo, useState } from "react"
+
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { ActivityList } from "@/features/client-home/components/ActivityList"
 import { mockData } from "@/features/client-home/data/mockData"
+import { ApiError, apiGet, apiPostForm } from "@/lib/api"
 import { Cloud, Upload } from "lucide-react"
 
 function getUploadStatusBadge(status: "success" | "failed" | "processing") {
@@ -77,8 +81,100 @@ function getAnnouncementBadge(type: "maintenance" | "feature" | "sla") {
 
 export function ClientOverviewPage() {
   const uploads = mockData.uploads
+  const [uploadDialogOpen, setUploadDialogOpen] = useState(false)
+  const [providers, setProviders] = useState<Array<{ id: string; code: string; name: string }>>([])
+  const [providersLoading, setProvidersLoading] = useState(false)
+  const [providersError, setProvidersError] = useState<string | null>(null)
+  const [selectedProviderId, setSelectedProviderId] = useState("")
+  const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const [uploading, setUploading] = useState(false)
+  const [uploadError, setUploadError] = useState<string | null>(null)
+  const [uploadSuccess, setUploadSuccess] = useState<string | null>(null)
 
   const hasFailedUploads = uploads.some((upload) => upload.status === "failed")
+  const canSubmitUpload = useMemo(() => Boolean(selectedProviderId && selectedFile) && !uploading, [selectedProviderId, selectedFile, uploading])
+
+  useEffect(() => {
+    setProvidersLoading(true)
+    setProvidersError(null)
+    void (async () => {
+      try {
+        const response = await apiGet<Array<{ id: string; code: string; name: string }>>("/billing/cloud-providers")
+        setProviders(response)
+        const awsProvider = response.find((provider) => provider.code.toLowerCase() === "aws")
+        setSelectedProviderId(awsProvider?.id ?? response[0]?.id ?? "")
+      } catch (error) {
+        if (error instanceof ApiError) {
+          setProvidersError(error.message || "Failed to load cloud providers")
+        } else {
+          setProvidersError("Failed to load cloud providers")
+        }
+      } finally {
+        setProvidersLoading(false)
+      }
+    })()
+  }, [])
+
+  function openUploadDialog() {
+    setUploadError(null)
+    setUploadSuccess(null)
+    setSelectedFile(null)
+    setUploadDialogOpen(true)
+  }
+
+  function closeUploadDialog() {
+    if (uploading) return
+    setUploadDialogOpen(false)
+  }
+
+  function onChangeUploadFile(fileList: FileList | null) {
+    const file = fileList?.[0] ?? null
+    setSelectedFile(file)
+    setUploadError(null)
+    setUploadSuccess(null)
+  }
+
+  function onSubmitManualUpload() {
+    if (!selectedProviderId) {
+      setUploadError("Please select a cloud provider.")
+      return
+    }
+    if (!selectedFile) {
+      setUploadError("Please select a file to upload.")
+      return
+    }
+
+    setUploading(true)
+    setUploadError(null)
+    setUploadSuccess(null)
+
+    void (async () => {
+      try {
+        const formData = new FormData()
+        formData.append("file", selectedFile)
+        formData.append("cloudProviderId", selectedProviderId)
+
+        const result = await apiPostForm<{
+          billingSourceId: string
+          rawFileId: string
+          bucket: string
+          key: string
+          format: string
+          status: string
+        }>("/billing/manual-upload", formData)
+
+        setUploadSuccess(`Uploaded successfully (Raw File ID: ${result.rawFileId}, Status: ${result.status}).`)
+      } catch (error) {
+        if (error instanceof ApiError) {
+          setUploadError(error.message || "Upload failed")
+        } else {
+          setUploadError("Upload failed")
+        }
+      } finally {
+        setUploading(false)
+      }
+    })()
+  }
 
   return (
     <div className="space-y-5">
@@ -103,7 +199,7 @@ export function ClientOverviewPage() {
                   Upload your billing data manually to start analyzing costs instantly.
                 </p>
               </div>
-              <Button className="h-10 rounded-md">Upload CSV</Button>
+              <Button className="h-10 rounded-md" onClick={openUploadDialog}>Upload CSV</Button>
             </CardContent>
           </Card>
 
@@ -204,6 +300,65 @@ export function ClientOverviewPage() {
           </CardContent>
         </Card>
       </section>
+
+      <Dialog open={uploadDialogOpen} onOpenChange={(open) => (open ? setUploadDialogOpen(true) : closeUploadDialog())}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Upload Billing File</DialogTitle>
+            <DialogDescription>
+              Select provider and upload a `.csv` or `.parquet` billing file.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 pt-2">
+            <label className="block space-y-1.5">
+              <span className="text-xs font-semibold uppercase tracking-[0.08em] text-text-muted">Cloud Provider</span>
+              <select
+                className="h-10 w-full rounded-md border border-[color:var(--border-light)] bg-white px-3 text-sm outline-none focus:border-[color:var(--kcx-border-strong)]"
+                disabled={providersLoading || uploading}
+                value={selectedProviderId}
+                onChange={(event) => setSelectedProviderId(event.target.value)}
+              >
+                {providers.map((provider) => (
+                  <option key={provider.id} value={provider.id}>
+                    {provider.name}
+                  </option>
+                ))}
+              </select>
+              {providersError ? <p className="text-xs text-rose-600">{providersError}</p> : null}
+            </label>
+
+            <label className="block space-y-1.5">
+              <span className="text-xs font-semibold uppercase tracking-[0.08em] text-text-muted">Billing File</span>
+              <input
+                type="file"
+                accept=".csv,.parquet,text/csv,application/octet-stream"
+                className="block w-full text-sm text-text-secondary file:mr-4 file:rounded-md file:border file:border-[color:var(--border-light)] file:bg-white file:px-3 file:py-2 file:text-sm file:font-medium file:text-text-primary hover:file:bg-[color:var(--bg-surface)]"
+                disabled={uploading}
+                onChange={(event) => onChangeUploadFile(event.target.files)}
+              />
+              {selectedFile ? <p className="text-xs text-text-muted">Selected: {selectedFile.name}</p> : null}
+            </label>
+
+            {uploadError ? <p className="text-sm text-rose-600">{uploadError}</p> : null}
+            {uploadSuccess ? <p className="text-sm text-emerald-700">{uploadSuccess}</p> : null}
+
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <Button
+                variant="outline"
+                className="h-10 rounded-md border-[color:var(--border-light)] bg-transparent"
+                disabled={uploading}
+                onClick={closeUploadDialog}
+              >
+                Cancel
+              </Button>
+              <Button className="h-10 rounded-md" disabled={!canSubmitUpload} onClick={onSubmitManualUpload}>
+                {uploading ? "Uploading..." : "Upload File"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

@@ -12,6 +12,8 @@ import createCloudConnectionV2Model from "./cloud-connection-v2.js";
 import createCloudProviderModel from "./cloud-provider.js";
 import createTenantModel from "./tenant.js";
 import createUserModel from "./user.js";
+import createRawBillingFileModel from "./raw-billing-file.js";
+import createBillingSourceModel from "./billing-source.js";
 
 const dbUrl = new URL(env.dbUrl);
 if (!dbUrl.searchParams.has("sslmode")) {
@@ -41,6 +43,8 @@ const CloudProvider = createCloudProviderModel(sequelize);
 const CloudConnectionV2 = createCloudConnectionV2Model(sequelize);
 const Tenant = createTenantModel(sequelize);
 const User = createUserModel(sequelize);
+const RawBillingFile = createRawBillingFileModel(sequelize);
+const BillingSource = createBillingSourceModel(sequelize);
 
 User.hasMany(DemoRequest, { foreignKey: "userId" });
 DemoRequest.belongsTo(User, { foreignKey: "userId" });
@@ -62,6 +66,12 @@ CloudProvider.hasMany(CloudConnectionV2, { foreignKey: "providerId" });
 CloudConnectionV2.belongsTo(CloudProvider, { foreignKey: "providerId" });
 User.hasMany(CloudConnectionV2, { foreignKey: "createdBy" });
 CloudConnectionV2.belongsTo(User, { foreignKey: "createdBy" });
+CloudProvider.hasMany(BillingSource, { foreignKey: "cloudProviderId" });
+BillingSource.belongsTo(CloudProvider, { foreignKey: "cloudProviderId" });
+BillingSource.hasMany(RawBillingFile, { foreignKey: "billingSourceId" });
+RawBillingFile.belongsTo(BillingSource, { foreignKey: "billingSourceId" });
+CloudProvider.hasMany(RawBillingFile, { foreignKey: "cloudProviderId" });
+RawBillingFile.belongsTo(CloudProvider, { foreignKey: "cloudProviderId" });
 
 AdminUser.hasMany(AdminAuthSession, { foreignKey: "adminUserId" });
 AdminAuthSession.belongsTo(AdminUser, { foreignKey: "adminUserId" });
@@ -84,4 +94,6 @@ export {
   CloudConnectionV2,
   Tenant,
   User,
+  RawBillingFile,
+  BillingSource,
 };
