@@ -371,6 +371,10 @@ export function ClientBillingPage() {
     setAutoError(null)
     if (!validateAutoConnectionName(autoConnectionName)) return
 
+    // Open a tab immediately from the user click to avoid popup blockers.
+    // Do not use noopener here because some browsers return null window handles,
+    // which prevents us from assigning the backend URL after async calls complete.
+    const setupTab = window.open("about:blank", "_blank")
     setAutoSubmitting(true)
     void (async () => {
       try {
@@ -382,8 +386,16 @@ export function ClientBillingPage() {
         })
 
         const setup = await apiGet<{ url: string }>(`/cloud-connections/${created.id}/aws-cloudformation-url`)
-        window.location.assign(setup.url)
+        if (setupTab) {
+          setupTab.opener = null
+          setupTab.location.href = setup.url
+        } else {
+          window.open(setup.url, "_blank", "noopener,noreferrer")
+        }
       } catch (error) {
+        if (setupTab && !setupTab.closed) {
+          setupTab.close()
+        }
         if (error instanceof ApiError) {
           setAutoError(error.message || "Failed to create connection")
         } else {

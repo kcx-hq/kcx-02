@@ -4,7 +4,6 @@ import { Header } from "@/components/layout/Header"
 import {
   ClientBillingPage,
   ClientLayout,
-  ClientOverviewPage,
   ClientProfilePage,
   ClientSupportPage,
   ClientUsersPage,
@@ -27,8 +26,6 @@ import { getBlogSlugFromPath, getRouteRedirectTarget, navigateTo, useCurrentRout
 import { HomePage } from "@/pages/HomePage"
 
 const CLIENT_WORKSPACE_ROUTES = new Set([
-  "/client",
-  "/client/overview",
   "/client/billing",
   "/client/billing/uploads",
   "/client/billing/connections",
@@ -42,8 +39,6 @@ const CLIENT_WORKSPACE_ROUTES = new Set([
   "/client/support/live-chat",
   "/client/users",
   "/client/profile",
-  "/clienthome",
-  "/client-home",
 ])
 const AWS_CONNECTION_SETUP_ROUTE_REGEX = /^\/client\/billing\/connections\/aws\/setup\/[0-9a-fA-F-]{36}$/
 
@@ -77,7 +72,7 @@ export function App() {
     }
 
     if (route === "/login" && authenticated) {
-      navigateTo("/client/overview", { replace: true })
+      navigateTo("/client/billing", { replace: true })
     }
   }, [route, authenticated])
 
@@ -97,11 +92,6 @@ export function App() {
       {route === "/resources/blog" || route === "/resources/blogs" ? <BlogPage /> : null}
       {blogSlug ? <BlogDetailPage slug={blogSlug} /> : null}
       {route === "/resources/documentation" ? <DocumentationPage /> : null}
-      {route === "/client" || route === "/client/overview" || route === "/clienthome" || route === "/client-home" ? (
-        <ClientLayout>
-          <ClientOverviewPage />
-        </ClientLayout>
-      ) : null}
       {route === "/client/billing" ||
       // route === "/client/billing/uploads" ||
       route === "/client/billing/connections" ||

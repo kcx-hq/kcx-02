@@ -8,7 +8,6 @@ import { cn } from "@/lib/utils"
 import { Bell, ChevronDown, LifeBuoy, LogOut, Megaphone, User, UserCircle2 } from "lucide-react"
 
 const NAV_ITEMS = [
-  { label: "Overview", href: "/client/overview", matches: ["/client", "/client/overview", "/clienthome", "/client-home"] },
   { label: "Billing", href: "/client/billing", matches: ["/client/billing", "/client/billing/uploads", "/client/billing/connections", "/client/billing/connections/aws", "/client/billing/connections/aws/automatic", "/client/billing/connections/aws/manual"] },
   { label: "Support", href: "/client/support/tickets", matches: ["/client/support", "/client/support/tickets", "/client/support/schedule-call", "/client/support/live-chat"] },
   { label: "Users", href: "/client/users", matches: ["/client/users"] },

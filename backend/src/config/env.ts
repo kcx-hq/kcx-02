@@ -87,6 +87,7 @@ const env = {
   mailgunDomain: optionalEnv(process.env.MAILGUN_DOMAIN),
   mailgunFrom: optionalEnv(process.env.MAILGUN_FROM),
   frontendBaseUrl: optionalEnv(process.env.FRONTEND_BASE_URL),
+  awsCallbackUrl: optionalEnv(process.env.AWS_CALLBACK_URL),
   resetTokenTtlMinutes: optionalPositiveNumber(process.env.RESET_TOKEN_TTL_MINUTES, 60),
   sessionTtlHours: optionalPositiveNumber(process.env.SESSION_TTL_HOURS, 168),
 };
