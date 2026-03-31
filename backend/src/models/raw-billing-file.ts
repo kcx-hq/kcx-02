@@ -36,7 +36,7 @@ const createRawBillingFileModel = (sequelize: Sequelize): typeof RawBillingFile 
         field: "billing_source_id",
       },
       tenantId: { type: DataTypes.STRING(100), allowNull: false, field: "tenant_id" },
-      cloudProviderId: { type: DataTypes.UUID, allowNull: false, field: "cloud_provider_id" },
+      cloudProviderId: { type: DataTypes.BIGINT, allowNull: false, field: "cloud_provider_id" },
       sourceType: { type: DataTypes.STRING(50), allowNull: false, field: "source_type" },
       setupMode: { type: DataTypes.STRING(50), allowNull: false, field: "setup_mode" },
       originalFileName: { type: DataTypes.STRING(255), allowNull: false, field: "original_file_name" },

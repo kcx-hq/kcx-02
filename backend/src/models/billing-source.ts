@@ -36,7 +36,7 @@ const createBillingSourceModel = (sequelize: Sequelize): typeof BillingSource =>
       id: { type: DataTypes.BIGINT, autoIncrement: true, primaryKey: true },
       tenantId: { type: DataTypes.STRING(100), allowNull: false, field: "tenant_id" },
       cloudConnectionId: { type: DataTypes.UUID, allowNull: true, field: "cloud_connection_id" },
-      cloudProviderId: { type: DataTypes.UUID, allowNull: false, field: "cloud_provider_id" },
+      cloudProviderId: { type: DataTypes.BIGINT, allowNull: false, field: "cloud_provider_id" },
       sourceName: { type: DataTypes.STRING(255), allowNull: false, field: "source_name" },
       sourceType: { type: DataTypes.STRING(50), allowNull: false, field: "source_type" },
       setupMode: { type: DataTypes.STRING(50), allowNull: false, field: "setup_mode" },

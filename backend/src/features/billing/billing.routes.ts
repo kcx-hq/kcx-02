@@ -3,7 +3,11 @@ import multer from "multer";
 
 import { requireAuth } from "../../middlewares/auth.middleware.js";
 import { asyncHandler } from "../../utils/async-handler.js";
-import { handleGetBillingCloudProviders, handleManualUploadBillingFile } from "./billing.controller.js";
+import {
+  handleGetBillingCloudProviders,
+  handleGetBillingIngestionRun,
+  handleManualUploadBillingFile,
+} from "./billing.controller.js";
 
 const router = Router();
 
@@ -20,5 +24,6 @@ router.use(requireAuth);
 
 router.get("/billing/cloud-providers", asyncHandler(handleGetBillingCloudProviders));
 router.post("/billing/manual-upload", upload.single("file"), asyncHandler(handleManualUploadBillingFile));
+router.get("/billing-ingestion-runs/:id", asyncHandler(handleGetBillingIngestionRun));
 
 export default router;
