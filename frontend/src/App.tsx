@@ -33,6 +33,14 @@ const CLIENT_WORKSPACE_ROUTES = new Set([
   "/client/billing/connections/aws",
   "/client/billing/connections/aws/automatic",
   "/client/billing/connections/aws/manual",
+  "/client/billing/connect-cloud",
+  "/client/billing/connect-cloud/add",
+  "/client/billing/connect-cloud/aws",
+  "/client/billing/connect-cloud/azure",
+  "/client/billing/connect-cloud/gcp",
+  "/client/billing/connect-cloud/oracle-cloud",
+  "/client/billing/connect-cloud/aws/automatic",
+  "/client/billing/connect-cloud/aws/manual",
   "/client/support",
   "/client/support/tickets",
   "/client/support/schedule-call",
@@ -40,10 +48,11 @@ const CLIENT_WORKSPACE_ROUTES = new Set([
   "/client/users",
   "/client/profile",
 ])
-const AWS_CONNECTION_SETUP_ROUTE_REGEX = /^\/client\/billing\/connections\/aws\/setup\/[0-9a-fA-F-]{36}$/
+const AWS_CONNECTION_SETUP_ROUTE_REGEX = /^\/client\/billing\/(?:connect-cloud|connections)\/aws\/setup\/[0-9a-fA-F-]{36}$/
+const CLOUD_PROVIDER_ROUTE_REGEX = /^\/client\/billing\/(?:connect-cloud|connections)\/(aws|azure|gcp|oracle-cloud)$/
 
 function isClientWorkspaceRoute(route: string) {
-  return CLIENT_WORKSPACE_ROUTES.has(route) || AWS_CONNECTION_SETUP_ROUTE_REGEX.test(route)
+  return CLIENT_WORKSPACE_ROUTES.has(route) || AWS_CONNECTION_SETUP_ROUTE_REGEX.test(route) || CLOUD_PROVIDER_ROUTE_REGEX.test(route)
 }
 
 const HEADERLESS_ROUTES = new Set(["/schedule-demo", "/login", "/forgot-password", "/reset-password", ...CLIENT_WORKSPACE_ROUTES])
@@ -52,7 +61,7 @@ export function App() {
   const route = useCurrentRoute()
   const authenticated = isAuthenticated()
   const blogSlug = getBlogSlugFromPath(route)
-  const showMarketingHeader = !HEADERLESS_ROUTES.has(route) && !AWS_CONNECTION_SETUP_ROUTE_REGEX.test(route)
+  const showMarketingHeader = !HEADERLESS_ROUTES.has(route) && !AWS_CONNECTION_SETUP_ROUTE_REGEX.test(route) && !CLOUD_PROVIDER_ROUTE_REGEX.test(route)
 
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "auto" })
@@ -99,6 +108,15 @@ export function App() {
       route === "/client/billing/connections/aws" ||
       route === "/client/billing/connections/aws/automatic" ||
       route === "/client/billing/connections/aws/manual" ||
+      route === "/client/billing/connect-cloud" ||
+      route === "/client/billing/connect-cloud/add" ||
+      route === "/client/billing/connect-cloud/aws" ||
+      route === "/client/billing/connect-cloud/azure" ||
+      route === "/client/billing/connect-cloud/gcp" ||
+      route === "/client/billing/connect-cloud/oracle-cloud" ||
+      route === "/client/billing/connect-cloud/aws/automatic" ||
+      route === "/client/billing/connect-cloud/aws/manual" ||
+      CLOUD_PROVIDER_ROUTE_REGEX.test(route) ||
       AWS_CONNECTION_SETUP_ROUTE_REGEX.test(route) ? (
         <ClientLayout>
           <ClientBillingPage />

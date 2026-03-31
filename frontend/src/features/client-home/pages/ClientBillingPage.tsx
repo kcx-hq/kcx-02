@@ -1,4 +1,4 @@
-import { useEffect, useMemo , useState } from "react"
+import { useEffect, useMemo , useState, type ReactNode } from "react"
 // STEP 1:
 // Client prepares billing data source (S3 bucket)
 // This feeds into cross-account access setup in Step 2
@@ -6,8 +6,7 @@ import { useEffect, useMemo , useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { ArrowRight, CheckCircle2, Cloud, ExternalLink, FileSpreadsheet, Plus, Wrench } from "lucide-react"
+import { ArrowRight, CheckCircle2, Cloud, ExternalLink, FileSpreadsheet, Wrench } from "lucide-react"
 
 import { ClientPageHeader } from "@/features/client-home/components/ClientPageHeader"
 import { ApiError, apiGet, apiPost } from "@/lib/api"
@@ -23,41 +22,33 @@ const BILLING_OPTIONS = [
   },
   {
     label: "Cloud Connections",
-    href: "/client/billing/connections",
+    href: "/client/billing/connect-cloud",
     description: "Manage providers and integration setup paths.",
     icon: Cloud,
   },
 ] as const
 
-const CONNECTIONS: Array<{
-  name: string
-  provider: string
-  status: string
-  lastChecked: string
-  stage: string
-}> = []
-
-const PROVIDERS = [
-  { name: "AWS", icon: "/aws.svg", availability: "Available", href: "/client/billing/connections/aws" },
-  { name: "Azure", icon: "/azure.svg", availability: "Beta" },
-  { name: "GCP", icon: "/gcp.svg", availability: "Available Soon" },
-  { name: "Oracle Cloud", icon: "/oracle.svg", availability: "Planned" },
-  { name: "Custom", icon: "/icons/core-platform.png", availability: "Planned" },
-] as const
-
 const ADD_CONNECTION_PROVIDERS = [
-  { name: "AWS", icon: "/aws.svg", availability: "Available", description: "Connect AWS billing for cost ingestion.", href: "/client/billing/connections/aws" },
-  { name: "Azure", icon: "/azure.svg", availability: "Beta", description: "Azure billing integration is currently in beta." },
-  { name: "GCP", icon: "/gcp.svg", availability: "Planned", description: "GCP billing integration will be available soon." },
-  { name: "Oracle Cloud", icon: "/oracle.svg", availability: "Planned", description: "Oracle billing integration will be available soon." },
-  { name: "Custom", icon: "/icons/core-platform.png", availability: "Planned", description: "Custom source ingestion is planned." },
+  { name: "AWS", icon: "/aws.svg", availability: "Available", description: "Connect AWS billing for cost ingestion.", href: "/client/billing/connect-cloud/aws" },
+  { name: "Azure", icon: "/azure.svg", availability: "Beta", description: "Azure billing integration is currently in beta.", href: "/client/billing/connect-cloud/azure" },
+  { name: "GCP", icon: "/gcp.svg", availability: "Planned", description: "GCP billing integration will be available soon.", href: "/client/billing/connect-cloud/gcp" },
+  { name: "Oracle Cloud", icon: "/oracle.svg", availability: "Planned", description: "Oracle billing integration will be available soon.", href: "/client/billing/connect-cloud/oracle-cloud" },
 ] as const
 
 function isCloudConnectionsRoute(path: string) {
-  return path.startsWith("/client/billing/connections")
+  return path.startsWith("/client/billing/connect-cloud") || path.startsWith("/client/billing/connections")
 }
 
-const AWS_SETUP_ROUTE_REGEX = /^\/client\/billing\/connections\/aws\/setup\/([0-9a-fA-F-]{36})$/
+const AWS_SETUP_ROUTE_REGEX = /^\/client\/billing\/(?:connect-cloud|connections)\/aws\/setup\/([0-9a-fA-F-]{36})$/
+const CLOUD_PROVIDER_ROUTE_REGEX = /^\/client\/billing\/(?:connect-cloud|connections)\/(aws|azure|gcp|oracle-cloud)(?:\/|$)/
+const CLOUD_SETUP_METHOD_ROUTE_REGEX = /^\/client\/billing\/(?:connect-cloud|connections)\/(?:aws|azure|gcp|oracle-cloud)\/(automatic|manual)(?:\/|$)/
+
+const CLOUD_PROVIDER_LABELS: Record<string, string> = {
+  aws: "AWS",
+  azure: "Azure",
+  gcp: "GCP",
+  "oracle-cloud": "Oracle Cloud",
+}
 
 type CloudConnection = {
   id: string
@@ -65,66 +56,6 @@ type CloudConnection = {
   provider: string
   status: string
   account_type: string
-}
-
-function ConnectionStatusBadge({ status }: { status: string }) {
-  if (status === "Healthy") {
-    return <Badge variant="outline" className="rounded-md border-emerald-200 bg-emerald-50 text-emerald-700">Healthy</Badge>
-  }
-  if (status === "Pending First Ingest") {
-    return <Badge variant="outline" className="rounded-md border-amber-200 bg-amber-50 text-amber-700">Pending</Badge>
-  }
-  if (status === "Failed") {
-    return <Badge variant="outline" className="rounded-md border-rose-200 bg-rose-50 text-rose-700">Failed</Badge>
-  }
-  return <Badge variant="outline" className="rounded-md border-slate-300 bg-slate-100 text-slate-700">Not Available</Badge>
-}
-
-function ProviderCard({
-  name,
-  icon,
-  availability,
-  href,
-}: {
-  name: string
-  icon: string
-  availability: string
-  href?: string
-}) {
-  const isClickable = Boolean(href)
-  const cardClassName = cn(
-    "rounded-md border border-[color:var(--border-light)] bg-white p-4 transition-colors",
-    isClickable ? "hover:border-[color:var(--kcx-border-soft)] hover:bg-[color:var(--bg-surface)]" : "opacity-90"
-  )
-
-  const content = (
-    <div className={cardClassName}>
-      <div className="flex items-center justify-between">
-        <span className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-[color:var(--border-light)] bg-[color:var(--bg-surface)]">
-          <img src={icon} alt={name} className="h-5 w-5 object-contain" />
-        </span>
-        <Badge
-          variant="outline"
-          className={cn(
-            "rounded-md",
-            availability === "Available"
-              ? "border-[color:var(--kcx-border-soft)] bg-[color:var(--highlight-green)] text-brand-primary"
-              : "border-[color:var(--border-light)] bg-[color:var(--bg-surface)] text-text-muted"
-          )}
-        >
-          {availability}
-        </Badge>
-      </div>
-      <p className="mt-3 text-sm font-semibold text-text-primary">{name}</p>
-    </div>
-  )
-
-  if (!href) return content
-  return (
-    <a href={href} onClick={(event) => handleAppLinkClick(event, href)}>
-      {content}
-    </a>
-  )
 }
 
 function AddConnectionProviderCard({
@@ -140,9 +71,9 @@ function AddConnectionProviderCard({
   description: string
   href?: string
 }) {
-  const isEnabled = availability === "Available" && Boolean(href)
+  const isEnabled = Boolean(href)
   const className = cn(
-    "h-full rounded-md border bg-white p-5 transition-colors",
+    "h-full rounded-md border bg-white p-4 transition-colors",
     isEnabled
       ? "border-[color:var(--kcx-border-soft)] hover:bg-[color:var(--bg-surface)] hover:border-[color:var(--kcx-border-strong)]"
       : "border-[color:var(--border-light)]"
@@ -151,8 +82,8 @@ function AddConnectionProviderCard({
   const content = (
     <div className={className}>
       <div className="flex items-center justify-between">
-        <span className="inline-flex h-10 w-10 items-center justify-center rounded-md border border-[color:var(--border-light)] bg-[color:var(--bg-surface)]">
-          <img src={icon} alt={name} className="h-5 w-5 object-contain" />
+        <span className="inline-flex h-12 w-12 items-center justify-center rounded-md border border-[color:var(--border-light)] bg-[color:var(--bg-surface)]">
+          <img src={icon} alt={name} className="h-7 w-7 object-contain" />
         </span>
         <Badge
           variant="outline"
@@ -166,8 +97,8 @@ function AddConnectionProviderCard({
           {availability}
         </Badge>
       </div>
-      <h3 className="mt-4 text-base font-semibold text-text-primary">{name}</h3>
-      <p className="mt-1.5 min-h-[3rem] text-sm leading-6 text-text-secondary">{description}</p>
+      <h3 className="mt-3 text-base font-semibold text-text-primary">{name}</h3>
+      <p className="mt-1 text-sm leading-5 text-text-secondary">{description}</p>
     </div>
   )
 
@@ -323,7 +254,66 @@ function ManualSetupStepOne() {
 
 export function ClientBillingPage() {
   const route = useCurrentRoute()
-  const activeRoute = route === "/client/billing" ? "/client/billing/connections" : route
+  const activeRoute = route
+  const isBillingHubRoute = activeRoute === "/client/billing"
+  const cloudProviderSlug = useMemo(() => {
+    const match = CLOUD_PROVIDER_ROUTE_REGEX.exec(activeRoute)
+    if (!match) return null
+    return match[1]
+  }, [activeRoute])
+  const cloudProviderName = cloudProviderSlug ? CLOUD_PROVIDER_LABELS[cloudProviderSlug] : null
+  const cloudSetupMethod = useMemo(() => {
+    const match = CLOUD_SETUP_METHOD_ROUTE_REGEX.exec(activeRoute)
+    if (!match) return null
+    return match[1] === "automatic" ? "Automatic" : "Manual"
+  }, [activeRoute])
+  const cloudProviderRoute = cloudProviderSlug ? `/client/billing/connect-cloud/${cloudProviderSlug}` : null
+
+  const pageHeaderTitle: ReactNode = useMemo(() => {
+    if (!isCloudConnectionsRoute(activeRoute)) return "Billing"
+
+    const linkClass = "text-brand-primary hover:underline"
+    const dividerClass = "mx-2 text-text-muted"
+
+    return (
+      <>
+        <span>Billing</span>
+        <span className={dividerClass}>/</span>
+        {cloudProviderName ? (
+          <a
+            href="/client/billing/connect-cloud"
+            onClick={(event) => handleAppLinkClick(event, "/client/billing/connect-cloud")}
+            className={linkClass}
+          >
+            Cloud Connection
+          </a>
+        ) : (
+          <span>Cloud Connection</span>
+        )}
+        {cloudProviderName ? (
+          <>
+            <span className={dividerClass}>/</span>
+            {cloudSetupMethod && cloudProviderRoute ? (
+              <a href={cloudProviderRoute} onClick={(event) => handleAppLinkClick(event, cloudProviderRoute)} className={linkClass}>
+                {cloudProviderName}
+              </a>
+            ) : (
+              <span>{cloudProviderName}</span>
+            )}
+          </>
+        ) : null}
+        {cloudSetupMethod ? (
+          <>
+            <span className={dividerClass}>/</span>
+            <span>{cloudSetupMethod}</span>
+          </>
+        ) : null}
+      </>
+    )
+  }, [activeRoute, cloudProviderName, cloudProviderRoute, cloudSetupMethod])
+  const pageHeaderDescription = isCloudConnectionsRoute(activeRoute)
+    ? "Manage connected cloud accounts and integration setup."
+    : "Choose how you want to start billing ingestion."
 
   const [autoConnectionName, setAutoConnectionName] = useState("")
   const [autoAccountType, setAutoAccountType] = useState<"payer" | "member">("payer")
@@ -407,62 +397,88 @@ export function ClientBillingPage() {
     })()
   }
 
+  if (isBillingHubRoute) {
+    return (
+      <>
+        <ClientPageHeader eyebrow="Billing Workspace" title={pageHeaderTitle} description={pageHeaderDescription} />
+
+        <section aria-label="Billing quick start" className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+          {BILLING_OPTIONS.map((option) => {
+            const OptionIcon = option.icon
+            const isCloud = option.href === "/client/billing/connect-cloud"
+
+            return (
+              <Card
+                key={option.href}
+                className={cn(
+                  "group relative overflow-hidden rounded-md border shadow-sm-custom transition-all",
+                  isCloud
+                    ? "border-[color:var(--kcx-border-soft)] bg-[linear-gradient(160deg,#f6fffb_0%,#f2faf7_46%,#ffffff_100%)]"
+                    : "border-[color:var(--border-light)] bg-[linear-gradient(160deg,#ffffff_0%,#f7faf9_100%)]"
+                )}
+              >
+                <div
+                  className={cn(
+                    "pointer-events-none absolute -right-16 -top-16 h-40 w-40 rounded-full blur-2xl",
+                    isCloud ? "bg-[rgba(63,154,125,0.16)]" : "bg-[rgba(35,110,88,0.1)]"
+                  )}
+                />
+                <CardContent className="relative space-y-5 p-6">
+                  <div className="space-y-3">
+                    <span
+                      className={cn(
+                        "inline-flex h-11 w-11 items-center justify-center rounded-md border",
+                        isCloud
+                          ? "border-[color:var(--kcx-border-soft)] bg-white text-brand-primary"
+                          : "border-[color:var(--border-light)] bg-white text-text-secondary"
+                      )}
+                    >
+                      <OptionIcon className="h-5 w-5" />
+                    </span>
+                    <div className="space-y-1.5">
+                      <p className="kcx-eyebrow text-brand-primary">{isCloud ? "Cloud Setup" : "Manual Upload"}</p>
+                      <h2 className="text-2xl font-semibold tracking-tight text-text-primary">{option.label}</h2>
+                      <p className="max-w-[45ch] text-sm leading-6 text-text-secondary">{option.description}</p>
+                    </div>
+                  </div>
+
+                  <div className="rounded-md border border-dashed border-[color:var(--border-light)] bg-white/80 p-3.5 text-xs leading-6 text-text-muted">
+                    {isCloud
+                      ? "Best for automated, continuous billing ingestion from connected cloud accounts."
+                      : "Best for getting started quickly with exported billing files and manual uploads."}
+                  </div>
+
+                  <Button
+                    className={cn(
+                      "h-11 rounded-md px-5",
+                      isCloud
+                        ? "bg-[color:var(--brand-primary)] text-white hover:brightness-95"
+                        : ""
+                    )}
+                    variant={isCloud ? "default" : "outline"}
+                    onClick={() => navigateTo(option.href)}
+                  >
+                    {isCloud ? "Open Cloud Connection" : "Open Upload CSV"}
+                    <ArrowRight className="ml-2 h-4 w-4" />
+                  </Button>
+                </CardContent>
+              </Card>
+            )
+          })}
+        </section>
+      </>
+    )
+  }
+
   return (
     <>
       <ClientPageHeader
         eyebrow="Billing Workspace"
-        title="Billing"
-        description="Manage uploads, cloud connections, and billing ingestion workflows."
+        title={pageHeaderTitle}
+        description={pageHeaderDescription}
       />
 
-      <section aria-label="Billing workspace options" className="grid grid-cols-1 gap-5 lg:grid-cols-[280px_minmax(0,1fr)]">
-        <Card className="rounded-md border-[color:var(--border-light)] bg-white shadow-sm-custom">
-          <CardContent className="p-3">
-            <p className="px-3 py-2 text-xs font-semibold uppercase tracking-[0.12em] text-text-muted">Billing Modules</p>
-            <ul className="space-y-1.5">
-              {BILLING_OPTIONS.map((option) => {
-                const isActive =
-                  option.href === "/client/billing/connections" ? isCloudConnectionsRoute(activeRoute) : option.href === activeRoute
-                const OptionIcon = option.icon
-
-                return (
-                  <li key={option.href}>
-                    <a
-                      href={option.href}
-                      onClick={(event) => handleAppLinkClick(event, option.href)}
-                      className={cn(
-                        "block rounded-md border px-3 py-2.5 transition-colors",
-                        isActive
-                          ? "border-[color:var(--kcx-border-soft)] bg-[color:var(--highlight-green)]"
-                          : "border-transparent hover:border-[color:var(--border-light)] hover:bg-[color:var(--bg-surface)]"
-                      )}
-                    >
-                      <div className="flex items-start gap-2.5">
-                        <span
-                          className={cn(
-                            "mt-0.5 inline-flex h-7 w-7 items-center justify-center rounded-md border",
-                            isActive
-                              ? "border-[color:var(--kcx-border-soft)] bg-white text-brand-primary"
-                              : "border-[color:var(--border-light)] bg-white text-text-muted"
-                          )}
-                        >
-                          <OptionIcon className="h-3.5 w-3.5" />
-                        </span>
-                        <div className="space-y-0.5">
-                          <p className={cn("text-sm", isActive ? "font-semibold text-text-primary" : "font-medium text-text-secondary")}>
-                            {option.label}
-                          </p>
-                          <p className="text-xs leading-5 text-text-muted">{option.description}</p>
-                        </div>
-                      </div>
-                    </a>
-                  </li>
-                )
-              })}
-            </ul>
-          </CardContent>
-        </Card>
-
+      <section aria-label="Billing workspace options">
         <Card className="rounded-md border-[color:var(--border-light)] bg-white shadow-sm-custom">
           <CardContent className="space-y-6 p-6">
             {activeRoute === "/client/billing/uploads" ? (
@@ -480,103 +496,27 @@ export function ClientBillingPage() {
               </>
             ) : null}
 
-            {activeRoute === "/client/billing/connections" ? (
-              <>
-                <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                  <div className="space-y-2">
-                    <p className="kcx-eyebrow text-brand-primary">Cloud Connections</p>
-                    <h2 className="text-2xl font-semibold tracking-tight text-text-primary">Cloud Connections</h2>
-                    <p className="text-sm text-text-secondary">
-                      Manage connected cloud accounts, monitor setup status, and start new billing integrations.
-                    </p>
-                  </div>
-                  <Button className="h-10 rounded-md" onClick={() => navigateTo("/client/billing/connections/add")}>
-                    <Plus className="mr-1.5 h-4 w-4" />
-                    Add Connection
-                  </Button>
-                </div>
-
-                <section className="space-y-3">
-                  <div className="space-y-1">
-                    <h3 className="text-base font-semibold text-text-primary">Current Connections</h3>
-                    <p className="text-sm text-text-secondary">Live view of billing integration health and ingestion state.</p>
-                  </div>
-                  {CONNECTIONS.length < 1 ? (
-                    <div className="rounded-md border border-dashed border-[color:var(--border-light)] bg-[color:var(--bg-surface)] p-6">
-                      <p className="text-sm text-text-secondary">No active cloud connections found. Connected accounts will appear here once billing integration is configured.</p>
-                    </div>
-                  ) : (
-                    <div className="rounded-md border border-[color:var(--border-light)]">
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>Connection Name</TableHead>
-                            <TableHead>Provider</TableHead>
-                            <TableHead>Status</TableHead>
-                            <TableHead>Last Checked</TableHead>
-                            <TableHead>Last Success / Stage</TableHead>
-                            <TableHead>Action</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {CONNECTIONS.map((connection) => (
-                            <TableRow key={connection.name}>
-                              <TableCell className="font-medium text-text-primary">{connection.name}</TableCell>
-                              <TableCell>{connection.provider}</TableCell>
-                              <TableCell><ConnectionStatusBadge status={connection.status} /></TableCell>
-                              <TableCell>{connection.lastChecked}</TableCell>
-                              <TableCell>{connection.stage}</TableCell>
-                              <TableCell>
-                                <Button variant="ghost" className="h-8 rounded-md px-2 text-sm text-text-secondary">
-                                  View
-                                </Button>
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </div>
-                  )}
-                </section>
-
-                <section className="space-y-3">
-                  <div className="space-y-1">
-                    <h3 className="text-base font-semibold text-text-primary">Add a New Connection</h3>
-                    <p className="text-sm text-text-secondary">Choose a provider to begin a new billing connection.</p>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
-                    {PROVIDERS.map((provider) => (
-                      <ProviderCard key={provider.name} {...provider} />
-                    ))}
-                  </div>
-                </section>
-              </>
-            ) : null}
-
-            {activeRoute === "/client/billing/connections/add" ? (
+            {activeRoute === "/client/billing/connect-cloud" ||
+            activeRoute === "/client/billing/connect-cloud/add" ||
+            activeRoute === "/client/billing/connections" ||
+            activeRoute === "/client/billing/connections/add" ? (
               <>
                 <div className="space-y-2">
-                  <p className="kcx-eyebrow text-brand-primary">Add Connection</p>
+                  <p className="kcx-eyebrow text-brand-primary">Connect Cloud</p>
                   <h2 className="text-2xl font-semibold tracking-tight text-text-primary">Choose Cloud Provider</h2>
                   <p className="text-sm text-text-secondary">
                     Select a cloud provider to begin a new billing integration setup.
                   </p>
                 </div>
-                <div className="grid grid-cols-1 auto-rows-fr gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                <div className="grid grid-cols-1 auto-rows-fr gap-3 sm:grid-cols-2 xl:grid-cols-4">
                   {ADD_CONNECTION_PROVIDERS.map((provider) => (
                     <AddConnectionProviderCard key={provider.name} {...provider} />
                   ))}
                 </div>
-                <div className="border-t border-[color:var(--border-light)] pt-4">
-                  <Button variant="ghost" className="h-10 rounded-md" onClick={() => navigateTo("/client/billing/connections")}>
-                    <ArrowRight className="mr-1.5 h-4 w-4 rotate-180" />
-                    Back to Cloud Connections
-                  </Button>
-                </div>
               </>
             ) : null}
 
-            {activeRoute === "/client/billing/connections/aws" ? (
+            {activeRoute === "/client/billing/connect-cloud/aws" || activeRoute === "/client/billing/connections/aws" ? (
               <>
                 <div className="space-y-2">
                   <p className="kcx-eyebrow text-brand-primary">AWS Setup Choice</p>
@@ -596,7 +536,7 @@ export function ClientBillingPage() {
                       <Button
                         variant="outline"
                         className="h-10 rounded-md border-[color:var(--border-light)]"
-                        onClick={() => navigateTo("/client/billing/connections/aws/automatic")}
+                        onClick={() => navigateTo("/client/billing/connect-cloud/aws/automatic")}
                       >
                         Start Automatic Setup
                       </Button>
@@ -609,7 +549,7 @@ export function ClientBillingPage() {
                       </span>
                       <h3 className="text-base font-semibold text-text-primary">Manual Setup</h3>
                       <p className="text-sm text-text-secondary">Use account details and IAM role configuration to connect billing manually.</p>
-                      <Button className="h-10 rounded-md" onClick={() => navigateTo("/client/billing/connections/aws/manual")}>
+                      <Button className="h-10 rounded-md" onClick={() => navigateTo("/client/billing/connect-cloud/aws/manual")}>
                         Start Manual Setup
                       </Button>
                     </CardContent>
@@ -618,7 +558,22 @@ export function ClientBillingPage() {
               </>
             ) : null}
 
-            {activeRoute === "/client/billing/connections/aws/automatic" ? (
+            {cloudProviderSlug && cloudProviderSlug !== "aws" ? (
+              <>
+                <div className="space-y-2">
+                  <p className="kcx-eyebrow text-brand-primary">{cloudProviderName} Integration</p>
+                  <h2 className="text-2xl font-semibold tracking-tight text-text-primary">{cloudProviderName} Setup</h2>
+                  <p className="text-sm text-text-secondary">
+                    Billing integration setup for {cloudProviderName} is coming soon.
+                  </p>
+                </div>
+                <div className="rounded-md border border-dashed border-[color:var(--border-light)] bg-[color:var(--bg-surface)] p-4 text-sm text-text-muted">
+                  This provider route is ready. Detailed onboarding steps for {cloudProviderName} will be added soon.
+                </div>
+              </>
+            ) : null}
+
+            {activeRoute === "/client/billing/connect-cloud/aws/automatic" || activeRoute === "/client/billing/connections/aws/automatic" ? (
               <>
                 <div className="space-y-2">
                   <p className="kcx-eyebrow text-brand-primary">AWS Automatic Setup</p>
@@ -690,7 +645,7 @@ export function ClientBillingPage() {
                   <Button
                     variant="ghost"
                     className="h-10 rounded-md"
-                    onClick={() => navigateTo("/client/billing/connections/aws")}
+                    onClick={() => navigateTo("/client/billing/connect-cloud/aws")}
                   >
                     Back
                     <ArrowRight className="ml-1.5 h-4 w-4" />
@@ -757,7 +712,7 @@ export function ClientBillingPage() {
                       <Button
                         variant="ghost"
                         className="h-10 rounded-md"
-                        onClick={() => navigateTo("/client/billing/connections/aws")}
+                        onClick={() => navigateTo("/client/billing/connect-cloud/aws")}
                       >
                         Back to Setup Choice
                         <ArrowRight className="ml-1.5 h-4 w-4" />
@@ -768,7 +723,7 @@ export function ClientBillingPage() {
               </>
             ) : null}
 
-            {activeRoute === "/client/billing/connections/aws/manual" ? (
+            {activeRoute === "/client/billing/connect-cloud/aws/manual" || activeRoute === "/client/billing/connections/aws/manual" ? (
               <>
                 <div className="space-y-2">
                   <p className="kcx-eyebrow text-brand-primary">AWS MANUAL SETUP</p>
