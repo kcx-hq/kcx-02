@@ -48,6 +48,14 @@ const optionalPositiveInteger = (value: string | undefined): number | undefined 
   return parsed;
 };
 
+const optionalBoolean = (value: string | undefined): boolean | undefined => {
+  const normalized = optionalEnv(value)?.toLowerCase();
+  if (!normalized) return undefined;
+  if (normalized === "true" || normalized === "1") return true;
+  if (normalized === "false" || normalized === "0") return false;
+  return undefined;
+};
+
 const rawPort = process.env.PORT;
 const parsedPort = Number(rawPort ?? 5000);
 
@@ -96,6 +104,13 @@ const env = {
     optionalEnv(process.env.AWS_VALIDATION_SESSION_TOKEN) ?? optionalEnv(process.env.AWS_SESSION_TOKEN),
   resetTokenTtlMinutes: optionalPositiveNumber(process.env.RESET_TOKEN_TTL_MINUTES, 60),
   sessionTtlHours: optionalPositiveNumber(process.env.SESSION_TTL_HOURS, 168),
+  awsRegion: optionalEnv(process.env.AWS_REGION) ?? "us-east-1",
+  awsAccessKeyId: optionalEnv(process.env.AWS_ACCESS_KEY_ID),
+  awsSecretAccessKey: optionalEnv(process.env.AWS_SECRET_ACCESS_KEY),
+  awsSessionToken: optionalEnv(process.env.AWS_SESSION_TOKEN),
+  awsS3Endpoint: optionalEnv(process.env.AWS_S3_ENDPOINT),
+  awsS3ForcePathStyle: optionalBoolean(process.env.AWS_S3_FORCE_PATH_STYLE) ?? false,
+  rawBillingFilesBucket: optionalEnv(process.env.RAW_BILLING_FILES_BUCKET),
 };
 
 export default env;

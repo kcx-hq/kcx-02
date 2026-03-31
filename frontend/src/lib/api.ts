@@ -98,3 +98,39 @@ export async function apiGet<TData>(path: string, init?: RequestInit): Promise<T
   return payload.data
 }
 
+export async function apiPostForm<TData>(path: string, formData: FormData, init?: RequestInit): Promise<TData> {
+  const url = joinUrl(appEnv.apiBaseUrl, path)
+  const token = getAuthToken()
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(init?.headers ?? {}),
+    },
+    body: formData,
+    ...init,
+  })
+
+  const payload = (await response.json().catch(() => null)) as (ApiResponse<TData> | TData | { message?: string } | null)
+
+  if (!response.ok) {
+    handleUnauthorized(path, response.status)
+    const errorMessage =
+      payload && typeof payload === "object" && "message" in payload && typeof payload.message === "string"
+        ? payload.message
+        : "Request failed"
+    throw new ApiError(errorMessage, response.status, payload)
+  }
+
+  if (
+    payload &&
+    typeof payload === "object" &&
+    "success" in payload &&
+    (payload as ApiResponse<TData>).success === true
+  ) {
+    return (payload as ApiSuccess<TData>).data
+  }
+
+  return payload as TData
+}
+

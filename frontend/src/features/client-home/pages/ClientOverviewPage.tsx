@@ -26,7 +26,7 @@ export function ClientOverviewPage() {
                   Upload your billing data manually to start analyzing costs instantly.
                 </p>
               </div>
-              <Button className="h-10 rounded-md">Upload CSV</Button>
+              <Button className="h-10 rounded-md" onClick={openUploadDialog}>Upload CSV</Button>
             </CardContent>
           </Card>
 

@@ -48,7 +48,7 @@ const createCloudConnectionV2Model = (sequelize: Sequelize): typeof CloudConnect
     {
       id: { type: DataTypes.UUID, primaryKey: true, defaultValue: sequelize.literal("gen_random_uuid()") },
       tenantId: { type: DataTypes.UUID, allowNull: false, field: "tenant_id" },
-      providerId: { type: DataTypes.UUID, allowNull: false, field: "provider_id" },
+      providerId: { type: DataTypes.BIGINT, allowNull: false, field: "provider_id" },
       connectionName: { type: DataTypes.STRING(150), allowNull: false, field: "connection_name" },
       accountType: {
         type: DataTypes.ENUM("payer", "member"),

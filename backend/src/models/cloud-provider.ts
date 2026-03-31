@@ -24,7 +24,7 @@ class CloudProvider extends Model<
 const createCloudProviderModel = (sequelize: Sequelize): typeof CloudProvider => {
   CloudProvider.init(
     {
-      id: { type: DataTypes.UUID, primaryKey: true, defaultValue: sequelize.literal("gen_random_uuid()") },
+      id: { type: DataTypes.BIGINT, autoIncrement: true, primaryKey: true },
       code: { type: DataTypes.STRING(30), allowNull: false, unique: true },
       name: { type: DataTypes.STRING(100), allowNull: false },
       status: { type: DataTypes.STRING(30), allowNull: false, defaultValue: "active" },
