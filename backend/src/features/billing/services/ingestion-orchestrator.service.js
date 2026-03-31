@@ -3,6 +3,8 @@ import { HeadObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import env from "../../../config/env.js";
 import { NotFoundError } from "../../../errors/http-errors.js";
 import { RawBillingFile } from "../../../models/index.js";
+import { insertFactCostLineItem } from "./fact-cost-line-item.service.js";
+import { readBillingFile } from "./file-reader.service.js";
 import { getIngestionRunById, updateIngestionRunStatus } from "./ingestion.service.js";
 
 const SUPPORTED_FORMATS = new Set(["csv", "parquet"]);
@@ -64,9 +66,12 @@ async function markRunRunning(runId) {
   });
 }
 
-async function markRunCompleted(runId) {
+async function markRunCompleted(runId, { rowsRead = 0, rowsLoaded = 0, rowsFailed = 0 } = {}) {
   await updateIngestionRunStatus(runId, {
     status: "completed",
+    rows_read: rowsRead,
+    rows_loaded: rowsLoaded,
+    rows_failed: rowsFailed,
     finished_at: new Date(),
   });
 }
@@ -86,27 +91,78 @@ function assertSupportedFormat(fileFormat) {
   }
 }
 
+function assertRawFileLocation(rawFile) {
+  if (!rawFile?.rawStorageBucket || !rawFile?.rawStorageKey) {
+    throw new Error("Raw billing file is missing S3 bucket or object key");
+  }
+}
+
 export async function processIngestionRun(ingestionRunId) {
-  const run = await loadIngestionRunOrThrow(ingestionRunId);
+  console.info("Starting ingestion", { ingestionRunId });
+
+  let run;
 
   try {
-    await markRunRunning(run.id);
+    run = await loadIngestionRunOrThrow(ingestionRunId);
 
     const rawFile = await loadRawBillingFileOrThrow(run.rawBillingFileId);
+    assertRawFileLocation(rawFile);
     assertSupportedFormat(rawFile.fileFormat);
 
-    // MVP readiness checks only:
-    // 1) raw record exists
-    // 2) object is present in S3
-    // 3) format is currently supported
-    // Real CSV/Parquet parsing + fact table loading will be added in a later phase.
+    // Validate object exists before moving run to active processing.
     await verifyRawFileExistsInS3({
       bucket: rawFile.rawStorageBucket,
       key: rawFile.rawStorageKey,
     });
 
-    await markRunCompleted(run.id);
+    await markRunRunning(run.id);
+
+    const { rows, rowCount } = await readBillingFile({
+      bucket: rawFile.rawStorageBucket,
+      key: rawFile.rawStorageKey,
+      fileFormat: rawFile.fileFormat,
+    });
+
+    console.info("Rows to process", { rowCount });
+
+    let rowsRead = 0;
+    let rowsLoaded = 0;
+    let rowsFailed = 0;
+
+    // NOTE:
+    // This processes rows sequentially (MVP).
+    // Can be optimized later using batching or parallel processing.
+    for (const rawRow of rows) {
+      rowsRead += 1;
+
+      try {
+        await insertFactCostLineItem({
+          rawRow,
+          tenantId: rawFile.tenantId,
+          billingSourceId: rawFile.billingSourceId,
+          ingestionRunId: run.id,
+          providerId: rawFile.cloudProviderId,
+        });
+
+        rowsLoaded += 1;
+      } catch (_error) {
+        rowsFailed += 1;
+        continue;
+      }
+    }
+
+    await markRunCompleted(run.id, {
+      rowsRead,
+      rowsLoaded,
+      rowsFailed,
+    });
+
+    console.info("Ingestion completed", { rowsLoaded, rowsFailed });
   } catch (error) {
+    if (!run?.id) {
+      throw error;
+    }
+
     try {
       await markRunFailed(run.id, error);
     } catch (markError) {

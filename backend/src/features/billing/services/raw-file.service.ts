@@ -77,6 +77,16 @@ const toKeySegment = (value: string): string => {
   return normalized.length > 0 ? normalized : "unknown";
 };
 
+const normalizeCloudProviderIdOrThrow = (cloudProviderId: string): string => {
+  const normalizedCloudProviderId = String(cloudProviderId ?? "").trim();
+
+  if (!/^\d+$/.test(normalizedCloudProviderId)) {
+    throw new BadRequestError("Invalid cloudProviderId");
+  }
+
+  return normalizedCloudProviderId;
+};
+
 export function detectFileFormat(fileName: string): "csv" | "parquet" {
   const extension = path.extname(fileName).replace(".", "").toLowerCase();
 
@@ -106,7 +116,9 @@ export function buildRawFileKey({ tenantId, providerName, sourceType, fileName }
 }
 
 export async function getProviderNameById(cloudProviderId: string): Promise<string> {
-  const provider = await CloudProvider.findByPk(cloudProviderId, {
+  const normalizedCloudProviderId = normalizeCloudProviderIdOrThrow(cloudProviderId);
+
+  const provider = await CloudProvider.findByPk(normalizedCloudProviderId, {
     attributes: ["id", "name"],
   });
 

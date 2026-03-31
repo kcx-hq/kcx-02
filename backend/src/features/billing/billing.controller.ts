@@ -35,6 +35,10 @@ export async function handleManualUploadBillingFile(req: Request, res: Response)
   }
 
   const normalizedCloudProviderId = cloudProviderId.trim();
+  if (!/^\d+$/.test(normalizedCloudProviderId)) {
+    throw new BadRequestError("Invalid cloudProviderId");
+  }
+
   const format = detectFileFormat(req.file.originalname);
 
   const billingSource = await getOrCreateManualSource({
@@ -56,8 +60,8 @@ export async function handleManualUploadBillingFile(req: Request, res: Response)
   });
 
   setImmediate(() => {
-  ingestionOrchestrator.processIngestionRun(ingestionRun.id);
-});
+    ingestionOrchestrator.processIngestionRun(ingestionRun.id);
+  });
 
   res.status(HTTP_STATUS.CREATED).json({
     billingSourceId: billingSource.id,

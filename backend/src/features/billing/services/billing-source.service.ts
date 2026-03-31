@@ -22,8 +22,20 @@ type GetOrCreateManualSourceParams = {
   format: "csv" | "parquet";
 };
 
+const normalizeCloudProviderIdOrThrow = (cloudProviderId: string): string => {
+  const normalizedCloudProviderId = String(cloudProviderId ?? "").trim();
+
+  if (!/^\d+$/.test(normalizedCloudProviderId)) {
+    throw new BadRequestError("Invalid cloudProviderId");
+  }
+
+  return normalizedCloudProviderId;
+};
+
 export async function getProviderNameById(cloudProviderId: string): Promise<string> {
-  const provider = await CloudProvider.findByPk(cloudProviderId, {
+  const normalizedCloudProviderId = normalizeCloudProviderIdOrThrow(cloudProviderId);
+
+  const provider = await CloudProvider.findByPk(normalizedCloudProviderId, {
     attributes: ["id", "name"],
   });
 
@@ -80,15 +92,21 @@ export async function getOrCreateManualSource({
   cloudProviderId,
   format,
 }: GetOrCreateManualSourceParams): Promise<BillingSourceInstance> {
-  const providerName = await getProviderNameById(cloudProviderId);
-  const existingSource = await findManualSource({ tenantId, cloudProviderId, format });
+  const normalizedCloudProviderId = normalizeCloudProviderIdOrThrow(cloudProviderId);
+  const providerName = await getProviderNameById(normalizedCloudProviderId);
+  const existingSource = await findManualSource({
+    tenantId,
+    cloudProviderId: normalizedCloudProviderId,
+    format,
+  });
+
   if (existingSource) {
     return existingSource;
   }
 
   return createManualSource({
     tenantId,
-    cloudProviderId,
+    cloudProviderId: normalizedCloudProviderId,
     providerName,
     format,
   });
