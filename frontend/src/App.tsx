@@ -1,4 +1,4 @@
-import { useEffect } from "react"
+import { useEffect, useState } from "react"
 
 import { Header } from "@/components/layout/Header"
 import {
@@ -21,7 +21,8 @@ import {
   ResetPasswordPage,
   ScheduleDemoPage,
 } from "@/features/landing/pages"
-import { isAuthenticated } from "@/lib/auth"
+import { clearAuthSession, isAuthenticated } from "@/lib/auth"
+import { ApiError, apiGet } from "@/lib/api"
 import { getBlogSlugFromPath, getRouteRedirectTarget, navigateTo, useCurrentRoute } from "@/lib/navigation"
 import { HomePage } from "@/pages/HomePage"
 
@@ -59,9 +60,44 @@ const HEADERLESS_ROUTES = new Set(["/schedule-demo", "/login", "/forgot-password
 
 export function App() {
   const route = useCurrentRoute()
-  const authenticated = isAuthenticated()
+  const storedAuthenticated = isAuthenticated()
+  const [authChecked, setAuthChecked] = useState(false)
+  const [authenticated, setAuthenticated] = useState(false)
   const blogSlug = getBlogSlugFromPath(route)
   const showMarketingHeader = !HEADERLESS_ROUTES.has(route) && !AWS_CONNECTION_SETUP_ROUTE_REGEX.test(route) && !CLOUD_PROVIDER_ROUTE_REGEX.test(route)
+
+  useEffect(() => {
+    if (!storedAuthenticated) {
+      setAuthenticated(false)
+      setAuthChecked(true)
+      return
+    }
+
+    let cancelled = false
+    void (async () => {
+      try {
+        await apiGet<{ user: { id: string } | null }>("/auth/me")
+        if (!cancelled) {
+          setAuthenticated(true)
+        }
+      } catch (error) {
+        if (error instanceof ApiError && error.status === 401) {
+          clearAuthSession()
+        }
+        if (!cancelled) {
+          setAuthenticated(false)
+        }
+      } finally {
+        if (!cancelled) {
+          setAuthChecked(true)
+        }
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [storedAuthenticated])
 
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "auto" })
@@ -75,6 +111,8 @@ export function App() {
   }, [route])
 
   useEffect(() => {
+    if (!authChecked) return
+
     if (isClientWorkspaceRoute(route) && !authenticated) {
       navigateTo("/login", { replace: true })
       return
@@ -83,7 +121,7 @@ export function App() {
     if (route === "/login" && authenticated) {
       navigateTo("/client/billing", { replace: true })
     }
-  }, [route, authenticated])
+  }, [route, authenticated, authChecked])
 
   return (
     <main className="min-h-screen overflow-x-clip bg-background text-foreground">

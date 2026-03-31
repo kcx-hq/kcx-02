@@ -1,8 +1,17 @@
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
+import { navigateTo } from "@/lib/navigation"
 import { Cloud, Upload } from "lucide-react"
 
 export function ClientOverviewPage() {
+  function openUploadPage() {
+    navigateTo("/client/billing/uploads")
+  }
+
+  function openConnectCloudPage() {
+    navigateTo("/client/billing/connect-cloud/aws")
+  }
+
   return (
     <div className="space-y-5">
       <section aria-label="Get Started" className="space-y-4 rounded-md border border-[color:var(--border-light)] bg-[linear-gradient(180deg,#ffffff_0%,#f9fbfa_100%)] p-6 shadow-sm-custom">
@@ -26,7 +35,7 @@ export function ClientOverviewPage() {
                   Upload your billing data manually to start analyzing costs instantly.
                 </p>
               </div>
-              <Button className="h-10 rounded-md" onClick={openUploadDialog}>Upload CSV</Button>
+              <Button className="h-10 rounded-md" onClick={openUploadPage}>Upload CSV</Button>
             </CardContent>
           </Card>
 
@@ -41,7 +50,11 @@ export function ClientOverviewPage() {
                   Connect AWS or other providers for automated billing ingestion.
                 </p>
               </div>
-              <Button variant="outline" className="h-10 rounded-md border-[color:var(--border-light)] bg-transparent">
+              <Button
+                variant="outline"
+                className="h-10 rounded-md border-[color:var(--border-light)] bg-transparent"
+                onClick={openConnectCloudPage}
+              >
                 Connect AWS
               </Button>
             </CardContent>

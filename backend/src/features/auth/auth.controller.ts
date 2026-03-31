@@ -25,6 +25,18 @@ export async function handleLogin(req: Request, res: Response): Promise<void> {
   });
 }
 
+export async function handleAuthMe(req: Request, res: Response): Promise<void> {
+  sendSuccess({
+    res,
+    req,
+    statusCode: HTTP_STATUS.OK,
+    message: "Authenticated user fetched",
+    data: {
+      user: req.auth?.user ?? null,
+    },
+  });
+}
+
 export async function handleForgotPassword(req: Request, res: Response): Promise<void> {
   const { email } = parseForgotPasswordBody(req.body);
   const result = await requestPasswordReset(email);

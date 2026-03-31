@@ -1,10 +1,12 @@
 import { Router } from "express";
 import { asyncHandler } from "../../utils/async-handler.js";
-import { handleForgotPassword, handleLogin, handleResetPassword } from "./auth.controller.js";
+import { requireAuth } from "../../middlewares/auth.middleware.js";
+import { handleAuthMe, handleForgotPassword, handleLogin, handleResetPassword } from "./auth.controller.js";
 
 const router = Router();
 
 router.post("/auth/login", asyncHandler(handleLogin));
+router.get("/auth/me", requireAuth, asyncHandler(handleAuthMe));
 router.post("/auth/forgot-password", asyncHandler(handleForgotPassword));
 router.post("/auth/reset-password", asyncHandler(handleResetPassword));
 
