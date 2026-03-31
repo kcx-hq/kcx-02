@@ -11,6 +11,7 @@ import {
   buildAwsCloudFormationCreateStackUrl,
   KCX_AWS_CLOUDFORMATION_TEMPLATE_URL,
 } from "./aws-cloudformation-url.js";
+import { validateAwsConnection } from "./aws-connection-validation.service.js";
 import { awsConnectionCallbackSchema, createCloudConnectionSchema } from "./cloud-connections.schema.js";
 
 const requireUserId = (req: Request) => {
@@ -186,7 +187,6 @@ export async function handleGetAwsCloudFormationSetupUrl(req: Request, res: Resp
     data: { url },
   });
 }
-
 export async function handleAwsConnectionCallback(req: Request, res: Response): Promise<void> {
   const payload = parseWithSchema(awsConnectionCallbackSchema, req.body);
 
@@ -203,10 +203,13 @@ export async function handleAwsConnectionCallback(req: Request, res: Response): 
   await connection.update({
     cloudAccountId: payload.account_id.trim(),
     roleArn: payload.role_arn.trim(),
-    status: "active",
+    stackId: payload.stack_id.trim(),
+    status: "awaiting_validation",
     connectedAt: now,
-    lastValidatedAt: now,
+    errorMessage: null,
   });
+
+  const validationResult = await validateAwsConnection(connection.id);
 
   sendSuccess({
     res,
@@ -215,7 +218,34 @@ export async function handleAwsConnectionCallback(req: Request, res: Response): 
     message: "AWS callback processed",
     data: {
       id: connection.id,
-      status: "active",
+      status: validationResult.status,
+      stack_id: payload.stack_id.trim(),
+      error_message: validationResult.errorMessage,
+    },
+  });
+}
+
+export async function handleValidateCloudConnection(req: Request, res: Response): Promise<void> {
+  requireUserId(req);
+  const tenantId = requireTenantId(req);
+  const id = req.params.id;
+  if (typeof id !== "string" || id.trim().length === 0) throw new NotFoundError("Connection not found");
+
+  const connection = await CloudConnectionV2.findOne({ where: { id, tenantId } });
+  if (!connection) throw new NotFoundError("Connection not found");
+
+  const result = await validateAwsConnection(connection.id);
+
+  sendSuccess({
+    res,
+    req,
+    statusCode: HTTP_STATUS.OK,
+    message: "Cloud connection validated",
+    data: {
+      id: result.connectionId,
+      status: result.status,
+      last_validated_at: result.lastValidatedAt.toISOString(),
+      error_message: result.errorMessage,
     },
   });
 }

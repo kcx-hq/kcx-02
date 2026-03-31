@@ -7,6 +7,7 @@ import {
   handleCreateCloudConnection,
   handleGetAwsCloudFormationSetupUrl,
   handleGetCloudConnection,
+  handleValidateCloudConnection,
 } from "./cloud-connections.controller.js";
 
 const router = Router();
@@ -18,5 +19,6 @@ router.use(requireAuth);
 router.post("/cloud-connections", asyncHandler(handleCreateCloudConnection));
 router.get("/cloud-connections/:id", asyncHandler(handleGetCloudConnection));
 router.get("/cloud-connections/:id/aws-cloudformation-url", asyncHandler(handleGetAwsCloudFormationSetupUrl));
+router.post("/cloud-connections/:id/validate", asyncHandler(handleValidateCloudConnection));
 
 export default router;

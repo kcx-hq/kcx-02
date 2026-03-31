@@ -29,7 +29,7 @@ Resources:
         Statement:
           - Effect: Allow
             Principal:
-              AWS: "arn:aws:iam::275017715736:root"   # <-- replace with KCX AWS account ID
+              AWS: "arn:aws:iam::275017715736:root"
             Action: sts:AssumeRole
             Condition:
               StringEquals:
@@ -40,7 +40,6 @@ Resources:
   KCXCallbackLambdaRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: !Sub kcx-${ConnectionName}-callback-role
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -54,7 +53,6 @@ Resources:
   KCXCallbackFunction:
     Type: AWS::Lambda::Function
     Properties:
-      FunctionName: !Sub kcx-${ConnectionName}-callback
       Runtime: nodejs18.x
       Handler: index.handler
       Role: !GetAtt KCXCallbackLambdaRole.Arn
@@ -67,13 +65,23 @@ Resources:
           exports.handler = async (event) => {
             console.log('EVENT:', JSON.stringify(event));
 
+            const requestType = event.RequestType;
             const props = event.ResourceProperties || {};
+
+            if (requestType === 'Delete') {
+              console.log('Delete event received, skipping callback.');
+              return {
+                PhysicalResourceId: event.PhysicalResourceId || 'kcx-callback-delete'
+              };
+            }
+
             const callbackUrl = props.CallbackUrl;
             const callbackToken = props.CallbackToken;
             const accountId = props.AccountId;
             const roleArn = props.RoleArn;
+            const stackId = props.StackId;
 
-            if (!callbackUrl || !callbackToken || !accountId || !roleArn) {
+            if (!callbackUrl || !callbackToken || !accountId || !roleArn || !stackId) {
               throw new Error('Missing required callback properties');
             }
 
@@ -82,7 +90,8 @@ Resources:
             const body = JSON.stringify({
               callback_token: callbackToken,
               account_id: accountId,
-              role_arn: roleArn
+              role_arn: roleArn,
+              stack_id: stackId
             });
 
             const options = {
@@ -129,6 +138,7 @@ Resources:
       CallbackToken: !Ref CallbackToken
       AccountId: !Ref AWS::AccountId
       RoleArn: !GetAtt KCXReadOnlyRole.Arn
+      StackId: !Ref AWS::StackId
 
 Outputs:
   RoleArn:
@@ -138,6 +148,10 @@ Outputs:
   AccountId:
     Description: AWS account ID where stack was created
     Value: !Ref AWS::AccountId
+
+  StackId:
+    Description: CloudFormation stack ID
+    Value: !Ref AWS::StackId
 
   CallbackFunctionArn:
     Description: ARN of callback Lambda
