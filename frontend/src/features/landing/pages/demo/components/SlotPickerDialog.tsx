@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type CSSProperties } from "react"
 import { DayPicker } from "react-day-picker"
-import "react-day-picker/src/style.css"
+import "react-day-picker/style.css"
 import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp } from "lucide-react"
 
 import {

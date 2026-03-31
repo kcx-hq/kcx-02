@@ -9,7 +9,7 @@ import { Bell, ChevronDown, LifeBuoy, LogOut, Megaphone, User, UserCircle2 } fro
 
 const NAV_ITEMS = [
   { label: "Overview", href: "/client/overview", matches: ["/client", "/client/overview", "/clienthome", "/client-home"] },
-  { label: "Billing", href: "/client/billing/uploads", matches: ["/client/billing", "/client/billing/uploads", "/client/billing/connections", "/client/billing/connections/add", "/client/billing/connections/aws", "/client/billing/connections/aws/manual"] },
+  { label: "Billing", href: "/client/billing/uploads", matches: ["/client/billing", "/client/billing/uploads", "/client/billing/connections", "/client/billing/connections/add", "/client/billing/connections/aws", "/client/billing/connections/aws/manual", "/client/billing/connections/aws/manual/step-2", "/client/billing/connections/aws/manual/step-3"] },
   { label: "Support", href: "/client/support/tickets", matches: ["/client/support", "/client/support/tickets", "/client/support/schedule-call", "/client/support/live-chat"] },
   { label: "Users", href: "/client/users", matches: ["/client/users"] },
 ] as const
@@ -220,3 +220,4 @@ export function ClientTopNavbar({
     </header>
   )
 }
+

@@ -6,10 +6,14 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { ArrowRight, CheckCircle2, Cloud, ExternalLink, FileSpreadsheet, Plus, Wrench } from "lucide-react"
-import { useMemo, useState } from "react"
+import { ArrowRight, Cloud, ExternalLink, FileSpreadsheet, Plus, Wrench } from "lucide-react"
+import { useEffect, useMemo, useState } from "react"
 
+import { submitAwsManualStep1 } from "@/features/client-home/api/cloud-connections.api"
+import { AwsManualSetupStepTwo } from "@/features/client-home/components/AwsManualSetupStepTwo"
 import { ClientPageHeader } from "@/features/client-home/components/ClientPageHeader"
+import { ApiError } from "@/lib/api"
+import { getAuthUser } from "@/lib/auth"
 import { handleAppLinkClick, navigateTo, useCurrentRoute } from "@/lib/navigation"
 import { cn } from "@/lib/utils"
 
@@ -173,16 +177,16 @@ function AwsLoginSection() {
   const billingConsoleUrl = "https://console.aws.amazon.com/costmanagement/home#/bcm-data-exports"
 
   return (
-    <section className="space-y-3 rounded-md border border-gray-200 bg-white p-5">
+    <section className="space-y-4">
       <div className="space-y-1">
-        <h4 className="text-base font-semibold text-text-primary">Access AWS Console</h4>
+        <h4 className="text-base font-semibold text-text-primary">1.1 Access AWS Billing Console</h4>
         <p className="text-sm text-text-secondary">
-          Log in to your AWS account to configure billing data export.
+          Open AWS Billing and navigate to Data Exports to create a new export.
         </p>
       </div>
-      <div>
+      <div className="rounded-md border border-[color:var(--border-light)] bg-white p-4">
         <a href={billingConsoleUrl} target="_blank" rel="noreferrer">
-          <Button variant="outline" className="h-10 rounded-md border-gray-200">
+          <Button variant="outline" className="h-10 rounded-md border-[color:var(--border-light)]">
             Open AWS Billing Console
             <ExternalLink className="ml-1.5 h-4 w-4" />
           </Button>
@@ -192,32 +196,82 @@ function AwsLoginSection() {
   )
 }
 
-function DataExportChecklist() {
+function ConfigureExportSection() {
+  const requiredConfiguration = [
+    { label: "Export type", value: "Standard data export" },
+    { label: "Data table", value: "FOCUS with AWS columns" },
+    { label: "Schema version", value: "FOCUS 1.2" },
+    { label: "Time granularity", value: "Hourly" },
+    { label: "File format", value: "gzip (CSV)" },
+  ]
+
   return (
-    <section className="space-y-3 rounded-md border border-gray-200 bg-white p-5">
+    <section className="space-y-6">
       <div className="space-y-1">
-        <h4 className="text-base font-semibold text-text-primary">Set up billing data export</h4>
+        <h4 className="text-base font-semibold text-text-primary">1.2 Configure Billing Data Export</h4>
         <p className="text-sm text-text-secondary">
-          Ensure your Cost &amp; Usage data is configured to be delivered to an S3 bucket.
+          While creating the export in AWS, use the following required configuration.
         </p>
       </div>
-      <ul className="space-y-2">
-        <li className="flex items-center gap-2 text-sm text-text-secondary">
-          <CheckCircle2 className="h-4 w-4 text-text-muted" />
-          Data export is enabled
-        </li>
-        <li className="flex items-center gap-2 text-sm text-text-secondary">
-          <CheckCircle2 className="h-4 w-4 text-text-muted" />
-          Delivery is configured to S3
-        </li>
-        <li className="flex items-center gap-2 text-sm text-text-secondary">
-          <CheckCircle2 className="h-4 w-4 text-text-muted" />
-          Data is updated regularly
-        </li>
-      </ul>
-      <p className="text-xs text-text-muted">
-        If you have already configured billing export, you can proceed.
-      </p>
+
+      <div className="space-y-4 rounded-md border border-[color:var(--border-light)] bg-white p-5">
+        <div className="space-y-3">
+          <h5 className="text-sm font-semibold text-text-primary">Required Configuration</h5>
+          <div className="rounded-md border border-[color:var(--border-light)]">
+            {requiredConfiguration.map((row, index) => (
+              <div
+                key={row.label}
+                className={cn(
+                  "grid grid-cols-1 gap-1 px-4 py-3 text-sm md:grid-cols-[220px_minmax(0,1fr)] md:items-center",
+                  index < requiredConfiguration.length - 1 ? "border-b border-[color:var(--border-light)]" : ""
+                )}
+              >
+                <p className="text-text-secondary">{row.label}</p>
+                <p className="font-medium text-text-primary md:text-right">{row.value}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="border-t border-[color:var(--border-light)] pt-4">
+          <div className="space-y-3">
+            <h5 className="text-sm font-semibold text-text-primary">File versioning</h5>
+            <div className="grid gap-3 md:grid-cols-2">
+              <div className="rounded-md border border-[color:var(--border-light)] bg-[color:var(--bg-surface)] p-3">
+                <p className="text-xs font-semibold uppercase tracking-[0.08em] text-text-muted">First-time setup</p>
+                <p className="mt-1 text-sm font-medium text-text-primary">Create new export</p>
+              </div>
+              <div className="rounded-md border border-[color:var(--border-light)] bg-[color:var(--bg-surface)] p-3">
+                <p className="text-xs font-semibold uppercase tracking-[0.08em] text-text-muted">Existing export</p>
+                <p className="mt-1 text-sm font-medium text-text-primary">Overwrite existing</p>
+              </div>
+            </div>
+            <p className="text-xs text-text-muted">
+              Choose overwrite only if you are reconfiguring an existing export.
+            </p>
+          </div>
+        </div>
+
+        <div className="border-t border-[color:var(--border-light)] pt-4">
+          <div className="space-y-2">
+            <h5 className="text-sm font-semibold text-text-primary">Storage Configuration</h5>
+            <p className="text-sm text-text-secondary">
+              S3 bucket: User will provide below
+            </p>
+            <p className="text-sm text-text-secondary">
+              S3 prefix: Optional folder inside bucket
+            </p>
+          </div>
+        </div>
+
+        <div className="border-t border-[color:var(--border-light)] pt-4">
+          <div className="space-y-1">
+            <p className="text-xs text-text-muted">Do not use Parquet format.</p>
+            <p className="text-xs text-text-muted">Ensure FOCUS 1.2 is selected.</p>
+            <p className="text-xs text-text-muted">Hourly granularity is required.</p>
+          </div>
+        </div>
+      </div>
     </section>
   )
 }
@@ -236,16 +290,24 @@ function S3InputSection({
   showBucketFormatHint: boolean
 }) {
   return (
-    <section className="space-y-4 rounded-md border border-gray-200 bg-white p-5">
+    <section className="space-y-4">
+      <div className="space-y-1">
+        <h4 className="text-base font-semibold text-text-primary">1.3 Enter your storage details</h4>
+        <p className="text-sm text-text-secondary">
+          Enter only the bucket name (not full S3 path).
+        </p>
+      </div>
+      <div className="rounded-md border border-gray-200 bg-white p-5">
       <label className="block space-y-1.5">
         <span className="text-xs font-semibold uppercase tracking-[0.08em] text-text-muted">S3 Bucket Name</span>
         <input
           className="h-10 w-full rounded-md border border-gray-200 bg-white px-3 text-sm outline-none focus:border-[color:var(--kcx-border-strong)]"
-          placeholder="e.g. my-company-billing-bucket"
+          placeholder="e.g. company-billing-export"
           value={bucketName}
           onChange={(event) => onBucketNameChange(event.target.value)}
         />
       </label>
+      <p className="text-xs text-text-muted">e.g. company-billing-export</p>
       {showBucketFormatHint ? (
         <p className="text-xs text-text-muted">Bucket names should not contain spaces.</p>
       ) : null}
@@ -253,14 +315,15 @@ function S3InputSection({
         <span className="text-xs font-semibold uppercase tracking-[0.08em] text-text-muted">S3 Path Prefix (optional)</span>
         <input
           className="h-10 w-full rounded-md border border-gray-200 bg-white px-3 text-sm outline-none focus:border-[color:var(--kcx-border-strong)]"
-          placeholder="e.g. billing-reports/"
+          placeholder="e.g. billing or demo"
           value={pathPrefix}
           onChange={(event) => onPathPrefixChange(event.target.value)}
         />
       </label>
       <p className="text-xs text-text-muted">
-        Specify a folder path if your billing files are stored inside a subdirectory.
+        e.g. billing or demo
       </p>
+      </div>
     </section>
   )
 }
@@ -268,6 +331,8 @@ function S3InputSection({
 function ManualSetupStepOne() {
   const [bucketName, setBucketName] = useState("")
   const [pathPrefix, setPathPrefix] = useState("")
+  const [isSaving, setIsSaving] = useState(false)
+  const [submitError, setSubmitError] = useState<string | null>(null)
 
   const hasBucketName = bucketName.trim().length > 0
   const hasNoSpacesInBucketName = !/\s/.test(bucketName)
@@ -277,18 +342,54 @@ function ManualSetupStepOne() {
     return hasBucketName && hasNoSpacesInBucketName
   }, [hasBucketName, hasNoSpacesInBucketName])
 
+  async function handleContinueToStep2() {
+    if (!canContinue || isSaving) return
+
+    setSubmitError(null)
+    setIsSaving(true)
+
+    const trimmedBucketName = bucketName.trim()
+    const trimmedPrefix = pathPrefix.trim().replace(/\/+$/g, "")
+
+    const payload = {
+      bucketName: trimmedBucketName,
+      ...(trimmedPrefix.length > 0 ? { bucketPrefix: trimmedPrefix } : {}),
+    }
+
+    try {
+      console.debug("[AWS Manual Step 1] Saving payload", payload)
+      const response = await submitAwsManualStep1(payload)
+      console.debug("[AWS Manual Step 1] Save success", response)
+
+      navigateTo("/client/billing/connections/aws/manual/step-2")
+    } catch (error) {
+      console.error("[AWS Manual Step 1] Save failed", error)
+
+      if (error instanceof ApiError) {
+        setSubmitError(error.message || "Could not save Step 1. Please try again.")
+      } else {
+        setSubmitError("Could not save Step 1. Please try again.")
+      }
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
   return (
     <Card className="rounded-md border-gray-200 bg-[color:var(--bg-surface)] shadow-none">
-      <CardContent className="space-y-5 p-6">
+      <CardContent className="space-y-7 p-6">
         <div className="space-y-2">
           <p className="text-xs font-semibold uppercase tracking-[0.12em] text-text-muted">Step 1</p>
           <h3 className="text-lg font-semibold text-text-primary">Prepare your billing data</h3>
           <p className="text-sm text-text-secondary">
-            Before connecting your AWS account, ensure your billing data is exported to an S3 bucket.
+            Configure your AWS Billing Data Export using the exact settings required by KCX.
           </p>
         </div>
+        <div className="border-t border-[color:var(--border-light)]" />
         <AwsLoginSection />
-        <DataExportChecklist />
+        <div className="border-t border-[color:var(--border-light)]" />
+        <ConfigureExportSection />
+        <div className="border-t border-[color:var(--border-light)]" />
         <S3InputSection
           bucketName={bucketName}
           pathPrefix={pathPrefix}
@@ -299,10 +400,169 @@ function ManualSetupStepOne() {
         <div className="flex justify-end">
           <Button
             className="h-10 rounded-md"
-            disabled={!canContinue}
+            disabled={!canContinue || isSaving}
+            onClick={() => {
+              void handleContinueToStep2()
+            }}
+          >
+            {isSaving ? "Saving..." : "Continue to Step 2"}
+          </Button>
+        </div>
+        {submitError ? (
+          <p className="text-sm text-red-700">{submitError}</p>
+        ) : null}
+      </CardContent>
+    </Card>
+  )
+}
+
+function ManualSetupStepThree() {
+  const authUser = getAuthUser()
+  const [connectionName, setConnectionName] = useState("")
+  const [dataExportName, setDataExportName] = useState("")
+  const [roleArn, setRoleArn] = useState("")
+  const [step2RoleNameHint, setStep2RoleNameHint] = useState("")
+
+  const step3StorageKey = useMemo(
+    () => `kcx_aws_manual_step3_user_${authUser?.id ?? "anonymous"}`,
+    [authUser?.id],
+  )
+  const resourceNamesStorageKey = useMemo(
+    () => `kcx_aws_manual_resource_names_user_${authUser?.id ?? "anonymous"}`,
+    [authUser?.id],
+  )
+
+  useEffect(() => {
+    const existingStep3Data = localStorage.getItem(step3StorageKey)
+    if (existingStep3Data) {
+      try {
+        const parsed = JSON.parse(existingStep3Data) as {
+          connectionName?: string
+          dataExportName?: string
+          roleArn?: string
+        }
+        if (typeof parsed.connectionName === "string") {
+          setConnectionName(parsed.connectionName)
+        }
+        if (typeof parsed.dataExportName === "string") {
+          setDataExportName(parsed.dataExportName)
+        }
+        if (typeof parsed.roleArn === "string") {
+          setRoleArn(parsed.roleArn)
+        }
+      } catch {
+        // Ignore malformed local storage payload.
+      }
+    }
+
+    const existingResourceNames = localStorage.getItem(resourceNamesStorageKey)
+    if (!existingResourceNames) return
+
+    try {
+      const parsed = JSON.parse(existingResourceNames) as { roleName?: string }
+      if (typeof parsed.roleName === "string") {
+        setStep2RoleNameHint(parsed.roleName.trim())
+      }
+    } catch {
+      // Ignore malformed local storage payload.
+    }
+  }, [resourceNamesStorageKey, step3StorageKey])
+
+  useEffect(() => {
+    const payload = {
+      connectionName: connectionName.trim(),
+      dataExportName: dataExportName.trim(),
+      roleArn: roleArn.trim(),
+    }
+    localStorage.setItem(step3StorageKey, JSON.stringify(payload))
+  }, [connectionName, dataExportName, roleArn, step3StorageKey])
+
+  const canFinish = useMemo(() => {
+    return (
+      connectionName.trim().length > 0 &&
+      dataExportName.trim().length > 0 &&
+      roleArn.trim().length > 0
+    )
+  }, [connectionName, dataExportName, roleArn])
+
+  return (
+    <Card className="rounded-md border-gray-200 bg-[color:var(--bg-surface)] shadow-none">
+      <CardContent className="space-y-6 p-6">
+        <div className="space-y-2">
+          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-text-muted">STEP 3</p>
+          <h3 className="text-lg font-semibold text-text-primary">Confirm Connection Details</h3>
+          <p className="text-sm text-text-secondary">
+            Final confirmation: review and enter the exact AWS values to complete this connection.
+          </p>
+        </div>
+
+        <div className="border-t border-[color:var(--border-light)]" />
+
+        <section className="space-y-4 rounded-md border border-[color:var(--border-light)] bg-white p-5">
+          <div className="space-y-1">
+            <h4 className="text-base font-semibold text-text-primary">3.1 Final Confirmation Inputs</h4>
+            <p className="text-sm text-text-secondary">
+              Enter the exact AWS resource values created in Steps 1 and 2.
+            </p>
+          </div>
+
+          <label className="block space-y-1.5">
+            <span className="text-xs font-semibold uppercase tracking-[0.08em] text-text-muted">Connection Name</span>
+            <input
+              className="h-10 w-full rounded-md border border-gray-200 bg-white px-3 text-sm outline-none focus:border-[color:var(--kcx-border-strong)]"
+              placeholder="ex: kcx-cz-30-march"
+              value={connectionName}
+              onChange={(event) => setConnectionName(event.target.value)}
+            />
+            <p className="text-xs text-text-muted">
+              This name helps you identify this AWS connection inside KCX.
+            </p>
+          </label>
+
+          <label className="block space-y-1.5">
+            <span className="text-xs font-semibold uppercase tracking-[0.08em] text-text-muted">Data Export Name</span>
+            <input
+              className="h-10 w-full rounded-md border border-gray-200 bg-white px-3 text-sm outline-none focus:border-[color:var(--kcx-border-strong)]"
+              placeholder="ex: billing-export-march"
+              value={dataExportName}
+              onChange={(event) => setDataExportName(event.target.value)}
+            />
+            <p className="text-xs text-text-muted">
+              Use the exact export name created in AWS Billing Data Exports during Step 1.
+            </p>
+          </label>
+
+          <label className="block space-y-1.5">
+            <span className="text-xs font-semibold uppercase tracking-[0.08em] text-text-muted">
+              Cross-Account IAM Role ARN
+            </span>
+            <input
+              className="h-10 w-full rounded-md border border-gray-200 bg-white px-3 text-sm outline-none focus:border-[color:var(--kcx-border-strong)]"
+              placeholder="arn:aws:iam::123456789012:role/example-role-name"
+              value={roleArn}
+              onChange={(event) => setRoleArn(event.target.value)}
+            />
+            {step2RoleNameHint ? (
+              <p className="text-xs text-text-muted">
+                Step 2 role name entered: <span className="font-medium text-text-primary">{step2RoleNameHint}</span>
+              </p>
+            ) : null}
+            <p className="text-xs text-text-muted">
+              Enter the full IAM role ARN from Step 2 (not just the role name). You can copy this from the AWS IAM role details page.
+            </p>
+          </label>
+        </section>
+
+        <div className="flex items-center justify-between">
+          <Button
+            variant="outline"
+            className="h-10 rounded-md border-[color:var(--border-light)]"
             onClick={() => navigateTo("/client/billing/connections/aws/manual/step-2")}
           >
-            Continue to Step 2
+            Back
+          </Button>
+          <Button className="h-10 rounded-md" disabled={!canFinish}>
+            Finish
           </Button>
         </div>
       </CardContent>
@@ -531,6 +791,32 @@ export function ClientBillingPage() {
                   </p>
                 </div>
                 <ManualSetupStepOne />
+              </>
+            ) : null}
+
+            {activeRoute === "/client/billing/connections/aws/manual/step-2" ? (
+              <>
+                <div className="space-y-2">
+                  <p className="kcx-eyebrow text-brand-primary">AWS MANUAL SETUP</p>
+                  <h2 className="text-2xl font-semibold tracking-tight text-text-primary">Manual Setup</h2>
+                  <p className="text-sm text-text-secondary">
+                    Continue your AWS connection setup.
+                  </p>
+                </div>
+                <AwsManualSetupStepTwo />
+              </>
+            ) : null}
+
+            {activeRoute === "/client/billing/connections/aws/manual/step-3" ? (
+              <>
+                <div className="space-y-2">
+                  <p className="kcx-eyebrow text-brand-primary">AWS MANUAL SETUP</p>
+                  <h2 className="text-2xl font-semibold tracking-tight text-text-primary">Manual Setup</h2>
+                  <p className="text-sm text-text-secondary">
+                    Complete your AWS connection setup.
+                  </p>
+                </div>
+                <ManualSetupStepThree />
               </>
             ) : null}
           </CardContent>

@@ -1,7 +1,9 @@
 import { Sequelize } from "sequelize";
 import env from "../config/env.js";
+import createAwsCloudConnectionModel from "./aws-cloud-connection.js";
 import createTempModel from "./temp.js";
 import createAuthSessionModel from "./auth-session.js";
+import createCloudConnectionModel from "./cloud-connection.js";
 import createDemoRequestModel from "./demo-request.js";
 import createPasswordResetTokenModel from "./password-reset-token.js";
 import createSlotReservationModel from "./slot-reservation.js";
@@ -25,6 +27,8 @@ const sequelize = new Sequelize(dbUrl.toString(), {
 
 const Temp = createTempModel(sequelize);
 const User = createUserModel(sequelize);
+const AwsCloudConnection = createAwsCloudConnectionModel(sequelize);
+const CloudConnection = createCloudConnectionModel(sequelize);
 const DemoRequest = createDemoRequestModel(sequelize);
 const PasswordResetToken = createPasswordResetTokenModel(sequelize);
 const AuthSession = createAuthSessionModel(sequelize);
@@ -41,11 +45,18 @@ PasswordResetToken.belongsTo(User, { foreignKey: "userId" });
 User.hasMany(AuthSession, { foreignKey: "userId" });
 AuthSession.belongsTo(User, { foreignKey: "userId" });
 
+User.hasMany(CloudConnection, { foreignKey: "clientId" });
+CloudConnection.belongsTo(User, { foreignKey: "clientId" });
+CloudConnection.hasOne(AwsCloudConnection, { foreignKey: "cloudConnectionId" });
+AwsCloudConnection.belongsTo(CloudConnection, { foreignKey: "cloudConnectionId" });
+
 export {
   sequelize,
   Sequelize,
   Temp,
   User,
+  AwsCloudConnection,
+  CloudConnection,
   DemoRequest,
   SlotReservation,
   PasswordResetToken,

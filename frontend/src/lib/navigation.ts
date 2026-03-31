@@ -11,6 +11,8 @@ const STATIC_ROUTES = [
   "/client/billing/connections/add",
   "/client/billing/connections/aws",
   "/client/billing/connections/aws/manual",
+  "/client/billing/connections/aws/manual/step-2",
+  "/client/billing/connections/aws/manual/step-3",
   "/client/support",
   "/client/support/tickets",
   "/client/support/schedule-call",
