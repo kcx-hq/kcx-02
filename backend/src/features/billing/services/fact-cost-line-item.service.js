@@ -1,6 +1,7 @@
 import { FactCostLineItems as FactCostLineItem } from "../../../models/index.js";
 import { mapFactCostLineItem } from "../mappers/raw_focus_to_dimensions.mapper.js";
-import { resolveDimensions } from "./dimension-upsert.service.js";
+import { classifyFactInsertError } from "./numeric-validation.service.js";
+import { resolveDimensions, resolveDimensionsWithCache } from "./dimension-upsert.service.js";
 
 const isBlank = (value) =>
   value === null || value === undefined || (typeof value === "string" && value.trim() === "");
@@ -14,6 +15,7 @@ async function insertFactCostLineItem({
   billingSourceId,
   ingestionRunId,
   providerId,
+  dimensionCache,
 }) {
   if (isBlank(tenantId)) {
     throw new Error("tenantId is required to insert fact_cost_line_items");
@@ -30,6 +32,7 @@ async function insertFactCostLineItem({
   try {
     // console.debug("Inserting fact row", { tenantId, ingestionRunId });
 
+    const dimensionResolver = dimensionCache ? resolveDimensionsWithCache : resolveDimensions;
     const {
       billingAccountKey,
       subAccountKey,
@@ -41,10 +44,11 @@ async function insertFactCostLineItem({
       usageDateKey,
       billingPeriodStartDateKey,
       billingPeriodEndDateKey,
-    } = await resolveDimensions({
+    } = await dimensionResolver({
       rawRow,
       tenantId,
       providerId,
+      cache: dimensionCache,
     });
 
     const factPayload = mapFactCostLineItem({
@@ -89,14 +93,14 @@ async function insertFactCostLineItem({
       pricingTerm: factPayload.pricing_term,
       publicOnDemandCost: factPayload.public_on_demand_cost,
       discountAmount: factPayload.discount_amount,
+      creditAmount: factPayload.credit_amount,
+      refundAmount: factPayload.refund_amount,
+      taxCost: factPayload.tax_cost,
       consumedQuantity: factPayload.consumed_quantity,
       pricingQuantity: factPayload.pricing_quantity,
       tagsJson: factPayload.tags_json,
     };
 
-    // NOTE:
-    // This inserts one row at a time (MVP).
-    // Can be optimized later using bulk inserts or batching.
     const record = await FactCostLineItem.create(factCreatePayload);
 
     return {
@@ -113,4 +117,53 @@ async function insertFactCostLineItem({
   }
 }
 
-export { insertFactCostLineItem };
+async function insertFactCostLineItemsBatch({ factRows, ingestionRunId }) {
+  if (!Array.isArray(factRows) || factRows.length === 0) {
+    return { insertedCount: 0, failedRows: [] };
+  }
+
+  const createPayloads = factRows.map((entry) => entry.createPayload);
+
+  try {
+    await FactCostLineItem.bulkCreate(createPayloads);
+    return { insertedCount: createPayloads.length, failedRows: [] };
+  } catch (bulkError) {
+    const { errorCode: batchErrorCode, errorMessage: batchErrorMessage } = classifyFactInsertError(bulkError);
+    console.warn("Fact batch insert failed, retrying row-by-row", {
+      ingestionRunId,
+      batchSize: factRows.length,
+      errorCode: batchErrorCode,
+      errorMessage: batchErrorMessage,
+    });
+
+    let insertedCount = 0;
+    const failedRows = [];
+
+    for (const [batchRowIndex, entry] of factRows.entries()) {
+      try {
+        await FactCostLineItem.create(entry.createPayload);
+        insertedCount += 1;
+      } catch (rowError) {
+        const { errorCode, errorMessage } = classifyFactInsertError(rowError);
+        failedRows.push({
+          batchRowIndex,
+          rowNumber: entry.rowNumber ?? null,
+          rawRow: entry.rawRow ?? null,
+          errorCode,
+          errorMessage,
+        });
+      }
+    }
+
+    return {
+      insertedCount,
+      failedRows,
+      batchFallbackError: {
+        errorCode: batchErrorCode,
+        errorMessage: batchErrorMessage,
+      },
+    };
+  }
+}
+
+export { insertFactCostLineItem, insertFactCostLineItemsBatch };

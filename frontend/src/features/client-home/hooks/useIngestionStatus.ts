@@ -44,6 +44,7 @@ export function useIngestionStatus({ ingestionRunId, enabled = true }: UseIngest
   const timeoutRef = useRef<number | null>(null)
   const pollStartedAtRef = useRef<number | null>(null)
   const unmountedRef = useRef(false)
+  const pollSessionIdRef = useRef(0)
 
   const clearScheduledPoll = useCallback(() => {
     if (timeoutRef.current !== null) {
@@ -58,6 +59,8 @@ export function useIngestionStatus({ ingestionRunId, enabled = true }: UseIngest
   const poll = useCallback(async () => {
     if (!ingestionRunId || !enabled || unmountedRef.current) return
 
+    const sessionId = pollSessionIdRef.current
+
     if (!pollStartedAtRef.current) {
       pollStartedAtRef.current = Date.now()
     }
@@ -65,7 +68,7 @@ export function useIngestionStatus({ ingestionRunId, enabled = true }: UseIngest
     try {
       setIsPolling(true)
       const nextStatus = await apiGet<IngestionStatusPayload>(`/billing/ingestions/${ingestionRunId}/status`)
-      if (unmountedRef.current) return
+      if (unmountedRef.current || sessionId !== pollSessionIdRef.current) return
 
       setStatus(nextStatus)
       setRequestError(null)
@@ -78,10 +81,11 @@ export function useIngestionStatus({ ingestionRunId, enabled = true }: UseIngest
       const elapsedMs = Date.now() - pollStartedAtRef.current
       const nextDelay = elapsedMs < 30_000 ? 2_000 : 5_000
       timeoutRef.current = window.setTimeout(() => {
+        if (sessionId !== pollSessionIdRef.current || unmountedRef.current) return
         void poll()
       }, nextDelay)
     } catch (error) {
-      if (unmountedRef.current) return
+      if (unmountedRef.current || sessionId !== pollSessionIdRef.current) return
 
       if (error instanceof ApiError) {
         setRequestError(error.message || "Failed to fetch ingestion status")
@@ -89,10 +93,11 @@ export function useIngestionStatus({ ingestionRunId, enabled = true }: UseIngest
         setRequestError("Failed to fetch ingestion status")
       }
       timeoutRef.current = window.setTimeout(() => {
+        if (sessionId !== pollSessionIdRef.current || unmountedRef.current) return
         void poll()
       }, 5_000)
     } finally {
-      if (!unmountedRef.current) {
+      if (!unmountedRef.current && sessionId === pollSessionIdRef.current) {
         setIsPolling(false)
       }
     }
@@ -100,6 +105,7 @@ export function useIngestionStatus({ ingestionRunId, enabled = true }: UseIngest
 
   useEffect(() => {
     unmountedRef.current = false
+    pollSessionIdRef.current += 1
     clearScheduledPoll()
     pollStartedAtRef.current = null
 

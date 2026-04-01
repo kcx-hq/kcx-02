@@ -10,7 +10,15 @@ export declare function loadIngestionRunOrThrow(ingestionRunId: IngestionRunId):
 export declare function loadRawBillingFileOrThrow(rawBillingFileId: string | number): Promise<unknown>;
 export declare function verifyRawFileExistsInS3(location: RawFileLocation): Promise<void>;
 export declare function markRunRunning(runId: IngestionRunId): Promise<void>;
-export declare function markRunCompleted(runId: IngestionRunId): Promise<void>;
+export declare function markRunCompleted(
+  runId: IngestionRunId,
+  options?: {
+    rowsRead?: number;
+    rowsLoaded?: number;
+    rowsFailed?: number;
+    warningMessage?: string | null;
+  },
+): Promise<void>;
 export declare function markRunFailed(
   runId: IngestionRunId,
   error: unknown,

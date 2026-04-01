@@ -24,6 +24,7 @@ import createDimSkuModel from "./billing/dim_sku.js";
 import createDimChargeModel from "./billing/dim_charge.js";
 import createDimDateModel from "./billing/dim_date.js";
 import createFactCostLineItemsModel from "./billing/fact_cost_line_items.js";
+import createBillingIngestionRowErrorModel from "./billing/billing_ingestion_row_error.js";
 import createResourceInventorySnapshotModel from "./billing/resource_inventory_snapshots.js";
 import createResourceUtilizationDailyModel from "./billing/resource_utilization_daily.js";
 import createFactAnomaliesModel from "./billing/fact_anomalies.js";
@@ -74,6 +75,7 @@ const DimSku = createDimSkuModel(sequelize);
 const DimCharge = createDimChargeModel(sequelize);
 const DimDate = createDimDateModel(sequelize);
 const FactCostLineItems = createFactCostLineItemsModel(sequelize);
+const BillingIngestionRowError = createBillingIngestionRowErrorModel(sequelize);
 const ResourceInventorySnapshot = createResourceInventorySnapshotModel(sequelize);
 const ResourceUtilizationDaily = createResourceUtilizationDailyModel(sequelize);
 const FactAnomalies = createFactAnomaliesModel(sequelize);
@@ -168,6 +170,10 @@ BillingSource.hasMany(FactCostLineItems, { foreignKey: "billingSourceId" });
 FactCostLineItems.belongsTo(BillingSource, { foreignKey: "billingSourceId" });
 BillingIngestionRun.hasMany(FactCostLineItems, { foreignKey: "ingestionRunId" });
 FactCostLineItems.belongsTo(BillingIngestionRun, { foreignKey: "ingestionRunId" });
+BillingIngestionRun.hasMany(BillingIngestionRowError, { foreignKey: "ingestionRunId" });
+BillingIngestionRowError.belongsTo(BillingIngestionRun, { foreignKey: "ingestionRunId" });
+RawBillingFile.hasMany(BillingIngestionRowError, { foreignKey: "rawBillingFileId" });
+BillingIngestionRowError.belongsTo(RawBillingFile, { foreignKey: "rawBillingFileId" });
 FactCostLineItems.hasMany(FactCostAllocations, { foreignKey: "factId" });
 FactCostAllocations.belongsTo(FactCostLineItems, { foreignKey: "factId" });
 
@@ -248,6 +254,7 @@ export {
   DimCharge,
   DimDate,
   FactCostLineItems,
+  BillingIngestionRowError,
   ResourceInventorySnapshot,
   ResourceUtilizationDaily,
   FactAnomalies,

@@ -111,6 +111,9 @@ const env = {
   awsS3Endpoint: optionalEnv(process.env.AWS_S3_ENDPOINT),
   awsS3ForcePathStyle: optionalBoolean(process.env.AWS_S3_FORCE_PATH_STYLE) ?? false,
   rawBillingFilesBucket: optionalEnv(process.env.RAW_BILLING_FILES_BUCKET),
+  billingIngestionBatchSize: optionalPositiveInteger(process.env.BILLING_INGESTION_BATCH_SIZE) ?? 1000,
+  billingIngestionStatusMinIntervalMs:
+    optionalPositiveInteger(process.env.BILLING_INGESTION_STATUS_MIN_INTERVAL_MS) ?? 2000,
 };
 
 export default env;

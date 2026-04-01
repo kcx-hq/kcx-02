@@ -121,7 +121,7 @@ export async function getLatestActiveIngestionRunForTenant(tenantId: string) {
     return await BillingIngestionRun.findOne({
       where: {
         status: {
-          [Op.notIn]: ["completed", "failed"],
+          [Op.notIn]: ["completed", "completed_with_warnings", "failed"],
         },
       },
       include: [

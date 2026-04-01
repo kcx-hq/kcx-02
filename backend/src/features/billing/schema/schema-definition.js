@@ -45,6 +45,9 @@ const CANONICAL_COLUMNS = Object.freeze([
   "pricing_term",
   "public_on_demand_cost",
   "discount_amount",
+  "credit_amount",
+  "refund_amount",
+  "tax_cost",
 ]);
 
 const REQUIRED_COLUMNS = Object.freeze([
@@ -104,6 +107,9 @@ const COLUMN_ALIASES = Object.freeze({
   pricing_term: Object.freeze(["pricing_term", "PricingCategory", "pricing_category"]),
   public_on_demand_cost: Object.freeze(["public_on_demand_cost", "ListCost", "list_cost"]),
   discount_amount: Object.freeze(["discount_amount"]),
+  credit_amount: Object.freeze(["credit_amount"]),
+  refund_amount: Object.freeze(["refund_amount"]),
+  tax_cost: Object.freeze(["tax_cost"]),
 });
 
 /**
