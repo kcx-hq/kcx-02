@@ -4,6 +4,7 @@ import { Header } from "@/components/layout/Header"
 import {
   ClientBillingPage,
   ClientLayout,
+  ClientOverviewPage,
   ClientProfilePage,
   ClientSupportPage,
   ClientUsersPage,
@@ -27,6 +28,7 @@ import { getBlogSlugFromPath, getRouteRedirectTarget, navigateTo, useCurrentRout
 import { HomePage } from "@/pages/HomePage"
 
 const CLIENT_WORKSPACE_ROUTES = new Set([
+  "/client/overview",
   "/client/billing",
   "/client/billing/uploads",
   "/client/billing/connections",
@@ -119,7 +121,7 @@ export function App() {
     }
 
     if (route === "/login" && authenticated) {
-      navigateTo("/client/billing", { replace: true })
+      navigateTo("/client/overview", { replace: true })
     }
   }, [route, authenticated, authChecked])
 
@@ -139,6 +141,11 @@ export function App() {
       {route === "/resources/blog" || route === "/resources/blogs" ? <BlogPage /> : null}
       {blogSlug ? <BlogDetailPage slug={blogSlug} /> : null}
       {route === "/resources/documentation" ? <DocumentationPage /> : null}
+      {route === "/client/overview" ? (
+        <ClientLayout>
+          <ClientOverviewPage />
+        </ClientLayout>
+      ) : null}
       {route === "/client/billing" ||
       // route === "/client/billing/uploads" ||
       route === "/client/billing/connections" ||

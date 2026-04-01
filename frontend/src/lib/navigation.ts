@@ -3,6 +3,7 @@ import { useSyncExternalStore } from "react"
 
 const STATIC_ROUTES = [
   "/",
+  "/client/overview",
   "/client/billing",
   "/client/billing/uploads",
   "/client/billing/connections",
@@ -49,10 +50,9 @@ const LEGACY_ROUTE_REDIRECTS: Record<string, StaticRoute> = {
   "/careers": "/about/careers",
   "/demo": "/schedule-demo",
   "/client-sign-in": "/",
-  "/client": "/client/billing",
-  "/client/overview": "/client/billing",
-  "/client-home": "/client/billing",
-  "/clienthome": "/client/billing",
+  "/client": "/client/overview",
+  "/client-home": "/client/overview",
+  "/clienthome": "/client/overview",
   "/client/tickets": "/client/support/tickets",
   "/client/billing": "/client/billing/uploads",
   "/client/billing/manual-setup": "/client/billing/connect-cloud",

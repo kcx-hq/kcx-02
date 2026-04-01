@@ -161,7 +161,7 @@ export function LoginForm() {
         }
 
         setAuthSession({ token: data.token, user: normalizedUser, expiresAt: data.expiresAt })
-        navigateTo("/client/billing")
+        navigateTo("/client/overview")
       } catch (error) {
         if (error instanceof ApiError) {
           setApiError(error.message || "Login failed")
