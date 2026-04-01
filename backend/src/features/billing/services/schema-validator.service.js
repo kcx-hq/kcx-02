@@ -151,6 +151,30 @@ function validateSchemaByFormat({ fileFormat, headers = [], schemaColumns = [] }
   throw new Error(`Unsupported file format for schema validation: ${fileFormat}`);
 }
 
+function getRawValue(rawRow, canonicalHeaderMap, canonicalColumn, fallbackHeaders = []) {
+  const sourceHeader = canonicalHeaderMap[canonicalColumn];
+  if (sourceHeader) {
+    const mappedValue = rawRow[sourceHeader];
+    if (mappedValue !== undefined) return mappedValue;
+  }
+
+  for (const header of fallbackHeaders) {
+    const fallbackValue = rawRow[header];
+    if (fallbackValue !== undefined) return fallbackValue;
+  }
+
+  return undefined;
+}
+
+function toNumberOrNull(value) {
+  if (value === null || value === undefined) return null;
+  if (typeof value === "string" && value.trim() === "") return null;
+
+  const normalized = typeof value === "string" ? value.replace(/,/g, "").trim() : value;
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 function normalizeRowToCanonical(rawRow = {}, canonicalHeaderMap = {}) {
   const normalizedRow = {};
 
@@ -165,6 +189,25 @@ function normalizeRowToCanonical(rawRow = {}, canonicalHeaderMap = {}) {
     const value = rawRow[sourceHeader];
     normalizedRow[canonicalColumn] = value === undefined ? null : value;
   }
+
+  const usageStartRaw = getRawValue(rawRow, canonicalHeaderMap, "ChargePeriodStart", ["ChargePeriodStart"]);
+  const usageEndRaw = getRawValue(rawRow, canonicalHeaderMap, "ChargePeriodEnd", ["ChargePeriodEnd"]);
+  const lineItemTypeRaw = getRawValue(rawRow, canonicalHeaderMap, "ChargeFrequency", ["ChargeFrequency"]);
+  const pricingTermRaw = getRawValue(rawRow, canonicalHeaderMap, "PricingCategory", ["PricingCategory"]);
+  const publicOnDemandCostRaw = getRawValue(rawRow, canonicalHeaderMap, "ListCost", ["ListCost"]);
+  const effectiveCostRaw = getRawValue(rawRow, canonicalHeaderMap, "EffectiveCost", ["EffectiveCost"]);
+
+  normalizedRow.usage_start_time = usageStartRaw === undefined ? null : usageStartRaw;
+  normalizedRow.usage_end_time = usageEndRaw === undefined ? null : usageEndRaw;
+  normalizedRow.line_item_type = lineItemTypeRaw === undefined ? null : lineItemTypeRaw;
+  normalizedRow.pricing_term = pricingTermRaw === undefined ? null : pricingTermRaw;
+  normalizedRow.public_on_demand_cost =
+    publicOnDemandCostRaw === undefined ? null : publicOnDemandCostRaw;
+
+  const listCost = toNumberOrNull(publicOnDemandCostRaw);
+  const effectiveCost = toNumberOrNull(effectiveCostRaw);
+  normalizedRow.discount_amount =
+    listCost !== null && effectiveCost !== null ? Math.max(listCost - effectiveCost, 0) : null;
 
   return normalizedRow;
 }

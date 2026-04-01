@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { ArrowRight, CheckCircle2, Cloud, ExternalLink, FileSpreadsheet, Wrench } from "lucide-react"
 
+import { ManualBillingUploadDialog } from "@/features/client-home/components/ManualBillingUploadDialog"
 import { ClientPageHeader } from "@/features/client-home/components/ClientPageHeader"
 import { ApiError, apiGet, apiPost } from "@/lib/api"
 import { handleAppLinkClick, navigateTo, useCurrentRoute } from "@/lib/navigation"
@@ -320,6 +321,7 @@ export function ClientBillingPage() {
   const [autoTouched, setAutoTouched] = useState(false)
   const [autoSubmitting, setAutoSubmitting] = useState(false)
   const [autoError, setAutoError] = useState<string | null>(null)
+  const [uploadDialogOpen, setUploadDialogOpen] = useState(false)
 
   const setupConnectionId = useMemo(() => {
     const match = AWS_SETUP_ROUTE_REGEX.exec(activeRoute)
@@ -456,7 +458,13 @@ export function ClientBillingPage() {
                         : ""
                     )}
                     variant={isCloud ? "default" : "outline"}
-                    onClick={() => navigateTo(option.href)}
+                    onClick={() => {
+                      if (isCloud) {
+                        navigateTo(option.href)
+                        return
+                      }
+                      setUploadDialogOpen(true)
+                    }}
                   >
                     {isCloud ? "Open Cloud Connection" : "Open Upload CSV"}
                     <ArrowRight className="ml-2 h-4 w-4" />
@@ -487,8 +495,13 @@ export function ClientBillingPage() {
                   <p className="kcx-eyebrow text-brand-primary">Upload CSV</p>
                   <h2 className="text-lg font-semibold text-text-primary">Upload History</h2>
                   <p className="text-sm text-text-secondary">
-                    CSV upload history and parsing diagnostics will appear here in the next billing sprint.
+                    Upload CSV or parquet billing files for manual ingestion.
                   </p>
+                </div>
+                <div>
+                  <Button className="h-10 rounded-md" onClick={() => setUploadDialogOpen(true)}>
+                    Upload CSV
+                  </Button>
                 </div>
                 <div className="rounded-md border border-dashed border-[color:var(--border-light)] bg-[color:var(--bg-surface)] p-4 text-sm text-text-muted">
                   No upload records available yet.
@@ -738,6 +751,7 @@ export function ClientBillingPage() {
           </CardContent>
         </Card>
       </section>
+      <ManualBillingUploadDialog open={uploadDialogOpen} onOpenChange={setUploadDialogOpen} />
     </>
   )
 }

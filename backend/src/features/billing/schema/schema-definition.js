@@ -39,6 +39,12 @@ const CANONICAL_COLUMNS = Object.freeze([
   "SubAccountId",
   "SubAccountName",
   "Tags",
+  "usage_start_time",
+  "usage_end_time",
+  "line_item_type",
+  "pricing_term",
+  "public_on_demand_cost",
+  "discount_amount",
 ]);
 
 const REQUIRED_COLUMNS = Object.freeze([
@@ -92,6 +98,12 @@ const COLUMN_ALIASES = Object.freeze({
   SubAccountId: Object.freeze(["SubAccountId", "sub_account_id"]),
   SubAccountName: Object.freeze(["SubAccountName", "sub_account_name"]),
   Tags: Object.freeze(["Tags", "tags", "resource_tags"]),
+  usage_start_time: Object.freeze(["usage_start_time", "ChargePeriodStart", "charge_period_start"]),
+  usage_end_time: Object.freeze(["usage_end_time", "ChargePeriodEnd", "charge_period_end"]),
+  line_item_type: Object.freeze(["line_item_type", "ChargeFrequency", "charge_frequency"]),
+  pricing_term: Object.freeze(["pricing_term", "PricingCategory", "pricing_category"]),
+  public_on_demand_cost: Object.freeze(["public_on_demand_cost", "ListCost", "list_cost"]),
+  discount_amount: Object.freeze(["discount_amount"]),
 });
 
 /**

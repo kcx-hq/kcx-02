@@ -24,6 +24,15 @@ import createDimSkuModel from "./billing/dim_sku.js";
 import createDimChargeModel from "./billing/dim_charge.js";
 import createDimDateModel from "./billing/dim_date.js";
 import createFactCostLineItemsModel from "./billing/fact_cost_line_items.js";
+import createResourceInventorySnapshotModel from "./billing/resource_inventory_snapshots.js";
+import createResourceUtilizationDailyModel from "./billing/resource_utilization_daily.js";
+import createFactAnomaliesModel from "./billing/fact_anomalies.js";
+import createFactRecommendationsModel from "./billing/fact_recommendations.js";
+import createFactCostAllocationsModel from "./billing/fact_cost_allocations.js";
+import createFactCommitmentCoverageModel from "./billing/fact_commitment_coverage.js";
+import createBudgetsModel from "./billing/budgets.js";
+import createBudgetEvaluationsModel from "./billing/budget_evaluations.js";
+import createBudgetAlertsModel from "./billing/budget_alerts.js";
 
 const dbUrl = new URL(env.dbUrl);
 if (!dbUrl.searchParams.has("sslmode")) {
@@ -65,6 +74,15 @@ const DimSku = createDimSkuModel(sequelize);
 const DimCharge = createDimChargeModel(sequelize);
 const DimDate = createDimDateModel(sequelize);
 const FactCostLineItems = createFactCostLineItemsModel(sequelize);
+const ResourceInventorySnapshot = createResourceInventorySnapshotModel(sequelize);
+const ResourceUtilizationDaily = createResourceUtilizationDailyModel(sequelize);
+const FactAnomalies = createFactAnomaliesModel(sequelize);
+const FactRecommendations = createFactRecommendationsModel(sequelize);
+const FactCostAllocations = createFactCostAllocationsModel(sequelize);
+const FactCommitmentCoverage = createFactCommitmentCoverageModel(sequelize);
+const Budgets = createBudgetsModel(sequelize);
+const BudgetEvaluations = createBudgetEvaluationsModel(sequelize);
+const BudgetAlerts = createBudgetAlertsModel(sequelize);
 
 User.hasMany(DemoRequest, { foreignKey: "userId" });
 DemoRequest.belongsTo(User, { foreignKey: "userId" });
@@ -150,6 +168,52 @@ BillingSource.hasMany(FactCostLineItems, { foreignKey: "billingSourceId" });
 FactCostLineItems.belongsTo(BillingSource, { foreignKey: "billingSourceId" });
 BillingIngestionRun.hasMany(FactCostLineItems, { foreignKey: "ingestionRunId" });
 FactCostLineItems.belongsTo(BillingIngestionRun, { foreignKey: "ingestionRunId" });
+FactCostLineItems.hasMany(FactCostAllocations, { foreignKey: "factId" });
+FactCostAllocations.belongsTo(FactCostLineItems, { foreignKey: "factId" });
+
+Tenant.hasMany(ResourceInventorySnapshot, { foreignKey: "tenantId" });
+ResourceInventorySnapshot.belongsTo(Tenant, { foreignKey: "tenantId" });
+CloudConnectionV2.hasMany(ResourceInventorySnapshot, { foreignKey: "cloudConnectionId" });
+ResourceInventorySnapshot.belongsTo(CloudConnectionV2, { foreignKey: "cloudConnectionId" });
+CloudProvider.hasMany(ResourceInventorySnapshot, { foreignKey: "providerId" });
+ResourceInventorySnapshot.belongsTo(CloudProvider, { foreignKey: "providerId" });
+
+Tenant.hasMany(ResourceUtilizationDaily, { foreignKey: "tenantId" });
+ResourceUtilizationDaily.belongsTo(Tenant, { foreignKey: "tenantId" });
+CloudConnectionV2.hasMany(ResourceUtilizationDaily, { foreignKey: "cloudConnectionId" });
+ResourceUtilizationDaily.belongsTo(CloudConnectionV2, { foreignKey: "cloudConnectionId" });
+
+Tenant.hasMany(FactAnomalies, { foreignKey: "tenantId" });
+FactAnomalies.belongsTo(Tenant, { foreignKey: "tenantId" });
+CloudConnectionV2.hasMany(FactAnomalies, { foreignKey: "cloudConnectionId" });
+FactAnomalies.belongsTo(CloudConnectionV2, { foreignKey: "cloudConnectionId" });
+DimService.hasMany(FactAnomalies, { foreignKey: "serviceKey" });
+FactAnomalies.belongsTo(DimService, { foreignKey: "serviceKey" });
+DimRegion.hasMany(FactAnomalies, { foreignKey: "regionKey" });
+FactAnomalies.belongsTo(DimRegion, { foreignKey: "regionKey" });
+DimResource.hasMany(FactAnomalies, { foreignKey: "resourceKey" });
+FactAnomalies.belongsTo(DimResource, { foreignKey: "resourceKey" });
+
+Tenant.hasMany(FactRecommendations, { foreignKey: "tenantId" });
+FactRecommendations.belongsTo(Tenant, { foreignKey: "tenantId" });
+CloudConnectionV2.hasMany(FactRecommendations, { foreignKey: "cloudConnectionId" });
+FactRecommendations.belongsTo(CloudConnectionV2, { foreignKey: "cloudConnectionId" });
+
+Tenant.hasMany(FactCommitmentCoverage, { foreignKey: "tenantId" });
+FactCommitmentCoverage.belongsTo(Tenant, { foreignKey: "tenantId" });
+CloudConnectionV2.hasMany(FactCommitmentCoverage, { foreignKey: "cloudConnectionId" });
+FactCommitmentCoverage.belongsTo(CloudConnectionV2, { foreignKey: "cloudConnectionId" });
+
+Tenant.hasMany(Budgets, { foreignKey: "tenantId" });
+Budgets.belongsTo(Tenant, { foreignKey: "tenantId" });
+CloudConnectionV2.hasMany(Budgets, { foreignKey: "cloudConnectionId" });
+Budgets.belongsTo(CloudConnectionV2, { foreignKey: "cloudConnectionId" });
+User.hasMany(Budgets, { foreignKey: "createdBy" });
+Budgets.belongsTo(User, { foreignKey: "createdBy" });
+Budgets.hasMany(BudgetEvaluations, { foreignKey: "budgetId" });
+BudgetEvaluations.belongsTo(Budgets, { foreignKey: "budgetId" });
+Budgets.hasMany(BudgetAlerts, { foreignKey: "budgetId" });
+BudgetAlerts.belongsTo(Budgets, { foreignKey: "budgetId" });
 
 AdminUser.hasMany(AdminAuthSession, { foreignKey: "adminUserId" });
 AdminAuthSession.belongsTo(AdminUser, { foreignKey: "adminUserId" });
@@ -184,4 +248,13 @@ export {
   DimCharge,
   DimDate,
   FactCostLineItems,
+  ResourceInventorySnapshot,
+  ResourceUtilizationDaily,
+  FactAnomalies,
+  FactRecommendations,
+  FactCostAllocations,
+  FactCommitmentCoverage,
+  Budgets,
+  BudgetEvaluations,
+  BudgetAlerts,
 };

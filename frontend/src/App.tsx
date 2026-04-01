@@ -147,7 +147,7 @@ export function App() {
         </ClientLayout>
       ) : null}
       {route === "/client/billing" ||
-      // route === "/client/billing/uploads" ||
+      route === "/client/billing/uploads" ||
       route === "/client/billing/connections" ||
       route === "/client/billing/connections/add" ||
       route === "/client/billing/connections/aws" ||
