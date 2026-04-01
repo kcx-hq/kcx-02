@@ -1,11 +1,16 @@
 import {
   Activity,
+  Boxes,
   ChevronLeft,
   ChevronRight,
   FileText,
+  Gauge,
   LayoutDashboard,
   LineChart,
+  PieChart,
   ShieldCheck,
+  TriangleAlert,
+  Wallet,
   type LucideIcon,
 } from "lucide-react";
 
@@ -14,6 +19,11 @@ const iconMap: Record<string, LucideIcon> = {
   "file-text": FileText,
   "layout-dashboard": LayoutDashboard,
   "line-chart": LineChart,
+  boxes: Boxes,
+  "pie-chart": PieChart,
+  gauge: Gauge,
+  "triangle-alert": TriangleAlert,
+  wallet: Wallet,
   "shield-check": ShieldCheck,
   "chevron-left": ChevronLeft,
   "chevron-right": ChevronRight,

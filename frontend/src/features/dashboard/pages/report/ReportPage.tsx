@@ -1,9 +1,7 @@
-import { DashboardPageHeader } from "../../components/DashboardPageHeader";
+import { useReportQuery } from "../../hooks/useDashboardQueries";
+import { DashboardSectionPage } from "../shared/DashboardSectionPage";
 
 export default function ReportPage() {
-  return (
-    <div className="dashboard-page">
-      <DashboardPageHeader title="Report" />
-    </div>
-  );
+  const query = useReportQuery();
+  return <DashboardSectionPage title="Report" query={query} />;
 }

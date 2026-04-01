@@ -1,9 +1,12 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 import { DashboardLayout } from "../layout/DashboardLayout";
 import OverviewPage from "../pages/overview/OverviewPage";
-import CostAnalysisPage from "../pages/cost-analysis/CostAnalysisPage";
-import CostDriverPage from "../pages/cost-driver/CostDriverPage";
-import DataQualityPage from "../pages/data-quality/DataQualityPage";
+import CostExplorerPage from "../pages/cost-explorer/CostExplorerPage";
+import ResourcesPage from "../pages/resources/ResourcesPage";
+import AllocationPage from "../pages/allocation/AllocationPage";
+import OptimizationPage from "../pages/optimization/OptimizationPage";
+import AnomaliesAlertsPage from "../pages/anomalies-alerts/AnomaliesAlertsPage";
+import BudgetPage from "../pages/budget/BudgetPage";
 import ReportPage from "../pages/report/ReportPage";
 import "../styles/tokens.css";
 import "../styles/dashboard.css";
@@ -14,9 +17,12 @@ export default function DashboardRoutes() {
       <Route path="/dashboard" element={<DashboardLayout />}>
         <Route index element={<Navigate to="/dashboard/overview" replace />} />
         <Route path="overview" element={<OverviewPage />} />
-        <Route path="cost-analysis" element={<CostAnalysisPage />} />
-        <Route path="cost-driver" element={<CostDriverPage />} />
-        <Route path="data-quality" element={<DataQualityPage />} />
+        <Route path="cost-explorer" element={<CostExplorerPage />} />
+        <Route path="resources" element={<ResourcesPage />} />
+        <Route path="allocation" element={<AllocationPage />} />
+        <Route path="optimization" element={<OptimizationPage />} />
+        <Route path="anomalies-alerts" element={<AnomaliesAlertsPage />} />
+        <Route path="budget" element={<BudgetPage />} />
         <Route path="report" element={<ReportPage />} />
         <Route path="*" element={<Navigate to="/dashboard/overview" replace />} />
       </Route>

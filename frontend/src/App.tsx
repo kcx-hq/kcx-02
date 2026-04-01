@@ -54,7 +54,8 @@ const CLIENT_WORKSPACE_ROUTES = new Set([
 ])
 const AWS_CONNECTION_SETUP_ROUTE_REGEX = /^\/client\/billing\/(?:connect-cloud|connections)\/aws\/setup\/[0-9a-fA-F-]{36}$/
 const CLOUD_PROVIDER_ROUTE_REGEX = /^\/client\/billing\/(?:connect-cloud|connections)\/(aws|azure|gcp|oracle-cloud)$/
-const DASHBOARD_ROUTE_REGEX = /^\/dashboard(?:\/(?:overview|cost-analysis|cost-driver|data-quality|report))?$/
+const DASHBOARD_ROUTE_REGEX =
+  /^\/dashboard(?:\/(?:overview|cost-explorer|resources|allocation|optimization|anomalies-alerts|budget|report))?$/
 
 function isClientWorkspaceRoute(route: string) {
   return CLIENT_WORKSPACE_ROUTES.has(route) || AWS_CONNECTION_SETUP_ROUTE_REGEX.test(route) || CLOUD_PROVIDER_ROUTE_REGEX.test(route)
