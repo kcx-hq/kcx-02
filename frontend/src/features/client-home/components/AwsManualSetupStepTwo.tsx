@@ -33,10 +33,11 @@ export function AwsManualSetupStepTwo({
 }: AwsManualSetupStepTwoProps) {
   const iamConsoleUrl = "https://console.aws.amazon.com/iam/home#/roles"
   const iamPoliciesConsoleUrl = "https://console.aws.amazon.com/iam/home#/policies"
-  const [copiedAccountId, setCopiedAccountId] = useState(false)
+  const [copiedPrincipal, setCopiedPrincipal] = useState(false)
   const [copiedExternalId, setCopiedExternalId] = useState(false)
   const [copiedManagedPolicy, setCopiedManagedPolicy] = useState<null | "billing" | "view">(null)
   const [copiedCustomPolicy, setCopiedCustomPolicy] = useState(false)
+  const [copiedTrustPolicy, setCopiedTrustPolicy] = useState(false)
   const [externalId, setExternalId] = useState("")
   const [showExternalId, setShowExternalId] = useState(false)
   const [customPolicyBucketName, setCustomPolicyBucketName] = useState("")
@@ -73,6 +74,19 @@ export function AwsManualSetupStepTwo({
     { key: "view" as const, name: "ViewOnlyAccess" },
   ]
 
+  const kcxPrincipalArn = useMemo(() => {
+    const value = (import.meta.env as Record<string, unknown>).VITE_KCX_AWS_PRINCIPAL_ARN
+    if (typeof value === "string" && value.trim().length > 0) {
+      return value.trim()
+    }
+    return "arn:aws:iam::275017715736:root"
+  }, [])
+
+  const kcxAccountId = useMemo(() => {
+    const match = /arn:aws:iam::(\d{12}):/.exec(kcxPrincipalArn)
+    return match ? match[1] : null
+  }, [kcxPrincipalArn])
+
   function buildCustomPolicyJson(bucketName: string) {
     return JSON.stringify(
       {
@@ -81,7 +95,7 @@ export function AwsManualSetupStepTwo({
           {
             Sid: "KCXBillingBucketListAccess",
             Effect: "Allow",
-            Action: ["s3:ListBucket"],
+            Action: ["s3:ListBucket", "s3:GetBucketLocation"],
             Resource: [`arn:aws:s3:::${bucketName}`],
           },
           {
@@ -97,13 +111,42 @@ export function AwsManualSetupStepTwo({
     )
   }
 
-  async function handleCopyAccountId() {
+  function buildTrustPolicyJson(principalArn: string, generatedExternalId: string) {
+    return JSON.stringify(
+      {
+        Version: "2012-10-17",
+        Statement: [
+          {
+            Effect: "Allow",
+            Principal: {
+              AWS: principalArn,
+            },
+            Action: "sts:AssumeRole",
+            Condition: {
+              StringEquals: {
+                "sts:ExternalId": generatedExternalId,
+              },
+            },
+          },
+        ],
+      },
+      null,
+      2,
+    )
+  }
+
+  const generatedTrustPolicy = useMemo(() => {
+    if (!externalId) return null
+    return buildTrustPolicyJson(kcxPrincipalArn, externalId)
+  }, [kcxPrincipalArn, externalId])
+
+  async function handleCopyPrincipal() {
     try {
-      await navigator.clipboard.writeText("275017715736")
-      setCopiedAccountId(true)
-      window.setTimeout(() => setCopiedAccountId(false), 1500)
+      await navigator.clipboard.writeText(kcxPrincipalArn)
+      setCopiedPrincipal(true)
+      window.setTimeout(() => setCopiedPrincipal(false), 1500)
     } catch {
-      setCopiedAccountId(false)
+      setCopiedPrincipal(false)
     }
   }
 
@@ -141,6 +184,18 @@ export function AwsManualSetupStepTwo({
     }
   }
 
+  async function handleCopyTrustPolicy() {
+    if (!generatedTrustPolicy) return
+
+    try {
+      await navigator.clipboard.writeText(generatedTrustPolicy)
+      setCopiedTrustPolicy(true)
+      window.setTimeout(() => setCopiedTrustPolicy(false), 1500)
+    } catch {
+      setCopiedTrustPolicy(false)
+    }
+  }
+
   function handleGenerateCustomPolicy() {
     const bucketName = customPolicyBucketName.trim()
     if (!bucketName) return
@@ -162,41 +217,119 @@ export function AwsManualSetupStepTwo({
 
         <section className="space-y-4 rounded-md border border-[color:var(--border-light)] bg-white p-5">
           <div className="space-y-1">
-            <h4 className="text-base font-semibold text-text-primary">2.1 Start IAM Role Setup</h4>
+            <h4 className="text-base font-semibold text-text-primary">2.1 Create Custom S3 Policy</h4>
             <p className="text-sm text-text-secondary">
-              Create the IAM role in AWS using the required KCX details.
+              Generate a bucket-scoped custom IAM policy first. You will attach this policy during IAM role creation in Step 2.3.
             </p>
           </div>
 
           <div className="rounded-md border border-[color:var(--border-light)] bg-[color:var(--bg-surface)] p-4">
-            <a href={iamConsoleUrl} target="_blank" rel="noreferrer">
+            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-text-muted">Quick steps in AWS</p>
+            <ol className="mt-2 space-y-1.5 text-sm text-text-secondary">
+              <li>1. Open IAM Policies.</li>
+              <li>2. Create a new custom policy.</li>
+              <li>3. Paste the generated JSON below and save it.</li>
+            </ol>
+          </div>
+
+          <div className="rounded-md border border-[color:var(--border-light)] bg-[color:var(--bg-surface)] p-4">
+            <a href={iamPoliciesConsoleUrl} target="_blank" rel="noreferrer">
               <Button variant="outline" className="h-10 cursor-pointer rounded-md border-[color:var(--border-light)]">
-                Open AWS IAM Console
+                Open AWS IAM Policies
                 <ExternalLink className="ml-1.5 h-4 w-4" />
               </Button>
             </a>
           </div>
 
-          <h4 className="text-sm font-semibold text-text-primary">KCX Details</h4>
+          <div className="space-y-2">
+            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-text-muted">KCX custom policy</p>
+            <div className="rounded-md border border-[color:var(--border-light)] bg-[color:var(--bg-surface)] p-4">
+              <p className="text-sm font-semibold text-text-primary">KCX Custom S3 Access Policy</p>
+              <p className="mt-1 text-sm text-text-secondary">
+                Create this as a custom IAM policy in AWS before creating the role.
+              </p>
+              <div className="mt-3 grid gap-2 md:grid-cols-[1fr_auto]">
+                <input
+                  className="h-10 rounded-md border border-gray-200 bg-white px-3 text-sm outline-none focus:border-[color:var(--kcx-border-strong)]"
+                  placeholder="e.g. company-billing-export"
+                  value={customPolicyBucketName}
+                  onChange={(event) => setCustomPolicyBucketName(event.target.value)}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-10 rounded-md border-[color:var(--border-light)]"
+                  onClick={handleGenerateCustomPolicy}
+                  disabled={!customPolicyBucketName.trim()}
+                >
+                  Generate IAM Policy
+                </Button>
+              </div>
+
+              {generatedCustomPolicy ? (
+                <pre className="mt-3 overflow-x-auto rounded-md border border-[color:var(--border-light)] bg-white p-3 text-xs leading-5 text-text-secondary">
+{generatedCustomPolicy}
+                </pre>
+              ) : (
+                <p className="mt-3 text-xs text-text-muted">
+                  Generate policy JSON and create it in AWS IAM Policies.
+                </p>
+              )}
+              <div className="mt-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-8 rounded-md px-3 text-xs"
+                  onClick={() => {
+                    void handleCopyCustomPolicy()
+                  }}
+                  disabled={!generatedCustomPolicy}
+                >
+                  {copiedCustomPolicy ? <Check className="mr-1 h-3.5 w-3.5" /> : <Copy className="mr-1 h-3.5 w-3.5" />}
+                  {copiedCustomPolicy ? "Copied policy" : "Copy policy JSON"}
+                </Button>
+              </div>
+              <p className="mt-3 text-xs text-text-muted">
+                Keep the custom policy name handy. You will attach this in Step 2.3 and record its name in Step 2.4.
+              </p>
+              {/* TODO: Optionally tighten scope further to a specific prefix once prefix-aware generation is enabled. */}
+              {/* TODO: Bind generated policy to backend-managed template once Step 2 save flow is implemented. */}
+            </div>
+          </div>
+        </section>
+
+        <section className="space-y-4 rounded-md border border-[color:var(--border-light)] bg-white p-5">
+          <div className="space-y-1">
+            <h4 className="text-base font-semibold text-text-primary">2.2 Create IAM Role Using Custom Trust Policy</h4>
+            <p className="text-sm text-text-secondary">
+              Create the IAM role with <span className="font-semibold text-text-primary">Custom trust policy</span>, then paste the trust JSON below.
+            </p>
+          </div>
+
           <div className="grid gap-3 md:grid-cols-2">
             <div className="space-y-1">
-              <p className="text-xs font-semibold uppercase tracking-[0.08em] text-text-muted">KCX Account ID</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.08em] text-text-muted">KCX Principal</p>
               <div className="flex items-center gap-2 rounded-md border border-[color:var(--border-light)] bg-[color:var(--bg-surface)] px-3 py-2">
-                <p className="text-sm text-text-primary">275017715736</p>
+                <p className="break-all text-sm text-text-primary">{kcxPrincipalArn}</p>
                 <Button
                   type="button"
                   variant="outline"
                   size="sm"
                   className="ml-auto h-7 rounded-md px-2 text-xs"
                   onClick={() => {
-                    void handleCopyAccountId()
+                    void handleCopyPrincipal()
                   }}
                 >
-                  {copiedAccountId ? <Check className="mr-1 h-3.5 w-3.5" /> : <Copy className="mr-1 h-3.5 w-3.5" />}
-                  {copiedAccountId ? "Copied" : "Copy"}
+                  {copiedPrincipal ? <Check className="mr-1 h-3.5 w-3.5" /> : <Copy className="mr-1 h-3.5 w-3.5" />}
+                  {copiedPrincipal ? "Copied" : "Copy"}
                 </Button>
               </div>
+              {kcxAccountId ? (
+                <p className="text-xs text-text-muted">KCX account ID: {kcxAccountId}</p>
+              ) : null}
             </div>
+
             <div className="space-y-1">
               <p className="text-xs font-semibold uppercase tracking-[0.08em] text-text-muted">External ID</p>
               <div className="flex items-center gap-2 rounded-md border border-[color:var(--border-light)] bg-[color:var(--bg-surface)] px-3 py-2">
@@ -229,52 +362,70 @@ export function AwsManualSetupStepTwo({
               </div>
             </div>
           </div>
-          {/* TODO: Replace local external-id persistence with backend-issued stable external IDs. */}
 
           <div className="rounded-md border border-[color:var(--border-light)] bg-[color:var(--bg-surface)] p-4">
             <p className="text-xs font-semibold uppercase tracking-[0.08em] text-text-muted">Quick steps in AWS</p>
             <ol className="mt-2 space-y-1.5 text-sm text-text-secondary">
-              <li>
-                1. Choose <span className="font-semibold text-text-primary">AWS account</span> for trusted entity.
-              </li>
-              <li>
-                2. Select <span className="font-semibold text-text-primary">Another AWS account</span>.
-              </li>
-              <li>
-                3. Paste the <span className="font-semibold text-text-primary">KCX Account ID</span> from above.
-              </li>
-              <li>
-                4. Turn on <span className="font-semibold text-text-primary">External ID</span> and paste the value from above.
-              </li>
+              <li>1. In AWS IAM, select <span className="font-semibold text-text-primary">Create role</span>.</li>
+              <li>2. Choose <span className="font-semibold text-text-primary">Custom trust policy</span>.</li>
+              <li>3. Paste the trust policy JSON from KCX below.</li>
+              <li>4. Continue to permissions and attach all required policies in Step 2.3.</li>
             </ol>
-          </div>
-        </section>
-
-        <section className="space-y-4 rounded-md border border-[color:var(--border-light)] bg-white p-5">
-          <div className="space-y-1">
-            <h4 className="text-base font-semibold text-text-primary">Step 2.2 - Add Required Permissions</h4>
-            <p className="text-sm text-text-secondary">
-              Attach the following permissions to the IAM role created in the previous step.
-            </p>
           </div>
 
           <div className="rounded-md border border-[color:var(--border-light)] bg-[color:var(--bg-surface)] p-4">
-            <a href={iamPoliciesConsoleUrl} target="_blank" rel="noreferrer">
+            <a href={iamConsoleUrl} target="_blank" rel="noreferrer">
               <Button variant="outline" className="h-10 cursor-pointer rounded-md border-[color:var(--border-light)]">
-                Open AWS IAM Policies
+                Open AWS IAM Console
                 <ExternalLink className="ml-1.5 h-4 w-4" />
               </Button>
             </a>
           </div>
 
-          <div className="rounded-md border border-[color:var(--border-light)] bg-[color:var(--bg-surface)] p-4">
+          <div className="space-y-1">
+            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-text-muted">Trust policy JSON</p>
             <p className="text-sm text-text-secondary">
-              Attach these AWS managed policies directly to your IAM role.
+              Paste this JSON into AWS when selecting custom trust policy.
+            </p>
+          </div>
+
+          {generatedTrustPolicy ? (
+            <pre className="overflow-x-auto rounded-md border border-[color:var(--border-light)] bg-[color:var(--bg-surface)] p-3 text-xs leading-5 text-text-secondary">
+{generatedTrustPolicy}
+            </pre>
+          ) : (
+            <p className="rounded-md border border-[color:var(--border-light)] bg-[color:var(--bg-surface)] p-3 text-xs text-text-muted">
+              Trust policy will appear once external ID is ready.
+            </p>
+          )}
+          <div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-8 rounded-md px-3 text-xs"
+              onClick={() => {
+                void handleCopyTrustPolicy()
+              }}
+              disabled={!generatedTrustPolicy}
+            >
+              {copiedTrustPolicy ? <Check className="mr-1 h-3.5 w-3.5" /> : <Copy className="mr-1 h-3.5 w-3.5" />}
+              {copiedTrustPolicy ? "Copied trust policy" : "Copy trust policy JSON"}
+            </Button>
+          </div>
+          {/* TODO: Replace local external-id persistence with backend-issued stable external IDs. */}
+        </section>
+
+        <section className="space-y-4 rounded-md border border-[color:var(--border-light)] bg-white p-5">
+          <div className="space-y-1">
+            <h4 className="text-base font-semibold text-text-primary">2.3 Attach Required Permissions During Role Creation</h4>
+            <p className="text-sm text-text-secondary">
+              While creating the IAM role, attach all three policies before finishing role creation.
             </p>
           </div>
 
           <div className="space-y-2">
-            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-text-muted">AWS managed policies</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-text-muted">Attach these three policies</p>
             <div className="space-y-2">
               {managedPolicies.map((policy) => (
                 <div
@@ -300,69 +451,29 @@ export function AwsManualSetupStepTwo({
                   </Button>
                 </div>
               ))}
+              <div className="flex items-center gap-2 rounded-md border border-[color:var(--border-light)] bg-[color:var(--bg-surface)] px-3 py-2">
+                <p className="text-sm font-medium text-text-primary">
+                  {customPolicyName.trim() || "Custom S3 policy created in Step 2.1"}
+                </p>
+              </div>
             </div>
           </div>
+          <p className="text-xs text-text-muted">
+            Required set: AWSBillingReadOnlyAccess, ViewOnlyAccess, and your custom S3 policy from Step 2.1.
+          </p>
 
-          <div className="space-y-2">
-            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-text-muted">KCX custom policy</p>
-            <div className="rounded-md border border-[color:var(--border-light)] bg-[color:var(--bg-surface)] p-4">
-              <p className="text-sm font-semibold text-text-primary">KCX Custom S3 Access Policy</p>
-              <p className="mt-1 text-sm text-text-secondary">
-                Generate a bucket-scoped policy using your billing export S3 bucket. Create this as a custom policy in AWS, then attach it to the same IAM role.
-              </p>
-              <div className="mt-3 grid gap-2 md:grid-cols-[1fr_auto]">
-                <input
-                  className="h-10 rounded-md border border-gray-200 bg-white px-3 text-sm outline-none focus:border-[color:var(--kcx-border-strong)]"
-                  placeholder="e.g. company-billing-export"
-                  value={customPolicyBucketName}
-                  onChange={(event) => setCustomPolicyBucketName(event.target.value)}
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="h-10 rounded-md border-[color:var(--border-light)]"
-                  onClick={handleGenerateCustomPolicy}
-                  disabled={!customPolicyBucketName.trim()}
-                >
-                  Generate IAM Policy
-                </Button>
-              </div>
-
-              {generatedCustomPolicy ? (
-                <pre className="mt-3 overflow-x-auto rounded-md border border-[color:var(--border-light)] bg-white p-3 text-xs leading-5 text-text-secondary">
-{generatedCustomPolicy}
-                </pre>
-              ) : (
-                <p className="mt-3 text-xs text-text-muted">
-                  Generate policy JSON and copy it into a custom IAM policy in AWS.
-                </p>
-              )}
-              <div className="mt-3">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="h-8 rounded-md px-3 text-xs"
-                  onClick={() => {
-                    void handleCopyCustomPolicy()
-                  }}
-                  disabled={!generatedCustomPolicy}
-                >
-                  {copiedCustomPolicy ? <Check className="mr-1 h-3.5 w-3.5" /> : <Copy className="mr-1 h-3.5 w-3.5" />}
-                  {copiedCustomPolicy ? "Copied policy" : "Copy policy JSON"}
-                </Button>
-              </div>
-              <p className="mt-3 text-xs text-text-muted">
-                After creating the policy in AWS, attach it to your IAM role.
-              </p>
-              {/* TODO: Optionally tighten scope further to a specific prefix once prefix-aware generation is enabled. */}
-              {/* TODO: Bind generated policy to backend-managed template once Step 2 save flow is implemented. */}
-            </div>
+          <div className="rounded-md border border-[color:var(--border-light)] bg-[color:var(--bg-surface)] p-4">
+            <a href={iamPoliciesConsoleUrl} target="_blank" rel="noreferrer">
+              <Button variant="outline" className="h-10 cursor-pointer rounded-md border-[color:var(--border-light)]">
+                Open AWS IAM Policies
+                <ExternalLink className="ml-1.5 h-4 w-4" />
+              </Button>
+            </a>
           </div>
         </section>
 
         <section className="space-y-3 rounded-md border border-[color:var(--border-light)] bg-white p-5">
-          <h4 className="text-base font-semibold text-text-primary">2.3 Confirm AWS Resource Names</h4>
+          <h4 className="text-base font-semibold text-text-primary">2.4 Confirm AWS Resource Names</h4>
           <p className="text-sm text-text-secondary">
             Enter the exact role and custom policy names used in AWS so KCX can track and validate this connection.
           </p>
@@ -386,6 +497,13 @@ export function AwsManualSetupStepTwo({
               />
             </label>
           </div>
+        </section>
+
+        <section className="space-y-3 rounded-md border border-[color:var(--border-light)] bg-white p-5">
+          <h4 className="text-base font-semibold text-text-primary">2.5 Finalize Role in AWS</h4>
+          <p className="text-sm text-text-secondary">
+            Complete role creation in AWS after attaching all required policies and naming the role. Then proceed to Step 3 in KCX.
+          </p>
         </section>
       </CardContent>
     </Card>

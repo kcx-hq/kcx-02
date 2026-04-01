@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
+import { useEffect, useMemo, useState, type ReactNode } from "react"
 // STEP 1:
 // Client prepares billing data source (S3 bucket)
 // This feeds into cross-account access setup in Step 2
@@ -6,13 +6,31 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
-import { AlertTriangle, ArrowRight, CheckCircle2, Cloud, ExternalLink, FileSpreadsheet, Loader2, Wrench } from "lucide-react"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import {
+  AlertTriangle,
+  ArrowRight,
+  CheckCircle2,
+  ChevronRight,
+  Cloud,
+  ExternalLink,
+  FileSpreadsheet,
+  FileText,
+  Folder,
+  Loader2,
+  Wrench,
+} from "lucide-react"
 
 import {
-  submitAwsManualStep1,
-  submitAwsManualStep2,
-  submitAwsManualStep3,
-  validateAwsManualConnection,
+  browseAwsManualBucket,
+  type AwsManualBrowseBucketItem,
+  testAwsManualConnection,
 } from "@/features/client-home/api/cloud-connections.api"
 import { AwsManualSetupStepTwo } from "@/features/client-home/components/AwsManualSetupStepTwo"
 import { ClientPageHeader } from "@/features/client-home/components/ClientPageHeader"
@@ -129,6 +147,14 @@ function AwsLoginSection() {
         <p className="text-sm text-text-secondary">
           Open AWS Billing and navigate to Data Exports to create a new export.
         </p>
+      </div>
+      <div className="rounded-md border border-[color:var(--border-light)] bg-[color:var(--bg-surface)] p-4">
+        <p className="text-xs font-semibold uppercase tracking-[0.08em] text-text-muted">Quick steps</p>
+        <ol className="mt-2 space-y-1.5 text-sm text-text-secondary">
+          <li>1. Open AWS Billing Console.</li>
+          <li>2. Navigate to <span className="font-semibold text-text-primary">Data Exports</span>.</li>
+          <li>3. Start creating a new standard export.</li>
+        </ol>
       </div>
       <div className="rounded-md border border-[color:var(--border-light)] bg-white p-4">
         <a href={billingConsoleUrl} target="_blank" rel="noreferrer">
@@ -278,9 +304,11 @@ type ManualSetupStepThreeProps = {
   connectionName: string
   dataExportName: string
   roleArn: string
+  expectedAccountId: string
   onConnectionNameChange: (value: string) => void
   onDataExportNameChange: (value: string) => void
   onRoleArnChange: (value: string) => void
+  onExpectedAccountIdChange: (value: string) => void
   roleNameHint: string
 }
 
@@ -288,9 +316,11 @@ function ManualSetupStepThree({
   connectionName,
   dataExportName,
   roleArn,
+  expectedAccountId,
   onConnectionNameChange,
   onDataExportNameChange,
   onRoleArnChange,
+  onExpectedAccountIdChange,
   roleNameHint,
 }: ManualSetupStepThreeProps) {
   return (
@@ -359,6 +389,21 @@ function ManualSetupStepThree({
               Enter the full ARN of the IAM role created in Step 2.
             </p>
           </label>
+
+          <label className="block space-y-1.5">
+            <span className="text-xs font-semibold uppercase tracking-[0.08em] text-text-muted">
+              Expected AWS Account ID (optional)
+            </span>
+            <input
+              className="h-10 w-full rounded-md border border-gray-200 bg-white px-3 text-sm outline-none focus:border-[color:var(--kcx-border-strong)]"
+              placeholder="123456789012"
+              value={expectedAccountId}
+              onChange={(event) => onExpectedAccountIdChange(event.target.value)}
+            />
+            <p className="text-xs text-text-muted">
+              Optional: if provided, KCX will verify the assumed role belongs to this account.
+            </p>
+          </label>
         </section>
       </CardContent>
     </Card>
@@ -418,6 +463,179 @@ function mapValidationErrorMessage(message: string): string {
   return message || "Validation failed. Review the configuration and try again."
 }
 
+function normalizeExplorerPrefix(value: string): string {
+  const trimmed = value.trim().replace(/^\/+/, "")
+  if (!trimmed) return ""
+  return trimmed.endsWith("/") ? trimmed : `${trimmed}/`
+}
+
+function formatFileSize(size: number | null): string {
+  if (size === null || Number.isNaN(size)) return "-"
+  if (size < 1024) return `${size} B`
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`
+  if (size < 1024 * 1024 * 1024) return `${(size / (1024 * 1024)).toFixed(1)} MB`
+  return `${(size / (1024 * 1024 * 1024)).toFixed(1)} GB`
+}
+
+function formatLastModified(value: string | null): string {
+  if (!value) return "-"
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return "-"
+  return date.toLocaleString()
+}
+
+function AwsBucketBrowserModal({
+  open,
+  onOpenChange,
+  bucketName,
+  rootPrefix,
+  currentPrefix,
+  items,
+  isLoading,
+  errorMessage,
+  callerAccount,
+  onOpenPrefix,
+  onReload,
+}: {
+  open: boolean
+  onOpenChange: (next: boolean) => void
+  bucketName: string
+  rootPrefix: string
+  currentPrefix: string
+  items: AwsManualBrowseBucketItem[]
+  isLoading: boolean
+  errorMessage: string | null
+  callerAccount: string | null
+  onOpenPrefix: (prefix: string) => void
+  onReload: () => void
+}) {
+  const normalizedCurrentPrefix = normalizeExplorerPrefix(currentPrefix)
+  const breadcrumbParts = normalizedCurrentPrefix
+    .split("/")
+    .filter((segment) => segment.length > 0)
+
+  const folderItems = items.filter((item) => item.type === "folder")
+  const fileItems = items.filter((item) => item.type === "file")
+  const sortedItems = [...folderItems, ...fileItems]
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="w-[min(94vw,72rem)] max-w-[72rem] p-0">
+        <div className="border-b border-[color:var(--border-light)] bg-[linear-gradient(160deg,#0f2b24_0%,#1b3f35_58%,#25574b_100%)] px-6 py-5 text-white">
+          <DialogHeader className="space-y-2">
+            <DialogTitle className="text-lg font-semibold text-white">Browse Connected Billing Bucket</DialogTitle>
+            <DialogDescription className="text-sm text-white/85">
+              Review the contents of the connected S3 export path to confirm successful access.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-white/85">
+            <span className="rounded-md border border-white/20 bg-white/10 px-2 py-1">Bucket: {bucketName}</span>
+            <span className="rounded-md border border-white/20 bg-white/10 px-2 py-1">
+              Root Prefix: {normalizeExplorerPrefix(rootPrefix) || "/"}
+            </span>
+            {callerAccount ? (
+              <span className="rounded-md border border-white/20 bg-white/10 px-2 py-1">Account: {callerAccount}</span>
+            ) : null}
+          </div>
+        </div>
+
+        <div className="space-y-4 p-6">
+          <div className="rounded-md border border-[color:var(--border-light)] bg-[color:var(--bg-surface)] p-3">
+            <div className="flex flex-wrap items-center gap-1 text-xs text-text-secondary">
+              <button
+                type="button"
+                className="rounded px-1.5 py-0.5 font-medium text-brand-primary hover:bg-[color:var(--highlight-green)]"
+                onClick={() => onOpenPrefix("")}
+              >
+                bucket root
+              </button>
+              {breadcrumbParts.map((part, index) => {
+                const targetPrefix = `${breadcrumbParts.slice(0, index + 1).join("/")}/`
+                return (
+                  <div key={targetPrefix} className="inline-flex items-center gap-1">
+                    <ChevronRight className="h-3.5 w-3.5 text-text-muted" />
+                    <button
+                      type="button"
+                      className="rounded px-1.5 py-0.5 font-medium text-brand-primary hover:bg-[color:var(--highlight-green)]"
+                      onClick={() => onOpenPrefix(targetPrefix)}
+                    >
+                      {part}
+                    </button>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+
+          <div className="overflow-hidden rounded-md border border-[color:var(--border-light)]">
+            <div className="grid grid-cols-[minmax(0,1fr)_120px_180px_120px] bg-[color:var(--bg-surface)] px-4 py-2 text-xs font-semibold uppercase tracking-[0.08em] text-text-muted">
+              <p>Name</p>
+              <p>Type</p>
+              <p>Last Modified</p>
+              <p className="text-right">Size</p>
+            </div>
+            {isLoading ? (
+              <div className="flex items-center gap-2 px-4 py-8 text-sm text-text-secondary">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Loading bucket contents...
+              </div>
+            ) : errorMessage ? (
+              <div className="flex items-start gap-2 px-4 py-4 text-sm text-rose-700">
+                <AlertTriangle className="mt-0.5 h-4 w-4" />
+                <p>{errorMessage}</p>
+              </div>
+            ) : sortedItems.length === 0 ? (
+              <div className="px-4 py-8 text-sm text-text-secondary">No objects found in this path.</div>
+            ) : (
+              <div className="divide-y divide-[color:var(--border-light)]">
+                {sortedItems.map((item) => (
+                  <div
+                    key={`${item.type}:${item.key}`}
+                    className={cn(
+                      "grid grid-cols-[minmax(0,1fr)_120px_180px_120px] items-center gap-2 px-4 py-3 text-sm",
+                      item.type === "folder" ? "bg-white" : "bg-[color:var(--bg-surface)]",
+                    )}
+                  >
+                    <div className="min-w-0">
+                      {item.type === "folder" ? (
+                        <button
+                          type="button"
+                          className="inline-flex items-center gap-2 text-left font-medium text-brand-primary hover:underline"
+                          onClick={() => onOpenPrefix(item.path)}
+                        >
+                          <Folder className="h-4 w-4" />
+                          <span className="truncate">{item.name}</span>
+                        </button>
+                      ) : (
+                        <span className="inline-flex items-center gap-2 text-text-primary">
+                          <FileText className="h-4 w-4 text-text-muted" />
+                          <span className="truncate">{item.name}</span>
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-text-secondary">{item.type}</p>
+                    <p className="text-text-secondary">{formatLastModified(item.lastModified)}</p>
+                    <p className="text-right text-text-secondary">{item.type === "folder" ? "-" : formatFileSize(item.size)}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="flex items-center justify-end gap-2 border-t border-[color:var(--border-light)] pt-2">
+            <Button type="button" variant="outline" className="h-10 rounded-md" onClick={onReload} disabled={isLoading}>
+              Reload
+            </Button>
+            <Button type="button" className="h-10 rounded-md" onClick={() => onOpenChange(false)}>
+              Close
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 function AwsSetupReviewValidation({
   bucketName,
   pathPrefix,
@@ -429,8 +647,10 @@ function AwsSetupReviewValidation({
   roleArn,
   onBackToEdit,
   onValidate,
+  onContinue,
   validateStatus,
   validationMessage,
+  isBrowsingBucket,
 }: {
   bucketName: string
   pathPrefix: string
@@ -442,8 +662,10 @@ function AwsSetupReviewValidation({
   roleArn: string
   onBackToEdit: () => void
   onValidate: () => void
+  onContinue: () => void
   validateStatus: "idle" | "validating" | "success" | "failure"
   validationMessage: string | null
+  isBrowsingBucket: boolean
 }) {
   return (
     <div className="space-y-5">
@@ -532,16 +754,30 @@ function AwsSetupReviewValidation({
         >
           Back to Edit
         </Button>
-        <Button type="button" className="h-10 rounded-md" onClick={onValidate} disabled={validateStatus === "validating"}>
-          {validateStatus === "validating" ? (
-            <>
-              <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
-              Validating connection...
-            </>
-          ) : (
-            "Validate Connection"
-          )}
-        </Button>
+        <div className="flex items-center gap-2">
+          {validateStatus === "success" ? (
+            <Button type="button" variant="outline" className="h-10 rounded-md" onClick={onContinue} disabled={isBrowsingBucket}>
+              {isBrowsingBucket ? (
+                <>
+                  <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                  Loading bucket...
+                </>
+              ) : (
+                "Continue"
+              )}
+            </Button>
+          ) : null}
+          <Button type="button" className="h-10 rounded-md" onClick={onValidate} disabled={validateStatus === "validating"}>
+            {validateStatus === "validating" ? (
+              <>
+                <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                Validating connection...
+              </>
+            ) : (
+              "Validate Connection"
+            )}
+          </Button>
+        </div>
       </div>
     </div>
   )
@@ -551,7 +787,6 @@ function AwsManualSetupSinglePageFlow() {
   const authUser = getAuthUser()
 
   const [viewMode, setViewMode] = useState<"setup" | "review">("setup")
-  const [connectionId, setConnectionId] = useState("")
   const [bucketName, setBucketName] = useState("")
   const [pathPrefix, setPathPrefix] = useState("")
   const [externalId, setExternalId] = useState("")
@@ -560,13 +795,17 @@ function AwsManualSetupSinglePageFlow() {
   const [connectionName, setConnectionName] = useState("")
   const [dataExportName, setDataExportName] = useState("")
   const [roleArn, setRoleArn] = useState("")
+  const [expectedAccountId, setExpectedAccountId] = useState("")
   const [finishError, setFinishError] = useState<string | null>(null)
   const [isSubmittingFinish, setIsSubmittingFinish] = useState(false)
   const [validateStatus, setValidateStatus] = useState<"idle" | "validating" | "success" | "failure">("idle")
   const [validationMessage, setValidationMessage] = useState<string | null>(null)
-  const [step1SaveStatus, setStep1SaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle")
-  const [step1SubmitError, setStep1SubmitError] = useState<string | null>(null)
-  const lastSavedStep1SignatureRef = useRef("")
+  const [validatedAccountId, setValidatedAccountId] = useState<string | null>(null)
+  const [isBucketModalOpen, setIsBucketModalOpen] = useState(false)
+  const [bucketBrowsePrefix, setBucketBrowsePrefix] = useState("")
+  const [bucketBrowseItems, setBucketBrowseItems] = useState<AwsManualBrowseBucketItem[]>([])
+  const [bucketBrowseError, setBucketBrowseError] = useState<string | null>(null)
+  const [isBucketBrowseLoading, setIsBucketBrowseLoading] = useState(false)
 
   const flowStorageKey = useMemo(
     () => `kcx_aws_manual_flow_user_${authUser?.id ?? "anonymous"}`,
@@ -579,7 +818,6 @@ function AwsManualSetupSinglePageFlow() {
 
     try {
       const parsed = JSON.parse(existing) as {
-        connectionId?: string
         bucketName?: string
         pathPrefix?: string
         externalId?: string
@@ -588,8 +826,8 @@ function AwsManualSetupSinglePageFlow() {
         connectionName?: string
         dataExportName?: string
         roleArn?: string
+        expectedAccountId?: string
       }
-      setConnectionId(typeof parsed.connectionId === "string" ? parsed.connectionId : "")
       setBucketName(typeof parsed.bucketName === "string" ? parsed.bucketName : "")
       setPathPrefix(typeof parsed.pathPrefix === "string" ? parsed.pathPrefix : "")
       setExternalId(typeof parsed.externalId === "string" ? parsed.externalId : "")
@@ -598,6 +836,7 @@ function AwsManualSetupSinglePageFlow() {
       setConnectionName(typeof parsed.connectionName === "string" ? parsed.connectionName : "")
       setDataExportName(typeof parsed.dataExportName === "string" ? parsed.dataExportName : "")
       setRoleArn(typeof parsed.roleArn === "string" ? parsed.roleArn : "")
+      setExpectedAccountId(typeof parsed.expectedAccountId === "string" ? parsed.expectedAccountId : "")
     } catch {
       // Ignore malformed local storage payload.
     }
@@ -605,7 +844,6 @@ function AwsManualSetupSinglePageFlow() {
 
   useEffect(() => {
     const payload = {
-      connectionId: connectionId.trim(),
       bucketName: bucketName.trim(),
       pathPrefix: pathPrefix.trim(),
       externalId: externalId.trim(),
@@ -614,9 +852,10 @@ function AwsManualSetupSinglePageFlow() {
       connectionName: connectionName.trim(),
       dataExportName: dataExportName.trim(),
       roleArn: roleArn.trim(),
+      expectedAccountId: expectedAccountId.trim(),
     }
     localStorage.setItem(flowStorageKey, JSON.stringify(payload))
-  }, [bucketName, connectionId, connectionName, customPolicyName, dataExportName, externalId, flowStorageKey, pathPrefix, roleArn, roleName])
+  }, [bucketName, connectionName, customPolicyName, dataExportName, expectedAccountId, externalId, flowStorageKey, pathPrefix, roleArn, roleName])
 
   const hasBucketName = bucketName.trim().length > 0
   const hasNoSpacesInBucketName = !/\s/.test(bucketName)
@@ -627,73 +866,14 @@ function AwsManualSetupSinglePageFlow() {
   const isStep3Complete = connectionName.trim().length > 0 && dataExportName.trim().length > 0 && roleArn.trim().length > 0
   const isAllComplete = isStep1Complete && isStep2Complete && isStep3Complete
 
-  useEffect(() => {
-    if (!isStep1Complete) {
-      setStep1SaveStatus("idle")
-      return
-    }
-
-    const trimmedBucketName = bucketName.trim()
-    const trimmedPrefix = pathPrefix.trim().replace(/\/+$/g, "")
-    const payload = {
-      bucketName: trimmedBucketName,
-      ...(trimmedPrefix.length > 0 ? { bucketPrefix: trimmedPrefix } : {}),
-    }
-    const nextSignature = JSON.stringify(payload)
-    if (lastSavedStep1SignatureRef.current === nextSignature) {
-      return
-    }
-
-    const timeout = window.setTimeout(() => {
-      void (async () => {
-        setStep1SubmitError(null)
-        setStep1SaveStatus("saving")
-        try {
-          const response = await submitAwsManualStep1(payload)
-          setConnectionId(response.connectionId)
-          lastSavedStep1SignatureRef.current = nextSignature
-          setStep1SaveStatus("saved")
-        } catch (error) {
-          if (error instanceof ApiError) {
-            setStep1SubmitError(error.message || "Could not save Step 1. Please try again.")
-          } else {
-            setStep1SubmitError("Could not save Step 1. Please try again.")
-          }
-          setStep1SaveStatus("error")
-        }
-      })()
-    }, 400)
-
-    return () => window.clearTimeout(timeout)
-  }, [bucketName, isStep1Complete, pathPrefix])
-
-  async function ensureStep1Persisted(): Promise<string> {
-    const trimmedBucketName = bucketName.trim()
-    const trimmedPrefix = pathPrefix.trim().replace(/\/+$/g, "")
-
-    const payload = {
-      bucketName: trimmedBucketName,
-      ...(trimmedPrefix.length > 0 ? { bucketPrefix: trimmedPrefix } : {}),
-    }
-
-    if (connectionId.trim().length > 0 && lastSavedStep1SignatureRef.current === JSON.stringify(payload)) {
-      return connectionId
-    }
-
-    const response = await submitAwsManualStep1(payload)
-    setConnectionId(response.connectionId)
-    lastSavedStep1SignatureRef.current = JSON.stringify(payload)
-    return response.connectionId
-  }
-
   async function handleFinishSetup() {
     if (!isAllComplete || isSubmittingFinish) return
 
     setFinishError(null)
+    setValidatedAccountId(null)
     setIsSubmittingFinish(true)
 
     try {
-      const persistedConnectionId = await ensureStep1Persisted()
       const normalizedExternalId = externalId.trim()
       const externalIdStorageKey = `kcx_aws_external_id_user_${authUser?.id ?? "anonymous"}`
       const fallbackExternalId = localStorage.getItem(externalIdStorageKey)?.trim() ?? ""
@@ -707,25 +887,34 @@ function AwsManualSetupSinglePageFlow() {
         setExternalId(fallbackExternalId)
       }
 
-      await submitAwsManualStep2({
-        connectionId: persistedConnectionId,
-        externalId: externalIdForSubmit,
-        roleName: roleName.trim(),
-        policyName: customPolicyName.trim(),
-      })
-
-      await submitAwsManualStep3({
-        connectionId: persistedConnectionId,
+      const result = await testAwsManualConnection({
         connectionName: connectionName.trim(),
         reportName: dataExportName.trim(),
         roleArn: roleArn.trim(),
+        externalId: externalIdForSubmit,
+        bucketName: bucketName.trim(),
+        ...(pathPrefix.trim().length > 0 ? { prefix: pathPrefix.trim() } : {}),
       })
 
-      setValidateStatus("idle")
-      setValidationMessage(null)
+      setValidateStatus(result.success ? "success" : "failure")
+      setValidatedAccountId(result.accountId ?? null)
+      setValidationMessage(
+        result.success
+          ? `AssumeRole succeeded. Account: ${result.accountId ?? "unknown"}`
+          : mapValidationErrorMessage("Connection validation failed."),
+      )
       setViewMode("review")
     } catch (error) {
+      setValidatedAccountId(null)
+      console.error("[AWS Manual Setup][Finish Setup] Failed", {
+        error,
+        message: error instanceof Error ? error.message : "Unknown error",
+      })
       if (error instanceof ApiError) {
+        if (error.status === 401) {
+          setFinishError("Your session appears expired. Please log in again, then retry validation.")
+          return
+        }
         setFinishError(error.message || "Could not prepare connection for validation.")
       } else if (error instanceof Error) {
         setFinishError(error.message)
@@ -738,54 +927,168 @@ function AwsManualSetupSinglePageFlow() {
   }
 
   async function handleValidateConnection() {
-    const normalizedConnectionId = connectionId.trim()
-    if (!normalizedConnectionId || validateStatus === "validating") return
+    if (validateStatus === "validating") return
 
     setValidateStatus("validating")
     setValidationMessage(null)
+    setBucketBrowseError(null)
 
     try {
-      const result = await validateAwsManualConnection({ connectionId: normalizedConnectionId })
-      const resultStatus = (result.status ?? "").toUpperCase()
+      const normalizedExternalId = externalId.trim()
+      const externalIdStorageKey = `kcx_aws_external_id_user_${authUser?.id ?? "anonymous"}`
+      const fallbackExternalId = localStorage.getItem(externalIdStorageKey)?.trim() ?? ""
+      const externalIdForSubmit = normalizedExternalId || fallbackExternalId
 
-      if (resultStatus === "ACTIVE") {
+      if (!externalIdForSubmit) {
+        throw new Error("External ID is missing. Return to Step 2 and regenerate it.")
+      }
+
+      const result = await testAwsManualConnection({
+        connectionName: connectionName.trim(),
+        reportName: dataExportName.trim(),
+        roleArn: roleArn.trim(),
+        externalId: externalIdForSubmit,
+        bucketName: bucketName.trim(),
+        ...(pathPrefix.trim().length > 0 ? { prefix: pathPrefix.trim() } : {}),
+      })
+
+      if (result.success) {
         setValidateStatus("success")
+        setValidatedAccountId(result.accountId ?? null)
         setValidationMessage("Connection verified successfully. AWS integration is active.")
       } else {
         setValidateStatus("failure")
-        setValidationMessage(
-          mapValidationErrorMessage(result.error ?? result.message ?? "Validation failed. Review configuration and retry.")
-        )
+        setValidatedAccountId(null)
+        setValidationMessage(mapValidationErrorMessage("Validation failed. Review configuration and retry."))
       }
     } catch (error) {
+      console.error("[AWS Manual Setup][Validate] Failed", {
+        roleArn: roleArn.trim(),
+        error,
+        message: error instanceof Error ? error.message : "Unknown error",
+      })
       if (error instanceof ApiError) {
+        if (error.status === 401) {
+          setValidateStatus("failure")
+          setValidatedAccountId(null)
+          setValidationMessage("Your session appears expired. Please log in again, then retry validation.")
+          return
+        }
         setValidateStatus("failure")
+        setValidatedAccountId(null)
         setValidationMessage(mapValidationErrorMessage(error.message || "Validation failed."))
       } else {
         setValidateStatus("failure")
+        setValidatedAccountId(null)
         setValidationMessage("Validation failed. Review configuration and retry.")
       }
     }
   }
 
+  async function loadBucketContents(targetPrefix?: string) {
+    if (isBucketBrowseLoading) return
+
+    const normalizedExternalId = externalId.trim()
+    const externalIdStorageKey = `kcx_aws_external_id_user_${authUser?.id ?? "anonymous"}`
+    const fallbackExternalId = localStorage.getItem(externalIdStorageKey)?.trim() ?? ""
+    const externalIdForSubmit = normalizedExternalId || fallbackExternalId
+
+    if (!externalIdForSubmit) {
+      setBucketBrowseError("External ID is missing. Return to Step 2 and regenerate it.")
+      return
+    }
+
+    const effectivePrefix =
+      typeof targetPrefix === "string" ? targetPrefix : bucketBrowsePrefix || normalizeExplorerPrefix(pathPrefix)
+
+    setIsBucketBrowseLoading(true)
+    setBucketBrowseError(null)
+
+    try {
+      const result = await browseAwsManualBucket({
+        roleArn: roleArn.trim(),
+        externalId: externalIdForSubmit,
+        bucketName: bucketName.trim(),
+        prefix: effectivePrefix,
+      })
+
+      setBucketBrowsePrefix(result.prefix)
+      setBucketBrowseItems(result.items)
+      setBucketBrowseError(null)
+      if (result.callerIdentity?.account) {
+        setValidatedAccountId(result.callerIdentity.account)
+      }
+    } catch (error) {
+      console.error("[AWS Manual Setup][Browse Bucket] Failed", {
+        bucketName: bucketName.trim(),
+        prefix: effectivePrefix,
+        error,
+        message: error instanceof Error ? error.message : "Unknown error",
+      })
+      if (error instanceof ApiError) {
+        if (error.status === 401) {
+          setBucketBrowseError("Your session appears expired. Please log in again, then retry.")
+          return
+        }
+        setBucketBrowseError(error.message || "Could not load S3 bucket contents.")
+      } else {
+        setBucketBrowseError("Could not load S3 bucket contents.")
+      }
+    } finally {
+      setIsBucketBrowseLoading(false)
+    }
+  }
+
+  async function handleContinueToBucketExplorer() {
+    setIsBucketModalOpen(true)
+    const startPrefix = bucketBrowsePrefix || normalizeExplorerPrefix(pathPrefix)
+    await loadBucketContents(startPrefix)
+  }
+
   if (viewMode === "review") {
     return (
-      <AwsSetupReviewValidation
-        bucketName={bucketName.trim()}
-        pathPrefix={pathPrefix.trim()}
-        externalId={externalId.trim()}
-        roleName={roleName.trim()}
-        customPolicyName={customPolicyName.trim()}
-        connectionName={connectionName.trim()}
-        dataExportName={dataExportName.trim()}
-        roleArn={roleArn.trim()}
-        onBackToEdit={() => setViewMode("setup")}
-        onValidate={() => {
-          void handleValidateConnection()
-        }}
-        validateStatus={validateStatus}
-        validationMessage={validationMessage}
-      />
+      <>
+        <AwsSetupReviewValidation
+          bucketName={bucketName.trim()}
+          pathPrefix={pathPrefix.trim()}
+          externalId={externalId.trim()}
+          roleName={roleName.trim()}
+          customPolicyName={customPolicyName.trim()}
+          connectionName={connectionName.trim()}
+          dataExportName={dataExportName.trim()}
+          roleArn={roleArn.trim()}
+          onBackToEdit={() => {
+            setIsBucketModalOpen(false)
+            setViewMode("setup")
+          }}
+          onValidate={() => {
+            void handleValidateConnection()
+          }}
+          onContinue={() => {
+            void handleContinueToBucketExplorer()
+          }}
+          validateStatus={validateStatus}
+          validationMessage={validationMessage}
+          isBrowsingBucket={isBucketBrowseLoading}
+        />
+        <AwsBucketBrowserModal
+          open={isBucketModalOpen}
+          onOpenChange={setIsBucketModalOpen}
+          bucketName={bucketName.trim()}
+          rootPrefix={pathPrefix.trim()}
+          currentPrefix={bucketBrowsePrefix}
+          items={bucketBrowseItems}
+          isLoading={isBucketBrowseLoading}
+          errorMessage={bucketBrowseError}
+          callerAccount={validatedAccountId}
+          onOpenPrefix={(nextPrefix) => {
+            void loadBucketContents(nextPrefix)
+          }}
+          onReload={() => {
+            void loadBucketContents(bucketBrowsePrefix)
+          }}
+        />
+      </>
     )
   }
 
@@ -818,13 +1121,7 @@ function AwsManualSetupSinglePageFlow() {
             onPathPrefixChange={setPathPrefix}
             showBucketFormatHint={showBucketFormatHint}
           />
-          {step1SubmitError ? (
-            <p className="text-sm text-red-700">{step1SubmitError}</p>
-          ) : isStep1Complete ? (
-            <p className="text-sm text-text-secondary">
-              {step1SaveStatus === "saving" ? "Saving Step 1..." : "Step 1 complete."}
-            </p>
-          ) : null}
+          {isStep1Complete ? <p className="text-sm text-text-secondary">Step 1 complete.</p> : null}
         </CardContent>
       </Card>
 
@@ -844,15 +1141,18 @@ function AwsManualSetupSinglePageFlow() {
           connectionName={connectionName}
           dataExportName={dataExportName}
           roleArn={roleArn}
+          expectedAccountId={expectedAccountId}
           onConnectionNameChange={setConnectionName}
           onDataExportNameChange={setDataExportName}
           onRoleArnChange={setRoleArn}
+          onExpectedAccountIdChange={setExpectedAccountId}
           roleNameHint={roleName.trim()}
         />
       </div>
 
       <div className="flex justify-end">
         <Button
+          type="button"
           className="h-10 rounded-md"
           disabled={!isAllComplete || isSubmittingFinish}
           onClick={() => {
@@ -862,10 +1162,10 @@ function AwsManualSetupSinglePageFlow() {
           {isSubmittingFinish ? (
             <>
               <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
-              Preparing review...
+              Testing connection...
             </>
           ) : (
-            "Finish Setup"
+            "Test Connection"
           )}
         </Button>
       </div>
@@ -873,7 +1173,6 @@ function AwsManualSetupSinglePageFlow() {
     </div>
   )
 }
-
 export function ClientBillingPage() {
   const route = useCurrentRoute()
   const activeRoute = route
@@ -1170,9 +1469,9 @@ export function ClientBillingPage() {
                         <Wrench className="h-4 w-4" />
                       </span>
                       <h3 className="text-base font-semibold text-text-primary">Manual Setup</h3>
-                      <p className="text-sm text-text-secondary">Use account details and IAM role configuration to connect billing manually.</p>
+                      <p className="text-sm text-text-secondary">Guided manual setup using custom trust policy and IAM role validation.</p>
                       <Button className="h-10 rounded-md" onClick={() => navigateTo("/client/billing/connect-cloud/aws/manual")}>
-                        Start Manual Setup
+                        Open Manual Setup
                       </Button>
                     </CardContent>
                   </Card>
@@ -1348,7 +1647,7 @@ export function ClientBillingPage() {
             {activeRoute === "/client/billing/connect-cloud/aws/manual" || activeRoute === "/client/billing/connections/aws/manual" ? (
               <>
                 <div className="space-y-2">
-                  <p className="kcx-eyebrow text-brand-primary">AWS MANUAL SETUP</p>
+                  <p className="kcx-eyebrow text-brand-primary">AWS Manual Setup</p>
                   <h2 className="text-2xl font-semibold tracking-tight text-text-primary">Manual Setup</h2>
                   <p className="text-sm text-text-secondary">
                     Connect your AWS billing data in one guided setup flow.
@@ -1357,6 +1656,7 @@ export function ClientBillingPage() {
                 <AwsManualSetupSinglePageFlow />
               </>
             ) : null}
+
           </CardContent>
         </Card>
       </section>

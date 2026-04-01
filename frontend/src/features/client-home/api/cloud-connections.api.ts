@@ -1,70 +1,71 @@
 import { apiPost } from "@/lib/api"
 
-export type AwsManualStep1Payload = {
-  bucketName: string
-  bucketPrefix?: string
-}
-
-export type AwsManualStep1Response = {
-  connectionId: string
-  nextStep: number
-}
-
-export type AwsManualStep2Payload = {
-  connectionId: string
-  externalId: string
-  roleName: string
-  policyName: string
-}
-
-export type AwsManualStep2Response = {
-  connectionId: string
-  nextStep: number
-}
-
-export type AwsManualStep3Payload = {
-  connectionId: string
+export type AwsManualTestConnectionPayload = {
   connectionName: string
   reportName: string
   roleArn: string
+  externalId: string
+  bucketName: string
+  prefix?: string
 }
 
-export type AwsManualStep3Response = {
+export type AwsManualTestConnectionResponse = {
+  success: boolean
   connectionId: string
-  status: "READY_FOR_VALIDATION"
+  validationStatus: "success"
+  accountId: string
 }
 
-export type AwsManualValidatePayload = {
-  connectionId: string
+export type AwsManualBrowseBucketPayload = {
+  roleArn: string
+  externalId: string
+  bucketName: string
+  prefix?: string
 }
 
-export type AwsManualValidateResponse = {
-  connectionId: string
-  status: "ACTIVE" | "FAILED" | string
-  error?: string
-  message?: string
+export type AwsManualBrowseBucketItem = {
+  key: string
+  name: string
+  type: "folder" | "file"
+  size: number | null
+  lastModified: string | null
+  path: string
 }
 
-export async function submitAwsManualStep1(
-  payload: AwsManualStep1Payload
-): Promise<AwsManualStep1Response> {
-  return apiPost<AwsManualStep1Response>("/api/cloud-connections/aws/manual/step-1", payload)
+export type AwsManualBrowseBucketResponse = {
+  success: boolean
+  assumeRoleSucceeded: boolean
+  callerIdentity: {
+    account: string | null
+    userArn: string | null
+  } | null
+  bucketName: string
+  prefix: string
+  items: AwsManualBrowseBucketItem[]
 }
 
-export async function submitAwsManualStep2(
-  payload: AwsManualStep2Payload
-): Promise<AwsManualStep2Response> {
-  return apiPost<AwsManualStep2Response>("/api/cloud-connections/aws/manual/step-2", payload)
+export async function testAwsManualConnection(
+  payload: AwsManualTestConnectionPayload
+): Promise<AwsManualTestConnectionResponse> {
+  console.info("[AWS Manual Test] submitting payload", {
+    connectionName: payload.connectionName,
+    reportName: payload.reportName,
+    roleArn: payload.roleArn,
+    hasExternalId: Boolean(payload.externalId),
+    bucketName: payload.bucketName,
+    prefix: payload.prefix ?? "",
+  })
+  return apiPost<AwsManualTestConnectionResponse>("/api/aws/manual/create-connection", payload)
 }
 
-export async function submitAwsManualStep3(
-  payload: AwsManualStep3Payload
-): Promise<AwsManualStep3Response> {
-  return apiPost<AwsManualStep3Response>("/api/cloud-connections/aws/manual/step-3", payload)
-}
-
-export async function validateAwsManualConnection(
-  payload: AwsManualValidatePayload
-): Promise<AwsManualValidateResponse> {
-  return apiPost<AwsManualValidateResponse>("/api/cloud-connections/aws/manual/validate", payload)
+export async function browseAwsManualBucket(
+  payload: AwsManualBrowseBucketPayload
+): Promise<AwsManualBrowseBucketResponse> {
+  console.info("[AWS Manual Browse] submitting payload", {
+    roleArn: payload.roleArn,
+    bucketName: payload.bucketName,
+    prefix: payload.prefix ?? "",
+    hasExternalId: Boolean(payload.externalId),
+  })
+  return apiPost<AwsManualBrowseBucketResponse>("/api/aws/manual/browse-bucket", payload)
 }

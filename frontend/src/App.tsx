@@ -36,8 +36,6 @@ const CLIENT_WORKSPACE_ROUTES = new Set([
   "/client/billing/connections/aws",
   "/client/billing/connections/aws/automatic",
   "/client/billing/connections/aws/manual",
-  "/client/billing/connections/aws/manual/step-2",
-  "/client/billing/connections/aws/manual/step-3",
   "/client/billing/connect-cloud",
   "/client/billing/connect-cloud/add",
   "/client/billing/connect-cloud/aws",
