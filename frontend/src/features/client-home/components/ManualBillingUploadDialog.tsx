@@ -17,21 +17,25 @@ type CloudProvider = {
 }
 
 type ManualUploadResponse = {
+  ingestionRunId: string
+  status: string
   billingSourceId: string
   rawFileId: string
-  ingestionRunId: string
-  bucket: string
-  key: string
   format: "csv" | "parquet"
-  status: string
+  startedAt: string | null
 }
 
 type ManualBillingUploadDialogProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
+  onIngestionQueued?: (payload: ManualUploadResponse) => void
 }
 
-export function ManualBillingUploadDialog({ open, onOpenChange }: ManualBillingUploadDialogProps) {
+export function ManualBillingUploadDialog({
+  open,
+  onOpenChange,
+  onIngestionQueued,
+}: ManualBillingUploadDialogProps) {
   const [providers, setProviders] = useState<CloudProvider[]>([])
   const [selectedProviderId, setSelectedProviderId] = useState("")
   const [file, setFile] = useState<File | null>(null)
@@ -92,8 +96,9 @@ export function ManualBillingUploadDialog({ open, onOpenChange }: ManualBillingU
 
     void (async () => {
       try {
-        const result = await apiPostForm<ManualUploadResponse>("/billing/manual-upload", formData)
+        const result = await apiPostForm<ManualUploadResponse>("/billing/ingestions", formData)
         setSuccessMessage(`Upload queued successfully. Ingestion run ID: ${result.ingestionRunId}`)
+        onIngestionQueued?.(result)
         setFile(null)
       } catch (requestError) {
         if (requestError instanceof ApiError) {

@@ -11,7 +11,11 @@ export declare function loadRawBillingFileOrThrow(rawBillingFileId: string | num
 export declare function verifyRawFileExistsInS3(location: RawFileLocation): Promise<void>;
 export declare function markRunRunning(runId: IngestionRunId): Promise<void>;
 export declare function markRunCompleted(runId: IngestionRunId): Promise<void>;
-export declare function markRunFailed(runId: IngestionRunId, error: unknown): Promise<void>;
+export declare function markRunFailed(
+  runId: IngestionRunId,
+  error: unknown,
+  progressPercent?: number,
+): Promise<void>;
 
 export declare const ingestionOrchestrator: {
   processIngestionRun: typeof processIngestionRun;

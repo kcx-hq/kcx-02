@@ -1,4 +1,4 @@
-import { useEffect, useMemo , useState, type ReactNode } from "react"
+import { useEffect, useMemo, useState, type ReactNode } from "react"
 // STEP 1:
 // Client prepares billing data source (S3 bucket)
 // This feeds into cross-account access setup in Step 2
@@ -8,7 +8,9 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { ArrowRight, CheckCircle2, Cloud, ExternalLink, FileSpreadsheet, Wrench } from "lucide-react"
 
+import { IngestionStatusCard } from "@/features/client-home/components/IngestionStatusCard"
 import { ManualBillingUploadDialog } from "@/features/client-home/components/ManualBillingUploadDialog"
+import { useIngestionStatus, type IngestionStatusPayload } from "@/features/client-home/hooks/useIngestionStatus"
 import { ClientPageHeader } from "@/features/client-home/components/ClientPageHeader"
 import { ApiError, apiGet, apiPost } from "@/lib/api"
 import { handleAppLinkClick, navigateTo, useCurrentRoute } from "@/lib/navigation"
@@ -58,6 +60,9 @@ type CloudConnection = {
   status: string
   account_type: string
 }
+
+const ACTIVE_INGESTION_STORAGE_KEY = "kcx.activeBillingIngestionRunId"
+const AUTO_REDIRECT_DELAY_MS = 1500
 
 function AddConnectionProviderCard({
   name,
@@ -322,6 +327,11 @@ export function ClientBillingPage() {
   const [autoSubmitting, setAutoSubmitting] = useState(false)
   const [autoError, setAutoError] = useState<string | null>(null)
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false)
+  const [activeIngestionRunId, setActiveIngestionRunId] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null
+    return window.localStorage.getItem(ACTIVE_INGESTION_STORAGE_KEY)
+  })
+  const [latestActiveIngestionLoaded, setLatestActiveIngestionLoaded] = useState(false)
 
   const setupConnectionId = useMemo(() => {
     const match = AWS_SETUP_ROUTE_REGEX.exec(activeRoute)
@@ -332,6 +342,15 @@ export function ClientBillingPage() {
   const [setupConnection, setSetupConnection] = useState<CloudConnection | null>(null)
   const [setupLoading, setSetupLoading] = useState(false)
   const [setupError, setSetupError] = useState<string | null>(null)
+
+  const {
+    status: ingestionStatus,
+    requestError: ingestionRequestError,
+    refresh: refreshIngestionStatus,
+  } = useIngestionStatus({
+    ingestionRunId: activeIngestionRunId,
+    enabled: Boolean(activeIngestionRunId),
+  })
 
   useEffect(() => {
     if (!setupConnectionId) return
@@ -353,6 +372,45 @@ export function ClientBillingPage() {
       }
     })()
   }, [setupConnectionId])
+
+  useEffect(() => {
+    if (latestActiveIngestionLoaded || activeIngestionRunId) return
+
+    void (async () => {
+      try {
+        const latestActive = await apiGet<IngestionStatusPayload | null>("/billing/ingestions/latest-active")
+        if (latestActive?.id) {
+          setActiveIngestionRunId(latestActive.id)
+          window.localStorage.setItem(ACTIVE_INGESTION_STORAGE_KEY, latestActive.id)
+        }
+      } catch {
+        // Best-effort recovery path for reloads with missing local storage state.
+      } finally {
+        setLatestActiveIngestionLoaded(true)
+      }
+    })()
+  }, [activeIngestionRunId, latestActiveIngestionLoaded])
+
+  useEffect(() => {
+    if (!ingestionStatus) return
+
+    if (ingestionStatus.status === "completed") {
+      const timer = window.setTimeout(() => {
+        window.localStorage.removeItem(ACTIVE_INGESTION_STORAGE_KEY)
+        setActiveIngestionRunId(null)
+        navigateTo("/dashboard/overview")
+      }, AUTO_REDIRECT_DELAY_MS)
+      return () => window.clearTimeout(timer)
+    }
+
+    if (ingestionStatus.status === "failed") {
+      return
+    }
+
+    if (activeIngestionRunId && window.localStorage.getItem(ACTIVE_INGESTION_STORAGE_KEY) !== activeIngestionRunId) {
+      window.localStorage.setItem(ACTIVE_INGESTION_STORAGE_KEY, activeIngestionRunId)
+    }
+  }, [activeIngestionRunId, ingestionStatus])
 
   function validateAutoConnectionName(value: string) {
     return value.trim().length > 0
@@ -399,10 +457,29 @@ export function ClientBillingPage() {
     })()
   }
 
+  function handleIngestionQueued(payload: { ingestionRunId: string }) {
+    setActiveIngestionRunId(payload.ingestionRunId)
+    window.localStorage.setItem(ACTIVE_INGESTION_STORAGE_KEY, payload.ingestionRunId)
+  }
+
+  function handleRetryIngestion() {
+    setUploadDialogOpen(true)
+  }
+
   if (isBillingHubRoute) {
     return (
       <>
         <ClientPageHeader eyebrow="Billing Workspace" title={pageHeaderTitle} description={pageHeaderDescription} />
+        {ingestionStatus ? (
+          <section className="mb-5">
+            <IngestionStatusCard
+              status={ingestionStatus}
+              requestError={ingestionRequestError}
+              onRetryPoll={() => void refreshIngestionStatus()}
+              onRetryIngestion={handleRetryIngestion}
+            />
+          </section>
+        ) : null}
 
         <section aria-label="Billing quick start" className="grid grid-cols-1 gap-5 lg:grid-cols-2">
           {BILLING_OPTIONS.map((option) => {
@@ -485,6 +562,16 @@ export function ClientBillingPage() {
         title={pageHeaderTitle}
         description={pageHeaderDescription}
       />
+      {ingestionStatus ? (
+        <section className="mb-5">
+          <IngestionStatusCard
+            status={ingestionStatus}
+            requestError={ingestionRequestError}
+            onRetryPoll={() => void refreshIngestionStatus()}
+            onRetryIngestion={handleRetryIngestion}
+          />
+        </section>
+      ) : null}
 
       <section aria-label="Billing workspace options">
         <Card className="rounded-md border-[color:var(--border-light)] bg-white shadow-sm-custom">
@@ -751,7 +838,11 @@ export function ClientBillingPage() {
           </CardContent>
         </Card>
       </section>
-      <ManualBillingUploadDialog open={uploadDialogOpen} onOpenChange={setUploadDialogOpen} />
+      <ManualBillingUploadDialog
+        open={uploadDialogOpen}
+        onOpenChange={setUploadDialogOpen}
+        onIngestionQueued={handleIngestionQueued}
+      />
     </>
   )
 }
