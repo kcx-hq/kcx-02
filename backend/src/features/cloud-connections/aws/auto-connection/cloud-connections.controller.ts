@@ -1,12 +1,12 @@
 import type { Request, Response } from "express";
 import crypto from "node:crypto";
 
-import env from "../../config/env.js";
-import { HTTP_STATUS } from "../../constants/http-status.js";
-import { ConflictError, NotFoundError, UnauthorizedError } from "../../errors/http-errors.js";
-import { CloudConnectionV2, CloudProvider } from "../../models/index.js";
-import { sendSuccess } from "../../utils/api-response.js";
-import { parseWithSchema } from "../_shared/validation/zod-validate.js";
+import env from "../../../../config/env.js";
+import { HTTP_STATUS } from "../../../../constants/http-status.js";
+import { ConflictError, NotFoundError, UnauthorizedError } from "../../../../errors/http-errors.js";
+import { CloudConnectionV2, CloudProvider } from "../../../../models/index.js";
+import { sendSuccess } from "../../../../utils/api-response.js";
+import { parseWithSchema } from "../../../_shared/validation/zod-validate.js";
 import {
   buildAwsCloudFormationCreateStackUrl,
   KCX_AWS_CLOUDFORMATION_TEMPLATE_URL,

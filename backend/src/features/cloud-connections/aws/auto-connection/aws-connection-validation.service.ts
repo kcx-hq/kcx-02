@@ -1,8 +1,8 @@
 import { AssumeRoleCommand, GetCallerIdentityCommand, STSClient } from "@aws-sdk/client-sts";
 import { DescribeRegionsCommand, EC2Client } from "@aws-sdk/client-ec2";
 
-import env from "../../config/env.js";
-import { CloudConnectionV2 } from "../../models/index.js";
+import env from "../../../../config/env.js";
+import { CloudConnectionV2 } from "../../../../models/index.js";
 
 type ValidationStatus = "active" | "active_with_warnings" | "failed";
 
