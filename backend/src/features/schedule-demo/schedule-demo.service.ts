@@ -1,4 +1,4 @@
-import { DemoRequest, SlotReservation, User, sequelize } from "../../models/index.js";
+import { DemoRequest, SlotReservation, Tenant, User, sequelize } from "../../models/index.js";
 import { generateTemporaryPassword, hashPassword } from "../../utils/password.js";
 import {
   getAvailableSlots as fetchAvailableSlotsFromCalcom,
@@ -10,7 +10,8 @@ import type { ScheduleDemoInput } from "./schedule-demo.schema.js";
 
 type SubmitScheduleDemoResult = {
   demoRequestId: number;
-  userId: number;
+  userId: string;
+  tenantId: string;
   slotReservationId: number;
   status: string;
   emailSent: boolean;
@@ -40,77 +41,97 @@ export async function submitScheduleDemo(
     timeZone: input.timeZone,
   });
 
-  const { demoRequest, user, slotReservation } = await sequelize.transaction(async (transaction) => {
-    const existing = await User.findOne({
-      where: { email: input.companyEmail },
-      transaction,
-      lock: transaction.LOCK.UPDATE,
-    });
+  const { demoRequest, user, tenant, slotReservation } = await sequelize.transaction(
+    async (transaction) => {
+      const domain = input.companyEmail
+        .split("@")[1]
+        ?.trim()
+        .toLowerCase()
+        .replace(/\..*$/, "") ?? "";
+      const slug = domain.length > 0 ? domain : input.companyEmail.trim().toLowerCase();
 
-    const user =
-      existing ??
-      (await User.create(
+      const existingTenant = await Tenant.findOne({
+        where: { slug },
+        transaction,
+        lock: transaction.LOCK.UPDATE,
+      });
+
+      const tenant =
+        existingTenant ??
+        (await Tenant.create(
+          {
+            name: (input.companyName ?? "").trim() || slug,
+            slug,
+            status: "active",
+          },
+          { transaction },
+        ));
+
+      const existingUser = await User.findOne({
+        where: { email: input.companyEmail },
+        transaction,
+        lock: transaction.LOCK.UPDATE,
+      });
+
+      const fullName = `${input.firstName} ${input.lastName}`.trim();
+
+      const user =
+        existingUser ??
+        (await User.create(
+          {
+            tenantId: tenant.id,
+            fullName,
+            email: input.companyEmail,
+            passwordHash: await hashPassword(generateTemporaryPassword()),
+            role: "admin",
+            status: "active",
+          },
+          { transaction },
+        ));
+
+      if (existingUser) {
+        const updates: { tenantId?: string; fullName?: string } = {};
+        if (existingUser.tenantId !== tenant.id) {
+          updates.tenantId = tenant.id;
+        }
+        if (!existingUser.fullName || existingUser.fullName.trim().length === 0) {
+          updates.fullName = fullName;
+        }
+        if (Object.keys(updates).length > 0) {
+          await existingUser.update(updates, { transaction });
+        }
+      }
+
+      const demoRequest = await DemoRequest.create(
         {
-          firstName: input.firstName,
-          lastName: input.lastName,
-          email: input.companyEmail,
-          passwordHash: await hashPassword(generateTemporaryPassword()),
-          companyName: input.companyName,
-          role: "client",
-          status: "active",
-          source: "schedule_demo",
+          userId: user.id,
+          heardAboutUs: input.heardAboutUs ?? null,
+          slotStart: input.slotStart,
+          slotEnd: input.slotEnd,
+          status: "PENDING",
+          calcomReservationId: reservation.reservationId,
         },
         { transaction },
-      ));
+      );
 
-    if (existing) {
-      const updates: {
-        firstName?: string;
-        lastName?: string;
-        companyName?: string | null;
-      } = {};
-      if (!existing.firstName || existing.firstName.trim().length === 0) {
-        updates.firstName = input.firstName;
-      }
-      if (!existing.lastName || existing.lastName.trim().length === 0) {
-        updates.lastName = input.lastName;
-      }
-      if (!existing.companyName && input.companyName) {
-        updates.companyName = input.companyName;
-      }
-      if (Object.keys(updates).length > 0) {
-        await existing.update(updates, { transaction });
-      }
-    }
+      const slotReservation = await SlotReservation.create(
+        {
+          demoRequestId: demoRequest.id,
+          slotStart: input.slotStart,
+          slotEnd: input.slotEnd,
+          reservationExpiresAt: reservation.reservationExpiresAt,
+          calcomReservationId: reservation.reservationId,
+          status: "RESERVED",
+        },
+        { transaction },
+      );
 
-    const demoRequest = await DemoRequest.create(
-      {
-        userId: user.id,
-        slotStart: input.slotStart,
-        slotEnd: input.slotEnd,
-        status: "PENDING",
-        calcomReservationId: reservation.reservationId,
-      },
-      { transaction },
-    );
-
-    const slotReservation = await SlotReservation.create(
-      {
-        demoRequestId: demoRequest.id,
-        slotStart: input.slotStart,
-        slotEnd: input.slotEnd,
-        reservationExpiresAt: reservation.reservationExpiresAt,
-        calcomReservationId: reservation.reservationId,
-        status: "RESERVED",
-      },
-      { transaction },
-    );
-
-    return { demoRequest, user, slotReservation };
-  });
+      return { demoRequest, user, tenant, slotReservation };
+    },
+  );
 
   const emailSent = await sendDemoRequestReceivedEmail({
-    firstName: user.firstName,
+    firstName: input.firstName,
     email: user.email,
     slotStart: input.slotStart,
     slotEnd: input.slotEnd,
@@ -120,6 +141,7 @@ export async function submitScheduleDemo(
   return {
     demoRequestId: demoRequest.id,
     userId: user.id,
+    tenantId: tenant.id,
     slotReservationId: slotReservation.id,
     status: demoRequest.status,
     emailSent,

@@ -1,6 +1,6 @@
 import env from "../../config/env.js";
 import { BadRequestError, UnauthorizedError } from "../../errors/http-errors.js";
-import { AuthSession, PasswordResetToken, User, sequelize } from "../../models/index.js";
+import { AuthSession, PasswordResetToken, Tenant, User, sequelize } from "../../models/index.js";
 import { hashPassword, verifyPassword } from "../../utils/password.js";
 import { generateOpaqueToken, hashToken } from "../../utils/token.js";
 import { buildFrontendUrl } from "../../utils/frontend-url.js";
@@ -10,22 +10,25 @@ import { logger } from "../../utils/logger.js";
 type LoginResult = {
   token: string;
   user: {
-    id: number;
+    id: string;
     email: string;
-    firstName: string;
-    lastName: string;
-    companyName: string | null;
+    fullName: string;
+    tenant: { id: string; name: string; slug: string } | null;
     role: string;
     status: string;
-    source: string;
   };
   expiresAt: string;
 };
 
+const firstNameFromFullName = (fullName: string): string => {
+  const first = fullName.trim().split(/\s+/)[0];
+  return first && first.length > 0 ? first : "there";
+};
+
 export async function loginWithEmailPassword(email: string, password: string): Promise<LoginResult> {
-  const user = await User.findOne({ where: { email } });
+  const user = await User.findOne({ where: { email }, include: [{ model: Tenant }] });
   if (!user) throw new UnauthorizedError("Invalid credentials");
-  if (user.status === "blocked") throw new UnauthorizedError("Account is blocked");
+  if (user.status !== "active") throw new UnauthorizedError("Account is not active");
 
   const ok = await verifyPassword(password, user.passwordHash);
   if (!ok) throw new UnauthorizedError("Invalid credentials");
@@ -41,18 +44,18 @@ export async function loginWithEmailPassword(email: string, password: string): P
     revokedAt: null,
   });
 
+  const tenant = (user as unknown as { Tenant?: InstanceType<typeof Tenant> }).Tenant ?? null;
+
   return {
     token,
     expiresAt: expiresAt.toISOString(),
     user: {
       id: user.id,
       email: user.email,
-      firstName: user.firstName,
-      lastName: user.lastName,
-      companyName: user.companyName,
+      fullName: user.fullName,
+      tenant: tenant ? { id: tenant.id, name: tenant.name, slug: tenant.slug } : null,
       role: user.role,
       status: user.status,
-      source: user.source,
     },
   };
 }
@@ -81,7 +84,7 @@ export async function requestPasswordReset(email: string): Promise<{ emailSent: 
       to: user.email,
       subject: "Reset your KCX password",
       text: [
-        `Hi ${user.firstName},`,
+        `Hi ${firstNameFromFullName(user.fullName)},`,
         "",
         "We received a request to reset your KCX password.",
         ...(resetLink ? [`Reset link: ${resetLink}`] : ["Reset link is currently unavailable (missing FRONTEND_BASE_URL)."]),
@@ -93,14 +96,15 @@ export async function requestPasswordReset(email: string): Promise<{ emailSent: 
         "— KCX",
       ].join("\n"),
     });
-    return { emailSent: true };
   } catch (error) {
     logger.error("Failed to send reset email", {
       email,
       error: error instanceof Error ? error.message : String(error),
     });
-    return { emailSent: false };
   }
+
+  // Always return success to avoid leaking whether a user exists or whether email delivery is configured.
+  return { emailSent: true };
 }
 
 export async function resetPasswordWithToken(
@@ -139,7 +143,7 @@ export async function resetPasswordWithToken(
       to: user.email,
       subject: "Your KCX password was changed",
       text: [
-        `Hi ${user.firstName},`,
+        `Hi ${firstNameFromFullName(user.fullName)},`,
         "",
         "Your KCX password has been updated successfully.",
         "",

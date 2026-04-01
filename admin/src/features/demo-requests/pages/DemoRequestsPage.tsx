@@ -145,10 +145,10 @@ export function DemoRequestsPage() {
                     return (
                       <tr key={item.id} className="border-t border-[color:rgba(15,23,42,0.06)]">
                         <td className="px-4 py-3 font-medium text-[color:rgba(15,23,42,0.88)]">
-                          {item.user.firstName} {item.user.lastName}
+                          {item.client.firstName} {item.client.lastName}
                         </td>
-                        <td className="px-4 py-3 text-[color:rgba(15,23,42,0.78)]">{item.user.email}</td>
-                        <td className="px-4 py-3 text-[color:rgba(15,23,42,0.78)]">{item.user.companyName ?? "—"}</td>
+                        <td className="px-4 py-3 text-[color:rgba(15,23,42,0.78)]">{item.client.email}</td>
+                        <td className="px-4 py-3 text-[color:rgba(15,23,42,0.78)]">{item.client.companyName ?? "—"}</td>
                         <td className="px-4 py-3 text-[color:rgba(15,23,42,0.78)]">
                           {formatSlot(item.slotStart, item.slotEnd)}
                         </td>

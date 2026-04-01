@@ -28,7 +28,7 @@ export type ScheduleDemoBookingPayload = {
 
 export type ScheduleDemoBookingResponse = {
   demoRequestId: number
-  userId: number
+  clientId: number
   slotReservationId: number
   status: string
   emailSent: boolean

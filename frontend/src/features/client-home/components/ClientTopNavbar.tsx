@@ -8,8 +8,7 @@ import { cn } from "@/lib/utils"
 import { Bell, ChevronDown, LifeBuoy, LogOut, Megaphone, User, UserCircle2 } from "lucide-react"
 
 const NAV_ITEMS = [
-  { label: "Overview", href: "/client/overview", matches: ["/client", "/client/overview", "/clienthome", "/client-home"] },
-  { label: "Billing", href: "/client/billing/uploads", matches: ["/client/billing", "/client/billing/uploads", "/client/billing/connections", "/client/billing/connections/add", "/client/billing/connections/aws", "/client/billing/connections/aws/manual", "/client/billing/connections/aws/manual/step-2", "/client/billing/connections/aws/manual/step-3"] },
+  { label: "Billing", href: "/client/billing", matches: ["/client/billing", "/client/billing/uploads", "/client/billing/connect-cloud", "/client/billing/connect-cloud/aws", "/client/billing/connect-cloud/aws/automatic", "/client/billing/connect-cloud/aws/manual"] },
   { label: "Support", href: "/client/support/tickets", matches: ["/client/support", "/client/support/tickets", "/client/support/schedule-call", "/client/support/live-chat"] },
   { label: "Users", href: "/client/users", matches: ["/client/users"] },
 ] as const
@@ -98,7 +97,7 @@ export function ClientTopNavbar({
 
           <nav className="hidden h-16 items-stretch gap-6 lg:flex" aria-label="Client workspace">
             {NAV_ITEMS.map((item) => {
-              const isActive = item.matches.some((path) => path === route)
+              const isActive = item.label === "Billing" ? route.startsWith("/client/billing") : item.matches.some((path) => path === route)
               return (
                 <a
                   key={item.href}

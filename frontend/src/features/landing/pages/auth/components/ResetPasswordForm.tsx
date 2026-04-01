@@ -84,6 +84,7 @@ export function ResetPasswordForm({ token }: { token: string | null }) {
 
   const parsed = useMemo(() => resetPasswordSchema.safeParse(form), [form])
   const isValid = parsed.success
+  const hasToken = Boolean(token)
 
   function validateAndSet(nextValues: ResetPasswordValues) {
     const result = validateForm(resetPasswordSchema, nextValues)
@@ -148,12 +149,22 @@ export function ResetPasswordForm({ token }: { token: string | null }) {
     <div>
       <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#3E8A76]">Reset password</p>
       <h2 className="mt-3 text-balance text-[1.35rem] font-semibold leading-[1.1] tracking-[-0.03em] text-[#0F1F1A]">
-        Set a new password
+        {hasToken ? "Set a new password" : "Check your email"}
       </h2>
-      <p className="mt-3 text-sm leading-7 text-[rgba(75,90,83,0.9)]">
+      <p
+        className="mt-3 text-sm leading-7 text-[rgba(75,90,83,0.9)]"
+        style={{ display: hasToken ? "block" : "none" }}
+      >
         Choose a strong password you haven’t used before.
       </p>
+      <p
+        className="mt-3 text-sm leading-7 text-[rgba(75,90,83,0.9)]"
+        style={{ display: hasToken ? "none" : "block" }}
+      >
+        Use the secure link in your reset email to set a new password.
+      </p>
 
+      {hasToken ? (
       <form className="mt-6 space-y-4" onSubmit={onSubmit} aria-describedby={`${formId}__help`} noValidate>
         <div>
           <TextField
@@ -243,7 +254,29 @@ export function ResetPasswordForm({ token }: { token: string | null }) {
           </div>
         ) : null}
       </form>
+      ) : (
+        <div className="mt-6 space-y-4">
+          <div
+            role="status"
+            className="rounded-xl border border-[rgba(62,138,118,0.24)] bg-[rgba(62,138,118,0.08)] px-4 py-3 text-sm text-[#0F1F1A]"
+          >
+            Reset links include a token. Request a new reset link to continue.
+          </div>
+          <a
+            href="/forgot-password"
+            className="inline-flex w-full items-center justify-center rounded-xl bg-[#3E8A76] px-4 py-3 text-sm font-semibold text-white transition duration-200 hover:bg-[#357563] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(62,138,118,0.28)] focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+          >
+            Request reset link
+          </a>
+          <p className="text-[11px] leading-5 text-[rgba(75,90,83,0.7)]">
+            Back to{" "}
+            <a href="/login" className="font-semibold text-[#3E8A76] hover:underline underline-offset-4">
+              sign in
+            </a>
+            .
+          </p>
+        </div>
+      )}
     </div>
   )
 }
-

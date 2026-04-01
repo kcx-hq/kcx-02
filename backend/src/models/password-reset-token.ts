@@ -12,7 +12,7 @@ class PasswordResetToken extends Model<
   InferCreationAttributes<PasswordResetToken, { omit: "createdAt" | "updatedAt" }>
 > {
   declare id: CreationOptional<number>;
-  declare userId: number;
+  declare userId: string;
   declare tokenHash: string;
   declare expiresAt: Date;
   declare usedAt: Date | null;
@@ -24,7 +24,7 @@ const createPasswordResetTokenModel = (sequelize: Sequelize): typeof PasswordRes
   PasswordResetToken.init(
     {
       id: { type: DataTypes.INTEGER, autoIncrement: true, primaryKey: true },
-      userId: { type: DataTypes.INTEGER, allowNull: false },
+      userId: { type: DataTypes.UUID, allowNull: false },
       tokenHash: { type: DataTypes.STRING, allowNull: false, unique: true },
       expiresAt: { type: DataTypes.DATE, allowNull: false },
       usedAt: { type: DataTypes.DATE, allowNull: true, defaultValue: null },
@@ -41,4 +41,3 @@ const createPasswordResetTokenModel = (sequelize: Sequelize): typeof PasswordRes
 
 export { PasswordResetToken };
 export default createPasswordResetTokenModel;
-

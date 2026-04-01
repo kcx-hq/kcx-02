@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils"
 import { validateForm } from "@/lib/validateForm"
 import { apiPost, ApiError } from "@/lib/api"
 import { navigateTo } from "@/lib/navigation"
-import { setAuthSession } from "@/lib/auth"
+import { setAuthSession, type AuthUser } from "@/lib/auth"
 import { loginSchema, type LoginValues } from "@/schemas/auth.schema"
 
 type LoginTouched = Partial<Record<keyof LoginValues, boolean>>
@@ -126,14 +126,16 @@ export function LoginForm() {
           token: string
           expiresAt: string
           user: {
-            id: number
+            id: number | string
             email: string
-            firstName: string
-            lastName: string
-            companyName: string | null
+            fullName?: string
+            firstName?: string
+            lastName?: string
+            companyName?: string | null
+            tenant?: { id: string; name: string; slug: string } | null
             role: string
             status: string
-            source: string
+            source?: string
           }
         }
 
@@ -141,7 +143,24 @@ export function LoginForm() {
           email: form.email,
           password: form.password,
         })
-        setAuthSession({ token: data.token, user: data.user })
+        const fullName = (data.user.fullName ?? "").trim()
+        const nameParts = fullName.split(/\s+/).filter(Boolean)
+        const firstName = (data.user.firstName ?? nameParts[0] ?? "").trim()
+        const lastName = (data.user.lastName ?? nameParts.slice(1).join(" ") ?? "").trim()
+
+        const normalizedUser: AuthUser = {
+          id: data.user.id,
+          email: data.user.email,
+          firstName,
+          lastName,
+          companyName: data.user.companyName ?? data.user.tenant?.name ?? null,
+          tenantSlug: data.user.tenant?.slug ?? null,
+          role: data.user.role,
+          status: data.user.status,
+          source: data.user.source ?? "auth",
+        }
+
+        setAuthSession({ token: data.token, user: normalizedUser, expiresAt: data.expiresAt })
         navigateTo("/client/overview")
       } catch (error) {
         if (error instanceof ApiError) {
@@ -221,7 +240,7 @@ export function LoginForm() {
 
         <div className="flex items-center justify-end">
           <a
-            href="/reset-password"
+            href="/forgot-password"
             className="text-xs font-semibold text-[#3E8A76] underline-offset-4 hover:text-[#357563] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(62,138,118,0.22)] focus-visible:ring-offset-2 focus-visible:ring-offset-white"
           >
             Reset password

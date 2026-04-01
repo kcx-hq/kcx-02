@@ -1,11 +1,12 @@
 import { ConflictError, NotFoundError } from "../../errors/http-errors.js";
-import { DemoRequest, SlotReservation, User, sequelize } from "../../models/index.js";
+import { DemoRequest, SlotReservation, Tenant, User, sequelize } from "../../models/index.js";
 import { createBooking } from "../_shared/calcom/calcom.service.js";
 import { sendDemoConfirmedEmail, sendDemoRejectedEmail } from "../_shared/mail/demo-email.service.js";
 
 type DemoRequestInstance = InstanceType<typeof DemoRequest>;
 type SlotReservationInstance = InstanceType<typeof SlotReservation>;
 type UserInstance = InstanceType<typeof User>;
+type TenantInstance = InstanceType<typeof Tenant>;
 
 type DemoRequestSummary = {
   id: number;
@@ -17,12 +18,13 @@ type DemoRequestSummary = {
   meetingUrl: string | null;
   createdAt: string;
   updatedAt: string;
-  user: {
-    id: number;
+  client: {
+    id: string;
     firstName: string;
     lastName: string;
     email: string;
     companyName: string | null;
+    heardAboutUs: string | null;
   };
   reservation: {
     id: number;
@@ -42,8 +44,19 @@ type DemoRequestActionResult = {
 
 const toIso = (value: Date | null): string | null => (value ? value.toISOString() : null);
 
-const getUserOrThrow = async (userId: number): Promise<UserInstance> => {
-  const user = await User.findByPk(userId);
+const splitFullName = (fullName: string): { firstName: string; lastName: string } => {
+  const parts = fullName.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return { firstName: "", lastName: "" };
+  if (parts.length === 1) return { firstName: parts[0], lastName: "" };
+  return { firstName: parts[0], lastName: parts.slice(1).join(" ") };
+};
+
+const getTenant = (user: UserInstance): TenantInstance | null => {
+  return (user as unknown as { Tenant?: TenantInstance }).Tenant ?? null;
+};
+
+const getUserOrThrow = async (userId: string): Promise<UserInstance> => {
+  const user = await User.findByPk(userId, { include: [{ model: Tenant }] });
   if (!user) throw new NotFoundError("Demo request user not found");
   return user;
 };
@@ -60,6 +73,8 @@ const toDemoRequestSummary = async (
   demoRequest: DemoRequestInstance,
 ): Promise<DemoRequestSummary> => {
   const user = await getUserOrThrow(demoRequest.userId);
+  const tenant = getTenant(user);
+  const { firstName, lastName } = splitFullName(user.fullName);
   const reservation = await getLatestReservation(demoRequest.id);
 
   return {
@@ -72,12 +87,13 @@ const toDemoRequestSummary = async (
     meetingUrl: demoRequest.meetingUrl,
     createdAt: demoRequest.createdAt.toISOString(),
     updatedAt: demoRequest.updatedAt.toISOString(),
-    user: {
+    client: {
       id: user.id,
-      firstName: user.firstName,
-      lastName: user.lastName,
+      firstName,
+      lastName,
       email: user.email,
-      companyName: user.companyName,
+      companyName: tenant?.name ?? null,
+      heardAboutUs: demoRequest.heardAboutUs,
     },
     reservation: reservation
       ? {
@@ -163,7 +179,7 @@ export async function confirmAdminDemoRequest(id: number): Promise<DemoRequestAc
   }
 
   const booking = await createBooking({
-    name: `${user.firstName} ${user.lastName}`.trim(),
+    name: user.fullName.trim(),
     email: user.email,
     slotStart,
     slotEnd,
@@ -206,7 +222,7 @@ export async function confirmAdminDemoRequest(id: number): Promise<DemoRequestAc
   });
 
   const emailSent = await sendDemoConfirmedEmail({
-    firstName: user.firstName,
+    firstName: splitFullName(user.fullName).firstName,
     email: user.email,
     slotStart,
     slotEnd,
@@ -258,7 +274,7 @@ export async function rejectAdminDemoRequest(id: number): Promise<DemoRequestAct
   });
 
   const emailSent = await sendDemoRejectedEmail({
-    firstName: user.firstName,
+    firstName: splitFullName(user.fullName).firstName,
     email: user.email,
     slotStart,
     slotEnd,

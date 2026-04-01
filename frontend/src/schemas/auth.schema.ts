@@ -13,10 +13,17 @@ export const loginSchema = z.object({
 export type LoginValues = z.input<typeof loginSchema>
 export type LoginData = z.output<typeof loginSchema>
 
+export const forgotPasswordSchema = z.object({
+  email: workEmailSchema,
+})
+
+export type ForgotPasswordValues = z.input<typeof forgotPasswordSchema>
+export type ForgotPasswordData = z.output<typeof forgotPasswordSchema>
+
 export const resetPasswordSchema = z
   .object({
-    newPassword: trimmed.pipe(z.string().min(6, "Password must be at least 6 characters.")),
-    confirmPassword: trimmed.pipe(z.string().min(6, "Confirm your password.")),
+    newPassword: trimmed.pipe(z.string().min(8, "Password must be at least 8 characters.")),
+    confirmPassword: trimmed.pipe(z.string().min(8, "Confirm your password.")),
   })
   .superRefine((value, ctx) => {
     if (value.newPassword !== value.confirmPassword) {

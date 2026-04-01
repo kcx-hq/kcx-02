@@ -12,7 +12,7 @@ class AuthSession extends Model<
   InferCreationAttributes<AuthSession, { omit: "createdAt" | "updatedAt" }>
 > {
   declare id: CreationOptional<number>;
-  declare userId: number;
+  declare userId: string;
   declare tokenHash: string;
   declare expiresAt: Date;
   declare revokedAt: Date | null;
@@ -24,7 +24,7 @@ const createAuthSessionModel = (sequelize: Sequelize): typeof AuthSession => {
   AuthSession.init(
     {
       id: { type: DataTypes.INTEGER, autoIncrement: true, primaryKey: true },
-      userId: { type: DataTypes.INTEGER, allowNull: false },
+      userId: { type: DataTypes.UUID, allowNull: false },
       tokenHash: { type: DataTypes.STRING, allowNull: false, unique: true },
       expiresAt: { type: DataTypes.DATE, allowNull: false },
       revokedAt: { type: DataTypes.DATE, allowNull: true, defaultValue: null },
@@ -41,4 +41,3 @@ const createAuthSessionModel = (sequelize: Sequelize): typeof AuthSession => {
 
 export { AuthSession };
 export default createAuthSessionModel;
-

@@ -1,7 +1,13 @@
 import type { RequestHandler } from "express";
 
 import { UnauthorizedError, ForbiddenError } from "../errors/http-errors.js";
-import { AuthSession, User as UserModel } from "../models/index.js";
+import {
+  AdminAuthSession,
+  AdminUser as AdminUserModel,
+  AuthSession,
+  User as UserModel,
+} from "../models/index.js";
+import type { AdminUser } from "../models/admin-user.js";
 import type { User } from "../models/user.js";
 import { hashToken } from "../utils/token.js";
 
@@ -49,6 +55,7 @@ export const requireAuth: RequestHandler = async (req, _res, next) => {
       id: user.id,
       email: user.email,
       role: user.role,
+      tenantId: user.tenantId,
     },
   };
 
@@ -56,18 +63,48 @@ export const requireAuth: RequestHandler = async (req, _res, next) => {
 };
 
 export const requireAdminAuth: RequestHandler = async (req, res, next) => {
-  await requireAuth(req, res, (error) => {
-    if (error) {
-      next(error);
-      return;
-    }
+  const token = getBearerToken(req.header("authorization"));
+  if (!token) {
+    next(new UnauthorizedError("Missing Authorization header"));
+    return;
+  }
 
-    const role = req.auth?.user.role;
-    if (role !== "admin") {
-      next(new ForbiddenError("Admin access required"));
-      return;
-    }
-
-    next();
+  const session = await AdminAuthSession.findOne({
+    where: { tokenHash: hashToken(token), revokedAt: null },
+    include: [{ model: AdminUserModel }],
   });
+
+  if (!session) {
+    next(new UnauthorizedError("Invalid session"));
+    return;
+  }
+
+  const now = Date.now();
+  if (session.expiresAt.getTime() <= now) {
+    next(new UnauthorizedError("Session expired"));
+    return;
+  }
+
+  const admin = (session as unknown as { AdminUser?: AdminUser }).AdminUser;
+  if (!admin) {
+    next(new UnauthorizedError("Invalid session"));
+    return;
+  }
+
+  if (admin.role !== "admin") {
+    next(new ForbiddenError("Admin access required"));
+    return;
+  }
+
+  req.auth = {
+    token,
+    sessionId: session.id,
+    user: {
+      id: admin.id,
+      email: admin.email,
+      role: admin.role,
+    },
+  };
+
+  next();
 };
