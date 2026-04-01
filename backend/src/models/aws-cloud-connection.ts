@@ -17,6 +17,8 @@ class AwsCloudConnection extends Model<
   declare bucketName: string;
   declare bucketPrefix: string | null;
   declare setupMethod: CreationOptional<string>;
+  declare roleName: string | null;
+  declare policyName: string | null;
   declare roleArn: string | null;
   declare externalId: string | null;
   declare reportName: string | null;
@@ -33,6 +35,8 @@ const createAwsCloudConnectionModel = (sequelize: Sequelize): typeof AwsCloudCon
       bucketName: { type: DataTypes.STRING(255), allowNull: false },
       bucketPrefix: { type: DataTypes.STRING(1024), allowNull: true, defaultValue: null },
       setupMethod: { type: DataTypes.STRING(50), allowNull: false, defaultValue: "manual" },
+      roleName: { type: DataTypes.STRING(255), allowNull: true, defaultValue: null },
+      policyName: { type: DataTypes.STRING(255), allowNull: true, defaultValue: null },
       roleArn: { type: DataTypes.STRING(512), allowNull: true, defaultValue: null },
       externalId: { type: DataTypes.STRING(255), allowNull: true, defaultValue: null },
       reportName: { type: DataTypes.STRING(255), allowNull: true, defaultValue: null },

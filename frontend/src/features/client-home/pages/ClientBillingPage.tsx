@@ -6,10 +6,15 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { ArrowRight, Cloud, ExternalLink, FileSpreadsheet, Plus, Wrench } from "lucide-react"
-import { useEffect, useMemo, useState } from "react"
+import { AlertTriangle, ArrowRight, CheckCircle2, Cloud, ExternalLink, FileSpreadsheet, Loader2, Plus, Wrench } from "lucide-react"
+import { useEffect, useMemo, useRef, useState } from "react"
 
-import { submitAwsManualStep1 } from "@/features/client-home/api/cloud-connections.api"
+import {
+  submitAwsManualStep1,
+  submitAwsManualStep2,
+  submitAwsManualStep3,
+  validateAwsManualConnection,
+} from "@/features/client-home/api/cloud-connections.api"
 import { AwsManualSetupStepTwo } from "@/features/client-home/components/AwsManualSetupStepTwo"
 import { ClientPageHeader } from "@/features/client-home/components/ClientPageHeader"
 import { ApiError } from "@/lib/api"
@@ -294,7 +299,7 @@ function S3InputSection({
       <div className="space-y-1">
         <h4 className="text-base font-semibold text-text-primary">1.3 Enter your storage details</h4>
         <p className="text-sm text-text-secondary">
-          Enter only the bucket name (not full S3 path).
+          Enter the S3 bucket name only. Do not include the full S3 path.
         </p>
       </div>
       <div className="rounded-md border border-gray-200 bg-white p-5">
@@ -315,176 +320,38 @@ function S3InputSection({
         <span className="text-xs font-semibold uppercase tracking-[0.08em] text-text-muted">S3 Path Prefix (optional)</span>
         <input
           className="h-10 w-full rounded-md border border-gray-200 bg-white px-3 text-sm outline-none focus:border-[color:var(--kcx-border-strong)]"
-          placeholder="e.g. billing or demo"
+          placeholder="Optional folder prefix"
           value={pathPrefix}
           onChange={(event) => onPathPrefixChange(event.target.value)}
         />
       </label>
       <p className="text-xs text-text-muted">
-        e.g. billing or demo
+        Optional: specify a folder (prefix) within the bucket.
       </p>
       </div>
     </section>
   )
 }
 
-function ManualSetupStepOne() {
-  const [bucketName, setBucketName] = useState("")
-  const [pathPrefix, setPathPrefix] = useState("")
-  const [isSaving, setIsSaving] = useState(false)
-  const [submitError, setSubmitError] = useState<string | null>(null)
-
-  const hasBucketName = bucketName.trim().length > 0
-  const hasNoSpacesInBucketName = !/\s/.test(bucketName)
-  const showBucketFormatHint = hasBucketName && !hasNoSpacesInBucketName
-
-  const canContinue = useMemo(() => {
-    return hasBucketName && hasNoSpacesInBucketName
-  }, [hasBucketName, hasNoSpacesInBucketName])
-
-  async function handleContinueToStep2() {
-    if (!canContinue || isSaving) return
-
-    setSubmitError(null)
-    setIsSaving(true)
-
-    const trimmedBucketName = bucketName.trim()
-    const trimmedPrefix = pathPrefix.trim().replace(/\/+$/g, "")
-
-    const payload = {
-      bucketName: trimmedBucketName,
-      ...(trimmedPrefix.length > 0 ? { bucketPrefix: trimmedPrefix } : {}),
-    }
-
-    try {
-      console.debug("[AWS Manual Step 1] Saving payload", payload)
-      const response = await submitAwsManualStep1(payload)
-      console.debug("[AWS Manual Step 1] Save success", response)
-
-      navigateTo("/client/billing/connections/aws/manual/step-2")
-    } catch (error) {
-      console.error("[AWS Manual Step 1] Save failed", error)
-
-      if (error instanceof ApiError) {
-        setSubmitError(error.message || "Could not save Step 1. Please try again.")
-      } else {
-        setSubmitError("Could not save Step 1. Please try again.")
-      }
-    } finally {
-      setIsSaving(false)
-    }
-  }
-
-  return (
-    <Card className="rounded-md border-gray-200 bg-[color:var(--bg-surface)] shadow-none">
-      <CardContent className="space-y-7 p-6">
-        <div className="space-y-2">
-          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-text-muted">Step 1</p>
-          <h3 className="text-lg font-semibold text-text-primary">Prepare your billing data</h3>
-          <p className="text-sm text-text-secondary">
-            Configure your AWS Billing Data Export using the exact settings required by KCX.
-          </p>
-        </div>
-        <div className="border-t border-[color:var(--border-light)]" />
-        <AwsLoginSection />
-        <div className="border-t border-[color:var(--border-light)]" />
-        <ConfigureExportSection />
-        <div className="border-t border-[color:var(--border-light)]" />
-        <S3InputSection
-          bucketName={bucketName}
-          pathPrefix={pathPrefix}
-          onBucketNameChange={setBucketName}
-          onPathPrefixChange={setPathPrefix}
-          showBucketFormatHint={showBucketFormatHint}
-        />
-        <div className="flex justify-end">
-          <Button
-            className="h-10 rounded-md"
-            disabled={!canContinue || isSaving}
-            onClick={() => {
-              void handleContinueToStep2()
-            }}
-          >
-            {isSaving ? "Saving..." : "Continue to Step 2"}
-          </Button>
-        </div>
-        {submitError ? (
-          <p className="text-sm text-red-700">{submitError}</p>
-        ) : null}
-      </CardContent>
-    </Card>
-  )
+type ManualSetupStepThreeProps = {
+  connectionName: string
+  dataExportName: string
+  roleArn: string
+  onConnectionNameChange: (value: string) => void
+  onDataExportNameChange: (value: string) => void
+  onRoleArnChange: (value: string) => void
+  roleNameHint: string
 }
 
-function ManualSetupStepThree() {
-  const authUser = getAuthUser()
-  const [connectionName, setConnectionName] = useState("")
-  const [dataExportName, setDataExportName] = useState("")
-  const [roleArn, setRoleArn] = useState("")
-  const [step2RoleNameHint, setStep2RoleNameHint] = useState("")
-
-  const step3StorageKey = useMemo(
-    () => `kcx_aws_manual_step3_user_${authUser?.id ?? "anonymous"}`,
-    [authUser?.id],
-  )
-  const resourceNamesStorageKey = useMemo(
-    () => `kcx_aws_manual_resource_names_user_${authUser?.id ?? "anonymous"}`,
-    [authUser?.id],
-  )
-
-  useEffect(() => {
-    const existingStep3Data = localStorage.getItem(step3StorageKey)
-    if (existingStep3Data) {
-      try {
-        const parsed = JSON.parse(existingStep3Data) as {
-          connectionName?: string
-          dataExportName?: string
-          roleArn?: string
-        }
-        if (typeof parsed.connectionName === "string") {
-          setConnectionName(parsed.connectionName)
-        }
-        if (typeof parsed.dataExportName === "string") {
-          setDataExportName(parsed.dataExportName)
-        }
-        if (typeof parsed.roleArn === "string") {
-          setRoleArn(parsed.roleArn)
-        }
-      } catch {
-        // Ignore malformed local storage payload.
-      }
-    }
-
-    const existingResourceNames = localStorage.getItem(resourceNamesStorageKey)
-    if (!existingResourceNames) return
-
-    try {
-      const parsed = JSON.parse(existingResourceNames) as { roleName?: string }
-      if (typeof parsed.roleName === "string") {
-        setStep2RoleNameHint(parsed.roleName.trim())
-      }
-    } catch {
-      // Ignore malformed local storage payload.
-    }
-  }, [resourceNamesStorageKey, step3StorageKey])
-
-  useEffect(() => {
-    const payload = {
-      connectionName: connectionName.trim(),
-      dataExportName: dataExportName.trim(),
-      roleArn: roleArn.trim(),
-    }
-    localStorage.setItem(step3StorageKey, JSON.stringify(payload))
-  }, [connectionName, dataExportName, roleArn, step3StorageKey])
-
-  const canFinish = useMemo(() => {
-    return (
-      connectionName.trim().length > 0 &&
-      dataExportName.trim().length > 0 &&
-      roleArn.trim().length > 0
-    )
-  }, [connectionName, dataExportName, roleArn])
-
+function ManualSetupStepThree({
+  connectionName,
+  dataExportName,
+  roleArn,
+  onConnectionNameChange,
+  onDataExportNameChange,
+  onRoleArnChange,
+  roleNameHint,
+}: ManualSetupStepThreeProps) {
   return (
     <Card className="rounded-md border-gray-200 bg-[color:var(--bg-surface)] shadow-none">
       <CardContent className="space-y-6 p-6">
@@ -512,7 +379,7 @@ function ManualSetupStepThree() {
               className="h-10 w-full rounded-md border border-gray-200 bg-white px-3 text-sm outline-none focus:border-[color:var(--kcx-border-strong)]"
               placeholder="ex: kcx-cz-30-march"
               value={connectionName}
-              onChange={(event) => setConnectionName(event.target.value)}
+              onChange={(event) => onConnectionNameChange(event.target.value)}
             />
             <p className="text-xs text-text-muted">
               This name helps you identify this AWS connection inside KCX.
@@ -525,7 +392,7 @@ function ManualSetupStepThree() {
               className="h-10 w-full rounded-md border border-gray-200 bg-white px-3 text-sm outline-none focus:border-[color:var(--kcx-border-strong)]"
               placeholder="ex: billing-export-march"
               value={dataExportName}
-              onChange={(event) => setDataExportName(event.target.value)}
+              onChange={(event) => onDataExportNameChange(event.target.value)}
             />
             <p className="text-xs text-text-muted">
               Use the exact export name created in AWS Billing Data Exports during Step 1.
@@ -540,33 +407,529 @@ function ManualSetupStepThree() {
               className="h-10 w-full rounded-md border border-gray-200 bg-white px-3 text-sm outline-none focus:border-[color:var(--kcx-border-strong)]"
               placeholder="arn:aws:iam::123456789012:role/example-role-name"
               value={roleArn}
-              onChange={(event) => setRoleArn(event.target.value)}
+              onChange={(event) => onRoleArnChange(event.target.value)}
             />
-            {step2RoleNameHint ? (
+            {roleNameHint ? (
               <p className="text-xs text-text-muted">
-                Step 2 role name entered: <span className="font-medium text-text-primary">{step2RoleNameHint}</span>
+                Step 2 role name entered: <span className="font-medium text-text-primary">{roleNameHint}</span>
               </p>
             ) : null}
             <p className="text-xs text-text-muted">
-              Enter the full IAM role ARN from Step 2 (not just the role name). You can copy this from the AWS IAM role details page.
+              Enter the full ARN of the IAM role created in Step 2.
             </p>
           </label>
         </section>
-
-        <div className="flex items-center justify-between">
-          <Button
-            variant="outline"
-            className="h-10 rounded-md border-[color:var(--border-light)]"
-            onClick={() => navigateTo("/client/billing/connections/aws/manual/step-2")}
-          >
-            Back
-          </Button>
-          <Button className="h-10 rounded-md" disabled={!canFinish}>
-            Finish
-          </Button>
-        </div>
       </CardContent>
     </Card>
+  )
+}
+
+function ManualSetupProgress({
+  isStep1Complete,
+  isStep2Complete,
+  isStep3Complete,
+}: {
+  isStep1Complete: boolean
+  isStep2Complete: boolean
+  isStep3Complete: boolean
+}) {
+  const step2Active = isStep1Complete && !isStep2Complete
+  const step3Locked = !isStep2Complete
+  const step3Active = isStep2Complete && !isStep3Complete
+
+  return (
+    <div className="sticky top-4 z-20 rounded-md border border-[color:var(--border-light)] bg-white/95 p-3 shadow-sm backdrop-blur">
+      <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.08em]">
+        <span className={cn("rounded-md border px-2.5 py-1", isStep1Complete ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-[color:var(--kcx-border-soft)] bg-[color:var(--highlight-green)] text-brand-primary")}>
+          Step 1 {isStep1Complete ? "✓" : "→"}
+        </span>
+        <span className="text-text-muted">—</span>
+        <span className={cn("rounded-md border px-2.5 py-1", step2Active ? "border-[color:var(--kcx-border-soft)] bg-[color:var(--highlight-green)] text-brand-primary" : isStep2Complete ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-[color:var(--border-light)] bg-[color:var(--bg-surface)] text-text-muted")}>
+          Step 2 {isStep2Complete ? "✓" : "→"}
+        </span>
+        <span className="text-text-muted">—</span>
+        <span className={cn("rounded-md border px-2.5 py-1", step3Locked ? "border-[color:var(--border-light)] bg-[color:var(--bg-surface)] text-text-muted" : step3Active ? "border-[color:var(--kcx-border-soft)] bg-[color:var(--highlight-green)] text-brand-primary" : "border-emerald-200 bg-emerald-50 text-emerald-700")}>
+          Step 3 {isStep3Complete ? "✓" : step3Locked ? "Locked" : "→"}
+        </span>
+      </div>
+    </div>
+  )
+}
+
+function ReviewValueRow({ label, value }: { label: string; value: string | null }) {
+  const safeValue = value && value.trim().length > 0 ? value : "Not provided"
+
+  return (
+    <div className="grid grid-cols-1 gap-1 border-b border-[color:var(--border-light)] px-4 py-3 text-sm last:border-b-0 md:grid-cols-[220px_minmax(0,1fr)]">
+      <p className="text-text-secondary">{label}</p>
+      <p className="break-words font-medium text-text-primary md:text-right">{safeValue}</p>
+    </div>
+  )
+}
+
+function mapValidationErrorMessage(message: string): string {
+  const normalized = message.toLowerCase()
+  if (normalized.includes("access denied")) return "Validation failed: access denied for the provided AWS role or bucket."
+  if (normalized.includes("assume") || normalized.includes("sts")) return "Validation failed: unable to assume the AWS IAM role."
+  if (normalized.includes("external")) return "Validation failed: external ID does not match the IAM trust configuration."
+  if (normalized.includes("bucket") || normalized.includes("s3")) return "Validation failed: unable to access the configured S3 bucket or prefix."
+  if (normalized.includes("arn")) return "Validation failed: the IAM role ARN appears to be invalid."
+  return message || "Validation failed. Review the configuration and try again."
+}
+
+function AwsSetupReviewValidation({
+  bucketName,
+  pathPrefix,
+  externalId,
+  roleName,
+  customPolicyName,
+  connectionName,
+  dataExportName,
+  roleArn,
+  onBackToEdit,
+  onValidate,
+  validateStatus,
+  validationMessage,
+}: {
+  bucketName: string
+  pathPrefix: string
+  externalId: string
+  roleName: string
+  customPolicyName: string
+  connectionName: string
+  dataExportName: string
+  roleArn: string
+  onBackToEdit: () => void
+  onValidate: () => void
+  validateStatus: "idle" | "validating" | "success" | "failure"
+  validationMessage: string | null
+}) {
+  return (
+    <div className="space-y-5">
+      <Card className="rounded-md border-[color:var(--border-light)] bg-white shadow-none">
+        <CardContent className="space-y-2 p-6">
+          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-text-muted">Review & Validate</p>
+          <h3 className="text-lg font-semibold text-text-primary">Review AWS Connection Configuration</h3>
+          <p className="text-sm text-text-secondary">
+            Confirm the setup values below, then run a live connection validation.
+          </p>
+        </CardContent>
+      </Card>
+
+      <Card className="rounded-md border-[color:var(--border-light)] bg-white shadow-none">
+        <CardContent className="p-0">
+          <div className="px-4 py-3">
+            <h4 className="text-sm font-semibold text-text-primary">Billing Data Export</h4>
+          </div>
+          <div className="border-t border-[color:var(--border-light)]">
+            <ReviewValueRow label="S3 Bucket Name" value={bucketName} />
+            <ReviewValueRow label="S3 Prefix" value={pathPrefix} />
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="rounded-md border-[color:var(--border-light)] bg-white shadow-none">
+        <CardContent className="p-0">
+          <div className="px-4 py-3">
+            <h4 className="text-sm font-semibold text-text-primary">IAM Configuration</h4>
+          </div>
+          <div className="border-t border-[color:var(--border-light)]">
+            <ReviewValueRow label="External ID" value={externalId} />
+            <ReviewValueRow label="IAM Role Name" value={roleName} />
+            <ReviewValueRow label="Custom Policy Name" value={customPolicyName} />
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="rounded-md border-[color:var(--border-light)] bg-white shadow-none">
+        <CardContent className="p-0">
+          <div className="px-4 py-3">
+            <h4 className="text-sm font-semibold text-text-primary">Final Connection Details</h4>
+          </div>
+          <div className="border-t border-[color:var(--border-light)]">
+            <ReviewValueRow label="Connection Name" value={connectionName} />
+            <ReviewValueRow label="Data Export Name" value={dataExportName} />
+            <ReviewValueRow label="Role ARN" value={roleArn} />
+          </div>
+        </CardContent>
+      </Card>
+
+      {validateStatus === "validating" ? (
+        <div className="rounded-md border border-[color:var(--kcx-border-soft)] bg-[color:var(--highlight-green)] p-4 text-sm text-text-primary">
+          <div className="flex items-center gap-2">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            <span>Validating connection...</span>
+          </div>
+        </div>
+      ) : null}
+
+      {validateStatus === "success" ? (
+        <div className="rounded-md border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
+          <div className="flex items-start gap-2">
+            <CheckCircle2 className="mt-0.5 h-4 w-4" />
+            <p>{validationMessage ?? "Validation successful. Connection is active."}</p>
+          </div>
+        </div>
+      ) : null}
+
+      {validateStatus === "failure" ? (
+        <div className="rounded-md border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">
+          <div className="flex items-start gap-2">
+            <AlertTriangle className="mt-0.5 h-4 w-4" />
+            <p>{validationMessage ?? "Validation failed. Review your configuration and retry."}</p>
+          </div>
+        </div>
+      ) : null}
+
+      <div className="flex items-center justify-between">
+        <Button
+          type="button"
+          variant="outline"
+          className="h-10 rounded-md border-[color:var(--border-light)]"
+          onClick={onBackToEdit}
+          disabled={validateStatus === "validating"}
+        >
+          Back to Edit
+        </Button>
+        <Button type="button" className="h-10 rounded-md" onClick={onValidate} disabled={validateStatus === "validating"}>
+          {validateStatus === "validating" ? (
+            <>
+              <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+              Validating connection...
+            </>
+          ) : (
+            "Validate Connection"
+          )}
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+function AwsManualSetupSinglePageFlow() {
+  const authUser = getAuthUser()
+
+  const [viewMode, setViewMode] = useState<"setup" | "review">("setup")
+  const [connectionId, setConnectionId] = useState("")
+  const [bucketName, setBucketName] = useState("")
+  const [pathPrefix, setPathPrefix] = useState("")
+  const [externalId, setExternalId] = useState("")
+  const [roleName, setRoleName] = useState("")
+  const [customPolicyName, setCustomPolicyName] = useState("")
+  const [connectionName, setConnectionName] = useState("")
+  const [dataExportName, setDataExportName] = useState("")
+  const [roleArn, setRoleArn] = useState("")
+  const [finishError, setFinishError] = useState<string | null>(null)
+  const [isSubmittingFinish, setIsSubmittingFinish] = useState(false)
+  const [validateStatus, setValidateStatus] = useState<"idle" | "validating" | "success" | "failure">("idle")
+  const [validationMessage, setValidationMessage] = useState<string | null>(null)
+  const [step1SaveStatus, setStep1SaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle")
+  const [step1SubmitError, setStep1SubmitError] = useState<string | null>(null)
+  const lastSavedStep1SignatureRef = useRef("")
+
+  const flowStorageKey = useMemo(
+    () => `kcx_aws_manual_flow_user_${authUser?.id ?? "anonymous"}`,
+    [authUser?.id],
+  )
+
+  useEffect(() => {
+    const existing = localStorage.getItem(flowStorageKey)
+    if (!existing) return
+
+    try {
+      const parsed = JSON.parse(existing) as {
+        connectionId?: string
+        bucketName?: string
+        pathPrefix?: string
+        externalId?: string
+        roleName?: string
+        customPolicyName?: string
+        connectionName?: string
+        dataExportName?: string
+        roleArn?: string
+      }
+      setConnectionId(typeof parsed.connectionId === "string" ? parsed.connectionId : "")
+      setBucketName(typeof parsed.bucketName === "string" ? parsed.bucketName : "")
+      setPathPrefix(typeof parsed.pathPrefix === "string" ? parsed.pathPrefix : "")
+      setExternalId(typeof parsed.externalId === "string" ? parsed.externalId : "")
+      setRoleName(typeof parsed.roleName === "string" ? parsed.roleName : "")
+      setCustomPolicyName(typeof parsed.customPolicyName === "string" ? parsed.customPolicyName : "")
+      setConnectionName(typeof parsed.connectionName === "string" ? parsed.connectionName : "")
+      setDataExportName(typeof parsed.dataExportName === "string" ? parsed.dataExportName : "")
+      setRoleArn(typeof parsed.roleArn === "string" ? parsed.roleArn : "")
+    } catch {
+      // Ignore malformed local storage payload.
+    }
+  }, [flowStorageKey])
+
+  useEffect(() => {
+    const payload = {
+      connectionId: connectionId.trim(),
+      bucketName: bucketName.trim(),
+      pathPrefix: pathPrefix.trim(),
+      externalId: externalId.trim(),
+      roleName: roleName.trim(),
+      customPolicyName: customPolicyName.trim(),
+      connectionName: connectionName.trim(),
+      dataExportName: dataExportName.trim(),
+      roleArn: roleArn.trim(),
+    }
+    localStorage.setItem(flowStorageKey, JSON.stringify(payload))
+  }, [bucketName, connectionId, connectionName, customPolicyName, dataExportName, externalId, flowStorageKey, pathPrefix, roleArn, roleName])
+
+  const hasBucketName = bucketName.trim().length > 0
+  const hasNoSpacesInBucketName = !/\s/.test(bucketName)
+  const showBucketFormatHint = hasBucketName && !hasNoSpacesInBucketName
+
+  const isStep1Complete = hasBucketName && hasNoSpacesInBucketName
+  const isStep2Complete = roleName.trim().length > 0 && customPolicyName.trim().length > 0
+  const isStep3Complete = connectionName.trim().length > 0 && dataExportName.trim().length > 0 && roleArn.trim().length > 0
+  const isAllComplete = isStep1Complete && isStep2Complete && isStep3Complete
+
+  useEffect(() => {
+    if (!isStep1Complete) {
+      setStep1SaveStatus("idle")
+      return
+    }
+
+    const trimmedBucketName = bucketName.trim()
+    const trimmedPrefix = pathPrefix.trim().replace(/\/+$/g, "")
+    const payload = {
+      bucketName: trimmedBucketName,
+      ...(trimmedPrefix.length > 0 ? { bucketPrefix: trimmedPrefix } : {}),
+    }
+    const nextSignature = JSON.stringify(payload)
+    if (lastSavedStep1SignatureRef.current === nextSignature) {
+      return
+    }
+
+    const timeout = window.setTimeout(() => {
+      void (async () => {
+        setStep1SubmitError(null)
+        setStep1SaveStatus("saving")
+        try {
+          const response = await submitAwsManualStep1(payload)
+          setConnectionId(response.connectionId)
+          lastSavedStep1SignatureRef.current = nextSignature
+          setStep1SaveStatus("saved")
+        } catch (error) {
+          if (error instanceof ApiError) {
+            setStep1SubmitError(error.message || "Could not save Step 1. Please try again.")
+          } else {
+            setStep1SubmitError("Could not save Step 1. Please try again.")
+          }
+          setStep1SaveStatus("error")
+        }
+      })()
+    }, 400)
+
+    return () => window.clearTimeout(timeout)
+  }, [bucketName, isStep1Complete, pathPrefix])
+
+  async function ensureStep1Persisted(): Promise<string> {
+    const trimmedBucketName = bucketName.trim()
+    const trimmedPrefix = pathPrefix.trim().replace(/\/+$/g, "")
+
+    const payload = {
+      bucketName: trimmedBucketName,
+      ...(trimmedPrefix.length > 0 ? { bucketPrefix: trimmedPrefix } : {}),
+    }
+
+    if (connectionId.trim().length > 0 && lastSavedStep1SignatureRef.current === JSON.stringify(payload)) {
+      return connectionId
+    }
+
+    const response = await submitAwsManualStep1(payload)
+    setConnectionId(response.connectionId)
+    lastSavedStep1SignatureRef.current = JSON.stringify(payload)
+    return response.connectionId
+  }
+
+  async function handleFinishSetup() {
+    if (!isAllComplete || isSubmittingFinish) return
+
+    setFinishError(null)
+    setIsSubmittingFinish(true)
+
+    try {
+      const persistedConnectionId = await ensureStep1Persisted()
+      const normalizedExternalId = externalId.trim()
+      const externalIdStorageKey = `kcx_aws_external_id_user_${authUser?.id ?? "anonymous"}`
+      const fallbackExternalId = localStorage.getItem(externalIdStorageKey)?.trim() ?? ""
+      const externalIdForSubmit = normalizedExternalId || fallbackExternalId
+
+      if (!externalIdForSubmit) {
+        throw new Error("External ID is missing. Return to Step 2 and regenerate it.")
+      }
+
+      if (!normalizedExternalId && fallbackExternalId) {
+        setExternalId(fallbackExternalId)
+      }
+
+      await submitAwsManualStep2({
+        connectionId: persistedConnectionId,
+        externalId: externalIdForSubmit,
+        roleName: roleName.trim(),
+        policyName: customPolicyName.trim(),
+      })
+
+      await submitAwsManualStep3({
+        connectionId: persistedConnectionId,
+        connectionName: connectionName.trim(),
+        reportName: dataExportName.trim(),
+        roleArn: roleArn.trim(),
+      })
+
+      setValidateStatus("idle")
+      setValidationMessage(null)
+      setViewMode("review")
+    } catch (error) {
+      if (error instanceof ApiError) {
+        setFinishError(error.message || "Could not prepare connection for validation.")
+      } else if (error instanceof Error) {
+        setFinishError(error.message)
+      } else {
+        setFinishError("Could not prepare connection for validation.")
+      }
+    } finally {
+      setIsSubmittingFinish(false)
+    }
+  }
+
+  async function handleValidateConnection() {
+    const normalizedConnectionId = connectionId.trim()
+    if (!normalizedConnectionId || validateStatus === "validating") return
+
+    setValidateStatus("validating")
+    setValidationMessage(null)
+
+    try {
+      const result = await validateAwsManualConnection({ connectionId: normalizedConnectionId })
+      const resultStatus = (result.status ?? "").toUpperCase()
+
+      if (resultStatus === "ACTIVE") {
+        setValidateStatus("success")
+        setValidationMessage("Connection verified successfully. AWS integration is active.")
+      } else {
+        setValidateStatus("failure")
+        setValidationMessage(
+          mapValidationErrorMessage(result.error ?? result.message ?? "Validation failed. Review configuration and retry.")
+        )
+      }
+    } catch (error) {
+      if (error instanceof ApiError) {
+        setValidateStatus("failure")
+        setValidationMessage(mapValidationErrorMessage(error.message || "Validation failed."))
+      } else {
+        setValidateStatus("failure")
+        setValidationMessage("Validation failed. Review configuration and retry.")
+      }
+    }
+  }
+
+  if (viewMode === "review") {
+    return (
+      <AwsSetupReviewValidation
+        bucketName={bucketName.trim()}
+        pathPrefix={pathPrefix.trim()}
+        externalId={externalId.trim()}
+        roleName={roleName.trim()}
+        customPolicyName={customPolicyName.trim()}
+        connectionName={connectionName.trim()}
+        dataExportName={dataExportName.trim()}
+        roleArn={roleArn.trim()}
+        onBackToEdit={() => setViewMode("setup")}
+        onValidate={() => {
+          void handleValidateConnection()
+        }}
+        validateStatus={validateStatus}
+        validationMessage={validationMessage}
+      />
+    )
+  }
+
+  return (
+    <div className="space-y-5">
+      <ManualSetupProgress
+        isStep1Complete={isStep1Complete}
+        isStep2Complete={isStep2Complete}
+        isStep3Complete={isStep3Complete}
+      />
+
+      <Card className="rounded-md border-gray-200 bg-[color:var(--bg-surface)] shadow-none">
+        <CardContent className="space-y-7 p-6">
+          <div className="space-y-2">
+            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-text-muted">Step 1</p>
+            <h3 className="text-lg font-semibold text-text-primary">Prepare your billing data</h3>
+            <p className="text-sm text-text-secondary">
+              Configure your AWS Billing Data Export using the exact settings required by KCX.
+            </p>
+          </div>
+          <div className="border-t border-[color:var(--border-light)]" />
+          <AwsLoginSection />
+          <div className="border-t border-[color:var(--border-light)]" />
+          <ConfigureExportSection />
+          <div className="border-t border-[color:var(--border-light)]" />
+          <S3InputSection
+            bucketName={bucketName}
+            pathPrefix={pathPrefix}
+            onBucketNameChange={setBucketName}
+            onPathPrefixChange={setPathPrefix}
+            showBucketFormatHint={showBucketFormatHint}
+          />
+          {step1SubmitError ? (
+            <p className="text-sm text-red-700">{step1SubmitError}</p>
+          ) : isStep1Complete ? (
+            <p className="text-sm text-text-secondary">
+              {step1SaveStatus === "saving" ? "Saving Step 1..." : "Step 1 complete."}
+            </p>
+          ) : null}
+        </CardContent>
+      </Card>
+
+      <div className={cn("transition-opacity", !isStep1Complete ? "pointer-events-none opacity-60" : "")}>
+        <AwsManualSetupStepTwo
+          roleName={roleName}
+          customPolicyName={customPolicyName}
+          onRoleNameChange={setRoleName}
+          onCustomPolicyNameChange={setCustomPolicyName}
+          bucketNameHint={bucketName}
+          onExternalIdChange={setExternalId}
+        />
+      </div>
+
+      <div className={cn("transition-opacity", !isStep2Complete ? "pointer-events-none opacity-60" : "")}>
+        <ManualSetupStepThree
+          connectionName={connectionName}
+          dataExportName={dataExportName}
+          roleArn={roleArn}
+          onConnectionNameChange={setConnectionName}
+          onDataExportNameChange={setDataExportName}
+          onRoleArnChange={setRoleArn}
+          roleNameHint={roleName.trim()}
+        />
+      </div>
+
+      <div className="flex justify-end">
+        <Button
+          className="h-10 rounded-md"
+          disabled={!isAllComplete || isSubmittingFinish}
+          onClick={() => {
+            void handleFinishSetup()
+          }}
+        >
+          {isSubmittingFinish ? (
+            <>
+              <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+              Preparing review...
+            </>
+          ) : (
+            "Finish Setup"
+          )}
+        </Button>
+      </div>
+      {finishError ? <p className="text-sm text-rose-700">{finishError}</p> : null}
+    </div>
   )
 }
 
@@ -781,42 +1144,18 @@ export function ClientBillingPage() {
               </>
             ) : null}
 
-            {activeRoute === "/client/billing/connections/aws/manual" ? (
+            {activeRoute === "/client/billing/connections/aws/manual" ||
+            activeRoute === "/client/billing/connections/aws/manual/step-2" ||
+            activeRoute === "/client/billing/connections/aws/manual/step-3" ? (
               <>
                 <div className="space-y-2">
                   <p className="kcx-eyebrow text-brand-primary">AWS MANUAL SETUP</p>
                   <h2 className="text-2xl font-semibold tracking-tight text-text-primary">Manual Setup</h2>
                   <p className="text-sm text-text-secondary">
-                    Connect your AWS billing data step-by-step.
+                    Connect your AWS billing data in one guided setup flow.
                   </p>
                 </div>
-                <ManualSetupStepOne />
-              </>
-            ) : null}
-
-            {activeRoute === "/client/billing/connections/aws/manual/step-2" ? (
-              <>
-                <div className="space-y-2">
-                  <p className="kcx-eyebrow text-brand-primary">AWS MANUAL SETUP</p>
-                  <h2 className="text-2xl font-semibold tracking-tight text-text-primary">Manual Setup</h2>
-                  <p className="text-sm text-text-secondary">
-                    Continue your AWS connection setup.
-                  </p>
-                </div>
-                <AwsManualSetupStepTwo />
-              </>
-            ) : null}
-
-            {activeRoute === "/client/billing/connections/aws/manual/step-3" ? (
-              <>
-                <div className="space-y-2">
-                  <p className="kcx-eyebrow text-brand-primary">AWS MANUAL SETUP</p>
-                  <h2 className="text-2xl font-semibold tracking-tight text-text-primary">Manual Setup</h2>
-                  <p className="text-sm text-text-secondary">
-                    Complete your AWS connection setup.
-                  </p>
-                </div>
-                <ManualSetupStepThree />
+                <AwsManualSetupSinglePageFlow />
               </>
             ) : null}
           </CardContent>

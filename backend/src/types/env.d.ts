@@ -18,5 +18,9 @@ declare namespace NodeJS {
     CAL_EVENT_TYPE_ID?: string;
     CAL_TIMEZONE?: string;
     CAL_RESERVATION_TTL_MINUTES?: string;
+    AWS_REGION?: string;
+    AWS_VALIDATION_REGION?: string;
+    AWS_ACCESS_KEY_ID?: string;
+    AWS_SECRET_ACCESS_KEY?: string;
   }
 }

@@ -89,6 +89,9 @@ const env = {
   frontendBaseUrl: optionalEnv(process.env.FRONTEND_BASE_URL),
   resetTokenTtlMinutes: optionalPositiveNumber(process.env.RESET_TOKEN_TTL_MINUTES, 60),
   sessionTtlHours: optionalPositiveNumber(process.env.SESSION_TTL_HOURS, 168),
+  awsRegion: optionalEnv(process.env.AWS_REGION) ?? optionalEnv(process.env.AWS_VALIDATION_REGION) ?? "us-east-1",
+  awsAccessKeyId: optionalEnv(process.env.AWS_ACCESS_KEY_ID),
+  awsSecretAccessKey: optionalEnv(process.env.AWS_SECRET_ACCESS_KEY),
 };
 
 export default env;

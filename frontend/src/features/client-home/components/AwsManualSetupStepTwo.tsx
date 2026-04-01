@@ -3,7 +3,6 @@ import { useEffect, useMemo, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { getAuthUser } from "@/lib/auth"
-import { navigateTo } from "@/lib/navigation"
 import { Check, Copy, ExternalLink, Eye, EyeOff } from "lucide-react"
 
 const EXTERNAL_ID_LENGTH = 24
@@ -15,7 +14,23 @@ function generateExternalId(length: number) {
   return Array.from(bytes, (byte) => alphabet[byte % alphabet.length]).join("")
 }
 
-export function AwsManualSetupStepTwo() {
+type AwsManualSetupStepTwoProps = {
+  roleName: string
+  customPolicyName: string
+  onRoleNameChange: (value: string) => void
+  onCustomPolicyNameChange: (value: string) => void
+  bucketNameHint?: string
+  onExternalIdChange?: (value: string) => void
+}
+
+export function AwsManualSetupStepTwo({
+  roleName,
+  customPolicyName,
+  onRoleNameChange,
+  onCustomPolicyNameChange,
+  bucketNameHint = "",
+  onExternalIdChange,
+}: AwsManualSetupStepTwoProps) {
   const iamConsoleUrl = "https://console.aws.amazon.com/iam/home#/roles"
   const iamPoliciesConsoleUrl = "https://console.aws.amazon.com/iam/home#/policies"
   const [copiedAccountId, setCopiedAccountId] = useState(false)
@@ -26,16 +41,10 @@ export function AwsManualSetupStepTwo() {
   const [showExternalId, setShowExternalId] = useState(false)
   const [customPolicyBucketName, setCustomPolicyBucketName] = useState("")
   const [generatedCustomPolicy, setGeneratedCustomPolicy] = useState<string | null>(null)
-  const [roleName, setRoleName] = useState("")
-  const [customPolicyName, setCustomPolicyName] = useState("")
 
   const authUser = getAuthUser()
   const externalIdStorageKey = useMemo(
     () => `kcx_aws_external_id_user_${authUser?.id ?? "anonymous"}`,
-    [authUser?.id],
-  )
-  const resourceNamesStorageKey = useMemo(
-    () => `kcx_aws_manual_resource_names_user_${authUser?.id ?? "anonymous"}`,
     [authUser?.id],
   )
 
@@ -43,38 +52,21 @@ export function AwsManualSetupStepTwo() {
     const existing = localStorage.getItem(externalIdStorageKey)
     if (existing && existing.length === EXTERNAL_ID_LENGTH) {
       setExternalId(existing)
+      onExternalIdChange?.(existing)
       return
     }
 
     const nextExternalId = generateExternalId(EXTERNAL_ID_LENGTH)
     localStorage.setItem(externalIdStorageKey, nextExternalId)
     setExternalId(nextExternalId)
-  }, [externalIdStorageKey])
+    onExternalIdChange?.(nextExternalId)
+  }, [externalIdStorageKey, onExternalIdChange])
 
   useEffect(() => {
-    const existing = localStorage.getItem(resourceNamesStorageKey)
-    if (!existing) return
-
-    try {
-      const parsed = JSON.parse(existing) as { roleName?: string; customPolicyName?: string }
-      if (typeof parsed.roleName === "string") {
-        setRoleName(parsed.roleName)
-      }
-      if (typeof parsed.customPolicyName === "string") {
-        setCustomPolicyName(parsed.customPolicyName)
-      }
-    } catch {
-      // Ignore malformed local storage payload.
-    }
-  }, [resourceNamesStorageKey])
-
-  useEffect(() => {
-    const payload = {
-      roleName: roleName.trim(),
-      customPolicyName: customPolicyName.trim(),
-    }
-    localStorage.setItem(resourceNamesStorageKey, JSON.stringify(payload))
-  }, [customPolicyName, resourceNamesStorageKey, roleName])
+    if (!bucketNameHint.trim()) return
+    if (customPolicyBucketName.trim()) return
+    setCustomPolicyBucketName(bucketNameHint.trim())
+  }, [bucketNameHint, customPolicyBucketName])
 
   const managedPolicies = [
     { key: "billing" as const, name: "AWSBillingReadOnlyAccess" },
@@ -155,8 +147,6 @@ export function AwsManualSetupStepTwo() {
     setGeneratedCustomPolicy(buildCustomPolicyJson(bucketName))
   }
 
-  const canProceedToStep3 = roleName.trim().length > 0 && customPolicyName.trim().length > 0
-
   return (
     <Card className="rounded-md border-gray-200 bg-[color:var(--bg-surface)] shadow-none">
       <CardContent className="space-y-6 p-6">
@@ -174,7 +164,7 @@ export function AwsManualSetupStepTwo() {
           <div className="space-y-1">
             <h4 className="text-base font-semibold text-text-primary">2.1 Start IAM Role Setup</h4>
             <p className="text-sm text-text-secondary">
-              We&apos;ll guide you through creating a role in AWS. Just follow along.
+              Create the IAM role in AWS using the required KCX details.
             </p>
           </div>
 
@@ -264,7 +254,7 @@ export function AwsManualSetupStepTwo() {
           <div className="space-y-1">
             <h4 className="text-base font-semibold text-text-primary">Step 2.2 - Add Required Permissions</h4>
             <p className="text-sm text-text-secondary">
-              Attach these managed policies to the role you created above. Then generate the bucket-scoped policy below, create it in AWS as a custom policy, and attach it to the same role.
+              Attach the following permissions to the IAM role created in the previous step.
             </p>
           </div>
 
@@ -279,7 +269,7 @@ export function AwsManualSetupStepTwo() {
 
           <div className="rounded-md border border-[color:var(--border-light)] bg-[color:var(--bg-surface)] p-4">
             <p className="text-sm text-text-secondary">
-              1) Attach both AWS managed policies below. 2) Generate and copy the KCX policy JSON. 3) Create it as a custom IAM policy in AWS. 4) Attach it to the same role.
+              Attach these AWS managed policies directly to your IAM role.
             </p>
           </div>
 
@@ -318,10 +308,7 @@ export function AwsManualSetupStepTwo() {
             <div className="rounded-md border border-[color:var(--border-light)] bg-[color:var(--bg-surface)] p-4">
               <p className="text-sm font-semibold text-text-primary">KCX Custom S3 Access Policy</p>
               <p className="mt-1 text-sm text-text-secondary">
-                Enter the same billing export bucket name from Step 1.
-              </p>
-              <p className="mt-2 text-sm text-text-secondary">
-                KCX generates the JSON policy. Copy it, create it in AWS as a custom IAM policy, then attach it to the same role from Step 2.1.
+                Generate a bucket-scoped policy using your billing export S3 bucket. Create this as a custom policy in AWS, then attach it to the same IAM role.
               </p>
               <div className="mt-3 grid gap-2 md:grid-cols-[1fr_auto]">
                 <input
@@ -347,7 +334,7 @@ export function AwsManualSetupStepTwo() {
                 </pre>
               ) : (
                 <p className="mt-3 text-xs text-text-muted">
-                  Generate policy JSON, copy it, create the custom policy in AWS, then attach it to your role.
+                  Generate policy JSON and copy it into a custom IAM policy in AWS.
                 </p>
               )}
               <div className="mt-3">
@@ -365,6 +352,9 @@ export function AwsManualSetupStepTwo() {
                   {copiedCustomPolicy ? "Copied policy" : "Copy policy JSON"}
                 </Button>
               </div>
+              <p className="mt-3 text-xs text-text-muted">
+                After creating the policy in AWS, attach it to your IAM role.
+              </p>
               {/* TODO: Optionally tighten scope further to a specific prefix once prefix-aware generation is enabled. */}
               {/* TODO: Bind generated policy to backend-managed template once Step 2 save flow is implemented. */}
             </div>
@@ -383,7 +373,7 @@ export function AwsManualSetupStepTwo() {
                 className="h-10 w-full rounded-md border border-gray-200 bg-white px-3 text-sm outline-none focus:border-[color:var(--kcx-border-strong)]"
                 placeholder="e.g. KCXBillingReadRole"
                 value={roleName}
-                onChange={(event) => setRoleName(event.target.value)}
+                onChange={(event) => onRoleNameChange(event.target.value)}
               />
             </label>
             <label className="space-y-1.5">
@@ -392,28 +382,11 @@ export function AwsManualSetupStepTwo() {
                 className="h-10 w-full rounded-md border border-gray-200 bg-white px-3 text-sm outline-none focus:border-[color:var(--kcx-border-strong)]"
                 placeholder="e.g. KCXBillingBucketReadPolicy"
                 value={customPolicyName}
-                onChange={(event) => setCustomPolicyName(event.target.value)}
+                onChange={(event) => onCustomPolicyNameChange(event.target.value)}
               />
             </label>
           </div>
         </section>
-
-        <div className="flex items-center justify-between">
-          <Button
-            variant="outline"
-            className="h-10 rounded-md border-[color:var(--border-light)]"
-            onClick={() => navigateTo("/client/billing/connections/aws/manual")}
-          >
-            Back to Step 1
-          </Button>
-          <Button
-            className="h-10 rounded-md"
-            disabled={!canProceedToStep3}
-            onClick={() => navigateTo("/client/billing/connections/aws/manual/step-3")}
-          >
-            Next
-          </Button>
-        </div>
       </CardContent>
     </Card>
   )
