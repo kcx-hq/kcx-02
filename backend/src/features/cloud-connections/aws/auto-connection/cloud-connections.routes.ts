@@ -1,7 +1,7 @@
 import { Router } from "express";
 
-import { requireAuth } from "../../middlewares/auth.middleware.js";
-import { asyncHandler } from "../../utils/async-handler.js";
+import { requireAuth } from "../../../../middlewares/auth.middleware.js";
+import { asyncHandler } from "../../../../utils/async-handler.js";
 import {
   handleAwsConnectionCallback,
   handleCreateCloudConnection,

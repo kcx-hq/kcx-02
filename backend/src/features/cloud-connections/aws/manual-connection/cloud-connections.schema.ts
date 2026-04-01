@@ -20,8 +20,8 @@ export const awsManualStep1Schema = z.object({
 export type AwsManualStep1Input = z.output<typeof awsManualStep1Schema>;
 
 export const awsManualStep2Schema = z.object({
-  connectionId: z.string().uuid({
-    message: "connectionId must be a valid uuid.",
+  connectionId: z.coerce.number().int().positive({
+    message: "connectionId must be a valid id.",
   }),
   externalId: z
     .string()
@@ -46,8 +46,8 @@ export const awsManualStep2Schema = z.object({
 export type AwsManualStep2Input = z.output<typeof awsManualStep2Schema>;
 
 export const awsManualStep3Schema = z.object({
-  connectionId: z.string().uuid({
-    message: "connectionId must be a valid uuid.",
+  connectionId: z.coerce.number().int().positive({
+    message: "connectionId must be a valid id.",
   }),
   connectionName: z
     .string()
@@ -75,8 +75,8 @@ export const awsManualStep3Schema = z.object({
 export type AwsManualStep3Input = z.output<typeof awsManualStep3Schema>;
 
 export const awsManualValidateSchema = z.object({
-  connectionId: z.string().uuid({
-    message: "connectionId must be a valid uuid.",
+  connectionId: z.coerce.number().int().positive({
+    message: "connectionId must be a valid id.",
   }),
 });
 

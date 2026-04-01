@@ -16,10 +16,10 @@ const CLOUD_PROVIDER = {
 } as const;
 
 const CLOUD_CONNECTION_STATUS = {
-  DRAFT: "DRAFT",
+  DRAFT: "draft",
   READY_FOR_VALIDATION: "READY_FOR_VALIDATION",
-  ACTIVE: "ACTIVE",
-  FAILED: "FAILED",
+  ACTIVE: "active",
+  FAILED: "error",
 } as const;
 
 const AWS_SETUP_METHOD = {
@@ -30,22 +30,22 @@ const AWS_MANUAL_STEP_1_NEXT_STEP = 2;
 const AWS_MANUAL_STEP_2_NEXT_STEP = 3;
 
 type CreateOrUpdateAwsManualConnectionStep1Result = {
-  connectionId: string;
+  connectionId: number;
   nextStep: number;
 };
 
 type CreateOrUpdateAwsManualConnectionStep2Result = {
-  connectionId: string;
+  connectionId: number;
   nextStep: number;
 };
 
 type CreateOrUpdateAwsManualConnectionStep3Result = {
-  connectionId: string;
+  connectionId: number;
   status: string;
 };
 
 type ValidateAwsManualConnectionResult = {
-  connectionId: string;
+  connectionId: number;
   status: string;
   error?: string;
 };
@@ -107,69 +107,35 @@ const sanitizeAwsValidationError = (error: unknown): string => {
 };
 
 export async function createOrUpdateAwsManualConnectionStep1(
-  clientId: number,
+  userId: string,
   payload: AwsManualStep1Input,
 ): Promise<CreateOrUpdateAwsManualConnectionStep1Result> {
   return sequelize.transaction(async (transaction) => {
-    const existingDraftConnections = await CloudConnection.findAll({
+    let cloudConnection = await CloudConnection.findOne({
       where: {
-        clientId,
+        userId,
         provider: CLOUD_PROVIDER.AWS,
-        status: CLOUD_CONNECTION_STATUS.DRAFT,
       },
       order: [["updatedAt", "DESC"]],
       transaction,
       lock: transaction.LOCK.UPDATE,
     });
 
-    let cloudConnection = existingDraftConnections[0] ?? null;
-
     if (!cloudConnection) {
-      const existingAwsConnection = await CloudConnection.findOne({
-        where: {
-          clientId,
-          provider: CLOUD_PROVIDER.AWS,
-        },
-        order: [["updatedAt", "DESC"]],
-        transaction,
-        lock: transaction.LOCK.UPDATE,
-      });
-
-      if (existingAwsConnection) {
-        cloudConnection = existingAwsConnection;
-        await cloudConnection.update(
-          {
-            setupMode: AWS_SETUP_METHOD.MANUAL,
-            status: CLOUD_CONNECTION_STATUS.DRAFT,
-            currentStep: AWS_MANUAL_STEP_1_NEXT_STEP,
-            isActive: false,
-          },
-          { transaction },
-        );
-      } else {
-        cloudConnection = await CloudConnection.create(
-          {
-            clientId,
-            provider: CLOUD_PROVIDER.AWS,
-            connectionName: "AWS Manual Connection",
-            setupMode: AWS_SETUP_METHOD.MANUAL,
-            status: CLOUD_CONNECTION_STATUS.DRAFT,
-            currentStep: AWS_MANUAL_STEP_1_NEXT_STEP,
-          },
-          { transaction },
-        );
-      }
-    } else {
-      await cloudConnection.update(
+      cloudConnection = await CloudConnection.create(
         {
-          currentStep: AWS_MANUAL_STEP_1_NEXT_STEP,
+          userId,
+          provider: CLOUD_PROVIDER.AWS,
+          connectionName: "AWS Manual Connection",
+          status: CLOUD_CONNECTION_STATUS.DRAFT,
+          accountType: "payer",
         },
         { transaction },
       );
     }
 
     const existingAwsConnection = await AwsCloudConnection.findOne({
-      where: { cloudConnectionId: cloudConnection.id },
+      where: { cloudConnectionId: String(cloudConnection.id) },
       transaction,
       lock: transaction.LOCK.UPDATE,
     });
@@ -183,7 +149,7 @@ export async function createOrUpdateAwsManualConnectionStep1(
     if (!existingAwsConnection) {
       await AwsCloudConnection.create(
         {
-          cloudConnectionId: cloudConnection.id,
+          cloudConnectionId: String(cloudConnection.id),
           ...awsConnectionPayload,
         },
         { transaction },
@@ -200,16 +166,15 @@ export async function createOrUpdateAwsManualConnectionStep1(
 }
 
 export async function createOrUpdateAwsManualConnectionStep2(
-  clientId: number,
+  userId: string,
   payload: AwsManualStep2Input,
 ): Promise<CreateOrUpdateAwsManualConnectionStep2Result> {
   return sequelize.transaction(async (transaction) => {
     const cloudConnection = await CloudConnection.findOne({
       where: {
         id: payload.connectionId,
-        clientId,
+        userId,
         provider: CLOUD_PROVIDER.AWS,
-        status: CLOUD_CONNECTION_STATUS.DRAFT,
       },
       transaction,
       lock: transaction.LOCK.UPDATE,
@@ -220,7 +185,7 @@ export async function createOrUpdateAwsManualConnectionStep2(
     }
 
     const existingAwsConnection = await AwsCloudConnection.findOne({
-      where: { cloudConnectionId: cloudConnection.id },
+      where: { cloudConnectionId: String(cloudConnection.id) },
       transaction,
       lock: transaction.LOCK.UPDATE,
     });
@@ -238,13 +203,6 @@ export async function createOrUpdateAwsManualConnectionStep2(
       { transaction },
     );
 
-    await cloudConnection.update(
-      {
-        currentStep: AWS_MANUAL_STEP_2_NEXT_STEP,
-      },
-      { transaction },
-    );
-
     return {
       connectionId: cloudConnection.id,
       nextStep: AWS_MANUAL_STEP_2_NEXT_STEP,
@@ -253,16 +211,15 @@ export async function createOrUpdateAwsManualConnectionStep2(
 }
 
 export async function createOrUpdateAwsManualConnectionStep3(
-  clientId: number,
+  userId: string,
   payload: AwsManualStep3Input,
 ): Promise<CreateOrUpdateAwsManualConnectionStep3Result> {
   return sequelize.transaction(async (transaction) => {
     const cloudConnection = await CloudConnection.findOne({
       where: {
         id: payload.connectionId,
-        clientId,
+        userId,
         provider: CLOUD_PROVIDER.AWS,
-        status: CLOUD_CONNECTION_STATUS.DRAFT,
       },
       transaction,
       lock: transaction.LOCK.UPDATE,
@@ -272,18 +229,17 @@ export async function createOrUpdateAwsManualConnectionStep3(
       throw new NotFoundError("Draft AWS cloud connection not found");
     }
 
-    if (cloudConnection.currentStep < AWS_MANUAL_STEP_2_NEXT_STEP) {
-      throw new BadRequestError("Step 2 must be completed before Step 3");
-    }
-
     const existingAwsConnection = await AwsCloudConnection.findOne({
-      where: { cloudConnectionId: cloudConnection.id },
+      where: { cloudConnectionId: String(cloudConnection.id) },
       transaction,
       lock: transaction.LOCK.UPDATE,
     });
 
     if (!existingAwsConnection) {
       throw new NotFoundError("AWS cloud connection details not found");
+    }
+    if (!existingAwsConnection.externalId || !existingAwsConnection.roleName || !existingAwsConnection.policyName) {
+      throw new BadRequestError("Step 2 must be completed before Step 3");
     }
 
     await existingAwsConnection.update(
@@ -297,8 +253,7 @@ export async function createOrUpdateAwsManualConnectionStep3(
     await cloudConnection.update(
       {
         connectionName: payload.connectionName,
-        currentStep: AWS_MANUAL_STEP_2_NEXT_STEP,
-        status: CLOUD_CONNECTION_STATUS.READY_FOR_VALIDATION,
+        status: CLOUD_CONNECTION_STATUS.DRAFT,
       },
       { transaction },
     );
@@ -311,15 +266,14 @@ export async function createOrUpdateAwsManualConnectionStep3(
 }
 
 export async function validateAwsManualConnection(
-  clientId: number,
+  userId: string,
   payload: AwsManualValidateInput,
 ): Promise<ValidateAwsManualConnectionResult> {
   const cloudConnection = await CloudConnection.findOne({
     where: {
       id: payload.connectionId,
-      clientId,
+      userId,
       provider: CLOUD_PROVIDER.AWS,
-      status: CLOUD_CONNECTION_STATUS.READY_FOR_VALIDATION,
     },
     include: [{ model: AwsCloudConnection, required: false }],
   });
@@ -398,8 +352,6 @@ export async function validateAwsManualConnection(
       await cloudConnection.update(
         {
           status: CLOUD_CONNECTION_STATUS.FAILED,
-          isActive: false,
-          lastError: sanitizedError,
         },
         { transaction },
       );
@@ -416,9 +368,6 @@ export async function validateAwsManualConnection(
     await cloudConnection.update(
       {
         status: CLOUD_CONNECTION_STATUS.ACTIVE,
-        isActive: true,
-        lastValidatedAt: new Date(),
-        lastError: null,
       },
       { transaction },
     );

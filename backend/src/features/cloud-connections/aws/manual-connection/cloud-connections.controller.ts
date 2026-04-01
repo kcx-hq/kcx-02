@@ -19,13 +19,13 @@ import {
 export async function handleCreateOrUpdateAwsManualStep1(req: Request, res: Response): Promise<void> {
   try {
     const payload = parseAwsManualStep1Body(req.body);
-    const clientId = req.auth?.user.id;
+    const userId = req.auth?.user.id;
 
-    if (!clientId) {
-      throw new UnauthorizedError("Missing clientId in authenticated context");
+    if (!userId) {
+      throw new UnauthorizedError("Missing userId in authenticated context");
     }
 
-    const result = await createOrUpdateAwsManualConnectionStep1(clientId, payload);
+    const result = await createOrUpdateAwsManualConnectionStep1(String(userId), payload);
 
     sendSuccess({
       res,
@@ -45,13 +45,13 @@ export async function handleCreateOrUpdateAwsManualStep1(req: Request, res: Resp
 export async function handleCreateOrUpdateAwsManualStep2(req: Request, res: Response): Promise<void> {
   try {
     const payload = parseAwsManualStep2Body(req.body);
-    const clientId = req.auth?.user.id;
+    const userId = req.auth?.user.id;
 
-    if (!clientId) {
-      throw new UnauthorizedError("Missing clientId in authenticated context");
+    if (!userId) {
+      throw new UnauthorizedError("Missing userId in authenticated context");
     }
 
-    const result = await createOrUpdateAwsManualConnectionStep2(clientId, payload);
+    const result = await createOrUpdateAwsManualConnectionStep2(String(userId), payload);
 
     sendSuccess({
       res,
@@ -71,13 +71,13 @@ export async function handleCreateOrUpdateAwsManualStep2(req: Request, res: Resp
 export async function handleCreateOrUpdateAwsManualStep3(req: Request, res: Response): Promise<void> {
   try {
     const payload = parseAwsManualStep3Body(req.body);
-    const clientId = req.auth?.user.id;
+    const userId = req.auth?.user.id;
 
-    if (!clientId) {
-      throw new UnauthorizedError("Missing clientId in authenticated context");
+    if (!userId) {
+      throw new UnauthorizedError("Missing userId in authenticated context");
     }
 
-    const result = await createOrUpdateAwsManualConnectionStep3(clientId, payload);
+    const result = await createOrUpdateAwsManualConnectionStep3(String(userId), payload);
 
     sendSuccess({
       res,
@@ -97,13 +97,13 @@ export async function handleCreateOrUpdateAwsManualStep3(req: Request, res: Resp
 export async function handleValidateAwsManualConnection(req: Request, res: Response): Promise<void> {
   try {
     const payload = parseAwsManualValidateBody(req.body);
-    const clientId = req.auth?.user.id;
+    const userId = req.auth?.user.id;
 
-    if (!clientId) {
-      throw new UnauthorizedError("Missing clientId in authenticated context");
+    if (!userId) {
+      throw new UnauthorizedError("Missing userId in authenticated context");
     }
 
-    const result = await validateAwsManualConnection(clientId, payload);
+    const result = await validateAwsManualConnection(String(userId), payload);
 
     sendSuccess({
       res,

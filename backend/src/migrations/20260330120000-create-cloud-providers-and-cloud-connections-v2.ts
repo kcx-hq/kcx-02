@@ -187,7 +187,13 @@ LEFT JOIN cloud_providers cp ON cp.code = LEFT(cc.provider, 30);
         }
         await queryInterface.renameTable("cloud_connections", "cloud_connections__old");
         await queryInterface.renameTable("cloud_connections__v2", "cloud_connections");
-        await queryInterface.sequelize.query(`DROP TABLE IF EXISTS cloud_connections__old;`);
+        // Keep legacy table when dependent objects (for example AwsCloudConnections FK) still reference it.
+        try {
+            await queryInterface.sequelize.query(`DROP TABLE IF EXISTS cloud_connections__old;`);
+        }
+        catch {
+            // Intentional no-op: downstream migrations can continue while legacy references are cleaned up later.
+        }
     },
     async down(queryInterface) {
         await queryInterface.sequelize.query(`DROP TABLE IF EXISTS cloud_connections;`);

@@ -1,12 +1,12 @@
 import type { Request, Response } from "express";
 import crypto from "node:crypto";
 
-import env from "../../config/env.js";
-import { HTTP_STATUS } from "../../constants/http-status.js";
-import { ConflictError, NotFoundError, UnauthorizedError } from "../../errors/http-errors.js";
-import { CloudConnectionV2, CloudProvider } from "../../models/index.js";
-import { sendSuccess } from "../../utils/api-response.js";
-import { parseWithSchema } from "../_shared/validation/zod-validate.js";
+import env from "../../../../config/env.js";
+import { HTTP_STATUS } from "../../../../constants/http-status.js";
+import { ConflictError, NotFoundError, UnauthorizedError } from "../../../../errors/http-errors.js";
+import { CloudConnectionV2, CloudProvider } from "../../../../models/index.js";
+import { sendSuccess } from "../../../../utils/api-response.js";
+import { parseWithSchema } from "../../../_shared/validation/zod-validate.js";
 import {
   buildAwsCloudFormationCreateStackUrl,
   KCX_AWS_CLOUDFORMATION_TEMPLATE_URL,
@@ -38,6 +38,41 @@ const PROVIDER_NAME_BY_CODE: Record<string, string> = {
   custom: "Custom",
 };
 
+const ensureAwsAutoSetupFields = async (
+  connection: InstanceType<typeof CloudConnectionV2>,
+): Promise<{
+  stackName: string;
+  externalId: string;
+  callbackToken: string;
+  region: string;
+}> => {
+  const stackName = connection.stackName?.trim() || `kcx-${connection.id.substring(0, 8)}`;
+  const externalId = connection.externalId?.trim() || `kcx-${crypto.randomUUID()}`;
+  const callbackToken = connection.callbackToken?.trim() || crypto.randomBytes(32).toString("hex");
+  const region = connection.region?.trim() || "us-east-1";
+
+  if (
+    connection.stackName !== stackName ||
+    connection.externalId !== externalId ||
+    connection.callbackToken !== callbackToken ||
+    connection.region !== region
+  ) {
+    await connection.update({
+      stackName,
+      externalId,
+      callbackToken,
+      region,
+    });
+  }
+
+  return {
+    stackName,
+    externalId,
+    callbackToken,
+    region,
+  };
+};
+
 export async function handleCreateCloudConnection(req: Request, res: Response): Promise<void> {
   const userId = requireUserId(req);
   const tenantId = requireTenantId(req);
@@ -57,6 +92,8 @@ export async function handleCreateCloudConnection(req: Request, res: Response): 
     if (existingProviderCode && existingProviderCode !== providerCode) {
       throw new ConflictError("Connection name already exists for a different provider");
     }
+
+    await ensureAwsAutoSetupFields(existing);
 
     sendSuccess({
       res,
@@ -159,11 +196,12 @@ export async function handleGetAwsCloudFormationSetupUrl(req: Request, res: Resp
   const connection = await CloudConnectionV2.findOne({ where: { id, tenantId } });
   if (!connection) throw new NotFoundError("Connection not found");
 
-  const stackName = connection.stackName;
-  const externalId = connection.externalId;
-  const callbackToken = connection.callbackToken;
+  const ensured = await ensureAwsAutoSetupFields(connection);
+  const stackName = ensured.stackName;
+  const externalId = ensured.externalId;
+  const callbackToken = ensured.callbackToken;
   const connectionName = connection.connectionName;
-  const region = connection.region;
+  const region = ensured.region;
 
   if (!stackName || !externalId || !callbackToken || !connectionName || !region) {
     throw new NotFoundError("CloudFormation setup is not available for this connection");
@@ -178,6 +216,10 @@ export async function handleGetAwsCloudFormationSetupUrl(req: Request, res: Resp
     callbackUrl: env.awsCallbackUrl,
     callbackToken,
   });
+
+  if (connection.status === "draft") {
+    await connection.update({ status: "connecting", errorMessage: null });
+  }
 
   sendSuccess({
     res,

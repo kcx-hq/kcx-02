@@ -9,7 +9,6 @@ import createDemoRequestModel from "./demo-request.js";
 import createPasswordResetTokenModel from "./password-reset-token.js";
 import createSlotReservationModel from "./slot-reservation.js";
 import createAdminUserModel from "./admin-user.js";
-import createCloudConnectionModel from "./cloud-connection.js";
 import createCloudConnectionV2Model from "./cloud-connection-v2.js";
 import createCloudProviderModel from "./cloud-provider.js";
 import createTenantModel from "./tenant.js";
@@ -53,11 +52,9 @@ const AuthSession = createAuthSessionModel(sequelize);
 const AdminUser = createAdminUserModel(sequelize);
 const AdminAuthSession = createAdminAuthSessionModel(sequelize);
 const SlotReservation = createSlotReservationModel(sequelize);
-const CloudConnection = createCloudConnectionModel(sequelize);
 const CloudProvider = createCloudProviderModel(sequelize);
 const CloudConnectionV2 = createCloudConnectionV2Model(sequelize);
 const Tenant = createTenantModel(sequelize);
-const User = createUserModel(sequelize);
 const RawBillingFile = createRawBillingFileModel(sequelize);
 const BillingSource = createBillingSourceModel(sequelize);
 const BillingIngestionRun = createBillingIngestionRunModel(sequelize);
@@ -179,11 +176,9 @@ export {
   AuthSession,
   AdminUser,
   AdminAuthSession,
-  CloudConnection,
   CloudProvider,
   CloudConnectionV2,
   Tenant,
-  User,
   RawBillingFile,
   BillingSource,
   BillingIngestionRun,

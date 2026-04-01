@@ -1,4 +1,4 @@
-import { useEffect, useMemo , useState, type ReactNode } from "react"
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 // STEP 1:
 // Client prepares billing data source (S3 bucket)
 // This feeds into cross-account access setup in Step 2
@@ -6,7 +6,7 @@ import { useEffect, useMemo , useState, type ReactNode } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
-import { ArrowRight, CheckCircle2, Cloud, ExternalLink, FileSpreadsheet, Wrench } from "lucide-react"
+import { AlertTriangle, ArrowRight, CheckCircle2, Cloud, ExternalLink, FileSpreadsheet, Loader2, Wrench } from "lucide-react"
 
 import {
   submitAwsManualStep1,
@@ -17,6 +17,7 @@ import {
 import { AwsManualSetupStepTwo } from "@/features/client-home/components/AwsManualSetupStepTwo"
 import { ClientPageHeader } from "@/features/client-home/components/ClientPageHeader"
 import { ApiError, apiGet, apiPost } from "@/lib/api"
+import { getAuthUser } from "@/lib/auth"
 import { handleAppLinkClick, navigateTo, useCurrentRoute } from "@/lib/navigation"
 import { cn } from "@/lib/utils"
 
@@ -1179,9 +1180,6 @@ export function ClientBillingPage() {
               </>
             ) : null}
 
-            {activeRoute === "/client/billing/connections/aws/manual" ||
-            activeRoute === "/client/billing/connections/aws/manual/step-2" ||
-            activeRoute === "/client/billing/connections/aws/manual/step-3" ? (
             {cloudProviderSlug && cloudProviderSlug !== "aws" ? (
               <>
                 <div className="space-y-2">
