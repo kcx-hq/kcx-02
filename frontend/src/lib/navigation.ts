@@ -3,6 +3,12 @@ import { useSyncExternalStore } from "react"
 
 const STATIC_ROUTES = [
   "/",
+  "/dashboard",
+  "/dashboard/overview",
+  "/dashboard/cost-analysis",
+  "/dashboard/cost-driver",
+  "/dashboard/data-quality",
+  "/dashboard/report",
   "/client/overview",
   "/client/billing",
   "/client/billing/uploads",
