@@ -28,7 +28,7 @@ async function insertFactCostLineItem({
   }
 
   try {
-    console.debug("Inserting fact row", { tenantId, ingestionRunId });
+    // console.debug("Inserting fact row", { tenantId, ingestionRunId });
 
     const {
       billingAccountKey,

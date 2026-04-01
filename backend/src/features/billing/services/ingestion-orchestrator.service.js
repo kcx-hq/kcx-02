@@ -4,8 +4,19 @@ import env from "../../../config/env.js";
 import { NotFoundError } from "../../../errors/http-errors.js";
 import { RawBillingFile } from "../../../models/index.js";
 import { insertFactCostLineItem } from "./fact-cost-line-item.service.js";
-import { readBillingFile } from "./file-reader.service.js";
+import {
+  detectFileFormatFromKey,
+  readCsvHeaders,
+  readCsvRows,
+  readParquetRows,
+  readParquetSchemaColumns,
+} from "./file-reader.service.js";
 import { getIngestionRunById, updateIngestionRunStatus } from "./ingestion.service.js";
+import {
+  buildSchemaValidationErrorMessage,
+  normalizeRowToCanonical,
+  validateHeaders,
+} from "./schema-validator.service.js";
 
 const SUPPORTED_FORMATS = new Set(["csv", "parquet"]);
 
@@ -91,6 +102,21 @@ function assertSupportedFormat(fileFormat) {
   }
 }
 
+function resolveIngestionFileFormat(rawFile) {
+  const formatFromRecord = normalizeFormat(rawFile?.fileFormat);
+  const formatFromKey = detectFileFormatFromKey(rawFile?.rawStorageKey);
+
+  if (formatFromRecord && formatFromKey && formatFromRecord !== formatFromKey) {
+    throw new Error(
+      `File format mismatch. record=${rawFile?.fileFormat}, key=${rawFile?.rawStorageKey}`,
+    );
+  }
+
+  const resolvedFormat = formatFromRecord || formatFromKey;
+  assertSupportedFormat(resolvedFormat);
+  return resolvedFormat;
+}
+
 function assertRawFileLocation(rawFile) {
   if (!rawFile?.rawStorageBucket || !rawFile?.rawStorageKey) {
     throw new Error("Raw billing file is missing S3 bucket or object key");
@@ -107,37 +133,71 @@ export async function processIngestionRun(ingestionRunId) {
 
     const rawFile = await loadRawBillingFileOrThrow(run.rawBillingFileId);
     assertRawFileLocation(rawFile);
-    assertSupportedFormat(rawFile.fileFormat);
+    const resolvedFileFormat = resolveIngestionFileFormat(rawFile);
 
-    // Validate object exists before moving run to active processing.
+    await markRunRunning(run.id);
+
     await verifyRawFileExistsInS3({
       bucket: rawFile.rawStorageBucket,
       key: rawFile.rawStorageKey,
     });
 
-    await markRunRunning(run.id);
+    // Two-phase ingestion flow:
+    // 1) Read only schema/header metadata
+    // 2) Validate schema and fail fast
+    // 3) Read and normalize full rows only when schema is valid
+    const headers =
+      resolvedFileFormat === "csv"
+        ? await readCsvHeaders({
+            bucket: rawFile.rawStorageBucket,
+            key: rawFile.rawStorageKey,
+          })
+        : await readParquetSchemaColumns({
+            bucket: rawFile.rawStorageBucket,
+            key: rawFile.rawStorageKey,
+          });
 
-    const { rows, rowCount } = await readBillingFile({
-      bucket: rawFile.rawStorageBucket,
-      key: rawFile.rawStorageKey,
-      fileFormat: rawFile.fileFormat,
+    const validation = validateHeaders(headers);
+
+    if (!validation.success) {
+      const schemaValidationErrorMessage = buildSchemaValidationErrorMessage(validation);
+      await markRunFailed(run.id, new Error(schemaValidationErrorMessage));
+      return;
+    }
+
+    const rawRows =
+      resolvedFileFormat === "csv"
+        ? await readCsvRows({
+            bucket: rawFile.rawStorageBucket,
+            key: rawFile.rawStorageKey,
+          })
+        : await readParquetRows({
+            bucket: rawFile.rawStorageBucket,
+            key: rawFile.rawStorageKey,
+          });
+
+    const normalizedRows = rawRows.map((rawRow) =>
+      normalizeRowToCanonical(rawRow, validation.canonicalHeaderMap),
+    );
+
+    console.info("Schema validation passed", {
+      normalizedRowCount: normalizedRows.length,
+      fileFormat: resolvedFileFormat,
     });
-
-    console.info("Rows to process", { rowCount });
 
     let rowsRead = 0;
     let rowsLoaded = 0;
     let rowsFailed = 0;
 
     // NOTE:
-    // This processes rows sequentially (MVP).
+    // This processes normalized rows sequentially (MVP).
     // Can be optimized later using batching or parallel processing.
-    for (const rawRow of rows) {
+    for (const [rowIndex, normalizedRow] of normalizedRows.entries()) {
       rowsRead += 1;
 
       try {
         await insertFactCostLineItem({
-          rawRow,
+          rawRow: normalizedRow,
           tenantId: rawFile.tenantId,
           billingSourceId: rawFile.billingSourceId,
           ingestionRunId: run.id,
@@ -145,8 +205,13 @@ export async function processIngestionRun(ingestionRunId) {
         });
 
         rowsLoaded += 1;
-      } catch (_error) {
+      } catch (err) {
         rowsFailed += 1;
+        console.warn("Row insert failed", {
+          ingestionRunId: run.id,
+          rowIndex,
+          error: err instanceof Error ? err.message : String(err),
+        });
         continue;
       }
     }
@@ -157,7 +222,7 @@ export async function processIngestionRun(ingestionRunId) {
       rowsFailed,
     });
 
-    console.info("Ingestion completed", { rowsLoaded, rowsFailed });
+    console.info("Ingestion completed", { rowsRead, rowsLoaded, rowsFailed });
   } catch (error) {
     if (!run?.id) {
       throw error;
