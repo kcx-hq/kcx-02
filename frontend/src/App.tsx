@@ -1,4 +1,4 @@
-import { useEffect } from "react"
+import { useEffect, useState } from "react"
 
 import { Header } from "@/components/layout/Header"
 import {
@@ -22,12 +22,12 @@ import {
   ResetPasswordPage,
   ScheduleDemoPage,
 } from "@/features/landing/pages"
-import { isAuthenticated } from "@/lib/auth"
+import { clearAuthSession, isAuthenticated } from "@/lib/auth"
+import { ApiError, apiGet } from "@/lib/api"
 import { getBlogSlugFromPath, getRouteRedirectTarget, navigateTo, useCurrentRoute } from "@/lib/navigation"
 import { HomePage } from "@/pages/HomePage"
 
 const CLIENT_WORKSPACE_ROUTES = new Set([
-  "/client",
   "/client/overview",
   "/client/billing",
   "/client/billing/uploads",
@@ -36,28 +36,70 @@ const CLIENT_WORKSPACE_ROUTES = new Set([
   "/client/billing/connections/aws",
   "/client/billing/connections/aws/automatic",
   "/client/billing/connections/aws/manual",
+  "/client/billing/connect-cloud",
+  "/client/billing/connect-cloud/add",
+  "/client/billing/connect-cloud/aws",
+  "/client/billing/connect-cloud/azure",
+  "/client/billing/connect-cloud/gcp",
+  "/client/billing/connect-cloud/oracle-cloud",
+  "/client/billing/connect-cloud/aws/automatic",
+  "/client/billing/connect-cloud/aws/manual",
   "/client/support",
   "/client/support/tickets",
   "/client/support/schedule-call",
   "/client/support/live-chat",
   "/client/users",
   "/client/profile",
-  "/clienthome",
-  "/client-home",
 ])
-const AWS_CONNECTION_SETUP_ROUTE_REGEX = /^\/client\/billing\/connections\/aws\/setup\/[0-9a-fA-F-]{36}$/
+const AWS_CONNECTION_SETUP_ROUTE_REGEX = /^\/client\/billing\/(?:connect-cloud|connections)\/aws\/setup\/[0-9a-fA-F-]{36}$/
+const CLOUD_PROVIDER_ROUTE_REGEX = /^\/client\/billing\/(?:connect-cloud|connections)\/(aws|azure|gcp|oracle-cloud)$/
 
 function isClientWorkspaceRoute(route: string) {
-  return CLIENT_WORKSPACE_ROUTES.has(route) || AWS_CONNECTION_SETUP_ROUTE_REGEX.test(route)
+  return CLIENT_WORKSPACE_ROUTES.has(route) || AWS_CONNECTION_SETUP_ROUTE_REGEX.test(route) || CLOUD_PROVIDER_ROUTE_REGEX.test(route)
 }
 
 const HEADERLESS_ROUTES = new Set(["/schedule-demo", "/login", "/forgot-password", "/reset-password", ...CLIENT_WORKSPACE_ROUTES])
 
 export function App() {
   const route = useCurrentRoute()
-  const authenticated = isAuthenticated()
+  const storedAuthenticated = isAuthenticated()
+  const [authChecked, setAuthChecked] = useState(false)
+  const [authenticated, setAuthenticated] = useState(false)
   const blogSlug = getBlogSlugFromPath(route)
-  const showMarketingHeader = !HEADERLESS_ROUTES.has(route) && !AWS_CONNECTION_SETUP_ROUTE_REGEX.test(route)
+  const showMarketingHeader = !HEADERLESS_ROUTES.has(route) && !AWS_CONNECTION_SETUP_ROUTE_REGEX.test(route) && !CLOUD_PROVIDER_ROUTE_REGEX.test(route)
+
+  useEffect(() => {
+    if (!storedAuthenticated) {
+      setAuthenticated(false)
+      setAuthChecked(true)
+      return
+    }
+
+    let cancelled = false
+    void (async () => {
+      try {
+        await apiGet<{ user: { id: string } | null }>("/auth/me")
+        if (!cancelled) {
+          setAuthenticated(true)
+        }
+      } catch (error) {
+        if (error instanceof ApiError && error.status === 401) {
+          clearAuthSession()
+        }
+        if (!cancelled) {
+          setAuthenticated(false)
+        }
+      } finally {
+        if (!cancelled) {
+          setAuthChecked(true)
+        }
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [storedAuthenticated])
 
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "auto" })
@@ -71,6 +113,8 @@ export function App() {
   }, [route])
 
   useEffect(() => {
+    if (!authChecked) return
+
     if (isClientWorkspaceRoute(route) && !authenticated) {
       navigateTo("/login", { replace: true })
       return
@@ -79,7 +123,7 @@ export function App() {
     if (route === "/login" && authenticated) {
       navigateTo("/client/overview", { replace: true })
     }
-  }, [route, authenticated])
+  }, [route, authenticated, authChecked])
 
   return (
     <main className="min-h-screen overflow-x-clip bg-background text-foreground">
@@ -97,7 +141,7 @@ export function App() {
       {route === "/resources/blog" || route === "/resources/blogs" ? <BlogPage /> : null}
       {blogSlug ? <BlogDetailPage slug={blogSlug} /> : null}
       {route === "/resources/documentation" ? <DocumentationPage /> : null}
-      {route === "/client" || route === "/client/overview" || route === "/clienthome" || route === "/client-home" ? (
+      {route === "/client/overview" ? (
         <ClientLayout>
           <ClientOverviewPage />
         </ClientLayout>
@@ -109,6 +153,15 @@ export function App() {
       route === "/client/billing/connections/aws" ||
       route === "/client/billing/connections/aws/automatic" ||
       route === "/client/billing/connections/aws/manual" ||
+      route === "/client/billing/connect-cloud" ||
+      route === "/client/billing/connect-cloud/add" ||
+      route === "/client/billing/connect-cloud/aws" ||
+      route === "/client/billing/connect-cloud/azure" ||
+      route === "/client/billing/connect-cloud/gcp" ||
+      route === "/client/billing/connect-cloud/oracle-cloud" ||
+      route === "/client/billing/connect-cloud/aws/automatic" ||
+      route === "/client/billing/connect-cloud/aws/manual" ||
+      CLOUD_PROVIDER_ROUTE_REGEX.test(route) ||
       AWS_CONNECTION_SETUP_ROUTE_REGEX.test(route) ? (
         <ClientLayout>
           <ClientBillingPage />

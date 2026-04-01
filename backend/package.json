@@ -20,6 +20,8 @@
   "license": "ISC",
   "type": "module",
   "dependencies": {
+    "@aws-sdk/client-ec2": "^3.1020.0",
+    "@aws-sdk/client-sts": "^3.1020.0",
     "@aws-sdk/client-s3": "^3.903.0",
     "cors": "^2.8.5",
     "csv-parser": "^3.2.0",

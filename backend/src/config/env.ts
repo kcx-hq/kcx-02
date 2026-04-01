@@ -95,6 +95,13 @@ const env = {
   mailgunDomain: optionalEnv(process.env.MAILGUN_DOMAIN),
   mailgunFrom: optionalEnv(process.env.MAILGUN_FROM),
   frontendBaseUrl: optionalEnv(process.env.FRONTEND_BASE_URL),
+  awsCallbackUrl: optionalEnv(process.env.AWS_CALLBACK_URL),
+  awsValidationAccessKeyId:
+    optionalEnv(process.env.AWS_VALIDATION_ACCESS_KEY_ID) ?? optionalEnv(process.env.AWS_ACCESS_KEY_ID),
+  awsValidationSecretAccessKey:
+    optionalEnv(process.env.AWS_VALIDATION_SECRET_ACCESS_KEY) ?? optionalEnv(process.env.AWS_SECRET_ACCESS_KEY),
+  awsValidationSessionToken:
+    optionalEnv(process.env.AWS_VALIDATION_SESSION_TOKEN) ?? optionalEnv(process.env.AWS_SESSION_TOKEN),
   resetTokenTtlMinutes: optionalPositiveNumber(process.env.RESET_TOKEN_TTL_MINUTES, 60),
   sessionTtlHours: optionalPositiveNumber(process.env.SESSION_TTL_HOURS, 168),
   awsRegion: optionalEnv(process.env.AWS_REGION) ?? "us-east-1",

@@ -1,16 +1,18 @@
 import type { Request, Response } from "express";
 import crypto from "node:crypto";
 
-import { HTTP_STATUS } from "../../constants/http-status.js";
-import { ConflictError, NotFoundError, UnauthorizedError } from "../../errors/http-errors.js";
-import { CloudConnectionV2, CloudProvider } from "../../models/index.js";
-import { sendSuccess } from "../../utils/api-response.js";
-import { parseWithSchema } from "../_shared/validation/zod-validate.js";
+import env from "../../../../config/env.js";
+import { HTTP_STATUS } from "../../../../constants/http-status.js";
+import { ConflictError, NotFoundError, UnauthorizedError } from "../../../../errors/http-errors.js";
+import { CloudConnectionV2, CloudProvider } from "../../../../models/index.js";
+import { sendSuccess } from "../../../../utils/api-response.js";
+import { parseWithSchema } from "../../../_shared/validation/zod-validate.js";
 import {
   buildAwsCloudFormationCreateStackUrl,
   KCX_AWS_CLOUDFORMATION_TEMPLATE_URL,
 } from "./aws-cloudformation-url.js";
-import { createCloudConnectionSchema } from "./cloud-connections.schema.js";
+import { validateAwsConnection } from "./aws-connection-validation.service.js";
+import { awsConnectionCallbackSchema, createCloudConnectionSchema } from "./cloud-connections.schema.js";
 
 const requireUserId = (req: Request) => {
   const userId = req.auth?.user.id;
@@ -159,10 +161,11 @@ export async function handleGetAwsCloudFormationSetupUrl(req: Request, res: Resp
 
   const stackName = connection.stackName;
   const externalId = connection.externalId;
+  const callbackToken = connection.callbackToken;
   const connectionName = connection.connectionName;
   const region = connection.region;
 
-  if (!stackName || !externalId || !connectionName || !region) {
+  if (!stackName || !externalId || !callbackToken || !connectionName || !region) {
     throw new NotFoundError("CloudFormation setup is not available for this connection");
   }
 
@@ -172,6 +175,8 @@ export async function handleGetAwsCloudFormationSetupUrl(req: Request, res: Resp
     externalId,
     connectionName,
     region,
+    callbackUrl: env.awsCallbackUrl,
+    callbackToken,
   });
 
   sendSuccess({
@@ -180,5 +185,67 @@ export async function handleGetAwsCloudFormationSetupUrl(req: Request, res: Resp
     statusCode: HTTP_STATUS.OK,
     message: "AWS CloudFormation setup URL generated",
     data: { url },
+  });
+}
+export async function handleAwsConnectionCallback(req: Request, res: Response): Promise<void> {
+  const payload = parseWithSchema(awsConnectionCallbackSchema, req.body);
+
+  const connection = await CloudConnectionV2.findOne({
+    where: { callbackToken: payload.callback_token.trim() },
+  });
+
+  if (!connection) {
+    throw new NotFoundError("Invalid callback token");
+  }
+
+  const now = new Date();
+
+  await connection.update({
+    cloudAccountId: payload.account_id.trim(),
+    roleArn: payload.role_arn.trim(),
+    stackId: payload.stack_id.trim(),
+    status: "awaiting_validation",
+    connectedAt: now,
+    errorMessage: null,
+  });
+
+  const validationResult = await validateAwsConnection(connection.id);
+
+  sendSuccess({
+    res,
+    req,
+    statusCode: HTTP_STATUS.OK,
+    message: "AWS callback processed",
+    data: {
+      id: connection.id,
+      status: validationResult.status,
+      stack_id: payload.stack_id.trim(),
+      error_message: validationResult.errorMessage,
+    },
+  });
+}
+
+export async function handleValidateCloudConnection(req: Request, res: Response): Promise<void> {
+  requireUserId(req);
+  const tenantId = requireTenantId(req);
+  const id = req.params.id;
+  if (typeof id !== "string" || id.trim().length === 0) throw new NotFoundError("Connection not found");
+
+  const connection = await CloudConnectionV2.findOne({ where: { id, tenantId } });
+  if (!connection) throw new NotFoundError("Connection not found");
+
+  const result = await validateAwsConnection(connection.id);
+
+  sendSuccess({
+    res,
+    req,
+    statusCode: HTTP_STATUS.OK,
+    message: "Cloud connection validated",
+    data: {
+      id: result.connectionId,
+      status: result.status,
+      last_validated_at: result.lastValidatedAt.toISOString(),
+      error_message: result.errorMessage,
+    },
   });
 }

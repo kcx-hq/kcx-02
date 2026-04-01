@@ -8,6 +8,12 @@ Parameters:
   ConnectionName:
     Type: String
 
+  CallbackUrl:
+    Type: String
+
+  CallbackToken:
+    Type: String
+
 Resources:
 
   KCXReadOnlyRole:
