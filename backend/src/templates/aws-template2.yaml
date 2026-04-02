@@ -77,6 +77,13 @@ Resources:
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
+              - Sid: AllowValidationApis
+                Effect: Allow
+                Action:
+                  - sts:GetCallerIdentity
+                  - ec2:DescribeRegions
+                Resource: "*"
+
               - Sid: ListExportBucket
                 Effect: Allow
                 Action:
@@ -87,6 +94,7 @@ Resources:
                     s3:prefix:
                       - !Ref ExportPrefix
                       - !Sub ${ExportPrefix}/*
+
               - Sid: ReadExportObjects
                 Effect: Allow
                 Action:
