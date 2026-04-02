@@ -1,4 +1,4 @@
-import { Navigate, Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { DashboardLayout } from "../layout/DashboardLayout";
 import OverviewPage from "../pages/overview/OverviewPage";
 import CostExplorerPage from "../pages/cost-explorer/CostExplorerPage";
@@ -11,11 +11,25 @@ import ReportPage from "../pages/report/ReportPage";
 import "../styles/tokens.css";
 import "../styles/dashboard.css";
 
+function DashboardOverviewRedirect() {
+  const location = useLocation();
+
+  return (
+    <Navigate
+      to={{
+        pathname: "/dashboard/overview",
+        search: location.search,
+      }}
+      replace
+    />
+  );
+}
+
 export default function DashboardRoutes() {
   return (
     <Routes>
       <Route path="/dashboard" element={<DashboardLayout />}>
-        <Route index element={<Navigate to="/dashboard/overview" replace />} />
+        <Route index element={<DashboardOverviewRedirect />} />
         <Route path="overview" element={<OverviewPage />} />
         <Route path="cost-explorer" element={<CostExplorerPage />} />
         <Route path="resources" element={<ResourcesPage />} />
@@ -24,7 +38,7 @@ export default function DashboardRoutes() {
         <Route path="anomalies-alerts" element={<AnomaliesAlertsPage />} />
         <Route path="budget" element={<BudgetPage />} />
         <Route path="report" element={<ReportPage />} />
-        <Route path="*" element={<Navigate to="/dashboard/overview" replace />} />
+        <Route path="*" element={<DashboardOverviewRedirect />} />
       </Route>
     </Routes>
   );

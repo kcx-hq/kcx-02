@@ -25,6 +25,7 @@ type UpdateIngestionRunPatch = {
 
 export type BillingUploadHistoryRecord = {
   id: string;
+  rawBillingFileId: string;
   fileName: string;
   fileType: string;
   status: string;
@@ -199,6 +200,7 @@ export async function getUploadHistoryForTenant(tenantId: string): Promise<Billi
 
       return {
         id: String(run.id),
+        rawBillingFileId: String(run.rawBillingFileId),
         fileName: rawFile?.originalFileName ?? "Unknown file",
         fileType: rawFile?.fileFormat ?? "unknown",
         status: inferredStatus,

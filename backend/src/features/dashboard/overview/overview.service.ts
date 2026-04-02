@@ -1,3 +1,7 @@
+import type { DashboardScope } from "../dashboard.types.js";
+import { OverviewRepository } from "./overview.repository.js";
+import type { TotalSpendResponse } from "./overview.types.js";
+
 export type DashboardSummaryItem = {
   label: string;
   value: string;
@@ -9,6 +13,18 @@ export type DashboardSectionResponse = {
   message: string;
   summary: DashboardSummaryItem[];
 };
+
+export class OverviewService {
+  constructor(private readonly overviewRepository: OverviewRepository = new OverviewRepository()) {}
+
+  async getTotalSpend(scope: DashboardScope): Promise<TotalSpendResponse> {
+    const totalSpend = await this.overviewRepository.getTotalSpend(scope);
+
+    return {
+      totalSpend,
+    };
+  }
+}
 
 export function getOverviewDashboardData(): DashboardSectionResponse {
   return {

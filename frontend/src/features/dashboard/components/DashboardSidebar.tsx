@@ -73,7 +73,7 @@ export function DashboardSidebar() {
         {dashboardNavItems.map((item) => (
           <NavLink
             key={item.path}
-            to={item.path}
+            to={{ pathname: item.path, search: location.search }}
             className={({ isActive }) =>
               `dashboard-nav-item ${isActive ? "dashboard-nav-item--active" : ""}`
             }

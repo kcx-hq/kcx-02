@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import type { TenantUploadHistoryRecord } from "@/features/client-home/api/upload-history.api"
+import { useUploadHistorySelectionStore } from "@/features/client-home/stores/uploadHistorySelection.store"
 import { cn } from "@/lib/utils"
 
 type NormalizedStatus = "idle" | "queued" | "processing" | "completed" | "warning" | "failed"
@@ -14,9 +15,12 @@ type BillingUploadHistorySectionProps = {
   isLoading: boolean
   isError: boolean
   errorMessage: string | null
+  dashboardActionError: string | null
+  dashboardActionLoading: boolean
   onRetry: () => void
   onViewDetails: (runId: string) => void
   onRetryUpload: (record: TenantUploadHistoryRecord) => void
+  onOpenDashboard: (selectedRawBillingFileIds: number[]) => void
 }
 
 const FILTER_OPTIONS: Array<{ value: "all" | NormalizedStatus; label: string }> = [
@@ -121,12 +125,19 @@ export function BillingUploadHistorySection({
   isLoading,
   isError,
   errorMessage,
+  dashboardActionError,
+  dashboardActionLoading,
   onRetry,
   onViewDetails,
   onRetryUpload,
+  onOpenDashboard,
 }: BillingUploadHistorySectionProps) {
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState<"all" | NormalizedStatus>("all")
+  const selectedFileIds = useUploadHistorySelectionStore((state) => state.selectedFileIds)
+  const toggleFile = useUploadHistorySelectionStore((state) => state.toggleFile)
+  const toggleSelectAll = useUploadHistorySelectionStore((state) => state.toggleSelectAll)
+  const isSelected = useUploadHistorySelectionStore((state) => state.isSelected)
 
   const filteredRecords = useMemo(() => {
     const normalizedSearch = searchTerm.trim().toLowerCase()
@@ -138,6 +149,16 @@ export function BillingUploadHistorySection({
       return statusMatches && searchMatches
     })
   }, [records, searchTerm, statusFilter])
+
+  const visibleRawBillingFileIds = useMemo(() => {
+    return filteredRecords
+      .map((record) => Number(record.rawBillingFileId))
+      .filter((id) => Number.isInteger(id))
+  }, [filteredRecords])
+
+  const allVisibleSelected =
+    visibleRawBillingFileIds.length > 0 &&
+    visibleRawBillingFileIds.every((rawBillingFileId) => selectedFileIds.includes(rawBillingFileId))
 
   return (
     <section className="space-y-4" aria-label="Files and processing history">
@@ -169,10 +190,24 @@ export function BillingUploadHistorySection({
               ))}
             </select>
           </label>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-9 rounded-md"
+            disabled={selectedFileIds.length === 0 || dashboardActionLoading}
+            onClick={() => onOpenDashboard(selectedFileIds)}
+          >
+            {dashboardActionLoading ? "Opening..." : `Dashboard${selectedFileIds.length > 0 ? ` (${selectedFileIds.length})` : ""}`}
+          </Button>
         </div>
       </div>
 
       <div className="rounded-md border border-[color:var(--border-light)]">
+        {dashboardActionError ? (
+          <div className="border-b border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+            {dashboardActionError}
+          </div>
+        ) : null}
         {isLoading ? (
           <div className="p-3">
             <LoadingState />
@@ -195,6 +230,15 @@ export function BillingUploadHistorySection({
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead className="w-[52px]">
+                  <input
+                    type="checkbox"
+                    aria-label="Select all visible files"
+                    checked={allVisibleSelected}
+                    onChange={() => toggleSelectAll(visibleRawBillingFileIds)}
+                    className="h-4 w-4 rounded border-[color:var(--border-light)] accent-[color:var(--brand-primary)]"
+                  />
+                </TableHead>
                 <TableHead>File Name</TableHead>
                 <TableHead>Uploaded At</TableHead>
                 <TableHead>Processing Status</TableHead>
@@ -206,9 +250,22 @@ export function BillingUploadHistorySection({
               {filteredRecords.map((record) => {
                 const status = normalizeStatus(record.status)
                 const canRetry = status === "failed" || status === "warning"
+                const rawBillingFileId = Number(record.rawBillingFileId)
 
                 return (
                   <TableRow key={record.id} className="transition-colors hover:bg-[color:var(--bg-surface)]">
+                    <TableCell>
+                      <input
+                        type="checkbox"
+                        aria-label={`Select ${record.fileName}`}
+                        checked={Number.isInteger(rawBillingFileId) ? isSelected(rawBillingFileId) : false}
+                        onChange={() => {
+                          if (!Number.isInteger(rawBillingFileId)) return
+                          toggleFile(rawBillingFileId)
+                        }}
+                        className="h-4 w-4 rounded border-[color:var(--border-light)] accent-[color:var(--brand-primary)]"
+                      />
+                    </TableCell>
                     <TableCell className="font-medium text-text-primary">{record.fileName}</TableCell>
                     <TableCell>{formatDateTime(record.uploadedAt)}</TableCell>
                     <TableCell>

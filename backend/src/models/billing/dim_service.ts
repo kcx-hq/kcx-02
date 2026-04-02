@@ -31,6 +31,10 @@ const createDimServiceModel = (sequelize: Sequelize): typeof DimService => {
       modelName: "DimService",
       tableName: "dim_service",
       timestamps: false,
+      indexes: [
+        { name: "uq_dim_service_provider_name_category_subcategory", unique: true, fields: ["provider_id", "service_name", "service_category", "service_subcategory"] },
+        { name: "idx_dim_service_provider_id", fields: ["provider_id"] },
+      ],
     },
   );
   return DimService;

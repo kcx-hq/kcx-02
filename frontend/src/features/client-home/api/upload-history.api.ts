@@ -4,6 +4,7 @@ export type UploadHistoryStatus = "queued" | "processing" | "completed" | "warni
 
 export type TenantUploadHistoryRecord = {
   id: string
+  rawBillingFileId: string
   fileName: string
   fileType: string
   status: UploadHistoryStatus | string

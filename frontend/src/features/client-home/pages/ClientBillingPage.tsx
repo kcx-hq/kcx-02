@@ -45,6 +45,8 @@ import {
   useTenantUploadHistory,
 } from "@/features/client-home/hooks/useTenantUploadHistory"
 import { ClientPageHeader } from "@/features/client-home/components/ClientPageHeader"
+import { useUploadHistorySelectionStore } from "@/features/client-home/stores/uploadHistorySelection.store"
+import { dashboardApi } from "@/features/dashboard/api/dashboardApi"
 import { ApiError, apiGet, apiPost } from "@/lib/api"
 import { getAuthUser } from "@/lib/auth"
 import { handleAppLinkClick, navigateTo, useCurrentRoute } from "@/lib/navigation"
@@ -1299,6 +1301,10 @@ export function ClientBillingPage() {
     error: uploadHistoryError,
     refetch: refetchUploadHistory,
   } = useTenantUploadHistory(isBillingUploadsRoute)
+  const [dashboardActionLoading, setDashboardActionLoading] = useState(false)
+  const [dashboardActionError, setDashboardActionError] = useState<string | null>(null)
+  const retainOnlyFiles = useUploadHistorySelectionStore((state) => state.retainOnlyFiles)
+  const clearSelectedFiles = useUploadHistorySelectionStore((state) => state.clearSelectedFiles)
   const uploadHistoryErrorMessage = uploadHistoryError instanceof ApiError ? uploadHistoryError.message : "Failed to load upload history"
   const [detailsRunId, setDetailsRunId] = useState<string | null>(null)
   const [detailsDialogOpen, setDetailsDialogOpen] = useState(false)
@@ -1374,6 +1380,20 @@ export function ClientBillingPage() {
       window.localStorage.setItem(ACTIVE_INGESTION_STORAGE_KEY, activeIngestionRunId)
     }
   }, [activeIngestionRunId, ingestionStatus])
+
+  useEffect(() => {
+    const availableRawBillingFileIds = uploadHistoryRecords
+      .map((record) => Number(record.rawBillingFileId))
+      .filter((rawBillingFileId) => Number.isInteger(rawBillingFileId))
+    retainOnlyFiles(availableRawBillingFileIds)
+  }, [retainOnlyFiles, uploadHistoryRecords])
+
+  useEffect(() => {
+    if (!isBillingUploadsRoute) {
+      clearSelectedFiles()
+      setDashboardActionError(null)
+    }
+  }, [clearSelectedFiles, isBillingUploadsRoute])
 
   function validateAutoConnectionName(value: string) {
     return value.trim().length > 0
@@ -1454,6 +1474,46 @@ export function ClientBillingPage() {
         }
       } finally {
         setDetailsLoading(false)
+      }
+    })()
+  }
+
+  function openDashboardWithQuery(search: URLSearchParams) {
+    const nextUrl = `/dashboard/overview?${search.toString()}`
+    window.history.pushState({}, "", nextUrl)
+    window.dispatchEvent(new PopStateEvent("popstate"))
+  }
+
+  function handleOpenDashboard(selectedRawBillingFileIds: number[]) {
+    if (dashboardActionLoading) return
+
+    const validRawBillingFileIds = [...new Set(selectedRawBillingFileIds.filter((id) => Number.isInteger(id)))]
+    if (validRawBillingFileIds.length === 0) {
+      setDashboardActionError("Select at least one uploaded file to open dashboard.")
+      return
+    }
+
+    setDashboardActionError(null)
+    setDashboardActionLoading(true)
+
+    void (async () => {
+      try {
+        await dashboardApi.getScope({
+          rawBillingFileIds: validRawBillingFileIds,
+        })
+
+        const query = new URLSearchParams({
+          rawBillingFileIds: validRawBillingFileIds.join(","),
+        })
+        openDashboardWithQuery(query)
+      } catch (error) {
+        if (error instanceof ApiError) {
+          setDashboardActionError(error.message || "Unable to resolve upload scope for dashboard.")
+        } else {
+          setDashboardActionError("Unable to resolve upload scope for dashboard.")
+        }
+      } finally {
+        setDashboardActionLoading(false)
       }
     })()
   }
@@ -1591,9 +1651,12 @@ export function ClientBillingPage() {
                   isLoading={isUploadHistoryLoading}
                   isError={isUploadHistoryError}
                   errorMessage={uploadHistoryErrorMessage}
+                  dashboardActionError={dashboardActionError}
+                  dashboardActionLoading={dashboardActionLoading}
                   onRetry={() => void refetchUploadHistory()}
                   onViewDetails={handleViewUploadDetails}
                   onRetryUpload={handleRetryUploadRecord}
+                  onOpenDashboard={handleOpenDashboard}
                 />
               </>
             ) : null}

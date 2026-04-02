@@ -1,45 +1,61 @@
 import { apiGet } from "@/lib/api";
+import type {
+  DashboardOverviewResponse,
+  DashboardResolvedScope,
+  DashboardScopeInput,
+  DashboardSectionData,
+} from "./dashboardTypes";
+import { buildDashboardQueryParams } from "../utils/buildDashboardQueryParams";
 
-export type DashboardSummaryItem = {
-  label: string;
-  value: string;
+function withDashboardQuery(
+  path: string,
+  scopeOrInput: DashboardScopeInput | DashboardResolvedScope,
+): string {
+  const query = buildDashboardQueryParams(scopeOrInput);
+  return query.length > 0 ? `${path}?${query}` : path;
+}
+
+export const dashboardApi = {
+  getScope(scopeInput: DashboardScopeInput) {
+    return apiGet<DashboardResolvedScope>(withDashboardQuery("/dashboard/scope", scopeInput));
+  },
+
+  getOverview(scope: DashboardResolvedScope) {
+    return apiGet<DashboardOverviewResponse>(withDashboardQuery("/dashboard/overview", scope));
+  },
+
+  getCostExplorer(scope: DashboardResolvedScope) {
+    return apiGet<DashboardSectionData>(withDashboardQuery("/dashboard/cost-explorer", scope));
+  },
+
+  getResources(scope: DashboardResolvedScope) {
+    return apiGet<DashboardSectionData>(withDashboardQuery("/dashboard/resources", scope));
+  },
+
+  getAllocation(scope: DashboardResolvedScope) {
+    return apiGet<DashboardSectionData>(withDashboardQuery("/dashboard/allocation", scope));
+  },
+
+  getOptimization(scope: DashboardResolvedScope) {
+    return apiGet<DashboardSectionData>(withDashboardQuery("/dashboard/optimization", scope));
+  },
+
+  getAnomaliesAlerts(scope: DashboardResolvedScope) {
+    return apiGet<DashboardSectionData>(withDashboardQuery("/dashboard/anomalies-alerts", scope));
+  },
+
+  getBudget(scope: DashboardResolvedScope) {
+    return apiGet<DashboardSectionData>(withDashboardQuery("/dashboard/budget", scope));
+  },
+
+  getReport(scope: DashboardResolvedScope) {
+    return apiGet<DashboardSectionData>(withDashboardQuery("/dashboard/report", scope));
+  },
 };
 
-export type DashboardSectionData = {
-  section: string;
-  title: string;
-  message: string;
-  summary: DashboardSummaryItem[];
-};
-
-export function getOverview() {
-  return apiGet<DashboardSectionData>("/dashboard/overview");
-}
-
-export function getCostExplorer() {
-  return apiGet<DashboardSectionData>("/dashboard/cost-explorer");
-}
-
-export function getResources() {
-  return apiGet<DashboardSectionData>("/dashboard/resources");
-}
-
-export function getAllocation() {
-  return apiGet<DashboardSectionData>("/dashboard/allocation");
-}
-
-export function getOptimization() {
-  return apiGet<DashboardSectionData>("/dashboard/optimization");
-}
-
-export function getAnomaliesAlerts() {
-  return apiGet<DashboardSectionData>("/dashboard/anomalies-alerts");
-}
-
-export function getBudget() {
-  return apiGet<DashboardSectionData>("/dashboard/budget");
-}
-
-export function getReport() {
-  return apiGet<DashboardSectionData>("/dashboard/report");
-}
+export type {
+  DashboardOverviewResponse,
+  DashboardResolvedScope,
+  DashboardScopeInput,
+  DashboardSectionData,
+} from "./dashboardTypes";

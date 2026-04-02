@@ -1,7 +1,7 @@
 import type { UseQueryResult } from "@tanstack/react-query";
 import { DashboardPageHeader } from "../../components/DashboardPageHeader";
 import { DashboardSection } from "../../components/DashboardSection";
-import type { DashboardSectionData } from "../../api/dashboardApi";
+import type { DashboardSectionData } from "../../api/dashboardTypes";
 
 type DashboardSectionPageProps = {
   title: string;

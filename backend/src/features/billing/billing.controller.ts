@@ -28,9 +28,7 @@ const requireTenantId = (req: Request): string => {
   return tenantId;
 };
 
-export async function handleManualUploadBillingFile(req: Request, res: Response): Promise<void> {
-  await handleStartBillingIngestion(req, res);
-}
+
 
 const mapIngestionRunStatusResponse = (run: {
   id: string;
@@ -64,7 +62,7 @@ const mapIngestionRunStatusResponse = (run: {
   lastHeartbeatAt: run.lastHeartbeatAt,
 });
 
-export async function handleStartBillingIngestion(req: Request, res: Response): Promise<void> {
+export async function handleManualUploadBillingFile(req: Request, res: Response): Promise<void> {
   const tenantId = requireTenantId(req);
   const { cloudProviderId } = req.body as { cloudProviderId?: string };
 

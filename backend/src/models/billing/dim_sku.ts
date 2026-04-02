@@ -33,6 +33,10 @@ const createDimSkuModel = (sequelize: Sequelize): typeof DimSku => {
       modelName: "DimSku",
       tableName: "dim_sku",
       timestamps: false,
+      indexes: [
+        { name: "uq_dim_sku_provider_sku_price_category_unit", unique: true, fields: ["provider_id", "sku_id", "sku_price_id", "pricing_category", "pricing_unit"] },
+        { name: "idx_dim_sku_provider_id", fields: ["provider_id"] },
+      ],
     },
   );
   return DimSku;

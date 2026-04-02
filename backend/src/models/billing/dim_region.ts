@@ -31,6 +31,10 @@ const createDimRegionModel = (sequelize: Sequelize): typeof DimRegion => {
       modelName: "DimRegion",
       tableName: "dim_region",
       timestamps: false,
+      indexes: [
+        { name: "uq_dim_region_provider_region_zone", unique: true, fields: ["provider_id", "region_id", "region_name", "availability_zone"] },
+        { name: "idx_dim_region_provider_id", fields: ["provider_id"] },
+      ],
     },
   );
   return DimRegion;

@@ -11,7 +11,6 @@ import {
   handleGetLatestActiveBillingIngestion,
   handleGetLatestBillingIngestionForSource,
   handleManualUploadBillingFile,
-  handleStartBillingIngestion,
 } from "./billing.controller.js";
 
 const router = Router();
@@ -29,7 +28,7 @@ router.use(requireAuth);
 
 router.get("/billing/cloud-providers", asyncHandler(handleGetBillingCloudProviders));
 router.get("/billing/uploads/history", asyncHandler(handleGetBillingUploadHistory));
-router.post("/billing/ingestions", upload.single("file"), asyncHandler(handleStartBillingIngestion));
+router.post("/billing/ingestions", upload.single("file"), asyncHandler(handleManualUploadBillingFile));
 router.get("/billing/ingestions/latest-active", asyncHandler(handleGetLatestActiveBillingIngestion));
 router.get("/billing/ingestions/:id/status", asyncHandler(handleGetBillingIngestionStatus));
 router.get("/billing/sources/:sourceId/latest-ingestion", asyncHandler(handleGetLatestBillingIngestionForSource));
