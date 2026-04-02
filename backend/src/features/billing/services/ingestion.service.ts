@@ -1,7 +1,7 @@
 import { Op } from "sequelize";
 
 import { BadRequestError, InternalServerError } from "../../../errors/http-errors.js";
-import { BillingIngestionRun, BillingSource } from "../../../models/index.js";
+import { BillingIngestionRun, BillingSource, RawBillingFile, User } from "../../../models/index.js";
 
 type CreateIngestionRunParams = {
   billingSourceId: string | number;
@@ -21,6 +21,19 @@ type UpdateIngestionRunPatch = {
   error_message?: string | null;
   started_at?: Date | string | null;
   finished_at?: Date | string | null;
+};
+
+export type BillingUploadHistoryRecord = {
+  id: string;
+  fileName: string;
+  fileType: string;
+  status: string;
+  uploadedAt: Date | null;
+  uploadedBy: string | null;
+  totalRows: number;
+  processedRows: number;
+  failedRows: number;
+  tenantId: string;
 };
 
 const INGESTION_RUN_PATCH_FIELD_MAP = {
@@ -136,6 +149,70 @@ export async function getLatestActiveIngestionRunForTenant(tenantId: string) {
     });
   } catch (error) {
     throw new InternalServerError("Failed to fetch active billing ingestion run", {
+      reason: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+export async function getUploadHistoryForTenant(tenantId: string): Promise<BillingUploadHistoryRecord[]> {
+  try {
+    const runs = await BillingIngestionRun.findAll({
+      include: [
+        {
+          model: BillingSource,
+          attributes: ["tenantId"],
+          required: true,
+          where: { tenantId },
+        },
+        {
+          model: RawBillingFile,
+          attributes: ["originalFileName", "fileFormat", "createdAt"],
+          required: true,
+          include: [
+            {
+              model: User,
+              attributes: ["fullName"],
+              required: false,
+            },
+          ],
+        },
+      ],
+      order: [["createdAt", "DESC"]],
+    });
+
+    return runs.map((run) => {
+      const source = (run as unknown as { BillingSource?: InstanceType<typeof BillingSource> }).BillingSource;
+      const rawFile = (run as unknown as {
+        RawBillingFile?: InstanceType<typeof RawBillingFile> & { User?: InstanceType<typeof User> };
+      }).RawBillingFile;
+
+      const failedRows = Number(run.rowsFailed ?? 0);
+      const inferredStatus = (() => {
+        if (run.status === "queued") return "queued";
+        if (run.status === "failed") return "failed";
+        if (run.status === "completed_with_warnings" || (run.status === "completed" && failedRows > 0)) {
+          return "warning";
+        }
+        if (run.status === "completed") return "completed";
+        return "processing";
+      })();
+
+      return {
+        id: String(run.id),
+        fileName: rawFile?.originalFileName ?? "Unknown file",
+        fileType: rawFile?.fileFormat ?? "unknown",
+        status: inferredStatus,
+        uploadedAt: rawFile?.createdAt ?? null,
+        // Assumption: uploader identity is not persisted on current raw file or ingestion-run schemas.
+        uploadedBy: rawFile?.User?.fullName ?? null,
+        totalRows: Number(run.totalRowsEstimated ?? run.rowsRead ?? 0),
+        processedRows: Number(run.rowsLoaded ?? 0),
+        failedRows,
+        tenantId: source?.tenantId ?? tenantId,
+      };
+    });
+  } catch (error) {
+    throw new InternalServerError("Failed to fetch billing upload history", {
       reason: error instanceof Error ? error.message : String(error),
     });
   }

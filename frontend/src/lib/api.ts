@@ -39,6 +39,7 @@ function joinUrl(base: string, path: string) {
 function handleUnauthorized(path: string, status: number) {
   if (status !== 401) return
   if (path.startsWith("/auth/") || path.startsWith("/admin/auth/")) return
+  if (path === "/api/aws/manual/create-connection") return
 
   clearAuthSession()
   navigateTo("/login", { replace: true })

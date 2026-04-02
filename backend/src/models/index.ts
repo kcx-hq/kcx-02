@@ -7,7 +7,6 @@ import createDemoRequestModel from "./demo-request.js";
 import createPasswordResetTokenModel from "./password-reset-token.js";
 import createSlotReservationModel from "./slot-reservation.js";
 import createAdminUserModel from "./admin-user.js";
-import createCloudConnectionModel from "./cloud-connection.js";
 import createCloudConnectionV2Model from "./cloud-connection-v2.js";
 import createCloudProviderModel from "./cloud-provider.js";
 import createTenantModel from "./tenant.js";
@@ -15,6 +14,7 @@ import createUserModel from "./user.js";
 import createRawBillingFileModel from "./raw-billing-file.js";
 import createBillingSourceModel from "./billing-source.js";
 import createBillingIngestionRunModel from "./billing-ingestion-run.js";
+import createManualCloudConnectionModel from "./manual-cloud-connection.js";
 import createDimBillingAccountModel from "./billing/dim_billing_account.js";
 import createDimSubAccountModel from "./billing/dim_sub_account.js";
 import createDimRegionModel from "./billing/dim_region.js";
@@ -52,20 +52,20 @@ const sequelize = new Sequelize(dbUrl.toString(), {
 });
 
 const Temp = createTempModel(sequelize);
+const User = createUserModel(sequelize);
 const DemoRequest = createDemoRequestModel(sequelize);
 const PasswordResetToken = createPasswordResetTokenModel(sequelize);
 const AuthSession = createAuthSessionModel(sequelize);
 const AdminUser = createAdminUserModel(sequelize);
 const AdminAuthSession = createAdminAuthSessionModel(sequelize);
 const SlotReservation = createSlotReservationModel(sequelize);
-const CloudConnection = createCloudConnectionModel(sequelize);
 const CloudProvider = createCloudProviderModel(sequelize);
 const CloudConnectionV2 = createCloudConnectionV2Model(sequelize);
 const Tenant = createTenantModel(sequelize);
-const User = createUserModel(sequelize);
 const RawBillingFile = createRawBillingFileModel(sequelize);
 const BillingSource = createBillingSourceModel(sequelize);
 const BillingIngestionRun = createBillingIngestionRunModel(sequelize);
+const ManualCloudConnection = createManualCloudConnectionModel(sequelize);
 const DimBillingAccount = createDimBillingAccountModel(sequelize);
 const DimSubAccount = createDimSubAccountModel(sequelize);
 const DimRegion = createDimRegionModel(sequelize);
@@ -97,9 +97,6 @@ PasswordResetToken.belongsTo(User, { foreignKey: "userId" });
 User.hasMany(AuthSession, { foreignKey: "userId" });
 AuthSession.belongsTo(User, { foreignKey: "userId" });
 
-User.hasMany(CloudConnection, { foreignKey: "userId" });
-CloudConnection.belongsTo(User, { foreignKey: "userId" });
-
 Tenant.hasMany(CloudConnectionV2, { foreignKey: "tenantId" });
 CloudConnectionV2.belongsTo(Tenant, { foreignKey: "tenantId" });
 CloudProvider.hasMany(CloudConnectionV2, { foreignKey: "providerId" });
@@ -112,10 +109,16 @@ BillingSource.hasMany(RawBillingFile, { foreignKey: "billingSourceId" });
 RawBillingFile.belongsTo(BillingSource, { foreignKey: "billingSourceId" });
 CloudProvider.hasMany(RawBillingFile, { foreignKey: "cloudProviderId" });
 RawBillingFile.belongsTo(CloudProvider, { foreignKey: "cloudProviderId" });
+User.hasMany(RawBillingFile, { foreignKey: "uploadedBy" });
+RawBillingFile.belongsTo(User, { foreignKey: "uploadedBy" });
 BillingSource.hasMany(BillingIngestionRun, { foreignKey: "billingSourceId" });
 BillingIngestionRun.belongsTo(BillingSource, { foreignKey: "billingSourceId" });
 RawBillingFile.hasMany(BillingIngestionRun, { foreignKey: "rawBillingFileId" });
 BillingIngestionRun.belongsTo(RawBillingFile, { foreignKey: "rawBillingFileId" });
+Tenant.hasMany(ManualCloudConnection, { foreignKey: "tenantId" });
+ManualCloudConnection.belongsTo(Tenant, { foreignKey: "tenantId" });
+User.hasMany(ManualCloudConnection, { foreignKey: "createdBy" });
+ManualCloudConnection.belongsTo(User, { foreignKey: "createdBy" });
 Tenant.hasMany(DimBillingAccount, { foreignKey: "tenantId" });
 DimBillingAccount.belongsTo(Tenant, { foreignKey: "tenantId" });
 CloudProvider.hasMany(DimBillingAccount, { foreignKey: "providerId" });
@@ -231,20 +234,20 @@ export {
   sequelize,
   Sequelize,
   Temp,
+  User,
   DemoRequest,
   SlotReservation,
   PasswordResetToken,
   AuthSession,
   AdminUser,
   AdminAuthSession,
-  CloudConnection,
   CloudProvider,
   CloudConnectionV2,
   Tenant,
-  User,
   RawBillingFile,
   BillingSource,
   BillingIngestionRun,
+  ManualCloudConnection,
   DimBillingAccount,
   DimSubAccount,
   DimRegion,

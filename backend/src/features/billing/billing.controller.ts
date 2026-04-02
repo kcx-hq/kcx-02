@@ -10,6 +10,7 @@ import {
   getIngestionRunByIdForTenant,
   getLatestActiveIngestionRunForTenant,
   getLatestIngestionRunForSource,
+  getUploadHistoryForTenant,
 } from "./services/ingestion.service.js";
 import { detectFileFormat, storeManualFile } from "./services/raw-file.service.js";
 import { ingestionOrchestrator } from "./services/ingestion-orchestrator.service.js";
@@ -92,6 +93,7 @@ export async function handleStartBillingIngestion(req: Request, res: Response): 
     file: req.file,
     billingSourceId: billingSource.id,
     tenantId,
+    uploadedByUserId: typeof req.auth?.user.id === "string" ? req.auth.user.id : null,
   });
 
   // Assumption: raw file persistence completes before ingestion-run enqueueing; cross-table transaction orchestration can be added in a later ingestion-processing phase.
@@ -178,6 +180,19 @@ export async function handleGetLatestActiveBillingIngestion(req: Request, res: R
     statusCode: HTTP_STATUS.OK,
     message: "Latest active ingestion loaded",
     data: run ? mapIngestionRunStatusResponse(run) : null,
+  });
+}
+
+export async function handleGetBillingUploadHistory(req: Request, res: Response): Promise<void> {
+  const tenantId = requireTenantId(req);
+  const history = await getUploadHistoryForTenant(tenantId);
+
+  sendSuccess({
+    res,
+    req,
+    statusCode: HTTP_STATUS.OK,
+    message: "Billing upload history loaded",
+    data: history,
   });
 }
 

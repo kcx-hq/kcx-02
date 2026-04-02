@@ -7,6 +7,7 @@ import {
   handleGetBillingCloudProviders,
   handleGetBillingIngestionStatus,
   handleGetBillingIngestionRun,
+  handleGetBillingUploadHistory,
   handleGetLatestActiveBillingIngestion,
   handleGetLatestBillingIngestionForSource,
   handleManualUploadBillingFile,
@@ -27,6 +28,7 @@ const upload = multer({
 router.use(requireAuth);
 
 router.get("/billing/cloud-providers", asyncHandler(handleGetBillingCloudProviders));
+router.get("/billing/uploads/history", asyncHandler(handleGetBillingUploadHistory));
 router.post("/billing/ingestions", upload.single("file"), asyncHandler(handleStartBillingIngestion));
 router.get("/billing/ingestions/latest-active", asyncHandler(handleGetLatestActiveBillingIngestion));
 router.get("/billing/ingestions/:id/status", asyncHandler(handleGetBillingIngestionStatus));

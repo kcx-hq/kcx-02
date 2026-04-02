@@ -10,7 +10,7 @@ import {
 
 const router = Router();
 
-router.use(requireAdminAuth);
+router.use("/admin", requireAdminAuth);
 
 router.get("/admin/demo-requests", asyncHandler(handleAdminGetDemoRequests));
 router.get("/admin/demo-requests/:id", asyncHandler(handleAdminGetDemoRequestById));

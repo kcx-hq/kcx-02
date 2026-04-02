@@ -94,11 +94,6 @@ const migration = {
                 updated_at: { type: Sequelize.DATE, allowNull: false, defaultValue: Sequelize.literal("NOW()") },
             });
         }
-        await queryInterface.sequelize.query(`
-INSERT INTO cloud_providers (code, name, status)
-VALUES ('custom', 'Custom', 'active')
-ON CONFLICT (code) DO NOTHING;
-`);
         await ensureEnumTypes(queryInterface);
         const cloudConnectionsExists = await hasTable(queryInterface, "cloud_connections");
         if (!cloudConnectionsExists) {
@@ -150,7 +145,7 @@ INSERT INTO cloud_connections__v2 (
 SELECT
   gen_random_uuid() AS id,
   u.tenant_id AS tenant_id,
-  COALESCE(cp.id, (SELECT id FROM cloud_providers WHERE code = 'custom' LIMIT 1)) AS provider_id,
+  cp.id AS provider_id,
   cc.connection_name AS connection_name,
   (
     CASE
@@ -182,12 +177,18 @@ SELECT
   cc.updated_at AS updated_at
 FROM cloud_connections cc
 JOIN users u ON u.id = cc.user_id
-LEFT JOIN cloud_providers cp ON cp.code = LEFT(cc.provider, 30);
+JOIN cloud_providers cp ON cp.code = LEFT(cc.provider, 30);
 `);
         }
         await queryInterface.renameTable("cloud_connections", "cloud_connections__old");
         await queryInterface.renameTable("cloud_connections__v2", "cloud_connections");
-        await queryInterface.sequelize.query(`DROP TABLE IF EXISTS cloud_connections__old;`);
+        // Keep legacy table when dependent objects (for example AwsCloudConnections FK) still reference it.
+        try {
+            await queryInterface.sequelize.query(`DROP TABLE IF EXISTS cloud_connections__old;`);
+        }
+        catch {
+            // Intentional no-op: downstream migrations can continue while legacy references are cleaned up later.
+        }
     },
     async down(queryInterface) {
         await queryInterface.sequelize.query(`DROP TABLE IF EXISTS cloud_connections;`);

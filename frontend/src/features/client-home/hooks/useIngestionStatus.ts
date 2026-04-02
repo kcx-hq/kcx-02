@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
 import { ApiError, apiGet } from "@/lib/api"
 
-export type IngestionTerminalStatus = "completed" | "failed"
+export type IngestionTerminalStatus = "completed" | "completed_with_warnings" | "failed"
 
 export type IngestionStatusCode =
   | "queued"
@@ -53,7 +53,10 @@ export function useIngestionStatus({ ingestionRunId, enabled = true }: UseIngest
     }
   }, [])
 
-  const isTerminal = status?.status === "completed" || status?.status === "failed"
+  const isTerminal =
+    status?.status === "completed" ||
+    status?.status === "completed_with_warnings" ||
+    status?.status === "failed"
   const isRunning = Boolean(status && !isTerminal)
 
   const poll = useCallback(async () => {
@@ -73,7 +76,11 @@ export function useIngestionStatus({ ingestionRunId, enabled = true }: UseIngest
       setStatus(nextStatus)
       setRequestError(null)
 
-      if (nextStatus.status === "completed" || nextStatus.status === "failed") {
+      if (
+        nextStatus.status === "completed" ||
+        nextStatus.status === "completed_with_warnings" ||
+        nextStatus.status === "failed"
+      ) {
         clearScheduledPoll()
         return
       }
