@@ -1,3 +1,6 @@
 /* Landing-scoped styles live here.
    Keep globals in `src/styles/` limited to tokens + utilities. */
 
+.kcx-page-shell :is(button, a).inline-flex {
+  border-radius: 10px !important;
+}

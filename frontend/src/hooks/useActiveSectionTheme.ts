@@ -42,6 +42,7 @@ export function useActiveSectionTheme({
       const probeY = stickyOffsetPx + 8
       let winner: HTMLElement | null = null
       let winnerScore = -1
+      let winnerContainsProbe = false
 
       for (const section of sectionsRef.current) {
         const rect = section.getBoundingClientRect()
@@ -55,6 +56,7 @@ export function useActiveSectionTheme({
         if (score > winnerScore) {
           winner = section
           winnerScore = score
+          winnerContainsProbe = containsProbe
         }
       }
 
@@ -64,7 +66,7 @@ export function useActiveSectionTheme({
       const currentId = activeIdRef.current
       const currentScore = activeScoreRef.current
 
-      if (nextId !== currentId && winnerScore + HYSTERESIS < currentScore) return
+      if (nextId !== currentId && !winnerContainsProbe && winnerScore + HYSTERESIS < currentScore) return
 
       activeIdRef.current = nextId
       activeScoreRef.current = winnerScore
@@ -88,15 +90,17 @@ export function useActiveSectionTheme({
     sections.forEach((section) => observer.observe(section))
 
     const onResize = () => chooseBestSection()
+    const onScroll = () => chooseBestSection()
     window.addEventListener("resize", onResize)
+    window.addEventListener("scroll", onScroll, { passive: true })
     chooseBestSection()
 
     return () => {
       observer.disconnect()
       window.removeEventListener("resize", onResize)
+      window.removeEventListener("scroll", onScroll)
     }
   }, [defaultTheme, selector, stickyOffsetPx])
 
   return theme
 }
-

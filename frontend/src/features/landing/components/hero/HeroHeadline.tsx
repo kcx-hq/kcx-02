@@ -1,6 +1,7 @@
 import { Button } from "@/components/ui/button"
 import { RotatingCloudText } from "@/features/landing/components/hero/RotatingCloudText"
 import { landingCloudProviders, landingHeroHighlights } from "@/features/landing/data/heroCopy"
+import { handleAppLinkClick } from "@/lib/navigation"
 import { cn } from "@/lib/utils"
 
 type HeroHeadlineProps = {
@@ -54,8 +55,16 @@ export function HeroHeadline({ className }: HeroHeadlineProps) {
       </div>
 
       <div className="mt-9 flex items-center justify-center">
-        <Button className="h-[3.25rem] rounded-xl bg-brand-primary px-8 text-[0.95rem] font-semibold text-white shadow-[0_20px_40px_-20px_rgba(31,128,104,0.7),inset_0_1px_0_rgba(255,255,255,0.14)] transition-all duration-300 hover:-translate-y-0.5 hover:bg-brand-primary-hover hover:shadow-[0_26px_48px_-20px_rgba(31,128,104,0.85)] focus-visible:ring-2 focus-visible:ring-white/40 focus-visible:ring-offset-2 focus-visible:ring-offset-[#09121a] sm:h-[3.5rem] sm:px-9 sm:text-[1rem]">
-          Schedule Demo
+        <Button
+          asChild
+          className="h-[3.25rem] rounded-xl bg-brand-primary px-8 text-[0.95rem] font-semibold text-white shadow-[0_20px_40px_-20px_rgba(31,128,104,0.7),inset_0_1px_0_rgba(255,255,255,0.14)] transition-all duration-300 hover:-translate-y-0.5 hover:bg-brand-primary-hover hover:shadow-[0_26px_48px_-20px_rgba(31,128,104,0.85)] focus-visible:ring-2 focus-visible:ring-white/40 focus-visible:ring-offset-2 focus-visible:ring-offset-[#09121a] sm:h-[3.5rem] sm:px-9 sm:text-[1rem]"
+        >
+          <a
+            href="/schedule-demo"
+            onClick={(event) => handleAppLinkClick(event, "/schedule-demo")}
+          >
+            Schedule Demo
+          </a>
         </Button>
       </div>
     </div>

@@ -492,7 +492,7 @@ export function HowKcxWorks() {
   return (
     <section 
       ref={containerRef}
-      data-header-theme="light"
+      data-header-theme="dark"
       className="relative w-full bg-[linear-gradient(180deg,#050b11_0%,#081520_50%,#081620_100%)] pb-12 sm:pb-16" 
     >
       <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
