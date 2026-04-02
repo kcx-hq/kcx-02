@@ -38,16 +38,17 @@ export function buildDashboardQueryParams(
     return params.toString();
   }
 
-  if (Array.isArray(scopeOrInput.rawBillingFileIds) && scopeOrInput.rawBillingFileIds.length > 0) {
-    params.set("rawBillingFileIds", scopeOrInput.rawBillingFileIds.join(","));
-    if (scopeOrInput.tenantId) {
-      params.set("tenantId", String(scopeOrInput.tenantId));
+  const input = scopeOrInput as DashboardScopeInput;
+  if (Array.isArray(input.rawBillingFileIds) && input.rawBillingFileIds.length > 0) {
+    params.set("rawBillingFileIds", input.rawBillingFileIds.join(","));
+    if (input.tenantId) {
+      params.set("tenantId", String(input.tenantId));
     }
     return params.toString();
   }
 
   DASHBOARD_QUERY_KEYS.forEach((key) => {
-    const value = scopeOrInput[key as keyof DashboardScopeInput];
+    const value = input[key];
     if (typeof value === "undefined" || value === null || value === "") {
       return;
     }

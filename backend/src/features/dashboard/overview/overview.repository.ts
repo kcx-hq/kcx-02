@@ -116,9 +116,9 @@ const buildCostWhereClause = (
 
   const pushRange = (column: string, start: string, end: string): void => {
     params.push(start);
-    params.push(end);
     const firstIdx = startIndex + params.length - 1;
-    const secondIdx = startIndex + params.length;
+    params.push(end);
+    const secondIdx = startIndex + params.length - 1;
     conditions.push(`${column} BETWEEN $${firstIdx} AND $${secondIdx}`);
   };
 
@@ -163,9 +163,9 @@ const buildAnomalyWhereClause = (
 
   const pushRange = (column: string, start: string, end: string): void => {
     params.push(start);
-    params.push(end);
     const firstIdx = startIndex + params.length - 1;
-    const secondIdx = startIndex + params.length;
+    params.push(end);
+    const secondIdx = startIndex + params.length - 1;
     conditions.push(`${column} BETWEEN $${firstIdx} AND $${secondIdx}`);
   };
 

@@ -1,6 +1,14 @@
 import { apiGet } from "@/lib/api";
 import type {
+  BudgetActualForecastPoint,
+  CostBreakdownItem,
   DashboardOverviewResponse,
+  OverviewAnomaliesResponse,
+  OverviewFiltersQuery,
+  OverviewFiltersResponse,
+  OverviewKpis,
+  OverviewRecommendationsResponse,
+  SavingsInsights,
   DashboardResolvedScope,
   DashboardScopeInput,
   DashboardSectionData,
@@ -15,13 +23,84 @@ function withDashboardQuery(
   return query.length > 0 ? `${path}?${query}` : path;
 }
 
+function withOverviewFilters(
+  path: string,
+  scope: DashboardResolvedScope,
+  filters?: OverviewFiltersQuery,
+): string {
+  const params = new URLSearchParams(buildDashboardQueryParams(scope));
+
+  const appendArray = (key: string, values?: (string | number)[]) => {
+    if (!Array.isArray(values) || values.length === 0) {
+      return;
+    }
+    params.set(key, values.join(","));
+  };
+
+  if (filters?.billingPeriodStart) params.set("billingPeriodStart", filters.billingPeriodStart);
+  if (filters?.billingPeriodEnd) params.set("billingPeriodEnd", filters.billingPeriodEnd);
+  if (typeof filters?.page === "number") params.set("page", String(filters.page));
+  if (typeof filters?.pageSize === "number") params.set("pageSize", String(filters.pageSize));
+  if (filters?.sortBy) params.set("sortBy", filters.sortBy);
+  if (filters?.sortOrder) params.set("sortOrder", filters.sortOrder);
+
+  appendArray("accountKeys", filters?.accountKeys);
+  appendArray("serviceKeys", filters?.serviceKeys);
+  appendArray("regionKeys", filters?.regionKeys);
+  appendArray("severity", filters?.severity);
+  appendArray("status", filters?.status);
+
+  const query = params.toString();
+  return query.length > 0 ? `${path}?${query}` : path;
+}
+
 export const dashboardApi = {
   getScope(scopeInput: DashboardScopeInput) {
     return apiGet<DashboardResolvedScope>(withDashboardQuery("/dashboard/scope", scopeInput));
   },
 
-  getOverview(scope: DashboardResolvedScope) {
-    return apiGet<DashboardOverviewResponse>(withDashboardQuery("/dashboard/overview", scope));
+  getOverview(scope: DashboardResolvedScope, filters?: OverviewFiltersQuery) {
+    return apiGet<DashboardOverviewResponse>(withOverviewFilters("/dashboard/overview", scope, filters));
+  },
+
+  getOverviewKpis(scope: DashboardResolvedScope, filters?: OverviewFiltersQuery) {
+    return apiGet<OverviewKpis>(withOverviewFilters("/dashboard/overview/kpis", scope, filters));
+  },
+
+  getOverviewBudgetVsActualForecast(scope: DashboardResolvedScope, filters?: OverviewFiltersQuery) {
+    return apiGet<{ items: BudgetActualForecastPoint[] }>(
+      withOverviewFilters("/dashboard/overview/budget-vs-actual-forecast", scope, filters),
+    );
+  },
+
+  getOverviewTopServices(scope: DashboardResolvedScope, filters?: OverviewFiltersQuery) {
+    return apiGet<{ items: CostBreakdownItem[] }>(withOverviewFilters("/dashboard/overview/top-services", scope, filters));
+  },
+
+  getOverviewTopAccounts(scope: DashboardResolvedScope, filters?: OverviewFiltersQuery) {
+    return apiGet<{ items: CostBreakdownItem[] }>(withOverviewFilters("/dashboard/overview/top-accounts", scope, filters));
+  },
+
+  getOverviewTopRegions(scope: DashboardResolvedScope, filters?: OverviewFiltersQuery) {
+    return apiGet<{ items: CostBreakdownItem[] }>(withOverviewFilters("/dashboard/overview/top-regions", scope, filters));
+  },
+
+  getOverviewSavingsInsights(scope: DashboardResolvedScope, filters?: OverviewFiltersQuery) {
+    return apiGet<SavingsInsights>(withOverviewFilters("/dashboard/overview/savings-insights", scope, filters));
+  },
+
+  getOverviewAnomalies(scope: DashboardResolvedScope, filters?: OverviewFiltersQuery) {
+    return apiGet<OverviewAnomaliesResponse>(withOverviewFilters("/dashboard/overview/anomalies", scope, filters));
+  },
+
+  getOverviewRecommendations(scope: DashboardResolvedScope, filters?: OverviewFiltersQuery) {
+    return apiGet<OverviewRecommendationsResponse>(
+      withOverviewFilters("/dashboard/overview/recommendations", scope, filters),
+    );
+  },
+
+  getDashboardFilters(scope: DashboardResolvedScope, filters?: OverviewFiltersQuery) {
+    return apiGet<OverviewFiltersResponse>(withOverviewFilters("/dashboard/filters", scope, filters));
   },
 
   getCostExplorer(scope: DashboardResolvedScope) {
@@ -54,7 +133,18 @@ export const dashboardApi = {
 };
 
 export type {
+  BudgetActualForecastPoint,
+  CostBreakdownItem,
   DashboardOverviewResponse,
+  OverviewAnomaliesResponse,
+  OverviewAnomaly,
+  OverviewFiltersQuery,
+  OverviewFiltersResponse,
+  OverviewKpis,
+  OverviewRecommendation,
+  OverviewRecommendationsResponse,
+  OverviewSortOrder,
+  SavingsInsights,
   DashboardResolvedScope,
   DashboardScopeInput,
   DashboardSectionData,

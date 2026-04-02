@@ -1,5 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
-import { dashboardApi, type DashboardResolvedScope } from "../api/dashboardApi";
+import {
+  dashboardApi,
+  type DashboardResolvedScope,
+  type OverviewAnomaliesResponse,
+  type OverviewFiltersQuery,
+  type OverviewRecommendationsResponse,
+} from "../api/dashboardApi";
 import { useDashboardScope } from "./useDashboardScope";
 
 function assertScope(scope: DashboardResolvedScope | null): DashboardResolvedScope {
@@ -9,11 +15,39 @@ function assertScope(scope: DashboardResolvedScope | null): DashboardResolvedSco
   return scope;
 }
 
-export function useOverviewQuery() {
+export function useOverviewQuery(filters?: OverviewFiltersQuery) {
   const { scope } = useDashboardScope();
   return useQuery({
-    queryKey: ["dashboard", "overview", scope],
-    queryFn: () => dashboardApi.getOverview(assertScope(scope)),
+    queryKey: ["dashboard", "overview", scope, filters],
+    queryFn: () => dashboardApi.getOverview(assertScope(scope), filters),
+    enabled: Boolean(scope),
+  });
+}
+
+export function useDashboardFiltersQuery(filters?: OverviewFiltersQuery) {
+  const { scope } = useDashboardScope();
+  return useQuery({
+    queryKey: ["dashboard", "filters", scope, filters],
+    queryFn: () => dashboardApi.getDashboardFilters(assertScope(scope), filters),
+    enabled: Boolean(scope),
+    staleTime: 60_000,
+  });
+}
+
+export function useOverviewAnomaliesQuery(filters?: OverviewFiltersQuery) {
+  const { scope } = useDashboardScope();
+  return useQuery<OverviewAnomaliesResponse, Error>({
+    queryKey: ["dashboard", "overview", "anomalies", scope, filters],
+    queryFn: () => dashboardApi.getOverviewAnomalies(assertScope(scope), filters),
+    enabled: Boolean(scope),
+  });
+}
+
+export function useOverviewRecommendationsQuery(filters?: OverviewFiltersQuery) {
+  const { scope } = useDashboardScope();
+  return useQuery<OverviewRecommendationsResponse, Error>({
+    queryKey: ["dashboard", "overview", "recommendations", scope, filters],
+    queryFn: () => dashboardApi.getOverviewRecommendations(assertScope(scope), filters),
     enabled: Boolean(scope),
   });
 }
