@@ -4,7 +4,7 @@ import crypto from "node:crypto";
 import env from "../../../../config/env.js";
 import { HTTP_STATUS } from "../../../../constants/http-status.js";
 import { ConflictError, NotFoundError, UnauthorizedError } from "../../../../errors/http-errors.js";
-import { CloudConnectionV2, CloudProvider } from "../../../../models/index.js";
+import { BillingSource, CloudConnectionV2, CloudProvider } from "../../../../models/index.js";
 import { sendSuccess } from "../../../../utils/api-response.js";
 import { parseWithSchema } from "../../../_shared/validation/zod-validate.js";
 import {
@@ -36,6 +36,18 @@ const PROVIDER_NAME_BY_CODE: Record<string, string> = {
   gcp: "Google Cloud Platform",
   oracle: "Oracle Cloud",
   custom: "Custom",
+};
+
+const DEFAULT_AWS_EXPORT_PREFIX = "kcx/data-exports/cur2";
+const buildDefaultAwsExportName = (connectionId: string) => `KCX-CUR2-${connectionId.replace(/-/g, "").slice(0, 10)}`;
+const resolveBillingSourceStatusAfterValidation = (
+  validationStatus: string,
+  currentStatus: string,
+  lastFileReceivedAt: Date | null,
+): string => {
+  if (validationStatus !== "active") return validationStatus;
+  if (currentStatus === "active" || lastFileReceivedAt) return "active";
+  return "pending_first_file";
 };
 
 export async function handleCreateCloudConnection(req: Request, res: Response): Promise<void> {
@@ -146,6 +158,11 @@ export async function handleGetCloudConnection(req: Request, res: Response): Pro
       provider: provider?.code ?? "unknown",
       status: connection.status,
       account_type: connection.accountType,
+      export_name: connection.exportName ?? null,
+      export_bucket: connection.exportBucket ?? null,
+      export_prefix: connection.exportPrefix ?? null,
+      export_region: connection.exportRegion ?? null,
+      export_arn: connection.exportArn ?? null,
     },
   });
 }
@@ -175,6 +192,8 @@ export async function handleGetAwsCloudFormationSetupUrl(req: Request, res: Resp
     externalId,
     connectionName,
     region,
+    exportPrefix: DEFAULT_AWS_EXPORT_PREFIX,
+    exportName: buildDefaultAwsExportName(connection.id),
     callbackUrl: env.awsCallbackUrl,
     callbackToken,
   });
@@ -204,12 +223,54 @@ export async function handleAwsConnectionCallback(req: Request, res: Response): 
     cloudAccountId: payload.account_id.trim(),
     roleArn: payload.role_arn.trim(),
     stackId: payload.stack_id.trim(),
+    exportName: payload.export_name.trim(),
+    exportBucket: payload.export_bucket.trim(),
+    exportPrefix: payload.export_prefix.trim(),
+    exportRegion: payload.export_region.trim(),
+    exportArn: payload.export_arn.trim(),
     status: "awaiting_validation",
     connectedAt: now,
     errorMessage: null,
   });
 
+  const existingBillingSource = await BillingSource.findOne({
+    where: {
+      tenantId: connection.tenantId,
+      cloudConnectionId: connection.id,
+      sourceType: payload.source_type,
+    },
+  });
+
+  const billingSourcePayload = {
+    tenantId: connection.tenantId,
+    cloudConnectionId: connection.id,
+    cloudProviderId: connection.providerId,
+    sourceName: `AWS Data Exports (${payload.export_name.trim()})`,
+    sourceType: payload.source_type,
+    setupMode: payload.setup_mode,
+    format: payload.format,
+    schemaType: payload.schema_type,
+    bucketName: payload.export_bucket.trim(),
+    pathPrefix: payload.export_prefix.trim(),
+    cadence: "daily",
+    status: "awaiting_validation",
+  };
+
+  const billingSource = existingBillingSource
+    ? await existingBillingSource.update(billingSourcePayload)
+    : await BillingSource.create(billingSourcePayload);
+
   const validationResult = await validateAwsConnection(connection.id);
+  const nextBillingSourceStatus = resolveBillingSourceStatusAfterValidation(
+    validationResult.status,
+    billingSource.status,
+    billingSource.lastFileReceivedAt ?? null,
+  );
+
+  await billingSource.update({
+    status: nextBillingSourceStatus,
+    lastValidatedAt: validationResult.lastValidatedAt,
+  });
 
   sendSuccess({
     res,
@@ -220,6 +281,10 @@ export async function handleAwsConnectionCallback(req: Request, res: Response): 
       id: connection.id,
       status: validationResult.status,
       stack_id: payload.stack_id.trim(),
+      export_name: payload.export_name.trim(),
+      export_bucket: payload.export_bucket.trim(),
+      export_prefix: payload.export_prefix.trim(),
+      format: payload.format,
       error_message: validationResult.errorMessage,
     },
   });
@@ -235,6 +300,25 @@ export async function handleValidateCloudConnection(req: Request, res: Response)
   if (!connection) throw new NotFoundError("Connection not found");
 
   const result = await validateAwsConnection(connection.id);
+  const billingSources = await BillingSource.findAll({
+    where: {
+      tenantId,
+      cloudConnectionId: connection.id,
+      sourceType: "aws_data_exports_cur2",
+    },
+  });
+
+  for (const billingSource of billingSources) {
+    const nextStatus = resolveBillingSourceStatusAfterValidation(
+      result.status,
+      billingSource.status,
+      billingSource.lastFileReceivedAt ?? null,
+    );
+    await billingSource.update({
+      status: nextStatus,
+      lastValidatedAt: result.lastValidatedAt,
+    });
+  }
 
   sendSuccess({
     res,

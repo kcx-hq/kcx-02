@@ -1,5 +1,6 @@
 import { AssumeRoleCommand, GetCallerIdentityCommand, STSClient } from "@aws-sdk/client-sts";
 import { DescribeRegionsCommand, EC2Client } from "@aws-sdk/client-ec2";
+import { ListObjectsV2Command, S3Client } from "@aws-sdk/client-s3";
 
 import env from "../../../../config/env.js";
 import { CloudConnectionV2 } from "../../../../models/index.js";
@@ -27,6 +28,8 @@ export async function validateAwsConnection(connectionId: string): Promise<AwsVa
   const roleArn = connection.roleArn?.trim();
   const externalId = connection.externalId?.trim();
   const expectedAccountId = connection.cloudAccountId?.trim();
+  const exportBucket = connection.exportBucket?.trim();
+  const exportPrefix = connection.exportPrefix?.trim();
   const region = connection.region?.trim() || "us-east-1";
   const validatedAt = new Date();
 
@@ -46,12 +49,12 @@ export async function validateAwsConnection(connectionId: string): Promise<AwsVa
     };
   }
 
-  const hasStaticAccessKey = Boolean(env.awsValidationAccessKeyId);
-  const hasStaticSecretKey = Boolean(env.awsValidationSecretAccessKey);
+  const hasStaticAccessKey = Boolean(env.awsAccessKeyId);
+  const hasStaticSecretKey = Boolean(env.awsSecretAccessKey);
 
   if (hasStaticAccessKey !== hasStaticSecretKey) {
     const errorMessage =
-      "Incomplete AWS validation credentials. Set both AWS_VALIDATION_ACCESS_KEY_ID and AWS_VALIDATION_SECRET_ACCESS_KEY.";
+      "Incomplete AWS credentials. Set both AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY.";
     await connection.update({
       status: "failed",
       lastValidatedAt: validatedAt,
@@ -69,11 +72,11 @@ export async function validateAwsConnection(connectionId: string): Promise<AwsVa
   const stsClient = new STSClient({
     region,
     ...(hasStaticAccessKey && hasStaticSecretKey
-      ? {
+        ? {
           credentials: {
-            accessKeyId: env.awsValidationAccessKeyId as string,
-            secretAccessKey: env.awsValidationSecretAccessKey as string,
-            ...(env.awsValidationSessionToken ? { sessionToken: env.awsValidationSessionToken } : {}),
+            accessKeyId: env.awsAccessKeyId as string,
+            secretAccessKey: env.awsSecretAccessKey as string,
+            ...(env.awsSessionToken ? { sessionToken: env.awsSessionToken } : {}),
           },
         }
       : {}),
@@ -123,6 +126,20 @@ export async function validateAwsConnection(connectionId: string): Promise<AwsVa
       const ec2Client = new EC2Client({ region, credentials: tempCredentials });
       await ec2Client.send(new DescribeRegionsCommand({}));
 
+      if (exportBucket && exportPrefix) {
+        const s3Client = new S3Client({
+          region: connection.exportRegion?.trim() || region,
+          credentials: tempCredentials,
+        });
+        await s3Client.send(
+          new ListObjectsV2Command({
+            Bucket: exportBucket,
+            Prefix: exportPrefix.endsWith("/") ? exportPrefix : `${exportPrefix}/`,
+            MaxKeys: 1,
+          }),
+        );
+      }
+
       await connection.update({
         status: "active",
         lastValidatedAt: validatedAt,
@@ -154,7 +171,7 @@ export async function validateAwsConnection(connectionId: string): Promise<AwsVa
     const rawErrorMessage = error instanceof Error ? error.message : "Failed to assume role";
     const isProviderChainError = rawErrorMessage.toLowerCase().includes("could not load credentials from any providers");
     const errorMessage = isProviderChainError
-      ? "Could not load AWS credentials in backend. Configure AWS_VALIDATION_ACCESS_KEY_ID and AWS_VALIDATION_SECRET_ACCESS_KEY (or AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY) for the KCX AWS principal account, then retry validation."
+      ? "Could not load AWS credentials in backend. Configure AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY for the KCX AWS principal account, then retry validation."
       : rawErrorMessage;
     await connection.update({
       status: "failed",

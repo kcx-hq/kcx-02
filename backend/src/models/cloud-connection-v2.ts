@@ -35,6 +35,11 @@ class CloudConnectionV2 extends Model<
   declare cloudAccountId: CreationOptional<string | null>;
   declare payerAccountId: CreationOptional<string | null>;
   declare roleArn: CreationOptional<string | null>;
+  declare exportName: CreationOptional<string | null>;
+  declare exportBucket: CreationOptional<string | null>;
+  declare exportPrefix: CreationOptional<string | null>;
+  declare exportRegion: CreationOptional<string | null>;
+  declare exportArn: CreationOptional<string | null>;
   declare createdBy: CreationOptional<string | null>;
   declare connectedAt: CreationOptional<Date | null>;
   declare lastValidatedAt: CreationOptional<Date | null>;
@@ -77,6 +82,11 @@ const createCloudConnectionV2Model = (sequelize: Sequelize): typeof CloudConnect
       cloudAccountId: { type: DataTypes.STRING(50), allowNull: true, field: "cloud_account_id" },
       payerAccountId: { type: DataTypes.STRING(50), allowNull: true, field: "payer_account_id" },
       roleArn: { type: DataTypes.TEXT, allowNull: true, field: "role_arn" },
+      exportName: { type: DataTypes.STRING(255), allowNull: true, field: "export_name" },
+      exportBucket: { type: DataTypes.STRING(255), allowNull: true, field: "export_bucket" },
+      exportPrefix: { type: DataTypes.STRING(1000), allowNull: true, field: "export_prefix" },
+      exportRegion: { type: DataTypes.STRING(50), allowNull: true, field: "export_region" },
+      exportArn: { type: DataTypes.TEXT, allowNull: true, field: "export_arn" },
       createdBy: { type: DataTypes.UUID, allowNull: true, field: "created_by" },
       connectedAt: { type: DataTypes.DATE, allowNull: true, field: "connected_at" },
       lastValidatedAt: { type: DataTypes.DATE, allowNull: true, field: "last_validated_at" },

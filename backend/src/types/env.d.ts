@@ -11,9 +11,6 @@ declare namespace NodeJS {
     AWS_ACCESS_KEY_ID?: string;
     AWS_SECRET_ACCESS_KEY?: string;
     AWS_SESSION_TOKEN?: string;
-    AWS_VALIDATION_ACCESS_KEY_ID?: string;
-    AWS_VALIDATION_SECRET_ACCESS_KEY?: string;
-    AWS_VALIDATION_SESSION_TOKEN?: string;
     RESET_TOKEN_TTL_MINUTES?: string;
     SESSION_TTL_HOURS?: string;
     NODE_ENV?: "development" | "test" | "production";

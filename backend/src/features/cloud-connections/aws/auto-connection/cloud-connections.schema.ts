@@ -12,4 +12,13 @@ export const awsConnectionCallbackSchema = z.object({
   account_id: z.string().trim().min(1, "account_id is required"),
   role_arn: z.string().trim().min(1, "role_arn is required"),
   stack_id: z.string().trim().min(1, "stack_id is required"),
+  export_name: z.string().trim().min(1, "export_name is required"),
+  export_bucket: z.string().trim().min(1, "export_bucket is required"),
+  export_prefix: z.string().trim().min(1, "export_prefix is required"),
+  export_region: z.string().trim().min(1, "export_region is required"),
+  export_arn: z.string().trim().min(1, "export_arn is required"),
+  format: z.literal("parquet").optional().default("parquet"),
+  source_type: z.literal("aws_data_exports_cur2").optional().default("aws_data_exports_cur2"),
+  setup_mode: z.literal("cloud_connected").optional().default("cloud_connected"),
+  schema_type: z.literal("cur2_custom").optional().default("cur2_custom"),
 });
