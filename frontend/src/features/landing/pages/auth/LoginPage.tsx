@@ -1,10 +1,13 @@
 import kcxLogo from "@/assets/logos/kcx-logo.svg"
+import { BackNavButton } from "@/features/landing/components/BackNavButton"
 import { SplitHeroLeftPanel } from "@/features/landing/components/SplitHeroLeftPanel"
 import { LoginForm } from "@/features/landing/pages/auth/components/LoginForm"
 
 export function LoginPage() {
   return (
-    <section className="w-full min-h-[100svh] lg:h-[100svh] lg:overflow-hidden">
+    <section className="relative w-full min-h-[100svh] lg:h-[100svh] lg:overflow-hidden">
+      <BackNavButton fallbackHref="/" className="absolute left-4 top-4 z-30 sm:left-6 sm:top-6 lg:left-8 lg:top-8" />
+
       <div className="grid min-h-[100svh] lg:h-[100svh] lg:grid-cols-[3fr_2fr]">
         <SplitHeroLeftPanel className="px-6 py-12 sm:px-10 lg:px-14">
           <div className="mx-auto w-full max-w-[40rem]">
