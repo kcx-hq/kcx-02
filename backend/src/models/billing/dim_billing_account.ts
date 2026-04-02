@@ -33,6 +33,10 @@ const createDimBillingAccountModel = (sequelize: Sequelize): typeof DimBillingAc
       modelName: "DimBillingAccount",
       tableName: "dim_billing_account",
       timestamps: false,
+      indexes: [
+        { name: "uq_dim_billing_account_tenant_provider_account_id", unique: true, fields: ["tenant_id", "provider_id", "billing_account_id"] },
+        { name: "idx_dim_billing_account_tenant_provider", fields: ["tenant_id", "provider_id"] },
+      ],
     },
   );
   return DimBillingAccount;

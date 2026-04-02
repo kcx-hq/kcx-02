@@ -28,6 +28,22 @@ class FactCostLineItems extends Model<InferAttributes<FactCostLineItems>, InferC
   declare listCost: CreationOptional<string | null>;
   declare consumedQuantity: CreationOptional<string | null>;
   declare pricingQuantity: CreationOptional<string | null>;
+  declare usageStartTime: CreationOptional<Date | null>;
+  declare usageEndTime: CreationOptional<Date | null>;
+  declare usageType: CreationOptional<string | null>;
+  declare operation: CreationOptional<string | null>;
+  declare lineItemType: CreationOptional<string | null>;
+  declare pricingTerm: CreationOptional<string | null>;
+  declare purchaseOption: CreationOptional<string | null>;
+  declare publicOnDemandCost: CreationOptional<string | null>;
+  declare discountAmount: CreationOptional<string | null>;
+  declare creditAmount: CreationOptional<string | null>;
+  declare refundAmount: CreationOptional<string | null>;
+  declare taxCost: CreationOptional<string | null>;
+  declare reservationArn: CreationOptional<string | null>;
+  declare savingsPlanArn: CreationOptional<string | null>;
+  declare savingsPlanType: CreationOptional<string | null>;
+  declare ingestedAt: CreationOptional<Date>;
   declare tagsJson: CreationOptional<Record<string, unknown> | null>;
   declare createdAt: CreationOptional<Date>;
 }
@@ -55,6 +71,22 @@ const createFactCostLineItemsModel = (sequelize: Sequelize): typeof FactCostLine
       listCost: { type: DataTypes.DECIMAL(18, 6), allowNull: true, field: "list_cost" },
       consumedQuantity: { type: DataTypes.DECIMAL(18, 6), allowNull: true, field: "consumed_quantity" },
       pricingQuantity: { type: DataTypes.DECIMAL(18, 6), allowNull: true, field: "pricing_quantity" },
+      usageStartTime: { type: DataTypes.DATE, allowNull: true, field: "usage_start_time" },
+      usageEndTime: { type: DataTypes.DATE, allowNull: true, field: "usage_end_time" },
+      usageType: { type: DataTypes.TEXT, allowNull: true, field: "usage_type" },
+      operation: { type: DataTypes.TEXT, allowNull: true },
+      lineItemType: { type: DataTypes.TEXT, allowNull: true, field: "line_item_type" },
+      pricingTerm: { type: DataTypes.TEXT, allowNull: true, field: "pricing_term" },
+      purchaseOption: { type: DataTypes.TEXT, allowNull: true, field: "purchase_option" },
+      publicOnDemandCost: { type: DataTypes.DECIMAL(18, 6), allowNull: true, field: "public_on_demand_cost" },
+      discountAmount: { type: DataTypes.DECIMAL(18, 6), allowNull: true, field: "discount_amount" },
+      creditAmount: { type: DataTypes.DECIMAL(18, 6), allowNull: true, field: "credit_amount" },
+      refundAmount: { type: DataTypes.DECIMAL(18, 6), allowNull: true, field: "refund_amount" },
+      taxCost: { type: DataTypes.DECIMAL(18, 6), allowNull: true, field: "tax_cost" },
+      reservationArn: { type: DataTypes.TEXT, allowNull: true, field: "reservation_arn" },
+      savingsPlanArn: { type: DataTypes.TEXT, allowNull: true, field: "savings_plan_arn" },
+      savingsPlanType: { type: DataTypes.TEXT, allowNull: true, field: "savings_plan_type" },
+      ingestedAt: { type: DataTypes.DATE, allowNull: false, defaultValue: sequelize.literal("NOW()"), field: "ingested_at" },
       tagsJson: { type: DataTypes.JSONB, allowNull: true, field: "tags_json" },
       createdAt: { type: DataTypes.DATE, allowNull: false, defaultValue: sequelize.literal("NOW()"), field: "created_at" },
     },
@@ -70,4 +102,3 @@ const createFactCostLineItemsModel = (sequelize: Sequelize): typeof FactCostLine
 
 export { FactCostLineItems };
 export default createFactCostLineItemsModel;
-

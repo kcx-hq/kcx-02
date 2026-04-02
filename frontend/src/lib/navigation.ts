@@ -3,6 +3,15 @@ import { useSyncExternalStore } from "react"
 
 const STATIC_ROUTES = [
   "/",
+  "/dashboard",
+  "/dashboard/overview",
+  "/dashboard/cost-explorer",
+  "/dashboard/resources",
+  "/dashboard/allocation",
+  "/dashboard/optimization",
+  "/dashboard/anomalies-alerts",
+  "/dashboard/budget",
+  "/dashboard/report",
   "/client/overview",
   "/client/billing",
   "/client/billing/uploads",
@@ -55,13 +64,16 @@ const LEGACY_ROUTE_REDIRECTS: Record<string, StaticRoute> = {
   "/clienthome": "/client/overview",
   "/client/tickets": "/client/support/tickets",
   "/client/billing": "/client/billing/uploads",
-  "/client/billing/manual-setup": "/client/billing/connect-cloud",
   "/client/billing/connections": "/client/billing/connect-cloud",
   "/client/billing/connections/add": "/client/billing/connect-cloud/add",
   "/client/billing/connections/aws": "/client/billing/connect-cloud/aws",
   "/client/billing/connections/aws/automatic": "/client/billing/connect-cloud/aws/automatic",
   "/client/billing/connections/aws/manual": "/client/billing/connect-cloud/aws/manual",
   "/client/billing/connections/manual-setup": "/client/billing/connect-cloud/aws/manual",
+  "/dashboard/cost-analysis": "/dashboard/cost-explorer",
+  "/dashboard/cost-driver": "/dashboard/allocation",
+  "/dashboard/data-quality": "/dashboard/anomalies-alerts",
+  "/client/billing/manual-setup": "/client/billing/connect-cloud/aws/manual",
 }
 const VALID_PATH_SET = new Set<string>([...STATIC_ROUTES, ...Object.keys(LEGACY_ROUTE_REDIRECTS)])
 const BLOG_DETAIL_PATH_REGEX = /^\/resources\/blogs?\/([^/]+)$/

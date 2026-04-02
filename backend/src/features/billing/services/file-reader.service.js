@@ -56,7 +56,48 @@ async function streamToBuffer(stream) {
   return Buffer.concat(chunks);
 }
 
-async function parseCsv(buffer) {
+function parseCsvHeadersFromBuffer(buffer) {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const input = Readable.from(buffer);
+
+    const settleResolve = (value) => {
+      if (settled) return;
+      settled = true;
+      resolve(value);
+    };
+
+    const settleReject = (error) => {
+      if (settled) return;
+      settled = true;
+      reject(error);
+    };
+
+    const parser = csvParser();
+
+    parser.on("headers", (headers) => {
+      settleResolve((headers ?? []).map((header) => String(header ?? "")));
+      // Header-only read: stop parsing after header row for schema-first validation.
+      input.unpipe(parser);
+      parser.destroy();
+    });
+
+    parser.on("end", () => {
+      // Empty file: no header row found.
+      settleResolve([]);
+    });
+
+    parser.on("error", (error) => {
+      settleReject(
+        new Error(`CSV header parsing failed: ${error instanceof Error ? error.message : String(error)}`),
+      );
+    });
+
+    input.pipe(parser);
+  });
+}
+
+function parseCsvRowsFromBuffer(buffer) {
   return new Promise((resolve, reject) => {
     const rows = [];
 
@@ -74,11 +115,7 @@ async function parseCsv(buffer) {
   });
 }
 
-async function parseParquet(buffer) {
-  // TODO:
-  // Validate parquetjs-lite buffer APIs in target runtime and optimize row iteration.
-  // This placeholder structure is included so parquet support can be enabled without
-  // changing readBillingFile call flow.
+async function openParquetReader(buffer) {
   try {
     const parquet = await import("parquetjs-lite");
     const readerFactory = parquet?.ParquetReader;
@@ -87,7 +124,96 @@ async function parseParquet(buffer) {
       throw new Error("parquetjs-lite does not expose ParquetReader.openBuffer");
     }
 
-    const reader = await readerFactory.openBuffer(buffer);
+    return readerFactory.openBuffer(buffer);
+  } catch (error) {
+    throw new Error(
+      `Parquet reader initialization failed: ${
+        error instanceof Error ? error.message : String(error)
+      }. Ensure parquetjs-lite is installed and supports openBuffer.`,
+    );
+  }
+}
+
+function assertS3Location({ bucket, key }) {
+  if (!bucket || !key) {
+    throw new Error("bucket and key are required to read billing file");
+  }
+}
+
+function resolveFileFormat({ fileFormat, key }) {
+  const normalizedFileFormat = normalizeFormat(fileFormat) || detectFileFormatFromKey(key);
+  if (!normalizedFileFormat) {
+    throw new Error(`Unable to detect file format for key: ${key}`);
+  }
+
+  if (normalizedFileFormat !== "csv" && normalizedFileFormat !== "parquet") {
+    throw new Error(`Unsupported file format: ${fileFormat}`);
+  }
+
+  return normalizedFileFormat;
+}
+
+function extractParquetSchemaColumns(reader) {
+  const schemaColumns = new Set();
+  const append = (value) => {
+    const normalizedValue = String(value ?? "").trim();
+    if (normalizedValue) {
+      schemaColumns.add(normalizedValue);
+    }
+  };
+
+  const schema = reader?.schema;
+  if (schema?.fieldList) {
+    if (Array.isArray(schema.fieldList)) {
+      for (const field of schema.fieldList) {
+        append(field?.name ?? field);
+      }
+    } else {
+      for (const fieldName of Object.keys(schema.fieldList)) {
+        append(fieldName);
+      }
+    }
+  }
+
+  if (Array.isArray(schema?.fields)) {
+    for (const field of schema.fields) {
+      append(field?.name ?? field);
+    }
+  } else if (schema?.fields && typeof schema.fields === "object") {
+    for (const fieldName of Object.keys(schema.fields)) {
+      append(fieldName);
+    }
+  }
+
+  if (schemaColumns.size === 0 && Array.isArray(reader?.metadata?.schema)) {
+    for (const entry of reader.metadata.schema) {
+      append(entry?.name);
+      const path = entry?.path_in_schema;
+      if (Array.isArray(path) && path.length > 0) {
+        append(path[0]);
+      } else {
+        append(path);
+      }
+    }
+  }
+
+  return Array.from(schemaColumns).sort((a, b) => a.localeCompare(b));
+}
+
+async function parseParquetSchemaColumnsFromBuffer(buffer) {
+  const reader = await openParquetReader(buffer);
+  try {
+    return extractParquetSchemaColumns(reader);
+  } finally {
+    if (reader?.close) {
+      await reader.close();
+    }
+  }
+}
+
+async function parseParquetRowsFromBuffer(buffer) {
+  const reader = await openParquetReader(buffer);
+  try {
     const cursor = reader.getCursor();
     const rows = [];
 
@@ -97,7 +223,6 @@ async function parseParquet(buffer) {
       row = await cursor.next();
     }
 
-    await reader.close();
     return rows;
   } catch (error) {
     throw new Error(
@@ -105,25 +230,16 @@ async function parseParquet(buffer) {
         error instanceof Error ? error.message : String(error)
       }. Ensure parquetjs-lite is installed and supports openBuffer.`,
     );
+  } finally {
+    if (reader?.close) {
+      await reader.close();
+    }
   }
 }
 
-async function readBillingFile({ bucket, key, fileFormat }) {
-  const normalizedFileFormat = normalizeFormat(fileFormat) || detectFileFormatFromKey(key);
-
-  if (!bucket || !key) {
-    throw new Error("bucket and key are required to read billing file");
-  }
-
-  if (!normalizedFileFormat) {
-    throw new Error(`Unable to detect file format for key: ${key}`);
-  }
-
-  if (normalizedFileFormat !== "csv" && normalizedFileFormat !== "parquet") {
-    throw new Error(`Unsupported file format: ${fileFormat}`);
-  }
-
-  console.info("Reading billing file", { bucket, key, fileFormat: normalizedFileFormat });
+async function readObjectBuffer({ bucket, key, fileFormat }) {
+  assertS3Location({ bucket, key });
+  console.info("Reading billing file", { bucket, key, fileFormat });
 
   try {
     const response = await s3Client.send(
@@ -136,16 +252,7 @@ async function readBillingFile({ bucket, key, fileFormat }) {
     // NOTE:
     // This loads entire file into memory (MVP).
     // For large files, switch to streaming ingestion later.
-    const buffer = await streamToBuffer(response.Body);
-
-    const rows =
-      normalizedFileFormat === "csv" ? await parseCsv(buffer) : await parseParquet(buffer);
-
-    console.info("Rows parsed", { rowCount: rows.length });
-    return {
-      rows,
-      rowCount: rows.length,
-    };
+    return await streamToBuffer(response.Body);
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
 
@@ -161,4 +268,152 @@ async function readBillingFile({ bucket, key, fileFormat }) {
   }
 }
 
-export { readBillingFile, streamToBuffer, parseCsv, parseParquet, detectFileFormatFromKey };
+async function getObjectBodyStream({ bucket, key, fileFormat }) {
+  assertS3Location({ bucket, key });
+  console.info("Opening billing file stream", { bucket, key, fileFormat });
+
+  try {
+    const response = await s3Client.send(
+      new GetObjectCommand({
+        Bucket: bucket,
+        Key: key,
+      }),
+    );
+
+    if (!response?.Body) {
+      throw new Error("S3 response body is empty");
+    }
+
+    if (response.Body instanceof Readable) {
+      return response.Body;
+    }
+
+    if (typeof response.Body.transformToWebStream === "function") {
+      return Readable.fromWeb(response.Body.transformToWebStream());
+    }
+
+    const bodyBuffer = await streamToBuffer(response.Body);
+    return Readable.from(bodyBuffer);
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+
+    if (reason.includes("NoSuchKey") || reason.includes("NotFound")) {
+      throw new Error(`Billing file not found in S3: s3://${bucket}/${key}`);
+    }
+
+    if (reason.includes("AccessDenied")) {
+      throw new Error(`Access denied while reading S3 file: s3://${bucket}/${key}`);
+    }
+
+    throw new Error(`Failed to open billing file stream from S3: ${reason}`);
+  }
+}
+
+async function readCsvHeaders({ bucket, key }) {
+  // Phase 1: read only CSV headers for schema validation.
+  const buffer = await readObjectBuffer({ bucket, key, fileFormat: "csv" });
+  return parseCsvHeadersFromBuffer(buffer);
+}
+
+async function readParquetSchemaColumns({ bucket, key }) {
+  // Phase 1: read only parquet schema columns for schema validation.
+  const buffer = await readObjectBuffer({ bucket, key, fileFormat: "parquet" });
+  return parseParquetSchemaColumnsFromBuffer(buffer);
+}
+
+async function readCsvRows({ bucket, key }) {
+  // Phase 2: read full CSV rows after schema validation succeeds.
+  const buffer = await readObjectBuffer({ bucket, key, fileFormat: "csv" });
+  return parseCsvRowsFromBuffer(buffer);
+}
+
+async function readParquetRows({ bucket, key }) {
+  // Phase 2: read full parquet rows after schema validation succeeds.
+  const buffer = await readObjectBuffer({ bucket, key, fileFormat: "parquet" });
+  return parseParquetRowsFromBuffer(buffer);
+}
+
+async function* readCsvRowChunks({ bucket, key, chunkSize = 1000 }) {
+  const resolvedChunkSize = Number.isInteger(chunkSize) && chunkSize > 0 ? chunkSize : 1000;
+  const stream = await getObjectBodyStream({ bucket, key, fileFormat: "csv" });
+  const parser = csvParser();
+
+  let chunk = [];
+  stream.pipe(parser);
+
+  try {
+    for await (const row of parser) {
+      chunk.push(row);
+      if (chunk.length >= resolvedChunkSize) {
+        yield chunk;
+        chunk = [];
+      }
+    }
+
+    if (chunk.length > 0) {
+      yield chunk;
+    }
+  } catch (error) {
+    throw new Error(`CSV chunked parsing failed: ${error instanceof Error ? error.message : String(error)}`);
+  } finally {
+    parser.destroy();
+    stream.destroy();
+  }
+}
+
+async function* readParquetRowChunks({ bucket, key, chunkSize = 1000 }) {
+  const resolvedChunkSize = Number.isInteger(chunkSize) && chunkSize > 0 ? chunkSize : 1000;
+  const rows = await readParquetRows({ bucket, key });
+
+  for (let index = 0; index < rows.length; index += resolvedChunkSize) {
+    yield rows.slice(index, index + resolvedChunkSize);
+  }
+}
+
+async function* readBillingRowChunks({ bucket, key, fileFormat, chunkSize = 1000 }) {
+  const normalizedFileFormat = resolveFileFormat({ fileFormat, key });
+
+  if (normalizedFileFormat === "csv") {
+    yield* readCsvRowChunks({ bucket, key, chunkSize });
+    return;
+  }
+
+  yield* readParquetRowChunks({ bucket, key, chunkSize });
+}
+
+async function parseCsv(buffer) {
+  return parseCsvRowsFromBuffer(buffer);
+}
+
+async function parseParquet(buffer) {
+  return parseParquetRowsFromBuffer(buffer);
+}
+
+async function readBillingFile({ bucket, key, fileFormat }) {
+  const normalizedFileFormat = resolveFileFormat({ fileFormat, key });
+  const rows =
+    normalizedFileFormat === "csv"
+      ? await readCsvRows({ bucket, key })
+      : await readParquetRows({ bucket, key });
+
+  console.info("Rows parsed", { rowCount: rows.length });
+  return {
+    rows,
+    rowCount: rows.length,
+  };
+}
+
+export {
+  readBillingFile,
+  readCsvHeaders,
+  readParquetSchemaColumns,
+  readCsvRows,
+  readParquetRows,
+  readCsvRowChunks,
+  readParquetRowChunks,
+  readBillingRowChunks,
+  streamToBuffer,
+  parseCsv,
+  parseParquet,
+  detectFileFormatFromKey,
+};

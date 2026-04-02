@@ -40,6 +40,37 @@ const PROVIDER_NAME_BY_CODE: Record<string, string> = {
 
 const DEFAULT_AWS_EXPORT_PREFIX = "kcx/data-exports/cur2";
 const buildDefaultAwsExportName = (connectionId: string) => `KCX-CUR2-${connectionId.replace(/-/g, "").slice(0, 10)}`;
+type CloudConnectionV2Instance = InstanceType<typeof CloudConnectionV2>;
+
+const ensureAwsAutoSetupFields = async (connection: CloudConnectionV2Instance): Promise<CloudConnectionV2Instance> => {
+  const patch: Partial<{
+    externalId: string;
+    callbackToken: string;
+    stackName: string;
+    region: string;
+  }> = {};
+
+  if (!connection.externalId || connection.externalId.trim().length === 0) {
+    patch.externalId = `kcx-${crypto.randomUUID()}`;
+  }
+  if (!connection.callbackToken || connection.callbackToken.trim().length === 0) {
+    patch.callbackToken = crypto.randomBytes(32).toString("hex");
+  }
+  if (!connection.stackName || connection.stackName.trim().length === 0) {
+    patch.stackName = `kcx-${connection.id.substring(0, 8)}`;
+  }
+  if (!connection.region || connection.region.trim().length === 0) {
+    patch.region = "us-east-1";
+  }
+
+  if (Object.keys(patch).length === 0) {
+    return connection;
+  }
+
+  await connection.update(patch);
+  return connection;
+};
+
 const resolveBillingSourceStatusAfterValidation = (
   validationStatus: string,
   currentStatus: string,
@@ -69,6 +100,8 @@ export async function handleCreateCloudConnection(req: Request, res: Response): 
     if (existingProviderCode && existingProviderCode !== providerCode) {
       throw new ConflictError("Connection name already exists for a different provider");
     }
+
+    await ensureAwsAutoSetupFields(existing);
 
     sendSuccess({
       res,
@@ -176,11 +209,12 @@ export async function handleGetAwsCloudFormationSetupUrl(req: Request, res: Resp
   const connection = await CloudConnectionV2.findOne({ where: { id, tenantId } });
   if (!connection) throw new NotFoundError("Connection not found");
 
-  const stackName = connection.stackName;
-  const externalId = connection.externalId;
-  const callbackToken = connection.callbackToken;
+  const ensured = await ensureAwsAutoSetupFields(connection);
+  const stackName = ensured.stackName;
+  const externalId = ensured.externalId;
+  const callbackToken = ensured.callbackToken;
   const connectionName = connection.connectionName;
-  const region = connection.region;
+  const region = ensured.region;
 
   if (!stackName || !externalId || !callbackToken || !connectionName || !region) {
     throw new NotFoundError("CloudFormation setup is not available for this connection");
@@ -197,6 +231,10 @@ export async function handleGetAwsCloudFormationSetupUrl(req: Request, res: Resp
     callbackUrl: env.awsCallbackUrl,
     callbackToken,
   });
+
+  if (connection.status === "draft") {
+    await connection.update({ status: "connecting", errorMessage: null });
+  }
 
   sendSuccess({
     res,

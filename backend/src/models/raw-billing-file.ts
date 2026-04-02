@@ -15,6 +15,7 @@ class RawBillingFile extends Model<InferAttributes<RawBillingFile>, InferCreatio
   declare cloudProviderId: string;
   declare sourceType: string;
   declare setupMode: string;
+  declare uploadedBy: CreationOptional<string | null>;
   declare originalFileName: string;
   declare originalFilePath: CreationOptional<string | null>;
   declare rawStorageBucket: string;
@@ -39,6 +40,7 @@ const createRawBillingFileModel = (sequelize: Sequelize): typeof RawBillingFile 
       cloudProviderId: { type: DataTypes.BIGINT, allowNull: false, field: "cloud_provider_id" },
       sourceType: { type: DataTypes.STRING(50), allowNull: false, field: "source_type" },
       setupMode: { type: DataTypes.STRING(50), allowNull: false, field: "setup_mode" },
+      uploadedBy: { type: DataTypes.UUID, allowNull: true, field: "uploaded_by" },
       originalFileName: { type: DataTypes.STRING(255), allowNull: false, field: "original_file_name" },
       originalFilePath: { type: DataTypes.STRING(1000), allowNull: true, field: "original_file_path" },
       rawStorageBucket: { type: DataTypes.STRING(255), allowNull: false, field: "raw_storage_bucket" },

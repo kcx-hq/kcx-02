@@ -9,6 +9,7 @@ import {
   ClientSupportPage,
   ClientUsersPage,
 } from "@/features/client-home"
+import { DashboardRoutes } from "@/features/dashboard"
 import {
   AwsIntegrationPage,
   BlogDetailPage,
@@ -53,6 +54,8 @@ const CLIENT_WORKSPACE_ROUTES = new Set([
 ])
 const AWS_CONNECTION_SETUP_ROUTE_REGEX = /^\/client\/billing\/(?:connect-cloud|connections)\/aws\/setup\/[0-9a-fA-F-]{36}$/
 const CLOUD_PROVIDER_ROUTE_REGEX = /^\/client\/billing\/(?:connect-cloud|connections)\/(aws|azure|gcp|oracle-cloud)$/
+const DASHBOARD_ROUTE_REGEX =
+  /^\/dashboard(?:\/(?:overview|cost-explorer|resources|allocation|optimization|anomalies-alerts|budget|report))?$/
 
 function isClientWorkspaceRoute(route: string) {
   return CLIENT_WORKSPACE_ROUTES.has(route) || AWS_CONNECTION_SETUP_ROUTE_REGEX.test(route) || CLOUD_PROVIDER_ROUTE_REGEX.test(route)
@@ -66,7 +69,11 @@ export function App() {
   const [authChecked, setAuthChecked] = useState(false)
   const [authenticated, setAuthenticated] = useState(false)
   const blogSlug = getBlogSlugFromPath(route)
-  const showMarketingHeader = !HEADERLESS_ROUTES.has(route) && !AWS_CONNECTION_SETUP_ROUTE_REGEX.test(route) && !CLOUD_PROVIDER_ROUTE_REGEX.test(route)
+  const showMarketingHeader =
+    !HEADERLESS_ROUTES.has(route) &&
+    !AWS_CONNECTION_SETUP_ROUTE_REGEX.test(route) &&
+    !CLOUD_PROVIDER_ROUTE_REGEX.test(route) &&
+    !DASHBOARD_ROUTE_REGEX.test(route)
 
   useEffect(() => {
     if (!storedAuthenticated) {
@@ -141,13 +148,14 @@ export function App() {
       {route === "/resources/blog" || route === "/resources/blogs" ? <BlogPage /> : null}
       {blogSlug ? <BlogDetailPage slug={blogSlug} /> : null}
       {route === "/resources/documentation" ? <DocumentationPage /> : null}
+      {DASHBOARD_ROUTE_REGEX.test(route) ? <DashboardRoutes /> : null}
       {route === "/client/overview" ? (
         <ClientLayout>
           <ClientOverviewPage />
         </ClientLayout>
       ) : null}
       {route === "/client/billing" ||
-      // route === "/client/billing/uploads" ||
+      route === "/client/billing/uploads" ||
       route === "/client/billing/connections" ||
       route === "/client/billing/connections/add" ||
       route === "/client/billing/connections/aws" ||
@@ -187,3 +195,4 @@ export function App() {
 }
 
 export default App
+

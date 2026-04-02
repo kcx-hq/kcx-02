@@ -33,6 +33,10 @@ const createDimResourceModel = (sequelize: Sequelize): typeof DimResource => {
       modelName: "DimResource",
       tableName: "dim_resource",
       timestamps: false,
+      indexes: [
+        { name: "uq_dim_resource_tenant_provider_resource_id", unique: true, fields: ["tenant_id", "provider_id", "resource_id"] },
+        { name: "idx_dim_resource_tenant_provider", fields: ["tenant_id", "provider_id"] },
+      ],
     },
   );
   return DimResource;

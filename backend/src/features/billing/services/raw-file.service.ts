@@ -33,6 +33,7 @@ type CreateRawFileRecordParams = {
   cloudProviderId: string;
   sourceType: string;
   setupMode: string;
+  uploadedBy?: string | null;
   originalFileName: string;
   originalFilePath: string | null;
   rawStorageBucket: string;
@@ -46,6 +47,7 @@ type StoreManualFileParams = {
   file: ManualUploadFile;
   billingSourceId: string | number;
   tenantId: string;
+  uploadedByUserId?: string | null;
 };
 
 type StoreManualFileResult = {
@@ -154,6 +156,7 @@ export async function createRawFileRecord(params: CreateRawFileRecordParams) {
       cloudProviderId: params.cloudProviderId,
       sourceType: params.sourceType,
       setupMode: params.setupMode,
+      uploadedBy: params.uploadedBy ?? null,
       originalFileName: params.originalFileName,
       originalFilePath: params.originalFilePath,
       rawStorageBucket: params.rawStorageBucket,
@@ -169,7 +172,12 @@ export async function createRawFileRecord(params: CreateRawFileRecordParams) {
   }
 }
 
-export async function storeManualFile({ file, billingSourceId, tenantId }: StoreManualFileParams): Promise<StoreManualFileResult> {
+export async function storeManualFile({
+  file,
+  billingSourceId,
+  tenantId,
+  uploadedByUserId,
+}: StoreManualFileParams): Promise<StoreManualFileResult> {
   if (!file || !file.buffer || file.buffer.length === 0) {
     throw new BadRequestError("Missing file in upload request");
   }
@@ -216,6 +224,7 @@ export async function storeManualFile({ file, billingSourceId, tenantId }: Store
     cloudProviderId: billingSource.cloudProviderId,
     sourceType: billingSource.sourceType,
     setupMode: billingSource.setupMode,
+    uploadedBy: uploadedByUserId ?? null,
     originalFileName: file.originalname,
     originalFilePath: null,
     rawStorageBucket: env.rawBillingFilesBucket,

@@ -73,6 +73,8 @@ export function ClientTopNavbar({
   }, [route])
 
   const roleLabel = toRoleLabel(userRole)
+  const navIconButtonClass =
+    "h-9 rounded-md border border-[rgba(164,192,181,0.3)] bg-[rgba(13,24,28,0.46)] px-2 text-[rgba(228,240,235,0.9)] hover:bg-[rgba(158,191,178,0.16)] hover:text-white"
 
   function handleLogout() {
     clearAuthSession()
@@ -89,11 +91,15 @@ export function ClientTopNavbar({
       <div className="hero-aurora-noise pointer-events-none absolute inset-0 opacity-[0.08]" />
       <div className="relative mx-auto flex h-16 w-full max-w-[1440px] items-center justify-between gap-4 px-6">
         <div className="flex min-w-0 flex-1 items-center gap-8">
-          <div className="flex min-w-0 items-center gap-3">
+          <a
+            href="/client/overview"
+            onClick={(event) => handleAppLinkClick(event, "/client/overview")}
+            className="flex min-w-0 items-center gap-3"
+          >
             <img src={kcxLogo} alt="KCX" className="h-7 w-auto" />
             <div className="h-5 w-px bg-[rgba(196,216,208,0.28)]" />
             <p className="truncate text-sm font-medium text-[rgba(236,244,241,0.88)]">{orgName}</p>
-          </div>
+          </a>
 
           <nav className="hidden h-16 items-stretch gap-6 lg:flex" aria-label="Client workspace">
             {NAV_ITEMS.map((item) => {
@@ -123,7 +129,7 @@ export function ClientTopNavbar({
             <Button
               variant="ghost"
               aria-label="KCX Help"
-              className="h-9 rounded-md border border-[rgba(164,192,181,0.3)] px-2 text-[rgba(228,240,235,0.9)] hover:bg-[rgba(158,191,178,0.11)] hover:text-white"
+              className={navIconButtonClass}
             >
               <LifeBuoy className="h-3.5 w-3.5" />
             </Button>
@@ -133,7 +139,7 @@ export function ClientTopNavbar({
             <Button
               variant="ghost"
               aria-label="Announcements"
-              className="h-9 rounded-md border border-[rgba(164,192,181,0.3)] px-2 text-[rgba(228,240,235,0.9)] hover:bg-[rgba(158,191,178,0.11)] hover:text-white"
+              className={navIconButtonClass}
             >
               <Megaphone className="h-3.5 w-3.5" />
             </Button>
@@ -143,7 +149,7 @@ export function ClientTopNavbar({
             <Button
               variant="ghost"
               aria-label="Notifications"
-              className="h-9 rounded-md border border-[rgba(164,192,181,0.3)] px-2 text-[rgba(228,240,235,0.9)] hover:bg-[rgba(158,191,178,0.11)] hover:text-white"
+              className={navIconButtonClass}
             >
               <span className="sr-only">Notifications</span>
               <Bell className="h-4 w-4" />
@@ -157,8 +163,8 @@ export function ClientTopNavbar({
                 onClick={() => setMenuOpen((open) => !open)}
                 aria-label="User Menu"
                 className={cn(
-                  "h-10 rounded-md border border-[rgba(164,192,181,0.3)] px-2 text-[rgba(228,240,235,0.9)] hover:bg-[rgba(158,191,178,0.11)] hover:text-white",
-                  menuOpen ? "bg-[rgba(158,191,178,0.12)] text-white" : ""
+                  "h-10 rounded-md border border-[rgba(164,192,181,0.3)] bg-[rgba(13,24,28,0.46)] px-2 text-[rgba(228,240,235,0.9)] hover:bg-[rgba(158,191,178,0.16)] hover:text-white",
+                  menuOpen ? "bg-[rgba(158,191,178,0.2)] text-white" : ""
                 )}
                 aria-haspopup="menu"
                 aria-expanded={menuOpen ? "true" : "false"}
@@ -219,3 +225,4 @@ export function ClientTopNavbar({
     </header>
   )
 }
+

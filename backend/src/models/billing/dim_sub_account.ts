@@ -31,6 +31,10 @@ const createDimSubAccountModel = (sequelize: Sequelize): typeof DimSubAccount =>
       modelName: "DimSubAccount",
       tableName: "dim_sub_account",
       timestamps: false,
+      indexes: [
+        { name: "uq_dim_sub_account_tenant_provider_sub_account_id", unique: true, fields: ["tenant_id", "provider_id", "sub_account_id"] },
+        { name: "idx_dim_sub_account_tenant_provider", fields: ["tenant_id", "provider_id"] },
+      ],
     },
   );
   return DimSubAccount;

@@ -5,7 +5,13 @@ import { BadRequestError, NotFoundError, UnauthorizedError } from "../../errors/
 import { CloudProvider } from "../../models/index.js";
 import { sendSuccess } from "../../utils/api-response.js";
 import { getOrCreateManualSource } from "./services/billing-source.service.js";
-import { createIngestionRun, getIngestionRunById } from "./services/ingestion.service.js";
+import {
+  createIngestionRun,
+  getIngestionRunByIdForTenant,
+  getLatestActiveIngestionRunForTenant,
+  getLatestIngestionRunForSource,
+  getUploadHistoryForTenant,
+} from "./services/ingestion.service.js";
 import { detectFileFormat, storeManualFile } from "./services/raw-file.service.js";
 import { ingestionOrchestrator } from "./services/ingestion-orchestrator.service.js";
 
@@ -21,6 +27,40 @@ const requireTenantId = (req: Request): string => {
   }
   return tenantId;
 };
+
+
+
+const mapIngestionRunStatusResponse = (run: {
+  id: string;
+  status: string;
+  currentStep: string | null;
+  progressPercent: number;
+  statusMessage: string | null;
+  rowsRead: number;
+  rowsLoaded: number;
+  rowsFailed: number;
+  totalRowsEstimated: number | null;
+  startedAt: Date | null;
+  finishedAt: Date | null;
+  errorMessage: string | null;
+  updatedAt: Date;
+  lastHeartbeatAt: Date | null;
+}) => ({
+  id: run.id,
+  status: run.status,
+  currentStep: run.currentStep,
+  progressPercent: run.progressPercent,
+  statusMessage: run.statusMessage,
+  rowsRead: run.rowsRead,
+  rowsLoaded: run.rowsLoaded,
+  rowsFailed: run.rowsFailed,
+  totalRowsEstimated: run.totalRowsEstimated,
+  startedAt: run.startedAt,
+  finishedAt: run.finishedAt,
+  errorMessage: run.errorMessage,
+  lastUpdatedAt: run.updatedAt,
+  lastHeartbeatAt: run.lastHeartbeatAt,
+});
 
 export async function handleManualUploadBillingFile(req: Request, res: Response): Promise<void> {
   const tenantId = requireTenantId(req);
@@ -51,6 +91,7 @@ export async function handleManualUploadBillingFile(req: Request, res: Response)
     file: req.file,
     billingSourceId: billingSource.id,
     tenantId,
+    uploadedByUserId: typeof req.auth?.user.id === "string" ? req.auth.user.id : null,
   });
 
   // Assumption: raw file persistence completes before ingestion-run enqueueing; cross-table transaction orchestration can be added in a later ingestion-processing phase.
@@ -60,47 +101,96 @@ export async function handleManualUploadBillingFile(req: Request, res: Response)
   });
 
   setImmediate(() => {
-    ingestionOrchestrator.processIngestionRun(ingestionRun.id);
+    void ingestionOrchestrator.processIngestionRun(ingestionRun.id);
   });
 
-  res.status(HTTP_STATUS.CREATED).json({
-    billingSourceId: billingSource.id,
-    rawFileId: storedFile.rawFileId,
-    ingestionRunId: ingestionRun.id,
-    bucket: storedFile.bucket,
-    key: storedFile.key,
-    format: storedFile.format,
-    status: ingestionRun.status,
+  sendSuccess({
+    res,
+    req,
+    statusCode: HTTP_STATUS.CREATED,
+    message: "Billing ingestion queued",
+    data: {
+      ingestionRunId: ingestionRun.id,
+      status: ingestionRun.status,
+      billingSourceId: billingSource.id,
+      rawFileId: storedFile.rawFileId,
+      format: storedFile.format,
+      startedAt: ingestionRun.startedAt,
+    },
   });
 }
 
 export async function handleGetBillingIngestionRun(req: Request, res: Response): Promise<void> {
-  requireTenantId(req);
+  await handleGetBillingIngestionStatus(req, res);
+}
+
+export async function handleGetBillingIngestionStatus(req: Request, res: Response): Promise<void> {
+  const tenantId = requireTenantId(req);
 
   const runId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   if (!runId || !/^\d+$/.test(runId)) {
     throw new BadRequestError("Invalid ingestion run id");
   }
 
-  const run = await getIngestionRunById(runId);
+  const run = await getIngestionRunByIdForTenant(runId, tenantId);
   if (!run) {
     throw new NotFoundError("Billing ingestion run not found");
   }
-  // Assumption: endpoint access is auth-protected; strict tenant-level ownership checks can be enforced when ingestion runs are joined/scoped through tenant-aware entities.
 
-  res.status(HTTP_STATUS.OK).json({
-    id: run.id,
-    billing_source_id: run.billingSourceId,
-    raw_billing_file_id: run.rawBillingFileId,
-    status: run.status,
-    rows_read: run.rowsRead,
-    rows_loaded: run.rowsLoaded,
-    rows_failed: run.rowsFailed,
-    error_message: run.errorMessage,
-    started_at: run.startedAt,
-    finished_at: run.finishedAt,
-    created_at: run.createdAt,
-    updated_at: run.updatedAt,
+  sendSuccess({
+    res,
+    req,
+    statusCode: HTTP_STATUS.OK,
+    message: "Billing ingestion status loaded",
+    data: mapIngestionRunStatusResponse(run),
+  });
+}
+
+export async function handleGetLatestBillingIngestionForSource(req: Request, res: Response): Promise<void> {
+  const tenantId = requireTenantId(req);
+  const sourceId = Array.isArray(req.params.sourceId) ? req.params.sourceId[0] : req.params.sourceId;
+
+  if (!sourceId || !/^\d+$/.test(sourceId)) {
+    throw new BadRequestError("Invalid billing source id");
+  }
+
+  const run = await getLatestIngestionRunForSource({
+    billingSourceId: sourceId,
+    tenantId,
+  });
+
+  sendSuccess({
+    res,
+    req,
+    statusCode: HTTP_STATUS.OK,
+    message: "Latest ingestion loaded",
+    data: run ? mapIngestionRunStatusResponse(run) : null,
+  });
+}
+
+export async function handleGetLatestActiveBillingIngestion(req: Request, res: Response): Promise<void> {
+  const tenantId = requireTenantId(req);
+  const run = await getLatestActiveIngestionRunForTenant(tenantId);
+
+  sendSuccess({
+    res,
+    req,
+    statusCode: HTTP_STATUS.OK,
+    message: "Latest active ingestion loaded",
+    data: run ? mapIngestionRunStatusResponse(run) : null,
+  });
+}
+
+export async function handleGetBillingUploadHistory(req: Request, res: Response): Promise<void> {
+  const tenantId = requireTenantId(req);
+  const history = await getUploadHistoryForTenant(tenantId);
+
+  sendSuccess({
+    res,
+    req,
+    statusCode: HTTP_STATUS.OK,
+    message: "Billing upload history loaded",
+    data: history,
   });
 }
 

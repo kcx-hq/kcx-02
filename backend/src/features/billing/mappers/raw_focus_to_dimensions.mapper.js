@@ -1,3 +1,5 @@
+import { sanitizeFactMeasureNumerics } from "../services/numeric-validation.service.js";
+
 /**
  * Raw source column names are intentionally contained to this mapping layer.
  * Downstream models/services should only use lowercase snake_case analytics names.
@@ -15,13 +17,22 @@ const RAW_COLUMNS = Object.freeze({
   chargeClass: "ChargeClass",
   chargePeriodStart: "ChargePeriodStart",
   chargePeriodEnd: "ChargePeriodEnd",
+  usageStartTime: "usage_start_time",
+  usageEndTime: "usage_end_time",
+  lineItemType: "line_item_type",
   consumedQuantity: "ConsumedQuantity",
   consumedUnit: "ConsumedUnit",
   effectiveCost: "EffectiveCost",
   listCost: "ListCost",
+  publicOnDemandCost: "public_on_demand_cost",
+  discountAmount: "discount_amount",
   pricingCategory: "PricingCategory",
+  pricingTerm: "pricing_term",
   pricingQuantity: "PricingQuantity",
   pricingUnit: "PricingUnit",
+  creditAmount: "credit_amount",
+  refundAmount: "refund_amount",
+  taxCost: "tax_cost",
   providerName: "ProviderName",
   regionId: "RegionId",
   regionName: "RegionName",
@@ -185,14 +196,24 @@ const mapDateLookups = (rawRow) => ({
   billing_period_end_full_date: toDateOnlyOrNull(rawRow[RAW_COLUMNS.billingPeriodEnd]),
 });
 
-const mapFactMeasures = (rawRow) => ({
-  billed_cost: toNumberOrNull(rawRow[RAW_COLUMNS.billedCost]),
-  effective_cost: toNumberOrNull(rawRow[RAW_COLUMNS.effectiveCost]),
-  list_cost: toNumberOrNull(rawRow[RAW_COLUMNS.listCost]),
-  consumed_quantity: toNumberOrNull(rawRow[RAW_COLUMNS.consumedQuantity]),
-  pricing_quantity: toNumberOrNull(rawRow[RAW_COLUMNS.pricingQuantity]),
-  tags_json: toJsonOrNull(rawRow[RAW_COLUMNS.tags]),
-});
+const mapFactMeasures = (rawRow) =>
+  sanitizeFactMeasureNumerics({
+    billed_cost: rawRow[RAW_COLUMNS.billedCost],
+    effective_cost: rawRow[RAW_COLUMNS.effectiveCost],
+    list_cost: rawRow[RAW_COLUMNS.listCost],
+    usage_start_time: cleanStringOrNull(rawRow[RAW_COLUMNS.usageStartTime]),
+    usage_end_time: cleanStringOrNull(rawRow[RAW_COLUMNS.usageEndTime]),
+    line_item_type: cleanStringOrNull(rawRow[RAW_COLUMNS.lineItemType]),
+    pricing_term: cleanStringOrNull(rawRow[RAW_COLUMNS.pricingTerm]),
+    public_on_demand_cost: rawRow[RAW_COLUMNS.publicOnDemandCost],
+    discount_amount: rawRow[RAW_COLUMNS.discountAmount],
+    consumed_quantity: rawRow[RAW_COLUMNS.consumedQuantity],
+    pricing_quantity: rawRow[RAW_COLUMNS.pricingQuantity],
+    credit_amount: rawRow[RAW_COLUMNS.creditAmount],
+    refund_amount: rawRow[RAW_COLUMNS.refundAmount],
+    tax_cost: rawRow[RAW_COLUMNS.taxCost],
+    tags_json: toJsonOrNull(rawRow[RAW_COLUMNS.tags]),
+  });
 
 /**
  * ProviderName should be resolved to provider_id by looking up cloud_providers.
@@ -309,8 +330,17 @@ const RAW_TO_ANALYTICS_REFERENCE = Object.freeze({
     BilledCost: "billed_cost",
     EffectiveCost: "effective_cost",
     ListCost: "list_cost",
+    usage_start_time: "usage_start_time",
+    usage_end_time: "usage_end_time",
+    line_item_type: "line_item_type",
+    pricing_term: "pricing_term",
+    public_on_demand_cost: "public_on_demand_cost",
+    discount_amount: "discount_amount",
     ConsumedQuantity: "consumed_quantity",
     PricingQuantity: "pricing_quantity",
+    credit_amount: "credit_amount",
+    refund_amount: "refund_amount",
+    tax_cost: "tax_cost",
     Tags: "tags_json",
   },
 });
