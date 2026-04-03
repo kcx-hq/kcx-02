@@ -1,8 +1,9 @@
 import path from "node:path";
+import { Op } from "sequelize";
 
 import env from "../../../../config/env.ts";
 import { BadRequestError, InternalServerError, NotFoundError } from "../../../../errors/http-errors.ts";
-import { BillingSource, CloudConnectionV2 } from "../../../../models/index.ts";
+import { BillingIngestionRun, BillingSource, CloudConnectionV2, RawBillingFile, sequelize } from "../../../../models/index.ts";
 import { ingestionOrchestrator } from "../../../billing/services/ingestion-orchestrator.service.ts";
 import { createIngestionRun, getIngestionRunById } from "../../../billing/services/ingestion.service.ts";
 import {
@@ -21,6 +22,12 @@ type ManualIngestionResult = {
   fileKey: string;
   recordsProcessed: number;
   message: string;
+};
+
+type InitialBackfillSummary = {
+  filesFound: number;
+  filesQueued: number;
+  filesSkipped: number;
 };
 
 type IngestionContext = {
@@ -51,6 +58,12 @@ const normalizePrefix = (prefix: string | null | undefined): string => {
   const normalized = String(prefix ?? "").trim();
   if (!normalized) return "";
   return normalized.startsWith("/") ? normalized.slice(1) : normalized;
+};
+
+const normalizeEtag = (etag: string | null | undefined): string | null => {
+  const normalized = String(etag ?? "").trim();
+  if (!normalized) return null;
+  return normalized.replace(/^"+|"+$/g, "");
 };
 
 const resolveExportContext = (connection: CloudConnectionInstance, source: BillingSourceInstance): IngestionContext => {
@@ -124,6 +137,23 @@ const resolveFileFormat = (billingSource: BillingSourceInstance, fileKey: string
   }
 
   return detectFileFormat(fileKey);
+};
+
+const resolveBackfillFileFormat = (billingSource: BillingSourceInstance, fileKey: string): "csv" | "parquet" => {
+  const configuredFormat = String(billingSource.format ?? "")
+    .trim()
+    .toLowerCase();
+
+  if (configuredFormat === "csv" || configuredFormat === "parquet") {
+    return configuredFormat;
+  }
+
+  const extension = path.extname(fileKey).replace(".", "").toLowerCase();
+  if (extension === "csv" || extension === "parquet") {
+    return extension;
+  }
+
+  return "parquet";
 };
 
 const estimateRowsFromFileContent = async ({
@@ -248,6 +278,136 @@ async function ingestResolvedFile({
     fileKey,
     recordsProcessed: rowsProcessed,
     message: "Manual AWS export ingestion completed",
+  };
+}
+
+type QueueInitialBackfillFileParams = {
+  billingSource: BillingSourceInstance;
+  connection: CloudConnectionInstance;
+  exportBucket: string;
+  file: {
+    key: string;
+    size: number;
+    etag: string | null;
+    lastModified: Date | null;
+  };
+};
+
+export async function queueInitialBackfillFile({
+  billingSource,
+  connection,
+  exportBucket,
+  file,
+}: QueueInitialBackfillFileParams): Promise<void> {
+  const fileFormat = resolveBackfillFileFormat(billingSource, file.key);
+  const normalizedEtag = normalizeEtag(file.etag);
+
+  await sequelize.transaction(async (transaction) => {
+    const rawBillingFile = await RawBillingFile.create(
+      {
+        billingSourceId: String(billingSource.id),
+        tenantId: billingSource.tenantId,
+        cloudProviderId: String(billingSource.cloudProviderId),
+        sourceType: billingSource.sourceType,
+        setupMode: billingSource.setupMode,
+        uploadedBy: connection.createdBy ?? null,
+        originalFileName: path.basename(file.key),
+        originalFilePath: file.key,
+        rawStorageBucket: exportBucket,
+        rawStorageKey: file.key,
+        fileFormat,
+        fileSizeBytes: String(file.size),
+        checksum: normalizedEtag,
+        status: "queued",
+      },
+      { transaction },
+    );
+
+    await BillingIngestionRun.create(
+      {
+        billingSourceId: String(billingSource.id),
+        rawBillingFileId: String(rawBillingFile.id),
+        status: "queued",
+        rowsRead: 0,
+        rowsLoaded: 0,
+        rowsFailed: 0,
+        progressPercent: 0,
+        currentStep: "queued",
+        statusMessage: "Queued by initial AWS export backfill",
+      },
+      { transaction },
+    );
+  });
+}
+
+const findExistingRawFileByIdentity = async ({
+  billingSourceId,
+  objectKey,
+  etag,
+}: {
+  billingSourceId: string;
+  objectKey: string;
+  etag: string | null;
+}): Promise<InstanceType<typeof RawBillingFile> | null> => {
+  const normalizedEtag = normalizeEtag(etag);
+  const etagCandidates = normalizedEtag ? Array.from(new Set([normalizedEtag, String(etag ?? "").trim()])) : [];
+
+  return RawBillingFile.findOne({
+    where: {
+      billingSourceId,
+      originalFilePath: objectKey,
+      ...(etagCandidates.length > 0 ? { checksum: { [Op.in]: etagCandidates } } : { checksum: { [Op.is]: null } }),
+    },
+  });
+};
+
+export async function runInitialBackfillAfterValidation(connectionId: string): Promise<InitialBackfillSummary> {
+  const { connection, billingSource } = await loadConnectionAndSource(connectionId);
+
+  const roleArn = requireNonEmpty(connection.roleArn, "roleArn");
+  const exportRegion = requireNonEmpty(connection.exportRegion, "exportRegion");
+  const exportBucket = requireNonEmpty(billingSource.bucketName, "bucketName");
+  const pathPrefix = normalizePrefix(requireNonEmpty(billingSource.pathPrefix, "pathPrefix"));
+
+  const objects = await listExportFiles({
+    roleArn,
+    externalId: connection.externalId ?? null,
+    region: exportRegion,
+    bucket: exportBucket,
+    prefix: pathPrefix || undefined,
+  });
+
+  const files = objects.filter((item) => item.key && !item.key.endsWith("/"));
+
+  let filesQueued = 0;
+  let filesSkipped = 0;
+
+  for (const file of files) {
+    const existingRawFile = await findExistingRawFileByIdentity({
+      billingSourceId: String(billingSource.id),
+      objectKey: file.key,
+      etag: file.etag,
+    });
+
+    if (existingRawFile) {
+      filesSkipped += 1;
+      continue;
+    }
+
+    await queueInitialBackfillFile({
+      billingSource,
+      connection,
+      exportBucket,
+      file,
+    });
+
+    filesQueued += 1;
+  }
+
+  return {
+    filesFound: files.length,
+    filesQueued,
+    filesSkipped,
   };
 }
 
