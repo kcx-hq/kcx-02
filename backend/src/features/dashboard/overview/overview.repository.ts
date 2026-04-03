@@ -53,8 +53,6 @@ type BreakdownRow = {
 
 type RegionBreakdownRow = BreakdownRow & {
   region_id: string | null;
-  service_count: number | string | null;
-  resource_count: number | string | null;
 };
 
 type AnomalyRow = {
@@ -583,9 +581,7 @@ export class OverviewRepository {
           dr.id AS item_key,
           COALESCE(dr.region_name, 'Unspecified') AS item_name,
           LOWER(dr.region_id) AS region_id,
-          COALESCE(SUM(fcli.billed_cost), 0)::double precision AS billed_cost,
-          COALESCE(COUNT(DISTINCT fcli.service_key), 0)::bigint AS service_count,
-          COALESCE(COUNT(DISTINCT fcli.resource_key), 0)::bigint AS resource_count
+          COALESCE(SUM(fcli.billed_cost), 0)::double precision AS billed_cost
         FROM fact_cost_line_items fcli
         JOIN dim_date dd ON dd.id = fcli.usage_date_key
         LEFT JOIN dim_region dr ON dr.id = fcli.region_key
@@ -600,11 +596,10 @@ export class OverviewRepository {
       },
     );
 
-    return rows.map((row, index) => {
+    return rows.map((row) => {
       const billedCost = toNumber(row.billed_cost);
       const contributionPct = totalBilledCost > 0 ? roundTo((billedCost / totalBilledCost) * 100, 2) : 0;
       const coordinates = resolveRegionCoordinates(row.region_id, row.item_name);
-      const rank = index + 1;
 
       return {
         key: row.item_key === null ? null : Number(row.item_key),
@@ -613,10 +608,6 @@ export class OverviewRepository {
         contributionPct,
         latitude: coordinates?.latitude ?? null,
         longitude: coordinates?.longitude ?? null,
-        isTop5: rank <= 5,
-        rank,
-        serviceCount: toNumber(row.service_count),
-        resourceCount: toNumber(row.resource_count),
       };
     });
   }

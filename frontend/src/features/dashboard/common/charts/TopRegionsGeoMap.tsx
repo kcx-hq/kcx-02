@@ -20,18 +20,16 @@ type MappedRegion = {
   value: [number, number, number, number];
   billedCost: number;
   contributionPct: number;
-  rank: number;
-  isTop5: boolean;
-  serviceCount: number;
-  resourceCount: number;
+  coordinateSource: "billing-file" | "mapped-reference";
 };
 
 const MAP_NAME = "kcx_world";
 const PUBLIC_BASE_URL = import.meta.env.BASE_URL ?? "/";
-const LOCAL_WORLD_MAP_FILES = ["maps/world-lite.geo.json", "maps/world.geo.json", "maps/mapWorld.json"];
+const LOCAL_WORLD_MAP_FILES = ["maps/world-lite.geo.json"];
 
-const TOP_REGION_COLORS = ["#2563eb", "#ef4444", "#10b981", "#f59e0b", "#8b5cf6"];
-const BASE_REGION_COLOR = "#6f8595";
+const TOP_ONE_REGION_COLOR = "#2563eb";
+const BILLING_FILE_REGION_COLOR = "#1f8b7a";
+const NON_BILLING_FILE_REGION_COLOR = "#6b7280";
 
 const REGION_COORDINATES: Record<string, Coordinate> = {
   // AWS
@@ -250,6 +248,7 @@ const getGeoView = (points: MappedRegion[]) => {
   else if (span <= 60) zoom = 2.4;
   else if (span <= 90) zoom = 1.9;
   else if (span <= 140) zoom = 1.45;
+  zoom = Math.min(zoom * 1.22, 6.2);
 
   return {
     center: [centerLon, centerLat] as [number, number],
@@ -258,20 +257,18 @@ const getGeoView = (points: MappedRegion[]) => {
 };
 
 const getTopMarkerSize = (spend: number, maxValue: number) => {
-  if (maxValue <= 0) return 12;
-  return 10 + Math.sqrt(spend / maxValue) * 8;
+  if (maxValue <= 0) return 8;
+  return 7 + Math.sqrt(spend / maxValue) * 5;
 };
 
 const mapData = (items: CostBreakdownItem[]): MappedRegion[] => {
   const sorted = [...items].sort((a, b) => b.billedCost - a.billedCost);
 
   return sorted
-    .map((item, index) => {
-      const rank = typeof item.rank === "number" ? item.rank : index + 1;
-      const isTop5 = typeof item.isTop5 === "boolean" ? item.isTop5 : index < 5;
-
+    .map((item) => {
+      const hasBillingCoordinates = typeof item.latitude === "number" && typeof item.longitude === "number";
       const coordinate =
-        typeof item.latitude === "number" && typeof item.longitude === "number"
+        hasBillingCoordinates
           ? { lat: item.latitude, lon: item.longitude }
           : toCoordinate(item.name);
 
@@ -284,10 +281,7 @@ const mapData = (items: CostBreakdownItem[]): MappedRegion[] => {
         value: [coordinate.lon, coordinate.lat, item.billedCost, item.contributionPct],
         billedCost: item.billedCost,
         contributionPct: item.contributionPct,
-        rank,
-        isTop5,
-        serviceCount: Number(item.serviceCount ?? 0),
-        resourceCount: Number(item.resourceCount ?? 0),
+        coordinateSource: hasBillingCoordinates ? "billing-file" : "mapped-reference",
       };
     })
     .filter((item): item is MappedRegion => item !== null);
@@ -295,17 +289,18 @@ const mapData = (items: CostBreakdownItem[]): MappedRegion[] => {
 
 const buildOption = (items: CostBreakdownItem[]): EChartsOption => {
   const mapped = mapData(items);
-  const explicitTop5 = mapped.filter((item) => item.isTop5).slice(0, 5);
-  const top5MappedRaw = explicitTop5.length > 0 ? explicitTop5 : mapped.slice(0, 5);
-  const top5Mapped = top5MappedRaw.map((item, index) => ({
-    ...item,
-    rank: typeof item.rank === "number" ? item.rank : index + 1,
-    isTop5: true,
-  }));
+  const top5Mapped = mapped.slice(0, 5);
   const top5Names = new Set(top5Mapped.map((item) => item.name));
   const normalMapped = mapped.filter((item) => !top5Names.has(item.name));
   const maxValue = mapped.reduce((acc, item) => Math.max(acc, item.billedCost), 0);
   const geoView = getGeoView(top5Mapped.length > 0 ? top5Mapped : mapped);
+  const formatCurrency = (value: number) =>
+    new Intl.NumberFormat(undefined, {
+      style: "currency",
+      currency: "USD",
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(value);
 
   return {
     animation: true,
@@ -329,9 +324,17 @@ const buildOption = (items: CostBreakdownItem[]): EChartsOption => {
         if (!point) return "";
 
         return `
-          <div style="padding: 10px 12px;">
-            <div style="font-size: 13px; font-weight: 700; color: #f8fafc;">
+          <div style="min-width: 170px; padding: 9px 11px;">
+            <div style="font-size: 12px; font-weight: 700; color: #f8fafc; margin-bottom: 5px;">
               ${point.name}
+            </div>
+            <div style="font-size: 11px; color: #94a3b8; margin-bottom: 2px;">
+              Total Spend:
+              <span style="color: #e2e8f0; font-weight: 600;"> ${formatCurrency(point.billedCost)}</span>
+            </div>
+            <div style="font-size: 11px; color: #94a3b8;">
+              Share:
+              <span style="color: #e2e8f0; font-weight: 600;"> ${point.contributionPct.toFixed(2)}%</span>
             </div>
           </div>
         `;
@@ -362,14 +365,16 @@ const buildOption = (items: CostBreakdownItem[]): EChartsOption => {
         name: "All Regions",
         type: "scatter",
         coordinateSystem: "geo",
-        data: normalMapped,
+        data: normalMapped.map((item) => ({
+          ...item,
+          itemStyle: {
+            color: item.coordinateSource === "billing-file" ? BILLING_FILE_REGION_COLOR : NON_BILLING_FILE_REGION_COLOR,
+            opacity: item.coordinateSource === "billing-file" ? 0.88 : 0.74,
+          },
+        })),
         z: 2,
         zlevel: 1,
         symbolSize: 7,
-        itemStyle: {
-          color: BASE_REGION_COLOR,
-          opacity: 0.78,
-        },
         emphasis: {
           scale: true,
           itemStyle: {
@@ -400,18 +405,28 @@ const buildOption = (items: CostBreakdownItem[]): EChartsOption => {
             borderRadius: 999,
           },
           itemStyle: {
-            color: TOP_REGION_COLORS[index % TOP_REGION_COLORS.length],
+            color:
+              index === 0
+                ? TOP_ONE_REGION_COLOR
+                : item.coordinateSource === "billing-file"
+                  ? BILLING_FILE_REGION_COLOR
+                  : NON_BILLING_FILE_REGION_COLOR,
             borderColor: "#ffffff",
-            borderWidth: 2,
-            shadowColor: "rgba(37, 99, 235, 0.22)",
-            shadowBlur: 10,
+            borderWidth: 1.5,
+            shadowColor:
+              index === 0
+                ? "rgba(37, 99, 235, 0.24)"
+                : item.coordinateSource === "billing-file"
+                  ? "rgba(31, 139, 122, 0.22)"
+                  : "rgba(107, 114, 128, 0.2)",
+            shadowBlur: index === 0 ? 7 : 5,
           },
         })),
         z: 9,
         zlevel: 3,
         rippleEffect: {
           brushType: "stroke",
-          scale: 3,
+          scale: 2,
         },
         symbolSize: (value: (string | number)[]) => {
           const spend = Number(value[2] ?? 0);

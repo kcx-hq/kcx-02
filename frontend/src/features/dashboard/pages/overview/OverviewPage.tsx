@@ -13,7 +13,6 @@ import {
   OverviewBreakdownSection,
   OverviewInsightStrip,
   OverviewKpiSection,
-  OverviewSavingsSection,
   OverviewTrendRegionSection,
 } from "./components";
 import { parseDateValue, parseOptionalInt } from "./utils/overviewFormatters";
@@ -108,7 +107,6 @@ export default function OverviewPage() {
           setRecommendationsPage(1);
         }}
       />
-
 
       <OverviewAlertsSection
         anomaliesLoading={anomaliesQuery.isLoading}

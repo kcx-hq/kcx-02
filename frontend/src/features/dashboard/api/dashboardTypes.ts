@@ -93,10 +93,6 @@ export type CostBreakdownItem = {
   contributionPct: number;
   latitude?: number | null;
   longitude?: number | null;
-  isTop5?: boolean;
-  rank?: number;
-  serviceCount?: number;
-  resourceCount?: number;
 };
 
 export type SavingsInsights = {
