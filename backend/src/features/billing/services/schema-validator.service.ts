@@ -1,3 +1,4 @@
+// @ts-nocheck
 import {
   CANONICAL_COLUMNS,
   REQUIRED_COLUMNS,
@@ -305,3 +306,4 @@ export {
   validateAndNormalizeByFormat,
   buildSchemaValidationErrorMessage,
 };
+

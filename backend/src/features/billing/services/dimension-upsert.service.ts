@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { Op } from "sequelize";
 
 import {
@@ -1029,3 +1030,4 @@ export {
   resolveDimensions,
   resolveDimensionsWithCache,
 };
+

@@ -244,6 +244,7 @@ export async function handleGetAwsCloudFormationSetupUrl(req: Request, res: Resp
     data: { url },
   });
 }
+
 export async function handleAwsConnectionCallback(req: Request, res: Response): Promise<void> {
   const payload = parseWithSchema(awsConnectionCallbackSchema, req.body);
 

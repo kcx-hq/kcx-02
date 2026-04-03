@@ -1414,6 +1414,7 @@ export function ClientBillingPage() {
           status: "draft",
           account_type: autoAccountType,
         })
+        
 
         const setup = await apiGet<{ url: string }>(`/cloud-connections/${created.id}/aws-cloudformation-url`)
         if (setupTab) {

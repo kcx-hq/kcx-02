@@ -96,7 +96,7 @@ export function ManualBillingUploadDialog({
 
     void (async () => {
       try {
-        const result = await apiPostForm<ManualUploadResponse>("/billing/ingestions", formData)
+        const result = await apiPostForm<ManualUploadResponse>("/billing/ingestion/upload", formData)
         setSuccessMessage(`Upload queued successfully. Ingestion run ID: ${result.ingestionRunId}`)
         onIngestionQueued?.(result)
         setFile(null)

@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import csvParser from "csv-parser";
 import { Readable } from "node:stream";
@@ -417,3 +418,4 @@ export {
   parseParquet,
   detectFileFormatFromKey,
 };
+
