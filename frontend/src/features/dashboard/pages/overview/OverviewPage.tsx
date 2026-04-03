@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import type { ColDef } from "ag-grid-community";
 import type { EChartsOption } from "echarts";
-import { AlertTriangle, Filter, Lightbulb, RotateCcw } from "lucide-react";
+import { AlertTriangle, Lightbulb } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import type {
@@ -12,15 +12,13 @@ import type {
 } from "../../api/dashboardApi";
 import { useDashboardScope } from "../../hooks/useDashboardScope";
 import {
-  useDashboardFiltersQuery,
   useOverviewAnomaliesQuery,
   useOverviewQuery,
   useOverviewRecommendationsQuery,
 } from "../../hooks/useDashboardQueries";
-import { DashboardPageHeader } from "../../components/DashboardPageHeader";
 import { BaseEChart } from "../../common/charts/BaseEChart";
 import { DonutChart } from "../../common/charts/DonutChart";
-import { KpiCard, KpiGrid, MetricBadge, PageSection, WidgetShell } from "../../common/components";
+import { KpiCard, MetricBadge, PageSection, WidgetShell } from "../../common/components";
 import { BaseDataTable, currencyFormatter } from "../../common/tables/BaseDataTable";
 import { TableShell } from "../../common/tables/TableShell";
 
@@ -231,13 +229,6 @@ export default function OverviewPage() {
   );
 
   const overviewQuery = useOverviewQuery(overviewFilters);
-  const filtersQuery = useDashboardFiltersQuery({
-    ...(billingStart ? { billingPeriodStart: billingStart } : {}),
-    ...(billingEnd ? { billingPeriodEnd: billingEnd } : {}),
-    ...(selectedServiceKey ? { serviceKeys: [selectedServiceKey] } : {}),
-    ...(selectedRegionKey ? { regionKeys: [selectedRegionKey] } : {}),
-    ...(selectedAccountKey ? { accountKeys: [selectedAccountKey] } : {}),
-  });
   const anomaliesQuery = useOverviewAnomaliesQuery({
     ...(billingStart ? { billingPeriodStart: billingStart } : {}),
     ...(billingEnd ? { billingPeriodEnd: billingEnd } : {}),
@@ -262,7 +253,6 @@ export default function OverviewPage() {
   });
 
   const data = overviewQuery.data;
-  const filterOptions = filtersQuery.data;
 
   const anomalyColumns = useMemo<ColDef<OverviewAnomaly>[]>(
     () => [
@@ -330,163 +320,16 @@ export default function OverviewPage() {
     navigate({ pathname: location.pathname, search: params.toString() }, { replace: true });
   };
 
-  const handleBillingPeriodChange = (start: string | null, end: string | null) => {
-    const params = new URLSearchParams(location.search);
-    if (start) {
-      params.set("billingPeriodStart", start);
-      params.set("from", start);
-    } else {
-      params.delete("billingPeriodStart");
-      params.delete("from");
-    }
-    if (end) {
-      params.set("billingPeriodEnd", end);
-      params.set("to", end);
-    } else {
-      params.delete("billingPeriodEnd");
-      params.delete("to");
-    }
-
-    setAnomaliesPage(1);
-    setRecommendationsPage(1);
-    navigate({ pathname: location.pathname, search: params.toString() }, { replace: true });
-  };
-
-  const resetFilters = () => {
-    const params = new URLSearchParams(location.search);
-    params.delete("serviceKey");
-    params.delete("subAccountKey");
-    params.delete("billingAccountKey");
-    params.delete("regionKey");
-    params.delete("billingPeriodStart");
-    params.delete("billingPeriodEnd");
-    setAnomaliesPage(1);
-    setRecommendationsPage(1);
-    navigate({ pathname: location.pathname, search: params.toString() }, { replace: true });
-  };
-
   const trendOption = useMemo(() => buildTrendOption(data?.budgetVsActualForecast ?? []), [data?.budgetVsActualForecast]);
   const trendHasData = Boolean(data?.budgetVsActualForecast?.length);
 
-  const budgetPeriodMin = filterOptions?.billingPeriod.min ?? "";
-  const budgetPeriodMax = filterOptions?.billingPeriod.max ?? "";
-
   return (
     <div className="dashboard-page overview-page">
-      <DashboardPageHeader
-        title="Overview"
-        actions={
-          <div className="overview-page-header-actions">
-            <MetricBadge tone="accent">{scope?.title ?? "Current Scope"}</MetricBadge>
-          </div>
-        }
-      />
-
-      <PageSection
-        title="Shared Filters"
-        description="Billing Period, Account, Service, and Region stay synchronized across all overview cards."
-        actions={
-          <button type="button" className="dashboard-template-trigger" onClick={resetFilters}>
-            <RotateCcw size={14} />
-            Reset
-          </button>
-        }
-      >
-        <div className="overview-filter-toolbar">
-          <label className="overview-filter-field">
-            <span className="overview-filter-field__label">
-              <Filter size={14} />
-              Billing Start
-            </span>
-            <input
-              type="date"
-              className="overview-filter-field__control"
-              min={budgetPeriodMin}
-              max={budgetPeriodMax}
-              value={billingStart ?? ""}
-              onChange={(event) => handleBillingPeriodChange(event.target.value || null, billingEnd ?? null)}
-            />
-          </label>
-          <label className="overview-filter-field">
-            <span className="overview-filter-field__label">Billing End</span>
-            <input
-              type="date"
-              className="overview-filter-field__control"
-              min={budgetPeriodMin}
-              max={budgetPeriodMax}
-              value={billingEnd ?? ""}
-              onChange={(event) => handleBillingPeriodChange(billingStart ?? null, event.target.value || null)}
-            />
-          </label>
-          <label className="overview-filter-field">
-            <span className="overview-filter-field__label">Account</span>
-            <select
-              className="overview-filter-field__control"
-              value={selectedAccountKey ?? ""}
-              onChange={(event) => {
-                const value = event.target.value;
-                applySearchParam("subAccountKey", value.length > 0 ? value : null);
-                setAnomaliesPage(1);
-                setRecommendationsPage(1);
-              }}
-            >
-              <option value="">All Accounts</option>
-              {(filterOptions?.accounts ?? []).map((account) => (
-                <option key={account.key} value={account.key}>
-                  {account.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="overview-filter-field">
-            <span className="overview-filter-field__label">Service</span>
-            <select
-              className="overview-filter-field__control"
-              value={selectedServiceKey ?? ""}
-              onChange={(event) => {
-                const value = event.target.value;
-                applySearchParam("serviceKey", value.length > 0 ? value : null);
-                setAnomaliesPage(1);
-                setRecommendationsPage(1);
-              }}
-            >
-              <option value="">All Services</option>
-              {(filterOptions?.services ?? []).map((service) => (
-                <option key={service.key} value={service.key}>
-                  {service.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="overview-filter-field">
-            <span className="overview-filter-field__label">Region</span>
-            <select
-              className="overview-filter-field__control"
-              value={selectedRegionKey ?? ""}
-              onChange={(event) => {
-                const value = event.target.value;
-                applySearchParam("regionKey", value.length > 0 ? value : null);
-                setAnomaliesPage(1);
-                setRecommendationsPage(1);
-              }}
-            >
-              <option value="">All Regions</option>
-              {(filterOptions?.regions ?? []).map((region) => (
-                <option key={region.key} value={region.key}>
-                  {region.name}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-      </PageSection>
-
-      <PageSection title="KPI Summary" description="Current period posture with prior-period and alert context.">
-        {overviewQuery.isLoading ? <p className="dashboard-note">Loading overview insights...</p> : null}
-        {overviewQuery.isError ? <p className="dashboard-note">Failed to load overview: {overviewQuery.error.message}</p> : null}
-
-        {data ? (
-          <KpiGrid>
+      {overviewQuery.isLoading ? <p className="dashboard-note">Loading overview insights...</p> : null}
+      {overviewQuery.isError ? <p className="dashboard-note">Failed to load overview: {overviewQuery.error.message}</p> : null}
+      {data ? (
+        <section className="overview-kpi-strip overview-kpi-board">
+          <div className="overview-kpi-row overview-kpi-row--report">
             <KpiCard
               label="Total Spend"
               value={currencyFormatterPrecise.format(data.kpis.totalSpend)}
@@ -533,9 +376,9 @@ export default function OverviewPage() {
               deltaTone={data.kpis.highSeverityAnomalyCount > 0 ? "negative" : "positive"}
               meta="Open anomalies + recommendations"
             />
-          </KpiGrid>
-        ) : null}
-      </PageSection>
+          </div>
+        </section>
+      ) : null}
 
       <PageSection title="Budget vs Actual vs Forecast" description="Monthly trend for budget governance and variance control.">
         {trendHasData ? (

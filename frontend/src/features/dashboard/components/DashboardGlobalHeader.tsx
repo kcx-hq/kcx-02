@@ -1,18 +1,67 @@
 import { Bell, Funnel } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
+import { useTenantUploadHistory } from "@/features/client-home/hooks/useTenantUploadHistory";
 import { dashboardNavItems } from "../common/navigation";
+import { useDashboardFiltersQuery } from "../hooks/useDashboardQueries";
+import { useDashboardScope } from "../hooks/useDashboardScope";
 
 const rootCrumb = "Dashboard";
 
+const parseDateValue = (value: string | null): string => {
+  if (!value) return "";
+  return /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : "";
+};
+
 export function DashboardGlobalHeader() {
   const location = useLocation();
+  const navigate = useNavigate();
+  const { scope } = useDashboardScope();
   const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false);
+  const [draftAccount, setDraftAccount] = useState("");
+  const [draftService, setDraftService] = useState("");
+  const [draftRegion, setDraftRegion] = useState("");
+
+  const searchParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
+  const billingStart = parseDateValue(searchParams.get("billingPeriodStart") ?? searchParams.get("from"));
+  const billingEnd = parseDateValue(searchParams.get("billingPeriodEnd") ?? searchParams.get("to"));
+  const selectedAccount = searchParams.get("subAccountKey") ?? "";
+  const selectedService = searchParams.get("serviceKey") ?? "";
+  const selectedRegion = searchParams.get("regionKey") ?? "";
+
+  const filtersQuery = useDashboardFiltersQuery({
+    ...(billingStart ? { billingPeriodStart: billingStart } : {}),
+    ...(billingEnd ? { billingPeriodEnd: billingEnd } : {}),
+  });
+  const uploadHistoryQuery = useTenantUploadHistory(scope?.scopeType === "upload");
 
   const currentLabel = useMemo(() => {
     const match = dashboardNavItems.find((item) => location.pathname.startsWith(item.path));
     return match?.label ?? "Overview";
   }, [location.pathname]);
+
+  const uploadedFileName = useMemo(() => {
+    if (scope?.scopeType !== "upload") {
+      return null;
+    }
+
+    const firstRawFileId = scope.rawBillingFileIds[0];
+    if (!firstRawFileId) {
+      return scope.title;
+    }
+
+    const matching = (uploadHistoryQuery.data ?? []).find(
+      (record) => Number(record.rawBillingFileId) === Number(firstRawFileId),
+    );
+    return matching?.fileName ?? scope.title;
+  }, [scope, uploadHistoryQuery.data]);
+
+  useEffect(() => {
+    if (!isFilterPanelOpen) return;
+    setDraftAccount(selectedAccount);
+    setDraftService(selectedService);
+    setDraftRegion(selectedRegion);
+  }, [isFilterPanelOpen, selectedAccount, selectedRegion, selectedService]);
 
   useEffect(() => {
     if (!isFilterPanelOpen) {
@@ -31,6 +80,61 @@ export function DashboardGlobalHeader() {
     };
   }, [isFilterPanelOpen]);
 
+  const updateSearchParams = (mutate: (params: URLSearchParams) => void) => {
+    const params = new URLSearchParams(location.search);
+    mutate(params);
+    navigate({ pathname: location.pathname, search: params.toString() }, { replace: true });
+  };
+
+  const setBillingDate = (kind: "start" | "end", value: string) => {
+    updateSearchParams((params) => {
+      if (kind === "start") {
+        if (value) {
+          params.set("billingPeriodStart", value);
+          params.set("from", value);
+        } else {
+          params.delete("billingPeriodStart");
+          params.delete("from");
+        }
+        return;
+      }
+
+      if (value) {
+        params.set("billingPeriodEnd", value);
+        params.set("to", value);
+      } else {
+        params.delete("billingPeriodEnd");
+        params.delete("to");
+      }
+    });
+  };
+
+  const applyPanelFilters = () => {
+    updateSearchParams((params) => {
+      if (draftAccount) params.set("subAccountKey", draftAccount);
+      else params.delete("subAccountKey");
+
+      if (draftService) params.set("serviceKey", draftService);
+      else params.delete("serviceKey");
+
+      if (draftRegion) params.set("regionKey", draftRegion);
+      else params.delete("regionKey");
+    });
+
+    setIsFilterPanelOpen(false);
+  };
+
+  const resetPanelFilters = () => {
+    setDraftAccount("");
+    setDraftService("");
+    setDraftRegion("");
+    updateSearchParams((params) => {
+      params.delete("subAccountKey");
+      params.delete("serviceKey");
+      params.delete("regionKey");
+    });
+  };
+
   return (
     <>
       <header className="dashboard-global-header">
@@ -42,7 +146,33 @@ export function DashboardGlobalHeader() {
           <span className="dashboard-breadcrumb dashboard-breadcrumb--current">{currentLabel}</span>
         </nav>
 
+        <div className="dashboard-global-header__center">
+          {uploadedFileName ? <span className="dashboard-header-file-pill">{uploadedFileName}</span> : null}
+        </div>
+
         <div className="dashboard-global-header__actions">
+          <label className="dashboard-header-field">
+            <span className="dashboard-header-field__label">Billing Start</span>
+            <input
+              type="date"
+              className="dashboard-header-field__control"
+              min={filtersQuery.data?.billingPeriod.min ?? undefined}
+              max={filtersQuery.data?.billingPeriod.max ?? undefined}
+              value={billingStart}
+              onChange={(event) => setBillingDate("start", event.target.value)}
+            />
+          </label>
+          <label className="dashboard-header-field">
+            <span className="dashboard-header-field__label">Billing End</span>
+            <input
+              type="date"
+              className="dashboard-header-field__control"
+              min={filtersQuery.data?.billingPeriod.min ?? undefined}
+              max={filtersQuery.data?.billingPeriod.max ?? undefined}
+              value={billingEnd}
+              onChange={(event) => setBillingDate("end", event.target.value)}
+            />
+          </label>
           <button
             type="button"
             className="dashboard-header-action dashboard-header-action--filter"
@@ -94,77 +224,67 @@ export function DashboardGlobalHeader() {
 
         <div className="dashboard-filter-panel__body">
           <label className="dashboard-filter-field">
-            <span className="dashboard-filter-field__label">Provider</span>
-            <select defaultValue="all" className="dashboard-filter-field__control">
-              <option value="all">All Providers</option>
-              <option value="aws">AWS</option>
-              <option value="azure">Azure</option>
-              <option value="gcp">GCP</option>
+            <span className="dashboard-filter-field__label">Account</span>
+            <select
+              className="dashboard-filter-field__control"
+              value={draftAccount}
+              onChange={(event) => setDraftAccount(event.target.value)}
+            >
+              <option value="">All Accounts</option>
+              {(filtersQuery.data?.accounts ?? []).map((account) => (
+                <option key={account.key} value={account.key}>
+                  {account.name}
+                </option>
+              ))}
             </select>
           </label>
 
-          <div className="dashboard-filter-field">
-            <span className="dashboard-filter-field__label">Accounts</span>
-            <div className="dashboard-filter-checklist">
-              <label>
-                <input type="checkbox" defaultChecked />
-                <span>prod-core</span>
-              </label>
-              <label>
-                <input type="checkbox" defaultChecked />
-                <span>analytics</span>
-              </label>
-              <label>
-                <input type="checkbox" />
-                <span>sandbox</span>
-              </label>
-            </div>
-          </div>
-
           <label className="dashboard-filter-field">
-            <span className="dashboard-filter-field__label">Region</span>
-            <select defaultValue="all" className="dashboard-filter-field__control">
-              <option value="all">All Regions</option>
-              <option value="us-east-1">us-east-1</option>
-              <option value="us-west-2">us-west-2</option>
-              <option value="eu-west-1">eu-west-1</option>
+            <span className="dashboard-filter-field__label">Service</span>
+            <select
+              className="dashboard-filter-field__control"
+              value={draftService}
+              onChange={(event) => setDraftService(event.target.value)}
+            >
+              <option value="">All Services</option>
+              {(filtersQuery.data?.services ?? []).map((service) => (
+                <option key={service.key} value={service.key}>
+                  {service.name}
+                </option>
+              ))}
             </select>
           </label>
 
           <label className="dashboard-filter-field">
-            <span className="dashboard-filter-field__label">Cost Category</span>
-            <select defaultValue="all" className="dashboard-filter-field__control">
-              <option value="all">All Categories</option>
-              <option value="compute">Compute</option>
-              <option value="storage">Storage</option>
-              <option value="network">Network</option>
+            <span className="dashboard-filter-field__label">Region</span>
+            <select
+              className="dashboard-filter-field__control"
+              value={draftRegion}
+              onChange={(event) => setDraftRegion(event.target.value)}
+            >
+              <option value="">All Regions</option>
+              {(filtersQuery.data?.regions ?? []).map((region) => (
+                <option key={region.key} value={region.key}>
+                  {region.name}
+                </option>
+              ))}
             </select>
           </label>
-
-          <div className="dashboard-filter-field">
-            <span className="dashboard-filter-field__label">Date Range</span>
-            <div className="dashboard-filter-radio-group">
-              <label>
-                <input type="radio" name="dashboard-date-range" defaultChecked />
-                <span>Last 7 days</span>
-              </label>
-              <label>
-                <input type="radio" name="dashboard-date-range" />
-                <span>Last 30 days</span>
-              </label>
-              <label>
-                <input type="radio" name="dashboard-date-range" />
-                <span>This quarter</span>
-              </label>
-            </div>
-          </div>
         </div>
 
         <div className="dashboard-filter-panel__footer">
-          <button type="button" className="dashboard-filter-panel__btn dashboard-filter-panel__btn--ghost">
+          <button
+            type="button"
+            className="dashboard-filter-panel__btn dashboard-filter-panel__btn--ghost"
+            onClick={resetPanelFilters}
+          >
             Reset
           </button>
-          <button type="button" className="dashboard-filter-panel__btn dashboard-filter-panel__btn--primary">
+          <button
+            type="button"
+            className="dashboard-filter-panel__btn dashboard-filter-panel__btn--primary"
+            onClick={applyPanelFilters}
+          >
             Apply
           </button>
         </div>
