@@ -2,6 +2,7 @@ import { Router } from "express";
 
 import { requireAuth } from "../../../../middlewares/auth.middleware.js";
 import { asyncHandler } from "../../../../utils/async-handler.js";
+import { handleAwsExportFileArrived } from "./aws-export-file-event.controller.js";
 import {
   handleAwsConnectionCallback,
   handleCreateCloudConnection,
@@ -13,6 +14,7 @@ import {
 const router = Router();
 
 router.post("/api/aws/callback", asyncHandler(handleAwsConnectionCallback));
+router.post("/api/aws/export-file-arrived", asyncHandler(handleAwsExportFileArrived));
 
 router.use(requireAuth);
 

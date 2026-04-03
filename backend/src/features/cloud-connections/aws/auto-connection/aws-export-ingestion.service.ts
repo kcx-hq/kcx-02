@@ -293,16 +293,33 @@ type QueueInitialBackfillFileParams = {
   };
 };
 
-export async function queueInitialBackfillFile({
+type QueueRawFileAndIngestionRunParams = {
+  billingSource: BillingSourceInstance;
+  connection: CloudConnectionInstance;
+  originalFilePath: string;
+  rawStorageBucket: string;
+  rawStorageKey: string;
+  fileFormat: "csv" | "parquet";
+  statusMessage: string;
+  checksum?: string | null;
+  fileSizeBytes?: string | null;
+};
+
+const queueRawFileAndIngestionRun = async ({
   billingSource,
   connection,
-  exportBucket,
-  file,
-}: QueueInitialBackfillFileParams): Promise<void> {
-  const fileFormat = resolveBackfillFileFormat(billingSource, file.key);
-  const normalizedEtag = normalizeEtag(file.etag);
-
-  await sequelize.transaction(async (transaction) => {
+  originalFilePath,
+  rawStorageBucket,
+  rawStorageKey,
+  fileFormat,
+  statusMessage,
+  checksum = null,
+  fileSizeBytes = null,
+}: QueueRawFileAndIngestionRunParams): Promise<{
+  rawBillingFileId: string;
+  ingestionRunId: string;
+}> => {
+  return sequelize.transaction(async (transaction) => {
     const rawBillingFile = await RawBillingFile.create(
       {
         billingSourceId: String(billingSource.id),
@@ -311,19 +328,19 @@ export async function queueInitialBackfillFile({
         sourceType: billingSource.sourceType,
         setupMode: billingSource.setupMode,
         uploadedBy: connection.createdBy ?? null,
-        originalFileName: path.basename(file.key),
-        originalFilePath: file.key,
-        rawStorageBucket: exportBucket,
-        rawStorageKey: file.key,
+        originalFileName: path.basename(originalFilePath),
+        originalFilePath,
+        rawStorageBucket,
+        rawStorageKey,
         fileFormat,
-        fileSizeBytes: String(file.size),
-        checksum: normalizedEtag,
+        fileSizeBytes,
+        checksum,
         status: "queued",
       },
       { transaction },
     );
 
-    await BillingIngestionRun.create(
+    const ingestionRun = await BillingIngestionRun.create(
       {
         billingSourceId: String(billingSource.id),
         rawBillingFileId: String(rawBillingFile.id),
@@ -333,12 +350,56 @@ export async function queueInitialBackfillFile({
         rowsFailed: 0,
         progressPercent: 0,
         currentStep: "queued",
-        statusMessage: "Queued by initial AWS export backfill",
+        statusMessage,
       },
       { transaction },
     );
+
+    return {
+      rawBillingFileId: String(rawBillingFile.id),
+      ingestionRunId: String(ingestionRun.id),
+    };
+  });
+};
+
+export async function queueInitialBackfillFile({
+  billingSource,
+  connection,
+  exportBucket,
+  file,
+}: QueueInitialBackfillFileParams): Promise<void> {
+  const fileFormat = resolveBackfillFileFormat(billingSource, file.key);
+  const normalizedEtag = normalizeEtag(file.etag);
+
+  await queueRawFileAndIngestionRun({
+    billingSource,
+    connection,
+    originalFilePath: file.key,
+    rawStorageBucket: exportBucket,
+    rawStorageKey: file.key,
+    fileFormat,
+    checksum: normalizedEtag,
+    fileSizeBytes: String(file.size),
+    statusMessage: "Queued by initial AWS export backfill",
   });
 }
+
+type QueueExportFileFromEventParams = {
+  callbackToken: string;
+  accountId: string;
+  region: string;
+  roleArn: string;
+  bucketName: string;
+  objectKey: string;
+};
+
+type QueueExportFileFromEventResult = {
+  queued: boolean;
+  skipped: boolean;
+  reason?: string;
+  rawBillingFileId?: string;
+  ingestionRunId?: string;
+};
 
 const findExistingRawFileByIdentity = async ({
   billingSourceId,
@@ -360,6 +421,122 @@ const findExistingRawFileByIdentity = async ({
     },
   });
 };
+
+export async function queueExportFileFromEvent({
+  callbackToken,
+  accountId,
+  region,
+  roleArn,
+  bucketName,
+  objectKey,
+}: QueueExportFileFromEventParams): Promise<QueueExportFileFromEventResult> {
+  const normalizedCallbackToken = requireNonEmpty(callbackToken, "callbackToken");
+  const normalizedAccountId = requireNonEmpty(accountId, "accountId");
+  const normalizedRegion = requireNonEmpty(region, "region");
+  const normalizedRoleArn = requireNonEmpty(roleArn, "roleArn");
+  const normalizedBucketName = requireNonEmpty(bucketName, "bucketName");
+  const normalizedObjectKey = requireNonEmpty(objectKey, "objectKey");
+
+  const connection = await CloudConnectionV2.findOne({
+    where: { callbackToken: normalizedCallbackToken },
+  });
+  if (!connection) {
+    throw new NotFoundError("Invalid callback token");
+  }
+
+  const storedCloudAccountId = String(connection.cloudAccountId ?? "").trim();
+  if (storedCloudAccountId && storedCloudAccountId !== normalizedAccountId) {
+    throw new BadRequestError("Account id does not match the connected cloud account");
+  }
+
+  const storedRoleArn = String(connection.roleArn ?? "").trim();
+  if (storedRoleArn && storedRoleArn !== normalizedRoleArn) {
+    throw new BadRequestError("Role ARN does not match the connected role");
+  }
+
+  const storedExportRegion = String(connection.exportRegion ?? connection.region ?? "").trim();
+  if (storedExportRegion && storedExportRegion !== normalizedRegion) {
+    throw new BadRequestError("Region does not match the configured export region");
+  }
+
+  const billingSource = await BillingSource.findOne({
+    where: { cloudConnectionId: connection.id },
+    order: [["updatedAt", "DESC"]],
+  });
+  if (!billingSource) {
+    throw new NotFoundError("Billing source not found for connection");
+  }
+
+  const storedBucketName = String(billingSource.bucketName ?? connection.exportBucket ?? "").trim();
+  if (storedBucketName && storedBucketName !== normalizedBucketName) {
+    throw new BadRequestError("Bucket name does not match the configured export bucket");
+  }
+
+  const duplicateRawFile = await RawBillingFile.findOne({
+    where: {
+      billingSourceId: String(billingSource.id),
+      originalFilePath: normalizedObjectKey,
+    },
+  });
+  if (duplicateRawFile) {
+    return {
+      queued: false,
+      skipped: true,
+      reason: "File already registered",
+    };
+  }
+
+  if (!env.rawBillingFilesBucket) {
+    throw new InternalServerError("RAW_BILLING_FILES_BUCKET is not configured");
+  }
+
+  const fileFormat = resolveBackfillFileFormat(billingSource, normalizedObjectKey);
+  const roleArnForDownload = requireNonEmpty(connection.roleArn, "roleArn");
+  const providerName = await getProviderNameById(String(billingSource.cloudProviderId));
+  const rawStorageKey = buildRawStorageKey({
+    tenantId: billingSource.tenantId,
+    providerName,
+    key: normalizedObjectKey,
+  });
+
+  const downloadedBodyBase64 = await downloadExportFile({
+    roleArn: roleArnForDownload,
+    externalId: connection.externalId ?? null,
+    region: normalizedRegion,
+    bucket: normalizedBucketName,
+    key: normalizedObjectKey,
+  });
+  const fileBuffer = Buffer.from(downloadedBodyBase64, "base64");
+
+  await uploadToS3({
+    buffer: fileBuffer,
+    mimeType: fileFormat === "csv" ? "text/csv" : "application/octet-stream",
+    bucket: env.rawBillingFilesBucket,
+    key: rawStorageKey,
+  });
+
+  const queued = await queueRawFileAndIngestionRun({
+    billingSource,
+    connection,
+    originalFilePath: normalizedObjectKey,
+    rawStorageBucket: env.rawBillingFilesBucket,
+    rawStorageKey,
+    fileFormat,
+    fileSizeBytes: String(fileBuffer.length),
+    statusMessage: "Queued by AWS S3 object-created event",
+  });
+
+  await billingSource.update({
+    lastFileReceivedAt: new Date(),
+  });
+
+  return {
+    queued: true,
+    skipped: false,
+    rawBillingFileId: queued.rawBillingFileId,
+    ingestionRunId: queued.ingestionRunId,
+  };
+}
 
 export async function runInitialBackfillAfterValidation(connectionId: string): Promise<InitialBackfillSummary> {
   const { connection, billingSource } = await loadConnectionAndSource(connectionId);
