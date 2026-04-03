@@ -5,7 +5,7 @@ import { logger } from "../../../../utils/logger.js";
 import { parseWithSchema } from "../../../_shared/validation/zod-validate.js";
 import { ingestionOrchestrator } from "../../../billing/services/ingestion-orchestrator.service.ts";
 import { queueExportFileFromEvent } from "./aws-export-ingestion.service.ts";
-import { awsExportFileEventCallbackSchema } from "./cloud-connections.schema.js";
+import { awsExportFileEventCallbackSchema } from "./aws-export-file-event.schema.js";
 
 async function triggerQueuedIngestionRun(ingestionRunId: string): Promise<void> {
   try {

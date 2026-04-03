@@ -11,7 +11,7 @@ import {
   buildAwsCloudFormationCreateStackUrl,
   KCX_AWS_CLOUDFORMATION_TEMPLATE_URL,
 } from "./aws-cloudformation-url.js";
-import { runInitialBackfillAfterValidation } from "./aws-export-ingestion.service.js";
+import { runInitialBackfillAfterValidation } from "../exports/aws-export-ingestion.service.js";
 import { validateAwsConnection } from "./aws-connection-validation.service.js";
 import { awsConnectionCallbackSchema, createCloudConnectionSchema } from "./cloud-connections.schema.js";
 
