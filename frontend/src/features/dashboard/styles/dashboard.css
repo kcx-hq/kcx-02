@@ -1751,14 +1751,22 @@
 }
 
 .overview-trend-unified::after {
-  display: none;
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc((100% * 1.75) / 2.75);
+  width: 1px;
+  background: color-mix(in srgb, var(--dashboard-border-light) 68%, var(--dashboard-white-strong) 32%);
+  pointer-events: none;
+  z-index: 2;
 }
 
 .overview-trend-unified__header {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 4px;
+  display: grid;
+  grid-template-columns: minmax(0, 1.75fr) minmax(0, 1fr);
+  align-items: center;
+  gap: 0;
   padding: 12px 14px 10px;
   border-bottom: 1px solid color-mix(in srgb, var(--dashboard-border-light) 68%, var(--dashboard-white-strong) 32%);
 }
@@ -1785,6 +1793,56 @@
   margin: 0;
 }
 
+.overview-trend-unified__side-title {
+  margin: 0;
+  font-size: 0.95rem;
+  line-height: 1.2;
+  color: #16324b;
+  font-weight: 700;
+}
+
+.overview-trend-header-side {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  min-width: 0;
+  padding-left: 12px;
+}
+
+.overview-trend-header-legend {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.overview-trend-header-legend__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+
+.overview-trend-header-legend__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  flex: 0 0 auto;
+}
+
+.overview-trend-header-legend__name {
+  max-width: 118px;
+  font-size: 0.69rem;
+  line-height: 1.2;
+  color: #4a6472;
+  font-weight: 620;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .overview-trend--plain {
   border: 0;
   border-radius: 0;
@@ -1797,8 +1855,16 @@
 }
 
 .overview-trend-pane--map {
-  border-left: 1px solid color-mix(in srgb, var(--dashboard-border-light) 68%, var(--dashboard-white-strong) 32%);
+  border-left: 0;
   background: linear-gradient(160deg, rgba(244, 250, 252, 0.82) 0%, rgba(239, 247, 250, 0.55) 100%);
+}
+
+.overview-trend-pane--map-direct {
+  padding: 0;
+}
+
+.overview-trend-pane--map-direct .dashboard-echart {
+  height: 100% !important;
 }
 
 .overview-top-regions {
@@ -2194,8 +2260,27 @@
   }
 
   .overview-trend-unified__header {
+    grid-template-columns: 1fr;
     align-items: flex-start;
     gap: 6px;
+  }
+
+  .overview-trend-unified__side-title {
+    margin: 0;
+  }
+
+  .overview-trend-header-side {
+    padding-left: 0;
+    gap: 5px;
+  }
+
+  .overview-trend-header-legend {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .overview-trend-header-legend__name {
+    max-width: 140px;
   }
 
   .overview-trend-pane--map {

@@ -21,13 +21,14 @@ type MappedRegion = {
   billedCost: number;
   contributionPct: number;
   coordinateSource: "billing-file" | "mapped-reference";
+  isTopHighlighted?: boolean;
 };
 
 const MAP_NAME = "kcx_world";
 const PUBLIC_BASE_URL = import.meta.env.BASE_URL ?? "/";
 const LOCAL_WORLD_MAP_FILES = ["maps/world-lite.geo.json"];
 
-const TOP_ONE_REGION_COLOR = "#2563eb";
+export const TOP_THREE_REGION_COLORS = ["#2563eb", "#f59e0b", "#8b5cf6"] as const;
 const BILLING_FILE_REGION_COLOR = "#1f8b7a";
 const NON_BILLING_FILE_REGION_COLOR = "#6b7280";
 
@@ -261,6 +262,25 @@ const getTopMarkerSize = (spend: number, maxValue: number) => {
   return 7 + Math.sqrt(spend / maxValue) * 5;
 };
 
+const pickTopUniqueRegions = (items: MappedRegion[], limit: number): MappedRegion[] => {
+  const seenNames = new Set<string>();
+  const unique: MappedRegion[] = [];
+
+  for (const item of items) {
+    const normalized = item.name.trim().toLowerCase();
+    if (seenNames.has(normalized)) {
+      continue;
+    }
+    seenNames.add(normalized);
+    unique.push(item);
+    if (unique.length >= limit) {
+      break;
+    }
+  }
+
+  return unique;
+};
+
 const mapData = (items: CostBreakdownItem[]): MappedRegion[] => {
   const sorted = [...items].sort((a, b) => b.billedCost - a.billedCost);
 
@@ -289,11 +309,11 @@ const mapData = (items: CostBreakdownItem[]): MappedRegion[] => {
 
 const buildOption = (items: CostBreakdownItem[]): EChartsOption => {
   const mapped = mapData(items);
-  const top5Mapped = mapped.slice(0, 5);
-  const top5Names = new Set(top5Mapped.map((item) => item.name));
-  const normalMapped = mapped.filter((item) => !top5Names.has(item.name));
+  const top3Mapped = pickTopUniqueRegions(mapped, 3);
+  const top3Names = new Set(top3Mapped.map((item) => item.name));
+  const normalMapped = mapped.filter((item) => !top3Names.has(item.name));
   const maxValue = mapped.reduce((acc, item) => Math.max(acc, item.billedCost), 0);
-  const geoView = getGeoView(top5Mapped.length > 0 ? top5Mapped : mapped);
+  const geoView = getGeoView(top3Mapped.length > 0 ? top3Mapped : mapped);
   const formatCurrency = (value: number) =>
     new Intl.NumberFormat(undefined, {
       style: "currency",
@@ -323,6 +343,17 @@ const buildOption = (items: CostBreakdownItem[]): EChartsOption => {
         const point = params?.data as MappedRegion | undefined;
         if (!point) return "";
 
+        const shouldShowDetailedInfo = point.coordinateSource === "billing-file" || point.isTopHighlighted === true;
+        if (!shouldShowDetailedInfo) {
+          return `
+            <div style="padding: 9px 11px;">
+              <div style="font-size: 12px; font-weight: 700; color: #f8fafc;">
+                ${point.name}
+              </div>
+            </div>
+          `;
+        }
+
         return `
           <div style="min-width: 170px; padding: 9px 11px;">
             <div style="font-size: 12px; font-weight: 700; color: #f8fafc; margin-bottom: 5px;">
@@ -340,6 +371,7 @@ const buildOption = (items: CostBreakdownItem[]): EChartsOption => {
         `;
       },
     },
+    color: [...TOP_THREE_REGION_COLORS],
     geo: {
       map: MAP_NAME,
       roam: true,
@@ -385,41 +417,21 @@ const buildOption = (items: CostBreakdownItem[]): EChartsOption => {
         },
       },
       {
-        name: "Top 5 Regions",
+        name: "Top 3 Regions",
         type: "effectScatter",
         coordinateSystem: "geo",
-        data: top5Mapped.map((item, index) => ({
+        data: top3Mapped.map((item, index) => ({
           ...item,
+          isTopHighlighted: true,
           label: {
-            show: true,
-            formatter: item.name,
-            position: "top",
-            distance: 8,
-            color: "#0f172a",
-            fontSize: 10,
-            fontWeight: 700,
-            backgroundColor: "rgba(248, 250, 252, 0.95)",
-            borderColor: "rgba(255, 255, 255, 0.96)",
-            borderWidth: 1,
-            padding: [2, 5],
-            borderRadius: 999,
+            show: false,
           },
           itemStyle: {
-            color:
-              index === 0
-                ? TOP_ONE_REGION_COLOR
-                : item.coordinateSource === "billing-file"
-                  ? BILLING_FILE_REGION_COLOR
-                  : NON_BILLING_FILE_REGION_COLOR,
+            color: TOP_THREE_REGION_COLORS[index % TOP_THREE_REGION_COLORS.length],
             borderColor: "#ffffff",
             borderWidth: 1.5,
-            shadowColor:
-              index === 0
-                ? "rgba(37, 99, 235, 0.24)"
-                : item.coordinateSource === "billing-file"
-                  ? "rgba(31, 139, 122, 0.22)"
-                  : "rgba(107, 114, 128, 0.2)",
-            shadowBlur: index === 0 ? 7 : 5,
+            shadowColor: "rgba(15, 23, 42, 0.2)",
+            shadowBlur: 6,
           },
         })),
         z: 9,
@@ -436,8 +448,8 @@ const buildOption = (items: CostBreakdownItem[]): EChartsOption => {
           scale: true,
           itemStyle: {
             borderColor: "#ffffff",
-            borderWidth: 2.5,
-            shadowBlur: 14,
+            borderWidth: 2.3,
+            shadowBlur: 12,
           },
         },
       },
