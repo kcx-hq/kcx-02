@@ -1,17 +1,10 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
-import type { OverviewSortOrder } from "../../api/dashboardApi";
 import { useDashboardScope } from "../../hooks/useDashboardScope";
+import { useOverviewQuery } from "../../hooks/useDashboardQueries";
 import {
-  useOverviewAnomaliesQuery,
-  useOverviewQuery,
-  useOverviewRecommendationsQuery,
-} from "../../hooks/useDashboardQueries";
-import {
-  OverviewAlertsSection,
   OverviewBreakdownSection,
-  OverviewInsightStrip,
   OverviewKpiSection,
   OverviewTrendRegionSection,
 } from "./components";
@@ -28,10 +21,6 @@ export default function OverviewPage() {
   const selectedAccountKey = parseOptionalInt(searchParams.get("subAccountKey") ?? searchParams.get("billingAccountKey"));
   const selectedServiceKey = parseOptionalInt(searchParams.get("serviceKey"));
   const selectedRegionKey = parseOptionalInt(searchParams.get("regionKey"));
-
-  const [anomaliesPage, setAnomaliesPage] = useState(1);
-  const [recommendationsPage, setRecommendationsPage] = useState(1);
-  const [tableSortOrder] = useState<OverviewSortOrder>("desc");
 
   const billingStart = urlBillingStart ?? scope?.from ?? undefined;
   const billingEnd = urlBillingEnd ?? scope?.to ?? undefined;
@@ -52,22 +41,6 @@ export default function OverviewPage() {
     page: 1,
     pageSize: 5,
     sortOrder: "desc",
-  });
-
-  const anomaliesQuery = useOverviewAnomaliesQuery({
-    ...sharedFilters,
-    page: anomaliesPage,
-    pageSize: 5,
-    sortBy: "anomalyDate",
-    sortOrder: tableSortOrder,
-  });
-
-  const recommendationsQuery = useOverviewRecommendationsQuery({
-    ...sharedFilters,
-    page: recommendationsPage,
-    pageSize: 5,
-    sortBy: "estimatedSavings",
-    sortOrder: tableSortOrder,
   });
 
   const applySearchParam = (key: string, value: string | null) => {
@@ -94,42 +67,16 @@ export default function OverviewPage() {
       <OverviewBreakdownSection
         topServices={data?.topServices ?? []}
         topAccounts={data?.topAccounts ?? []}
+        anomalies={data?.anomaliesPreview.items ?? []}
         selectedServiceKey={selectedServiceKey}
         selectedAccountKey={selectedAccountKey}
         onSelectService={(key) => {
           applySearchParam("serviceKey", key ? String(key) : null);
-          setAnomaliesPage(1);
-          setRecommendationsPage(1);
         }}
         onSelectAccount={(key) => {
           applySearchParam("subAccountKey", key ? String(key) : null);
-          setAnomaliesPage(1);
-          setRecommendationsPage(1);
         }}
       />
-
-      <OverviewAlertsSection
-        anomaliesLoading={anomaliesQuery.isLoading}
-        anomaliesErrorMessage={anomaliesQuery.isError ? anomaliesQuery.error.message : null}
-        anomaliesData={anomaliesQuery.data}
-        anomaliesPage={anomaliesPage}
-        onAnomaliesPrev={() => setAnomaliesPage((value) => Math.max(1, value - 1))}
-        onAnomaliesNext={() =>
-          setAnomaliesPage((value) => Math.min(Math.max(1, anomaliesQuery.data?.pagination.totalPages ?? 1), value + 1))
-        }
-        recommendationsLoading={recommendationsQuery.isLoading}
-        recommendationsErrorMessage={recommendationsQuery.isError ? recommendationsQuery.error.message : null}
-        recommendationsData={recommendationsQuery.data}
-        recommendationsPage={recommendationsPage}
-        onRecommendationsPrev={() => setRecommendationsPage((value) => Math.max(1, value - 1))}
-        onRecommendationsNext={() =>
-          setRecommendationsPage((value) =>
-            Math.min(Math.max(1, recommendationsQuery.data?.pagination.totalPages ?? 1), value + 1),
-          )
-        }
-      />
-
-      {data ? <OverviewInsightStrip data={data} /> : null}
     </div>
   );
 }
