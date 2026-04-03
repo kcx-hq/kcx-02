@@ -27,7 +27,8 @@ type MappedRegion = {
 };
 
 const MAP_NAME = "kcx_world";
-const LOCAL_WORLD_MAP_PATHS = ["/maps/world-lite.geo.json", "/maps/world.geo.json", "/maps/mapWorld.json"];
+const PUBLIC_BASE_URL = import.meta.env.BASE_URL ?? "/";
+const LOCAL_WORLD_MAP_FILES = ["maps/world-lite.geo.json", "maps/world.geo.json", "maps/mapWorld.json"];
 
 const TOP_REGION_COLORS = ["#2563eb", "#ef4444", "#10b981", "#f59e0b", "#8b5cf6"];
 const BASE_REGION_COLOR = "#6f8595";
@@ -96,6 +97,12 @@ const REGION_COORDINATES: Record<string, Coordinate> = {
 
 let mapLoadedPromise: Promise<boolean> | null = null;
 
+const getPublicAssetPath = (assetPath: string) => {
+  const base = PUBLIC_BASE_URL.endsWith("/") ? PUBLIC_BASE_URL : `${PUBLIC_BASE_URL}/`;
+  const normalizedAssetPath = assetPath.startsWith("/") ? assetPath.slice(1) : assetPath;
+  return `${base}${normalizedAssetPath}`;
+};
+
 const isGeoJsonFeatureCollection = (value: unknown): boolean => {
   if (!value || typeof value !== "object") {
     return false;
@@ -119,13 +126,19 @@ const registerWorldMap = (mapPayload: unknown): boolean => {
 };
 
 const loadWorldMap = async (): Promise<boolean> => {
+  const getMapFn = (echarts as unknown as { getMap?: (name: string) => unknown }).getMap;
+  if (typeof getMapFn === "function" && getMapFn(MAP_NAME)) {
+    return true;
+  }
+
   if (mapLoadedPromise) {
     return mapLoadedPromise;
   }
 
   mapLoadedPromise = (async () => {
     try {
-      for (const path of LOCAL_WORLD_MAP_PATHS) {
+      for (const filePath of LOCAL_WORLD_MAP_FILES) {
+        const path = getPublicAssetPath(filePath);
         const localResponse = await fetch(path);
         if (!localResponse.ok) {
           continue;
@@ -149,19 +162,12 @@ const loadWorldMap = async (): Promise<boolean> => {
     }
   })();
 
-  return mapLoadedPromise;
+  const isLoaded = await mapLoadedPromise;
+  if (!isLoaded) {
+    mapLoadedPromise = null;
+  }
+  return isLoaded;
 };
-
-const formatCurrency = (value: number) => {
-  return new Intl.NumberFormat(undefined, {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(value);
-};
-
-const formatPercent = (value: number) => `${value.toFixed(2)}%`;
 
 const normalizeRegionName = (name: string) => name.trim().toLowerCase();
 
@@ -299,26 +305,7 @@ const buildOption = (items: CostBreakdownItem[]): EChartsOption => {
   const top5Names = new Set(top5Mapped.map((item) => item.name));
   const normalMapped = mapped.filter((item) => !top5Names.has(item.name));
   const maxValue = mapped.reduce((acc, item) => Math.max(acc, item.billedCost), 0);
-  const geoView = getGeoView(mapped);
-  const top5Center =
-    top5Mapped.length > 1
-      ? ([
-          top5Mapped.reduce((acc, item) => acc + Number(item.value[0]), 0) / top5Mapped.length,
-          top5Mapped.reduce((acc, item) => acc + Number(item.value[1]), 0) / top5Mapped.length,
-        ] as [number, number])
-      : null;
-  const connectionLines =
-    top5Center === null
-      ? []
-      : top5Mapped.map((item) => ({
-          coords: [
-            [Number(item.value[0]), Number(item.value[1])],
-            top5Center,
-          ],
-          lineStyle: {
-            color: `${TOP_REGION_COLORS[(item.rank - 1) % TOP_REGION_COLORS.length]}55`,
-          },
-        }));
+  const geoView = getGeoView(top5Mapped.length > 0 ? top5Mapped : mapped);
 
   return {
     animation: true,
@@ -342,46 +329,10 @@ const buildOption = (items: CostBreakdownItem[]): EChartsOption => {
         if (!point) return "";
 
         return `
-          <div style="min-width: 190px; padding: 12px 14px;">
-            <div style="font-size: 13px; font-weight: 700; color: #f8fafc; margin-bottom: 8px;">
-              ${point.isTop5 ? `#${point.rank} ${point.name}` : point.name}
+          <div style="padding: 10px 12px;">
+            <div style="font-size: 13px; font-weight: 700; color: #f8fafc;">
+              ${point.name}
             </div>
-            <div style="font-size: 12px; color: #94a3b8; margin-bottom: 4px;">
-              Total Cost:
-              <span style="font-weight: 600; color: #f8fafc;">
-                ${formatCurrency(point.billedCost)}
-              </span>
-            </div>
-            <div style="font-size: 12px; color: #94a3b8; margin-bottom: 4px;">
-              Share:
-              <span style="font-weight: 600; color: #f8fafc;">
-                ${formatPercent(point.contributionPct)}
-              </span>
-            </div>
-            ${
-              point.serviceCount > 0
-                ? `
-              <div style="font-size: 12px; color: #94a3b8; margin-bottom: 4px;">
-                Services:
-                <span style="font-weight: 600; color: #f8fafc;">
-                  ${point.serviceCount}
-                </span>
-              </div>
-            `
-                : ""
-            }
-            ${
-              point.resourceCount > 0
-                ? `
-              <div style="font-size: 12px; color: #94a3b8;">
-                Resources:
-                <span style="font-weight: 600; color: #f8fafc;">
-                  ${point.resourceCount}
-                </span>
-              </div>
-            `
-                : ""
-            }
           </div>
         `;
       },
@@ -407,27 +358,6 @@ const buildOption = (items: CostBreakdownItem[]): EChartsOption => {
       },
     },
     series: [
-      {
-        name: "Top Region Connections",
-        type: "lines",
-        coordinateSystem: "geo",
-        data: connectionLines,
-        z: 3,
-        zlevel: 2,
-        silent: true,
-        lineStyle: {
-          width: 1.2,
-          opacity: 0.7,
-          curveness: 0.24,
-        },
-        effect: {
-          show: true,
-          period: 4.4,
-          trailLength: 0.25,
-          symbolSize: 2.4,
-          color: "#1d4ed8",
-        },
-      },
       {
         name: "All Regions",
         type: "scatter",
@@ -457,7 +387,7 @@ const buildOption = (items: CostBreakdownItem[]): EChartsOption => {
           ...item,
           label: {
             show: true,
-            formatter: `#${item.rank}`,
+            formatter: item.name,
             position: "top",
             distance: 8,
             color: "#0f172a",
@@ -520,18 +450,32 @@ export function TopRegionsGeoMap({ data, height = 340 }: TopRegionsGeoMapProps) 
 
   useEffect(() => {
     let mounted = true;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+    let attempt = 0;
 
-    void (async () => {
+    const tryLoadMap = async () => {
+      attempt += 1;
       const loaded = await loadWorldMap();
 
       if (!mounted) return;
 
       setIsMapReady(loaded);
       setMapFailed(!loaded);
-    })();
+
+      if (!loaded && attempt < 2) {
+        retryTimer = setTimeout(() => {
+          void tryLoadMap();
+        }, 1200);
+      }
+    };
+
+    void tryLoadMap();
 
     return () => {
       mounted = false;
+      if (retryTimer) {
+        clearTimeout(retryTimer);
+      }
     };
   }, []);
 

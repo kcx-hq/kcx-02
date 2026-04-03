@@ -109,7 +109,6 @@ export default function OverviewPage() {
         }}
       />
 
-      <OverviewSavingsSection savingsInsights={data?.savingsInsights ?? null} />
 
       <OverviewAlertsSection
         anomaliesLoading={anomaliesQuery.isLoading}
