@@ -25,13 +25,15 @@ export function DashboardGlobalHeader() {
   const searchParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
   const billingStart = parseDateValue(searchParams.get("billingPeriodStart") ?? searchParams.get("from"));
   const billingEnd = parseDateValue(searchParams.get("billingPeriodEnd") ?? searchParams.get("to"));
+  const effectiveBillingStart = billingStart || (scope?.from ?? "");
+  const effectiveBillingEnd = billingEnd || (scope?.to ?? "");
   const selectedAccount = searchParams.get("subAccountKey") ?? "";
   const selectedService = searchParams.get("serviceKey") ?? "";
   const selectedRegion = searchParams.get("regionKey") ?? "";
 
   const filtersQuery = useDashboardFiltersQuery({
-    ...(billingStart ? { billingPeriodStart: billingStart } : {}),
-    ...(billingEnd ? { billingPeriodEnd: billingEnd } : {}),
+    ...(effectiveBillingStart ? { billingPeriodStart: effectiveBillingStart } : {}),
+    ...(effectiveBillingEnd ? { billingPeriodEnd: effectiveBillingEnd } : {}),
   });
   const uploadHistoryQuery = useTenantUploadHistory(scope?.scopeType === "upload");
 
@@ -151,28 +153,28 @@ export function DashboardGlobalHeader() {
         </div>
 
         <div className="dashboard-global-header__actions">
-          <label className="dashboard-header-field">
-            <span className="dashboard-header-field__label">Billing Start</span>
-            <input
-              type="date"
-              className="dashboard-header-field__control"
-              min={filtersQuery.data?.billingPeriod.min ?? undefined}
-              max={filtersQuery.data?.billingPeriod.max ?? undefined}
-              value={billingStart}
-              onChange={(event) => setBillingDate("start", event.target.value)}
-            />
-          </label>
-          <label className="dashboard-header-field">
-            <span className="dashboard-header-field__label">Billing End</span>
-            <input
-              type="date"
-              className="dashboard-header-field__control"
-              min={filtersQuery.data?.billingPeriod.min ?? undefined}
-              max={filtersQuery.data?.billingPeriod.max ?? undefined}
-              value={billingEnd}
-              onChange={(event) => setBillingDate("end", event.target.value)}
-            />
-          </label>
+          <div className="dashboard-header-range">
+            <span className="dashboard-header-range__label">Billing Period</span>
+            <div className="dashboard-header-range__controls">
+              <input
+                type="date"
+                className="dashboard-header-field__control"
+                min={filtersQuery.data?.billingPeriod.min ?? undefined}
+                max={filtersQuery.data?.billingPeriod.max ?? undefined}
+                value={effectiveBillingStart}
+                onChange={(event) => setBillingDate("start", event.target.value)}
+              />
+              <span className="dashboard-header-range__separator">to</span>
+              <input
+                type="date"
+                className="dashboard-header-field__control"
+                min={filtersQuery.data?.billingPeriod.min ?? undefined}
+                max={filtersQuery.data?.billingPeriod.max ?? undefined}
+                value={effectiveBillingEnd}
+                onChange={(event) => setBillingDate("end", event.target.value)}
+              />
+            </div>
+          </div>
           <button
             type="button"
             className="dashboard-header-action dashboard-header-action--filter"

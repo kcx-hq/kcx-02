@@ -51,6 +51,12 @@ type BreakdownRow = {
   billed_cost: number | string | null;
 };
 
+type RegionBreakdownRow = BreakdownRow & {
+  region_id: string | null;
+  service_count: number | string | null;
+  resource_count: number | string | null;
+};
+
 type AnomalyRow = {
   anomaly_id: string;
   anomaly_date: string;
@@ -98,6 +104,80 @@ const toNumber = (value: number | string | null | undefined): number => {
 const roundTo = (value: number, decimals: number): number => {
   const factor = 10 ** decimals;
   return Math.round(value * factor) / factor;
+};
+
+type RegionCoordinates = {
+  latitude: number;
+  longitude: number;
+};
+
+const REGION_COORDINATES_BY_ID: Record<string, RegionCoordinates> = {
+  "us-east-1": { latitude: 38.9072, longitude: -77.0369 },
+  "us-east-2": { latitude: 39.9612, longitude: -82.9988 },
+  "us-west-1": { latitude: 37.7749, longitude: -122.4194 },
+  "us-west-2": { latitude: 45.5152, longitude: -122.6784 },
+  "eu-west-1": { latitude: 53.3498, longitude: -6.2603 },
+  "eu-west-2": { latitude: 51.5072, longitude: -0.1276 },
+  "eu-central-1": { latitude: 50.1109, longitude: 8.6821 },
+  "eu-west-3": { latitude: 48.8566, longitude: 2.3522 },
+  "eu-north-1": { latitude: 59.3293, longitude: 18.0686 },
+  "ap-south-1": { latitude: 19.076, longitude: 72.8777 },
+  "ap-northeast-1": { latitude: 35.6762, longitude: 139.6503 },
+  "ap-southeast-1": { latitude: 1.3521, longitude: 103.8198 },
+  "ap-southeast-2": { latitude: -33.8688, longitude: 151.2093 },
+  "ap-northeast-2": { latitude: 37.5665, longitude: 126.978 },
+  "sa-east-1": { latitude: -23.5558, longitude: -46.6396 },
+  "ca-central-1": { latitude: 45.4215, longitude: -75.6972 },
+  "me-south-1": { latitude: 26.2285, longitude: 50.5861 },
+  "af-south-1": { latitude: -33.9249, longitude: 18.4241 },
+};
+
+const REGION_COORDINATES_BY_NAME: Record<string, RegionCoordinates> = {
+  "us east (n. virginia)": { latitude: 38.9072, longitude: -77.0369 },
+  "us east (ohio)": { latitude: 39.9612, longitude: -82.9988 },
+  "us west (n. california)": { latitude: 37.7749, longitude: -122.4194 },
+  "us west (oregon)": { latitude: 45.5152, longitude: -122.6784 },
+  "eu (ireland)": { latitude: 53.3498, longitude: -6.2603 },
+  "eu (london)": { latitude: 51.5072, longitude: -0.1276 },
+  "eu (frankfurt)": { latitude: 50.1109, longitude: 8.6821 },
+  "eu (paris)": { latitude: 48.8566, longitude: 2.3522 },
+  "eu (stockholm)": { latitude: 59.3293, longitude: 18.0686 },
+  "asia pacific (mumbai)": { latitude: 19.076, longitude: 72.8777 },
+  "asia pacific (tokyo)": { latitude: 35.6762, longitude: 139.6503 },
+  "asia pacific (singapore)": { latitude: 1.3521, longitude: 103.8198 },
+  "asia pacific (sydney)": { latitude: -33.8688, longitude: 151.2093 },
+  "asia pacific (seoul)": { latitude: 37.5665, longitude: 126.978 },
+  "south america (sao paulo)": { latitude: -23.5558, longitude: -46.6396 },
+  "canada (central)": { latitude: 45.4215, longitude: -75.6972 },
+  "middle east (bahrain)": { latitude: 26.2285, longitude: 50.5861 },
+  "africa (cape town)": { latitude: -33.9249, longitude: 18.4241 },
+};
+
+const resolveRegionCoordinates = (regionId: string | null, regionName: string | null): RegionCoordinates | null => {
+  const normalizedId = regionId?.trim().toLowerCase();
+  if (normalizedId && REGION_COORDINATES_BY_ID[normalizedId]) {
+    return REGION_COORDINATES_BY_ID[normalizedId];
+  }
+
+  const normalizedName = regionName?.trim().toLowerCase();
+  if (normalizedName && REGION_COORDINATES_BY_NAME[normalizedName]) {
+    return REGION_COORDINATES_BY_NAME[normalizedName];
+  }
+
+  if (normalizedName?.includes("virginia")) return REGION_COORDINATES_BY_NAME["us east (n. virginia)"];
+  if (normalizedName?.includes("oregon")) return REGION_COORDINATES_BY_NAME["us west (oregon)"];
+  if (normalizedName?.includes("ireland")) return REGION_COORDINATES_BY_NAME["eu (ireland)"];
+  if (normalizedName?.includes("london")) return REGION_COORDINATES_BY_NAME["eu (london)"];
+  if (normalizedName?.includes("frankfurt")) return REGION_COORDINATES_BY_NAME["eu (frankfurt)"];
+  if (normalizedName?.includes("paris")) return REGION_COORDINATES_BY_NAME["eu (paris)"];
+  if (normalizedName?.includes("mumbai")) return REGION_COORDINATES_BY_NAME["asia pacific (mumbai)"];
+  if (normalizedName?.includes("tokyo")) return REGION_COORDINATES_BY_NAME["asia pacific (tokyo)"];
+  if (normalizedName?.includes("singapore")) return REGION_COORDINATES_BY_NAME["asia pacific (singapore)"];
+  if (normalizedName?.includes("sydney")) return REGION_COORDINATES_BY_NAME["asia pacific (sydney)"];
+  if (normalizedName?.includes("seoul")) return REGION_COORDINATES_BY_NAME["asia pacific (seoul)"];
+  if (normalizedName?.includes("sao paulo")) return REGION_COORDINATES_BY_NAME["south america (sao paulo)"];
+
+  return null;
 };
 
 const buildCostWhereClause = (
@@ -489,8 +569,56 @@ export class OverviewRepository {
     return this.getBreakdownItems(filters, limit, "account");
   }
 
-  async getTopRegions(filters: OverviewFilters, limit: number): Promise<CostBreakdownItem[]> {
-    return this.getBreakdownItems(filters, limit, "region");
+  async getTopRegions(filters: OverviewFilters, limit?: number): Promise<CostBreakdownItem[]> {
+    const { whereClause, params } = buildCostWhereClause(filters, "fcli", "dd.full_date");
+    const summary = await this.getCostSummary(filters);
+    const totalBilledCost = summary.billedCost;
+
+    const limitClause = typeof limit === "number" && Number.isInteger(limit) && limit > 0 ? `LIMIT $${params.length + 1}` : "";
+    const bindValues = typeof limitClause === "string" && limitClause.length > 0 ? [...params, limit] : params;
+
+    const rows = await sequelize.query<RegionBreakdownRow>(
+      `
+        SELECT
+          dr.id AS item_key,
+          COALESCE(dr.region_name, 'Unspecified') AS item_name,
+          LOWER(dr.region_id) AS region_id,
+          COALESCE(SUM(fcli.billed_cost), 0)::double precision AS billed_cost,
+          COALESCE(COUNT(DISTINCT fcli.service_key), 0)::bigint AS service_count,
+          COALESCE(COUNT(DISTINCT fcli.resource_key), 0)::bigint AS resource_count
+        FROM fact_cost_line_items fcli
+        JOIN dim_date dd ON dd.id = fcli.usage_date_key
+        LEFT JOIN dim_region dr ON dr.id = fcli.region_key
+        WHERE ${whereClause}
+        GROUP BY dr.id, dr.region_name, dr.region_id
+        ORDER BY billed_cost DESC
+        ${limitClause};
+      `,
+      {
+        bind: bindValues,
+        type: QueryTypes.SELECT,
+      },
+    );
+
+    return rows.map((row, index) => {
+      const billedCost = toNumber(row.billed_cost);
+      const contributionPct = totalBilledCost > 0 ? roundTo((billedCost / totalBilledCost) * 100, 2) : 0;
+      const coordinates = resolveRegionCoordinates(row.region_id, row.item_name);
+      const rank = index + 1;
+
+      return {
+        key: row.item_key === null ? null : Number(row.item_key),
+        name: row.item_name ?? "Unspecified",
+        billedCost,
+        contributionPct,
+        latitude: coordinates?.latitude ?? null,
+        longitude: coordinates?.longitude ?? null,
+        isTop5: rank <= 5,
+        rank,
+        serviceCount: toNumber(row.service_count),
+        resourceCount: toNumber(row.resource_count),
+      };
+    });
   }
 
   async getAnomalies(filters: OverviewFilters): Promise<PaginatedResult<OverviewAnomaly>> {

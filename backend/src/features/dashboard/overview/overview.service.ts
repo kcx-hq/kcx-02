@@ -118,7 +118,7 @@ export class OverviewService {
     return this.overviewRepository.getTopAccounts(filters, limit);
   }
 
-  async getTopRegions(filters: OverviewFilters, limit: number = 10): Promise<CostBreakdownItem[]> {
+  async getTopRegions(filters: OverviewFilters, limit?: number): Promise<CostBreakdownItem[]> {
     return this.overviewRepository.getTopRegions(filters, limit);
   }
 
