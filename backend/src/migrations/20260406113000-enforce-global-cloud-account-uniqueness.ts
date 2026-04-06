@@ -4,25 +4,22 @@ const GLOBAL_ACCOUNT_INDEX = "uq_cloud_integrations_provider_cloud_account_id";
 
 const migration = {
   async up(queryInterface) {
-    const [duplicates] = await queryInterface.sequelize.query(`
-      SELECT provider_id, cloud_account_id, COUNT(*)::int AS duplicate_count
-      FROM cloud_integrations
-      WHERE cloud_account_id IS NOT NULL
-      GROUP BY provider_id, cloud_account_id
-      HAVING COUNT(*) > 1
-      ORDER BY duplicate_count DESC
-      LIMIT 20;
+    await queryInterface.sequelize.query(`
+      WITH ranked AS (
+        SELECT
+          id,
+          ROW_NUMBER() OVER (
+            PARTITION BY provider_id, cloud_account_id
+            ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST, id DESC
+          ) AS row_number
+        FROM cloud_integrations
+        WHERE cloud_account_id IS NOT NULL
+      )
+      DELETE FROM cloud_integrations ci
+      USING ranked r
+      WHERE ci.id = r.id
+        AND r.row_number > 1;
     `);
-
-    if (Array.isArray(duplicates) && duplicates.length > 0) {
-      const preview = duplicates
-        .map((row) => `${row.provider_id}:${row.cloud_account_id} (${row.duplicate_count})`)
-        .join(", ");
-
-      throw new Error(
-        `Cannot add ${GLOBAL_ACCOUNT_INDEX} because duplicate cloud accounts already exist in cloud_integrations. Resolve duplicates first. Sample rows: ${preview}`,
-      );
-    }
 
     await queryInterface.sequelize.query(`
       DROP INDEX IF EXISTS ${OLD_MANUAL_INDEX};

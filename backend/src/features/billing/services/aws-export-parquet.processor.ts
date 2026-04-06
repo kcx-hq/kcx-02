@@ -10,7 +10,7 @@ import {
   primeDimensionCacheForChunk,
   resolveDimensionsWithCache,
 } from "./dimension-upsert.service.js";
-import { parseParquet, parseParquetSchemaColumnsFromBuffer } from "./file-reader.service.js";
+import { parseParquetSchemaColumnsFromBuffer, readParquetRowChunksFromBuffer } from "./file-reader.service.js";
 import { insertFactCostLineItemsBatch } from "./fact-cost-line-item.service.js";
 import { getIngestionRunFiles } from "./ingestion-run-file.service.js";
 import { recordIngestionRowErrors } from "./ingestion-row-error.service.js";
@@ -206,11 +206,14 @@ export async function processAwsExportParquetRun({ run }) {
         rows_failed: rowsFailed,
       });
 
-      const parquetRows = await parseParquet(parquetBuffersByRawFileId.get(rawFileId));
       const canonicalHeaderMap = canonicalHeaderMapsByRawFileId.get(rawFileId) ?? {};
+      const parquetBuffer = parquetBuffersByRawFileId.get(rawFileId);
+      if (!parquetBuffer) {
+        throw new Error(`Parquet buffer missing for raw file ${rawFileId}`);
+      }
 
-      for (let offset = 0; offset < parquetRows.length; offset += batchSize) {
-        const chunk = parquetRows.slice(offset, offset + batchSize);
+      let chunkOffset = 0;
+      for await (const chunk of readParquetRowChunksFromBuffer(parquetBuffer, batchSize)) {
         rowsRead += chunk.length;
 
         try {
@@ -231,7 +234,7 @@ export async function processAwsExportParquetRun({ run }) {
         const factRows = [];
 
         for (let index = 0; index < chunk.length; index += 1) {
-          const rowNumber = offset + index + 1;
+          const rowNumber = chunkOffset + index + 1;
           const rawRow = chunk[index];
 
           try {
@@ -351,6 +354,8 @@ export async function processAwsExportParquetRun({ run }) {
           status_message: STAGE_MESSAGE.inserting_facts,
           progress_percent: PROGRESS_BY_STAGE.inserting_facts,
         });
+
+        chunkOffset += chunk.length;
       }
 
       processedDataFiles += 1;

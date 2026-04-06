@@ -312,6 +312,54 @@ async function parseParquetRowsFromBuffer(buffer) {
   }
 }
 
+async function* readParquetRowChunksFromBuffer(buffer, chunkSize = 1000) {
+  const resolvedChunkSize = Number.isInteger(chunkSize) && chunkSize > 0 ? chunkSize : 1000;
+
+  try {
+    const reader = await openParquetReader(buffer);
+    try {
+      const cursor = reader.getCursor();
+      let chunk = [];
+
+      let row = await cursor.next();
+      while (row) {
+        chunk.push(row);
+        if (chunk.length >= resolvedChunkSize) {
+          yield chunk;
+          chunk = [];
+        }
+        row = await cursor.next();
+      }
+
+      if (chunk.length > 0) {
+        yield chunk;
+      }
+      return;
+    } finally {
+      if (reader?.close) {
+        await reader.close();
+      }
+    }
+  } catch (primaryError) {
+    console.warn("Primary parquet chunk reader failed; trying parquet-wasm fallback", {
+      reason: primaryError instanceof Error ? primaryError.message : String(primaryError),
+    });
+
+    try {
+      const rows = await parseParquetRowsFromBuffer(buffer);
+      for (let index = 0; index < rows.length; index += resolvedChunkSize) {
+        yield rows.slice(index, index + resolvedChunkSize);
+      }
+    } catch (fallbackError) {
+      throw new Error(
+        `Parquet chunked parsing failed with all readers. primary=${
+          primaryError instanceof Error ? primaryError.message : String(primaryError)
+        }; fallback=${fallbackError instanceof Error ? fallbackError.message : String(fallbackError)}`,
+      );
+    }
+  }
+}
+
 async function readObjectBuffer({ bucket, key, fileFormat }) {
   assertS3Location({ bucket, key });
   console.info("Reading billing file", { bucket, key, fileFormat });
@@ -487,6 +535,7 @@ export {
   readParquetRows,
   readCsvRowChunks,
   readParquetRowChunks,
+  readParquetRowChunksFromBuffer,
   readBillingRowChunks,
   streamToBuffer,
   parseCsv,
