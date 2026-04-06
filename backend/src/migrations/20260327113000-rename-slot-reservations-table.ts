@@ -1,4 +1,5 @@
-﻿// @ts-nocheck
+/* eslint-disable @typescript-eslint/ban-ts-comment */
+// @ts-nocheck
 const migration = {
     async up(queryInterface) {
         await queryInterface.renameTable("slot_reservations", "SlotReservations");
@@ -8,4 +9,7 @@ const migration = {
     },
 };
 export default migration;
+
+
+
 

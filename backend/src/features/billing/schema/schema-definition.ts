@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/ban-ts-comment */
 // @ts-nocheck
 /**
  * Canonical raw billing schema used as the strict boundary between:
@@ -172,4 +173,7 @@ export {
   normalizeHeaderName,
   buildAliasLookup,
 };
+
+
+
 

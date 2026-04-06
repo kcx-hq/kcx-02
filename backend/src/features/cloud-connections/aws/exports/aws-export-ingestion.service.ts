@@ -1,19 +1,19 @@
 import path from "node:path";
 import { Op } from "sequelize";
 
-import env from "../../../../config/env.ts";
-import { BadRequestError, InternalServerError, NotFoundError } from "../../../../errors/http-errors.ts";
-import { BillingIngestionRun, BillingSource, CloudConnectionV2, RawBillingFile, sequelize } from "../../../../models/index.ts";
-import { ingestionOrchestrator } from "../../../billing/services/ingestion-orchestrator.service.ts";
-import { createIngestionRun, getIngestionRunById } from "../../../billing/services/ingestion.service.ts";
+import env from "../../../../config/env.js";
+import { BadRequestError, InternalServerError, NotFoundError } from "../../../../errors/http-errors.js";
+import { BillingIngestionRun, BillingSource, CloudConnectionV2, RawBillingFile, sequelize } from "../../../../models/index.js";
+import { ingestionOrchestrator } from "../../../billing/services/ingestion-orchestrator.service.js";
+import { createIngestionRun, getIngestionRunById } from "../../../billing/services/ingestion.service.js";
 import {
   createRawFileRecord,
   detectFileFormat,
   getProviderNameById,
   uploadToS3,
-} from "../../../billing/services/raw-file.service.ts";
-import { parseCsv, parseParquet } from "../../../billing/services/file-reader.service.ts";
-import { downloadExportFile, listExportFiles } from "../infrastructure/aws-export-reader.service.ts";
+} from "../../../billing/services/raw-file.service.js";
+import { parseCsv, parseParquet } from "../../../billing/services/file-reader.service.js";
+import { downloadExportFile, listExportFiles } from "../infrastructure/aws-export-reader.service.js";
 
 type BillingSourceInstance = InstanceType<typeof BillingSource>;
 type CloudConnectionInstance = InstanceType<typeof CloudConnectionV2>;

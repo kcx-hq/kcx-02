@@ -7,7 +7,6 @@ import type {
   BudgetActualForecastPoint,
   CostBreakdownItem,
   CostSummary,
-  FilterOption,
   FiltersResponse,
   OverviewAnomaly,
   OverviewFilters,

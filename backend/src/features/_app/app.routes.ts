@@ -8,7 +8,7 @@ import awsManualConnectionRoutes from "../cloud-connections/aws/manual-connectio
 import scheduleDemoRoutes from "../schedule-demo/schedule-demo.routes.js";
 import billingRoutes from "../billing/billing.routes.js";
 import dashboardRoutes from "../dashboard/dashboard.routes.js";
-import awsExportFileEventRoutes from "../cloud-connections/aws/exports/aws-export-file-event.routes.ts";
+import awsExportFileEventRoutes from "../cloud-connections/aws/exports/aws-export-file-event.routes.js";
 const router = Router();
 
 router.use(scheduleDemoRoutes);

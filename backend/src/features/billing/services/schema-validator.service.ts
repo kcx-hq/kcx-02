@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/ban-ts-comment */
 // @ts-nocheck
 import {
   CANONICAL_COLUMNS,
@@ -306,4 +307,7 @@ export {
   validateAndNormalizeByFormat,
   buildSchemaValidationErrorMessage,
 };
+
+
+
 

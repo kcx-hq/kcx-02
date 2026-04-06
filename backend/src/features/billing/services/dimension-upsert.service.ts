@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/ban-ts-comment */
 // @ts-nocheck
 import { Op } from "sequelize";
 
@@ -1030,4 +1031,7 @@ export {
   resolveDimensions,
   resolveDimensionsWithCache,
 };
+
+
+
 

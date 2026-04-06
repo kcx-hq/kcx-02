@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/ban-ts-comment */
 // @ts-nocheck
 import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import csvParser from "csv-parser";
@@ -418,4 +419,7 @@ export {
   parseParquet,
   detectFileFormatFromKey,
 };
+
+
+
 

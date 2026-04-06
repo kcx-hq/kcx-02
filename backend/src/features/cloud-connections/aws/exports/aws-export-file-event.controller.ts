@@ -3,8 +3,8 @@ import type { Request, Response } from "express";
 import { sendSuccess } from "../../../../utils/api-response.js";
 import { logger } from "../../../../utils/logger.js";
 import { parseWithSchema } from "../../../_shared/validation/zod-validate.js";
-import { ingestionOrchestrator } from "../../../billing/services/ingestion-orchestrator.service.ts";
-import { queueExportFileFromEvent } from "./aws-export-ingestion.service.ts";
+import { ingestionOrchestrator } from "../../../billing/services/ingestion-orchestrator.service.js";
+import { queueExportFileFromEvent } from "./aws-export-ingestion.service.js";
 import { awsExportFileEventCallbackSchema } from "./aws-export-file-event.schema.js";
 
 async function triggerQueuedIngestionRun(ingestionRunId: string): Promise<void> {
