@@ -3,10 +3,19 @@ import crypto from "node:crypto";
 
 import env from "../../../../config/env.js";
 import { HTTP_STATUS } from "../../../../constants/http-status.js";
-import { ConflictError, NotFoundError, UnauthorizedError } from "../../../../errors/http-errors.js";
-import { BillingSource, CloudConnectionV2, CloudProvider } from "../../../../models/index.js";
+import {
+  ConflictError,
+  DuplicateCloudConnectionError,
+  NotFoundError,
+  UnauthorizedError,
+} from "../../../../errors/http-errors.js";
+import { BillingSource, CloudConnectionV2, CloudIntegration, CloudProvider } from "../../../../models/index.js";
 import { sendSuccess } from "../../../../utils/api-response.js";
 import { parseWithSchema } from "../../../_shared/validation/zod-validate.js";
+import {
+  assertCloudAccountIsUnique,
+  syncAutomaticCloudIntegration,
+} from "../../cloud-integration-registry.service.js";
 import {
   buildAwsCloudFormationCreateStackUrl,
   KCX_AWS_CLOUDFORMATION_TEMPLATE_URL,
@@ -103,6 +112,7 @@ export async function handleCreateCloudConnection(req: Request, res: Response): 
     }
 
     await ensureAwsAutoSetupFields(existing);
+    await syncAutomaticCloudIntegration(existing, { lastCheckedAt: new Date() });
 
     sendSuccess({
       res,
@@ -144,6 +154,11 @@ export async function handleCreateCloudConnection(req: Request, res: Response): 
     externalId,
     callbackToken,
     stackName,
+  });
+
+  await syncAutomaticCloudIntegration(connection, {
+    statusMessage: "Setup In Progress",
+    lastCheckedAt: new Date(),
   });
 
   sendSuccess({
@@ -201,6 +216,57 @@ export async function handleGetCloudConnection(req: Request, res: Response): Pro
   });
 }
 
+export async function handleGetCloudIntegrations(req: Request, res: Response): Promise<void> {
+  requireUserId(req);
+  const tenantId = requireTenantId(req);
+
+  const integrations = await CloudIntegration.findAll({
+    where: { tenantId },
+    include: [{ model: CloudProvider, attributes: ["id", "code", "name"] }],
+    order: [["updatedAt", "DESC"]],
+  });
+
+  sendSuccess({
+    res,
+    req,
+    statusCode: HTTP_STATUS.OK,
+    message: "Cloud integrations loaded",
+    data: integrations.map((integration: InstanceType<typeof CloudIntegration>) => {
+      const provider = (integration as unknown as { CloudProvider?: { id: string; code: string; name: string } })
+        .CloudProvider;
+
+      return {
+        id: integration.id,
+        tenant_id: integration.tenantId,
+        created_by: integration.createdBy,
+        provider_id: integration.providerId,
+        provider: provider
+          ? {
+              id: provider.id,
+              code: provider.code,
+              name: provider.name,
+            }
+          : null,
+        connection_mode: integration.connectionMode,
+        display_name: integration.displayName,
+        status: integration.status,
+        detail_record_id: integration.detailRecordId,
+        detail_record_type: integration.detailRecordType,
+        cloud_account_id: integration.cloudAccountId,
+        payer_account_id: integration.payerAccountId,
+        last_validated_at: integration.lastValidatedAt?.toISOString() ?? null,
+        last_success_at: integration.lastSuccessAt?.toISOString() ?? null,
+        last_checked_at: integration.lastCheckedAt?.toISOString() ?? null,
+        status_message: integration.statusMessage,
+        error_message: integration.errorMessage,
+        connected_at: integration.connectedAt?.toISOString() ?? null,
+        created_at: integration.createdAt?.toISOString() ?? null,
+        updated_at: integration.updatedAt?.toISOString() ?? null,
+      };
+    }),
+  });
+}
+
 export async function handleGetAwsCloudFormationSetupUrl(req: Request, res: Response): Promise<void> {
   requireUserId(req);
   const tenantId = requireTenantId(req);
@@ -235,6 +301,11 @@ export async function handleGetAwsCloudFormationSetupUrl(req: Request, res: Resp
 
   if (connection.status === "draft") {
     await connection.update({ status: "connecting", errorMessage: null });
+    await syncAutomaticCloudIntegration(connection, {
+      statusMessage: "Connecting",
+      errorMessage: null,
+      lastCheckedAt: new Date(),
+    });
   }
 
   sendSuccess({
@@ -258,9 +329,34 @@ export async function handleAwsConnectionCallback(req: Request, res: Response): 
   }
 
   const now = new Date();
+  const normalizedAccountId = payload.account_id.trim();
+  try {
+    await assertCloudAccountIsUnique({
+      providerId: String(connection.providerId),
+      cloudAccountId: normalizedAccountId,
+      excludeDetailRecordType: "automatic_cloud_connection",
+      excludeDetailRecordId: connection.id,
+    });
+  } catch (error) {
+    if (error instanceof DuplicateCloudConnectionError) {
+      await connection.update({
+        status: "failed",
+        errorMessage: error.message,
+        lastValidatedAt: now,
+      });
+      await syncAutomaticCloudIntegration(connection, {
+        status: "failed",
+        statusMessage: "Connection Failed",
+        errorMessage: error.message,
+        lastValidatedAt: now,
+        lastCheckedAt: now,
+      });
+    }
+    throw error;
+  }
 
   await connection.update({
-    cloudAccountId: payload.account_id.trim(),
+    cloudAccountId: normalizedAccountId,
     roleArn: payload.role_arn.trim(),
     stackId: payload.stack_id.trim(),
     exportName: payload.export_name.trim(),
@@ -271,6 +367,12 @@ export async function handleAwsConnectionCallback(req: Request, res: Response): 
     status: "awaiting_validation",
     connectedAt: now,
     errorMessage: null,
+  });
+
+  await syncAutomaticCloudIntegration(connection, {
+    statusMessage: "Awaiting Validation",
+    errorMessage: null,
+    lastCheckedAt: now,
   });
 
   const existingBillingSource = await BillingSource.findOne({
@@ -350,6 +452,19 @@ export async function handleAwsConnectionCallback(req: Request, res: Response): 
     callbackStatus = "failed";
   }
 
+  await syncAutomaticCloudIntegration(connection, {
+    status: validationResult.status,
+    statusMessage:
+      validationResult.status === "active"
+        ? "Pending First Ingest"
+        : validationResult.status === "active_with_warnings"
+          ? "Warnings Detected"
+          : "Connection Failed",
+    errorMessage: validationResult.errorMessage,
+    lastValidatedAt: validationResult.lastValidatedAt,
+    lastCheckedAt: validationResult.lastValidatedAt,
+  });
+
   sendSuccess({
     res,
     req,
@@ -404,6 +519,19 @@ export async function handleValidateCloudConnection(req: Request, res: Response)
       lastValidatedAt: result.lastValidatedAt,
     });
   }
+
+  await syncAutomaticCloudIntegration(connection, {
+    status: result.status,
+    statusMessage:
+      result.status === "active"
+        ? "Pending First Ingest"
+        : result.status === "active_with_warnings"
+          ? "Warnings Detected"
+          : "Connection Failed",
+    errorMessage: result.errorMessage,
+    lastValidatedAt: result.lastValidatedAt,
+    lastCheckedAt: result.lastValidatedAt,
+  });
 
   sendSuccess({
     res,
