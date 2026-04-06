@@ -32,6 +32,8 @@ import {
   TENANT_UPLOAD_HISTORY_QUERY_KEY,
   useTenantUploadHistory,
 } from "@/features/client-home/hooks/useTenantUploadHistory"
+import { useTenantCloudIntegrations } from "@/features/client-home/hooks/useTenantCloudIntegrations"
+import type { CloudIntegrationListItem, CloudIntegrationStatus } from "@/features/client-home/api/cloud-integrations.api"
 import { ClientPageHeader } from "@/features/client-home/components/ClientPageHeader"
 import { useUploadHistorySelectionStore } from "@/features/client-home/stores/uploadHistorySelection.store"
 import { dashboardApi } from "@/features/dashboard/api/dashboardApi"
@@ -86,6 +88,15 @@ type CloudConnection = {
 
 const ACTIVE_INGESTION_STORAGE_KEY = "kcx.activeBillingIngestionRunId"
 
+type CloudIntegrationOverviewRow = {
+  id: string
+  connectionName: string
+  provider: string
+  lastChecked: string
+  lastIngestOrMessage: string
+  statusLabel: "NOT AVAILABLE" | "CONNECTING" | "PENDING" | "HEALTHY" | "WARNING" | "FAILED" | "SUSPENDED"
+}
+
 function normalizeUploadStatusLabel(value: string | null | undefined): "Idle" | "Queued" | "Processing" | "Completed" | "Warning" | "Failed" {
   if (!value) return "Idle"
   if (value === "queued") return "Queued"
@@ -93,6 +104,69 @@ function normalizeUploadStatusLabel(value: string | null | undefined): "Idle" | 
   if (value === "completed_with_warnings" || value === "warning") return "Warning"
   if (value === "failed") return "Failed"
   return "Processing"
+}
+
+function formatCloudIntegrationLastChecked(row: CloudIntegrationListItem) {
+  const candidate =
+    row.last_checked_at ??
+    row.last_validated_at ??
+    row.updated_at ??
+    row.created_at
+
+  if (!candidate) return "-"
+
+  const date = new Date(candidate)
+  if (Number.isNaN(date.getTime())) return "-"
+
+  return date.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  })
+}
+
+function mapCloudIntegrationStatusLabel(status: CloudIntegrationStatus): CloudIntegrationOverviewRow["statusLabel"] {
+  if (status === "draft") return "NOT AVAILABLE"
+  if (status === "connecting") return "CONNECTING"
+  if (status === "awaiting_validation") return "PENDING"
+  if (status === "active") return "HEALTHY"
+  if (status === "active_with_warnings") return "WARNING"
+  if (status === "failed") return "FAILED"
+  return "SUSPENDED"
+}
+
+function mapCloudIntegrationStatusMessage(row: CloudIntegrationListItem) {
+  const status = row.status
+  const hasError = typeof row.error_message === "string" && row.error_message.trim().length > 0
+
+  if (hasError && status === "failed") {
+    return row.error_message!.trim()
+  }
+
+  if (row.status_message && row.status_message.trim().length > 0) {
+    return row.status_message.trim()
+  }
+
+  if (status === "draft") return "Setup In Progress"
+  if (status === "connecting") return "Connecting"
+  if (status === "awaiting_validation") return "Awaiting Validation"
+  if (status === "active") return "Pending First Ingest"
+  if (status === "active_with_warnings") return "Warnings Detected"
+  if (status === "failed") return "Connection Failed"
+  return "Suspended"
+}
+
+function mapCloudIntegrationOverviewRow(row: CloudIntegrationListItem): CloudIntegrationOverviewRow {
+  const providerLabel = row.provider?.name?.trim() || row.provider?.code?.toUpperCase() || "Unknown"
+
+  return {
+    id: row.id,
+    connectionName: row.display_name,
+    provider: providerLabel,
+    lastChecked: formatCloudIntegrationLastChecked(row),
+    lastIngestOrMessage: mapCloudIntegrationStatusMessage(row),
+    statusLabel: mapCloudIntegrationStatusLabel(row.status),
+  }
 }
 
 function AddConnectionProviderCard({
@@ -110,7 +184,7 @@ function AddConnectionProviderCard({
 }) {
   const isEnabled = Boolean(href)
   const className = cn(
-    "h-full rounded-md border bg-white p-4 transition-colors",
+    "h-full rounded-md border bg-white p-3.5 transition-colors",
     isEnabled
       ? "border-[color:var(--kcx-border-soft)] hover:bg-[color:var(--bg-surface)] hover:border-[color:var(--kcx-border-strong)]"
       : "border-[color:var(--border-light)]"
@@ -119,8 +193,8 @@ function AddConnectionProviderCard({
   const content = (
     <div className={className}>
       <div className="flex items-center justify-between">
-        <span className="inline-flex h-12 w-12 items-center justify-center rounded-md border border-[color:var(--border-light)] bg-[color:var(--bg-surface)]">
-          <img src={icon} alt={name} className="h-7 w-7 object-contain" />
+        <span className="inline-flex h-10 w-10 items-center justify-center rounded-md border border-[color:var(--border-light)] bg-[color:var(--bg-surface)]">
+          <img src={icon} alt={name} className="h-6 w-6 object-contain" />
         </span>
         <Badge
           variant="outline"
@@ -134,12 +208,13 @@ function AddConnectionProviderCard({
           {availability}
         </Badge>
       </div>
-      <h3 className="mt-3 text-base font-semibold text-text-primary">{name}</h3>
-      <p className="mt-1 text-sm leading-5 text-text-secondary">{description}</p>
+      <h3 className="mt-2.5 text-sm font-semibold text-text-primary">{name}</h3>
+      <p className="mt-1 text-xs leading-5 text-text-secondary">{description}</p>
     </div>
   )
 
-  if (!isEnabled || !href) return content
+  const shouldEnableNavigation = name === "AWS" && Boolean(href)
+  if (!shouldEnableNavigation || !href) return content
 
   return (
     <a href={href} onClick={(event) => handleAppLinkClick(event, href)} className="block h-full">
@@ -154,6 +229,12 @@ export function ClientBillingPage() {
   const activeRoute = route
   const isBillingHubRoute = activeRoute === "/client/billing"
   const isBillingUploadsRoute = activeRoute === "/client/billing/uploads"
+  const isCloudConnectionsListingRoute =
+    activeRoute === "/client/billing/connect-cloud" ||
+    activeRoute === "/client/billing/connect-cloud/add" ||
+    activeRoute === "/client/billing/connections" ||
+    activeRoute === "/client/billing/connections/add"
+  const [cloudConnectionsSearch, setCloudConnectionsSearch] = useState("")
   const cloudProviderSlug = useMemo(() => {
     const match = CLOUD_PROVIDER_ROUTE_REGEX.exec(activeRoute)
     if (!match) return null
@@ -245,6 +326,13 @@ export function ClientBillingPage() {
     error: uploadHistoryError,
     refetch: refetchUploadHistory,
   } = useTenantUploadHistory(isBillingUploadsRoute)
+  const {
+    data: cloudIntegrationRows = [],
+    isLoading: isCloudIntegrationsLoading,
+    isError: isCloudIntegrationsError,
+    error: cloudIntegrationsError,
+    refetch: refetchCloudIntegrations,
+  } = useTenantCloudIntegrations(isCloudConnectionsListingRoute)
   const [dashboardActionLoading, setDashboardActionLoading] = useState(false)
   const [dashboardActionError, setDashboardActionError] = useState<string | null>(null)
   const retainOnlyFiles = useUploadHistorySelectionStore((state) => state.retainOnlyFiles)
@@ -262,6 +350,27 @@ export function ClientBillingPage() {
     const latestStatus = uploadHistoryRecords[0]?.status
     return normalizeUploadStatusLabel(latestStatus)
   }, [displayIngestionStatus, uploadHistoryRecords])
+  const cloudOverviewRows = useMemo(
+    () => cloudIntegrationRows.map(mapCloudIntegrationOverviewRow),
+    [cloudIntegrationRows],
+  )
+  const filteredCloudOverviewRows = useMemo(() => {
+    const normalizedSearch = cloudConnectionsSearch.trim().toLowerCase()
+    if (!normalizedSearch) return cloudOverviewRows
+
+    return cloudOverviewRows.filter((row) => {
+      return (
+        row.connectionName.toLowerCase().includes(normalizedSearch) ||
+        row.provider.toLowerCase().includes(normalizedSearch) ||
+        row.statusLabel.toLowerCase().includes(normalizedSearch) ||
+        row.lastIngestOrMessage.toLowerCase().includes(normalizedSearch)
+      )
+    })
+  }, [cloudConnectionsSearch, cloudOverviewRows])
+  const cloudIntegrationsErrorMessage =
+    cloudIntegrationsError instanceof ApiError
+      ? cloudIntegrationsError.message
+      : "Unable to load cloud connections."
 
   useEffect(() => {
     if (!setupConnectionId) return
@@ -473,7 +582,7 @@ export function ClientBillingPage() {
                     variant={isCloud ? "default" : "outline"}
                     onClick={() => navigateTo(option.href)}
                   >
-                    {isCloud ? "Open Cloud Connection" : "Open Upload CSV"}
+                    {isCloud ? "Connect Cloud" : "Upload CSV"}
                     <ArrowRight className="ml-2 h-4 w-4" />
                   </Button>
                 </CardContent>
@@ -533,18 +642,117 @@ export function ClientBillingPage() {
               </>
             ) : null}
 
-            {activeRoute === "/client/billing/connect-cloud" ||
-            activeRoute === "/client/billing/connect-cloud/add" ||
-            activeRoute === "/client/billing/connections" ||
-            activeRoute === "/client/billing/connections/add" ? (
+            {isCloudConnectionsListingRoute ? (
               <>
                 <div className="space-y-2">
-                  <p className="kcx-eyebrow text-brand-primary">Connect Cloud</p>
-                  <h2 className="text-2xl font-semibold tracking-tight text-text-primary">Choose Cloud Provider</h2>
+                  <p className="kcx-eyebrow text-brand-primary">Cloud Connections</p>
+                  <h2 className="text-2xl font-semibold tracking-tight text-text-primary">Cloud Connections</h2>
                   <p className="text-sm text-text-secondary">
-                    Select a cloud provider to begin a new billing integration setup.
+                    Manage your connected cloud accounts and monitor ingestion status.
                   </p>
                 </div>
+
+                <Card className="rounded-md border-[color:var(--border-light)] bg-white shadow-none">
+                  <CardContent className="space-y-4 p-5">
+                    <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                      <div className="space-y-1">
+                        <h3 className="text-lg font-semibold text-text-primary">Connections Overview</h3>
+                        <p className="text-sm text-text-secondary">Current cloud connections and latest ingestion health.</p>
+                      </div>
+                      <div className="w-full md:w-72">
+                        <input
+                          type="text"
+                          placeholder="Search connections"
+                          value={cloudConnectionsSearch}
+                          onChange={(event) => setCloudConnectionsSearch(event.target.value)}
+                          className="h-10 w-full rounded-md border border-[color:var(--border-light)] bg-white px-3 text-sm text-text-primary outline-none focus:border-[color:var(--kcx-border-strong)]"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="overflow-x-auto">
+                      <table className="w-full min-w-[860px] border-separate border-spacing-0 text-sm">
+                        <thead>
+                          <tr className="text-left text-xs font-semibold uppercase tracking-[0.08em] text-text-muted">
+                            <th className="border-b border-[color:var(--border-light)] px-3 py-2.5">Connection Name</th>
+                            <th className="border-b border-[color:var(--border-light)] px-3 py-2.5">Provider</th>
+                            <th className="border-b border-[color:var(--border-light)] px-3 py-2.5">Last Checked</th>
+                            <th className="border-b border-[color:var(--border-light)] px-3 py-2.5">Last Ingest / Status Message</th>
+                            <th className="border-b border-[color:var(--border-light)] px-3 py-2.5">Status</th>
+                          </tr>
+                        </thead>
+                        {isCloudIntegrationsLoading ? (
+                          <tbody>
+                            <tr>
+                              <td className="px-3 py-6 text-text-secondary" colSpan={5}>Loading cloud connections...</td>
+                            </tr>
+                          </tbody>
+                        ) : isCloudIntegrationsError ? (
+                          <tbody>
+                            <tr>
+                              <td className="px-3 py-6" colSpan={5}>
+                                <div className="flex items-center justify-between gap-3">
+                                  <span className="text-rose-600">{cloudIntegrationsErrorMessage}</span>
+                                  <Button variant="outline" size="sm" className="h-8 rounded-md" onClick={() => void refetchCloudIntegrations()}>
+                                    Retry
+                                  </Button>
+                                </div>
+                              </td>
+                            </tr>
+                          </tbody>
+                        ) : filteredCloudOverviewRows.length === 0 ? (
+                          <tbody>
+                            <tr>
+                              <td className="px-3 py-6 text-text-secondary" colSpan={5}>
+                                {cloudOverviewRows.length === 0
+                                  ? "No cloud connections found. Connect AWS below to create your first billing integration."
+                                  : "No cloud connections match your search."}
+                              </td>
+                            </tr>
+                          </tbody>
+                        ) : (
+                          <tbody>
+                            {filteredCloudOverviewRows.map((row) => (
+                              <tr key={row.id} className="transition-colors hover:bg-[color:var(--bg-surface)]">
+                                <td className="border-b border-[color:var(--border-light)] px-3 py-3">
+                                  <span className="font-medium text-brand-primary hover:underline">{row.connectionName}</span>
+                                </td>
+                                <td className="border-b border-[color:var(--border-light)] px-3 py-3 text-text-primary">{row.provider}</td>
+                                <td className="border-b border-[color:var(--border-light)] px-3 py-3 text-text-primary">{row.lastChecked}</td>
+                                <td className="border-b border-[color:var(--border-light)] px-3 py-3 text-text-primary">{row.lastIngestOrMessage}</td>
+                                <td className="border-b border-[color:var(--border-light)] px-3 py-3">
+                                  <Badge
+                                    variant="outline"
+                                    className={cn(
+                                      "rounded-md",
+                                      row.statusLabel === "HEALTHY"
+                                        ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                                        : row.statusLabel === "WARNING"
+                                          ? "border-amber-200 bg-amber-50 text-amber-700"
+                                          : row.statusLabel === "FAILED"
+                                            ? "border-rose-200 bg-rose-50 text-rose-700"
+                                            : "border-[color:var(--border-light)] bg-[color:var(--bg-surface)] text-text-secondary"
+                                    )}
+                                  >
+                                    {row.statusLabel}
+                                  </Badge>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        )}
+                      </table>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <div className="space-y-2 pt-1">
+                  <h3 className="text-lg font-semibold tracking-tight text-text-primary">Connect a New Cloud</h3>
+                  <p className="text-sm text-text-secondary">
+                    Select a provider to set up a new billing integration.
+                  </p>
+                </div>
+
                 <div className="grid grid-cols-1 auto-rows-fr gap-3 sm:grid-cols-2 xl:grid-cols-4">
                   {ADD_CONNECTION_PROVIDERS.map((provider) => (
                     <AddConnectionProviderCard key={provider.name} {...provider} />

@@ -9,6 +9,7 @@ import createSlotReservationModel from "./slot-reservation.js";
 import createAdminUserModel from "./admin-user.js";
 import createCloudConnectionV2Model from "./cloud-connection-v2.js";
 import createCloudProviderModel from "./cloud-provider.js";
+import createCloudIntegrationModel from "./cloud-integration.js";
 import createTenantModel from "./tenant.js";
 import createUserModel from "./user.js";
 import createRawBillingFileModel from "./raw-billing-file.js";
@@ -60,6 +61,7 @@ const AdminUser = createAdminUserModel(sequelize);
 const AdminAuthSession = createAdminAuthSessionModel(sequelize);
 const SlotReservation = createSlotReservationModel(sequelize);
 const CloudProvider = createCloudProviderModel(sequelize);
+const CloudIntegration = createCloudIntegrationModel(sequelize);
 const CloudConnectionV2 = createCloudConnectionV2Model(sequelize);
 const Tenant = createTenantModel(sequelize);
 const RawBillingFile = createRawBillingFileModel(sequelize);
@@ -103,6 +105,12 @@ CloudProvider.hasMany(CloudConnectionV2, { foreignKey: "providerId" });
 CloudConnectionV2.belongsTo(CloudProvider, { foreignKey: "providerId" });
 User.hasMany(CloudConnectionV2, { foreignKey: "createdBy" });
 CloudConnectionV2.belongsTo(User, { foreignKey: "createdBy" });
+Tenant.hasMany(CloudIntegration, { foreignKey: "tenantId" });
+CloudIntegration.belongsTo(Tenant, { foreignKey: "tenantId" });
+CloudProvider.hasMany(CloudIntegration, { foreignKey: "providerId" });
+CloudIntegration.belongsTo(CloudProvider, { foreignKey: "providerId" });
+User.hasMany(CloudIntegration, { foreignKey: "createdBy" });
+CloudIntegration.belongsTo(User, { foreignKey: "createdBy" });
 CloudProvider.hasMany(BillingSource, { foreignKey: "cloudProviderId" });
 BillingSource.belongsTo(CloudProvider, { foreignKey: "cloudProviderId" });
 BillingSource.hasMany(RawBillingFile, { foreignKey: "billingSourceId" });
@@ -242,6 +250,7 @@ export {
   AdminUser,
   AdminAuthSession,
   CloudProvider,
+  CloudIntegration,
   CloudConnectionV2,
   Tenant,
   RawBillingFile,

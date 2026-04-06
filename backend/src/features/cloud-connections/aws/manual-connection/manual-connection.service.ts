@@ -11,6 +11,7 @@ import {
   verifyS3Access,
 } from "./aws-assume-role.util.js";
 import { createManualConnectionRecord } from "./manual-connection.repository.js";
+import { resolveAwsProviderId, syncManualCloudIntegration } from "../../cloud-integration-registry.service.js";
 
 export type ManualConnectionUserContext = {
   userId: string;
@@ -92,6 +93,13 @@ export async function createManualConnection(
       lastValidatedAt: new Date(),
       status: "active",
       errorMessage: null,
+    });
+
+    const providerId = await resolveAwsProviderId();
+    await syncManualCloudIntegration(record, {
+      providerId,
+      statusMessage: "Pending First Ingest",
+      lastCheckedAt: record.lastValidatedAt ?? new Date(),
     });
 
     return {

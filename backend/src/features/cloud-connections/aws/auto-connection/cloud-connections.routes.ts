@@ -5,6 +5,7 @@ import { asyncHandler } from "../../../../utils/async-handler.js";
 import {
   handleAwsConnectionCallback,
   handleCreateCloudConnection,
+  handleGetCloudIntegrations,
   handleGetAwsCloudFormationSetupUrl,
   handleGetCloudConnection,
   handleValidateCloudConnection,
@@ -17,6 +18,7 @@ router.post("/api/aws/callback", asyncHandler(handleAwsConnectionCallback));
 router.use(requireAuth);
 
 router.post("/cloud-connections", asyncHandler(handleCreateCloudConnection));
+router.get("/cloud-integrations", asyncHandler(handleGetCloudIntegrations));
 router.get("/cloud-connections/:id", asyncHandler(handleGetCloudConnection));
 router.get("/cloud-connections/:id/aws-cloudformation-url", asyncHandler(handleGetAwsCloudFormationSetupUrl));
 router.post("/cloud-connections/:id/validate", asyncHandler(handleValidateCloudConnection));
