@@ -19,21 +19,21 @@ export function OverviewKpiSection({ data }: OverviewKpiSectionProps) {
               : 0,
           )}% vs previous`}
           deltaTone={data.kpis.totalSpend > data.kpis.previousPeriodSpend ? "negative" : "positive"}
-          meta="Current billing period"
+          
         />
         <KpiCard
           label="Previous Period Spend"
           value={currencyFormatterPrecise.format(data.kpis.previousPeriodSpend)}
           delta="Baseline window"
           deltaTone="neutral"
-          meta="Equivalent prior range"
+         
         />
         <KpiCard
           label="Savings Achieved"
           value={currencyFormatterPrecise.format(data.kpis.savingsAchieved)}
           delta={`${percentFormatter.format(data.savingsInsights.savingsPct)}% savings`}
           deltaTone="positive"
-          meta="List cost vs effective cost"
+    
         />
         <KpiCard
           label="Top Region"
@@ -54,7 +54,7 @@ export function OverviewKpiSection({ data }: OverviewKpiSectionProps) {
           value={String(data.kpis.activeAlerts)}
           delta={`${data.kpis.highSeverityAnomalyCount} high severity`}
           deltaTone={data.kpis.highSeverityAnomalyCount > 0 ? "negative" : "positive"}
-          meta="Open anomalies + recommendations"
+         
         />
       </div>
     </section>

@@ -1,13 +1,14 @@
 import { useMemo } from "react";
 import type { EChartsOption } from "echarts";
-import type { CostBreakdownItem, OverviewAnomaly } from "../../../api/dashboardApi";
+import type { CostBreakdownItem } from "../../../api/dashboardApi";
 import { BaseEChart, ChartPlaceholder } from "../../../common/charts";
+import { TOP_THREE_REGION_COLORS, TopRegionsGeoMap } from "../../../common/charts/TopRegionsGeoMap";
 import { currencyFormatterCompact, percentFormatter } from "../utils/overviewFormatters";
 
 type OverviewBreakdownSectionProps = {
   topServices: CostBreakdownItem[];
   topAccounts: CostBreakdownItem[];
-  anomalies: OverviewAnomaly[];
+  topRegions: CostBreakdownItem[];
   selectedServiceKey: number | null;
   selectedAccountKey: number | null;
   onSelectService: (key: number | null) => void;
@@ -17,7 +18,7 @@ type OverviewBreakdownSectionProps = {
 export function OverviewBreakdownSection({
   topServices,
   topAccounts,
-  anomalies,
+  topRegions,
   selectedServiceKey: _selectedServiceKey,
   selectedAccountKey: _selectedAccountKey,
   onSelectService: _onSelectService,
@@ -109,30 +110,28 @@ export function OverviewBreakdownSection({
     [accountItems, accountPalette],
   );
 
-  const topThreats = useMemo(() => {
-    const grouped = new Map<string, { name: string; high: number; low: number; medium: number; total: number }>();
+  const top3RegionLegend = useMemo(() => {
+    const sorted = [...topRegions].sort((a, b) => b.billedCost - a.billedCost);
+    const seenNames = new Set<string>();
+    const uniqueTop3: CostBreakdownItem[] = [];
 
-    for (const anomaly of anomalies) {
-      const label = anomaly.serviceName?.trim() || "Uncategorized";
-      const current = grouped.get(label) ?? { name: label, high: 0, low: 0, medium: 0, total: 0 };
-      const severity = anomaly.severity?.toLowerCase() ?? "medium";
-
-      if (severity === "high") current.high += 1;
-      else if (severity === "low") current.low += 1;
-      else current.medium += 1;
-
-      current.total += 1;
-      grouped.set(label, current);
+    for (const item of sorted) {
+      const normalized = item.name.trim().toLowerCase();
+      if (seenNames.has(normalized)) {
+        continue;
+      }
+      seenNames.add(normalized);
+      uniqueTop3.push(item);
+      if (uniqueTop3.length >= 3) {
+        break;
+      }
     }
 
-    return [...grouped.values()].sort((a, b) => b.total - a.total).slice(0, 3);
-  }, [anomalies]);
-
-  const threatSegments = [
-    { key: "high", label: "High", color: "#E15B66" },
-    { key: "low", label: "Low", color: "#7CB9DE" },
-    { key: "medium", label: "Medium", color: "#E4BC74" },
-  ] as const;
+    return uniqueTop3.map((item, index) => ({
+      name: item.name,
+      color: TOP_THREE_REGION_COLORS[index % TOP_THREE_REGION_COLORS.length],
+    }));
+  }, [topRegions]);
 
   return (
     <section className="overview-breakdown-modern">
@@ -146,58 +145,34 @@ export function OverviewBreakdownSection({
       </article>
 
       <article className="overview-breakdown-panel">
-        <h3 className="overview-breakdown-panel__title">Top Accounts</h3>
-        <div className="overview-accounts-layout">
-          <div className="overview-breakdown-donut">
-            {accountItems.length ? <BaseEChart option={accountDonutOption} height={260} /> : <ChartPlaceholder />}
+        <div className="overview-top-regions__heading">
+          <h3 className="overview-breakdown-panel__title">Top Regions</h3>
+          {top3RegionLegend.length ? (
+            <div className="overview-top-regions__legend" aria-label="Top region color mapping">
+              {top3RegionLegend.map((region) => (
+                <span className="overview-top-regions__legend-item" key={region.name}>
+                  <span className="overview-top-regions__legend-dot" style={{ backgroundColor: region.color }} aria-hidden="true" />
+                  <span className="overview-top-regions__legend-name" title={region.name}>
+                    {region.name}
+                  </span>
+                </span>
+              ))}
+            </div>
+          ) : null}
+        </div>
+        <div className="overview-top-regions overview-top-regions--compact">
+          <div className="overview-top-regions__map">
+            <TopRegionsGeoMap height={260} data={topRegions} />
           </div>
         </div>
       </article>
 
       <article className="overview-breakdown-panel">
-        <h3 className="overview-breakdown-panel__title">Top Threat Categories</h3>
-        <div className="overview-threat-list">
-          {topThreats.length ? (
-            topThreats.map((threat) => (
-              <div key={threat.name} className="overview-threat-row">
-                <div className="overview-threat-row__label" title={threat.name}>
-                  {threat.name}
-                </div>
-                <div className="overview-threat-row__stack">
-                  {threatSegments.map((segment) => {
-                    const value = threat[segment.key];
-                    if (!value) {
-                      return null;
-                    }
-
-                    const width = threat.total > 0 ? (value / threat.total) * 100 : 0;
-
-                    return (
-                      <span
-                        key={`${threat.name}-${segment.key}`}
-                        className="overview-threat-row__segment"
-                        style={{ width: `${width}%`, backgroundColor: segment.color }}
-                        title={`${segment.label}: ${value}`}
-                      >
-                        {value}
-                      </span>
-                    );
-                  })}
-                </div>
-                <span className="overview-threat-row__total">{threat.total}</span>
-              </div>
-            ))
-          ) : (
-            <p className="overview-breakdown-note">No anomaly data found for selected filters.</p>
-          )}
-        </div>
-        <div className="overview-threat-legend">
-          {threatSegments.map((segment) => (
-            <span key={`threat-legend-${segment.key}`} className="overview-threat-legend__item">
-              <span className="overview-threat-legend__dot" style={{ backgroundColor: segment.color }} aria-hidden="true" />
-              {segment.label}
-            </span>
-          ))}
+        <h3 className="overview-breakdown-panel__title">Top Accounts</h3>
+        <div className="overview-accounts-layout">
+          <div className="overview-breakdown-donut">
+            {accountItems.length ? <BaseEChart option={accountDonutOption} height={260} /> : <ChartPlaceholder />}
+          </div>
         </div>
       </article>
     </section>

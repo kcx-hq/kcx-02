@@ -62,12 +62,12 @@ export default function OverviewPage() {
 
       {data ? <OverviewKpiSection data={data} /> : null}
 
-      <OverviewTrendRegionSection trendData={data?.budgetVsActualForecast ?? []} topRegions={data?.topRegions ?? []} />
+      <OverviewTrendRegionSection trendData={data?.budgetVsActualForecast ?? []} anomalies={data?.anomaliesPreview.items ?? []} />
 
       <OverviewBreakdownSection
         topServices={data?.topServices ?? []}
         topAccounts={data?.topAccounts ?? []}
-        anomalies={data?.anomaliesPreview.items ?? []}
+        topRegions={data?.topRegions ?? []}
         selectedServiceKey={selectedServiceKey}
         selectedAccountKey={selectedAccountKey}
         onSelectService={(key) => {
