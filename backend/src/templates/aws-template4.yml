@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: KCX AWS Connection + Billing Export Template + EventBridge + Completed columns + Hourly configuration + lamda (only sends for manifest file)
+Description: KCX AWS Connection + Billing Export Template + EventBridge + Completed columns + Hourly configuration
 
 Parameters:
   ExternalId:
@@ -182,20 +182,9 @@ Resources:
               pricing_rate_code AS pricing_rate_code,
               tags AS tags_json,
               discount_total_discount AS discount_amount,
-              CASE
-                WHEN line_item_line_item_type = 'Credit' THEN line_item_unblended_cost
-                ELSE 0
-              END AS credit_amount,
-              CASE
-                WHEN line_item_line_item_type = 'Refund' THEN line_item_unblended_cost
-                ELSE 0
-              END AS refund_amount,
-              CASE
-                WHEN line_item_line_item_type = 'Tax' THEN line_item_unblended_cost
-                ELSE 0
-              END AS tax_cost,
-              reservation_reservation_arn AS reservation_arn,
-              savings_plan_savings_plan_arn AS savings_plan_arn,
+              line_item_tax_type AS tax_type,
+              reservation_reservation_a_r_n AS reservation_arn,
+              savings_plan_savings_plan_a_r_n AS savings_plan_arn,
               savings_plan_offering_type AS savings_plan_type,
               capacity_reservation_capacity_reservation_arn AS capacity_reservation_arn,
               capacity_reservation_capacity_reservation_status AS capacity_reservation_status,

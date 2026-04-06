@@ -29,6 +29,15 @@ function toSet(value) {
   return new Set([value]);
 }
 
+function pickDeterministicCanonicalCandidate(candidates) {
+  for (const canonicalColumn of CANONICAL_COLUMNS) {
+    if (candidates.has(canonicalColumn)) {
+      return canonicalColumn;
+    }
+  }
+  return null;
+}
+
 function findCanonicalCandidates(header) {
   const rawHeader = String(header ?? "");
   const lowerHeader = rawHeader.toLowerCase();
@@ -89,12 +98,21 @@ function buildCanonicalHeaderMap(headers = []) {
     }
 
     if (candidates.size > 1) {
+      const resolvedCanonical = pickDeterministicCanonicalCandidate(candidates);
       ambiguousHeaders.push({
         header: originalHeader,
         reason: "header_matches_multiple_canonical_columns",
         candidates: toSortedArray(candidates),
         matchedBy,
+        resolvedCanonical,
       });
+      if (!resolvedCanonical) {
+        continue;
+      }
+
+      if (!canonicalHeaderMap[resolvedCanonical]) {
+        canonicalHeaderMap[resolvedCanonical] = originalHeader;
+      }
       continue;
     }
 
@@ -128,7 +146,7 @@ function validateHeaders(headers = []) {
     (requiredColumn) => !canonicalHeaderMap[requiredColumn],
   );
 
-  const success = missingRequiredColumns.length === 0 && ambiguousHeaders.length === 0;
+  const success = missingRequiredColumns.length === 0;
 
   return {
     success,
