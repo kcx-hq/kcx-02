@@ -37,6 +37,7 @@ const CLIENT_WORKSPACE_ROUTES = new Set([
   "/client/billing/connections/aws",
   "/client/billing/connections/aws/automatic",
   "/client/billing/connections/aws/manual",
+  "/client/billing/connections/aws/manual/success",
   "/client/billing/connect-cloud",
   "/client/billing/connect-cloud/add",
   "/client/billing/connect-cloud/aws",
@@ -45,6 +46,7 @@ const CLIENT_WORKSPACE_ROUTES = new Set([
   "/client/billing/connect-cloud/oracle-cloud",
   "/client/billing/connect-cloud/aws/automatic",
   "/client/billing/connect-cloud/aws/manual",
+  "/client/billing/connect-cloud/aws/manual/success",
   "/client/support",
   "/client/support/tickets",
   "/client/support/schedule-call",
@@ -55,6 +57,7 @@ const CLIENT_WORKSPACE_ROUTES = new Set([
 const AWS_CONNECTION_SETUP_ROUTE_REGEX = /^\/client\/billing\/(?:connect-cloud|connections)\/aws\/setup\/[0-9a-fA-F-]{36}$/
 const CLOUD_PROVIDER_ROUTE_REGEX = /^\/client\/billing\/(?:connect-cloud|connections)\/(aws|azure|gcp|oracle-cloud)$/
 const AWS_MANUAL_EXPLORER_ROUTE_REGEX = /^\/client\/billing\/(?:connect-cloud|connections)\/aws\/manual\/explorer(?:\/|$)/
+const AWS_MANUAL_SUCCESS_ROUTE_REGEX = /^\/client\/billing\/(?:connect-cloud|connections)\/aws\/manual\/success(?:\/|$)/
 const DASHBOARD_ROUTE_REGEX =
   /^\/dashboard(?:\/(?:overview|cost-explorer|resources|allocation|optimization|anomalies-alerts|budget|report))?$/
 
@@ -63,7 +66,8 @@ function isClientWorkspaceRoute(route: string) {
     CLIENT_WORKSPACE_ROUTES.has(route) ||
     AWS_CONNECTION_SETUP_ROUTE_REGEX.test(route) ||
     CLOUD_PROVIDER_ROUTE_REGEX.test(route) ||
-    AWS_MANUAL_EXPLORER_ROUTE_REGEX.test(route)
+    AWS_MANUAL_EXPLORER_ROUTE_REGEX.test(route) ||
+    AWS_MANUAL_SUCCESS_ROUTE_REGEX.test(route)
   )
 }
 
@@ -80,6 +84,7 @@ export function App() {
     !AWS_CONNECTION_SETUP_ROUTE_REGEX.test(route) &&
     !CLOUD_PROVIDER_ROUTE_REGEX.test(route) &&
     !AWS_MANUAL_EXPLORER_ROUTE_REGEX.test(route) &&
+    !AWS_MANUAL_SUCCESS_ROUTE_REGEX.test(route) &&
     !DASHBOARD_ROUTE_REGEX.test(route)
 
   useEffect(() => {
@@ -176,8 +181,10 @@ export function App() {
       route === "/client/billing/connect-cloud/oracle-cloud" ||
       route === "/client/billing/connect-cloud/aws/automatic" ||
       route === "/client/billing/connect-cloud/aws/manual" ||
+      route === "/client/billing/connect-cloud/aws/manual/success" ||
       CLOUD_PROVIDER_ROUTE_REGEX.test(route) ||
       AWS_MANUAL_EXPLORER_ROUTE_REGEX.test(route) ||
+      AWS_MANUAL_SUCCESS_ROUTE_REGEX.test(route) ||
       AWS_CONNECTION_SETUP_ROUTE_REGEX.test(route) ? (
         <ClientLayout>
           <ClientBillingPage />

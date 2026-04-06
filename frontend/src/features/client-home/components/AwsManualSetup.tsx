@@ -855,6 +855,29 @@ function mapValidationErrorMessage(message: string): string {
   return message || "Validation failed. Review the configuration and try again."
 }
 
+type ApiErrorPayload = {
+  message?: string
+  error?: {
+    code?: string
+    details?: {
+      provider?: string
+      awsAccountId?: string
+    }
+  }
+}
+
+function getApiErrorPayload(error: ApiError): ApiErrorPayload | null {
+  if (!error.payload || typeof error.payload !== "object") return null
+  return error.payload as ApiErrorPayload
+}
+
+function isDuplicateCloudConnectionError(error: ApiError): boolean {
+  const payload = getApiErrorPayload(error)
+  const code = payload?.error?.code
+  if (error.status === 409 && code === "DUPLICATE_CLOUD_CONNECTION") return true
+  return Boolean(error.message && error.message.toLowerCase().includes("already connected"))
+}
+
 function normalizeExplorerPrefix(value: string): string {
   const trimmed = value.trim().replace(/^\/+/, "")
   if (!trimmed) return ""
@@ -1034,7 +1057,6 @@ function AwsSetupReviewValidation({
   onContinue,
   validateStatus,
   validationMessage,
-  isBrowsingBucket,
 }: {
   bucketName: string
   pathPrefix: string
@@ -1048,7 +1070,6 @@ function AwsSetupReviewValidation({
   onContinue: () => void
   validateStatus: "idle" | "validating" | "success" | "failure"
   validationMessage: string | null
-  isBrowsingBucket: boolean
 }) {
   return (
     <div className="space-y-5">
@@ -1154,16 +1175,9 @@ function AwsSetupReviewValidation({
             type="button"
             className="h-10 rounded-md"
             onClick={onContinue}
-            disabled={validateStatus !== "success" || isBrowsingBucket}
+            disabled={validateStatus !== "success"}
           >
-            {isBrowsingBucket ? (
-              <>
-                <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
-                Opening bucket...
-              </>
-            ) : (
-              "Continue"
-            )}
+            Continue
           </Button>
         </div>
       </div>
@@ -1176,7 +1190,7 @@ export function AwsManualSetup({ activeRoute }: { activeRoute: string }) {
   const manualBaseRoute = activeRoute.startsWith("/client/billing/connections/")
     ? "/client/billing/connections/aws/manual"
     : "/client/billing/connect-cloud/aws/manual"
-  const explorerRoute = `${manualBaseRoute}/explorer`
+  const successRoute = `${manualBaseRoute}/success`
   const isExplorerRoute = AWS_MANUAL_EXPLORER_ROUTE_REGEX.test(activeRoute)
 
   const [viewMode, setViewMode] = useState<"setup" | "review">("setup")
@@ -1316,6 +1330,10 @@ export function AwsManualSetup({ activeRoute }: { activeRoute: string }) {
           setFinishError("Your session appears expired. Please log in again, then retry validation.")
           return
         }
+        if (isDuplicateCloudConnectionError(error)) {
+          setFinishError("This AWS account is already connected in KCX.")
+          return
+        }
         setFinishError(error.message || "Could not prepare connection for validation.")
       } else if (error instanceof Error) {
         setFinishError(error.message)
@@ -1381,8 +1399,9 @@ export function AwsManualSetup({ activeRoute }: { activeRoute: string }) {
     }
   }
 
-  async function handleContinueToBucketExplorer() {
-    navigateTo(explorerRoute)
+  function handleContinueToSuccessPage() {
+    localStorage.removeItem(flowStorageKey)
+    navigateTo(successRoute)
   }
 
   useEffect(() => {
@@ -1436,11 +1455,10 @@ export function AwsManualSetup({ activeRoute }: { activeRoute: string }) {
             setViewMode("setup")
           }}
           onContinue={() => {
-            void handleContinueToBucketExplorer()
+            handleContinueToSuccessPage()
           }}
           validateStatus={validateStatus}
           validationMessage={validationMessage}
-          isBrowsingBucket={isBucketBrowseLoading}
         />
       </div>
     )

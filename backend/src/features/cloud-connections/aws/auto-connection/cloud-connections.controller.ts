@@ -3,11 +3,19 @@ import crypto from "node:crypto";
 
 import env from "../../../../config/env.js";
 import { HTTP_STATUS } from "../../../../constants/http-status.js";
-import { ConflictError, NotFoundError, UnauthorizedError } from "../../../../errors/http-errors.js";
+import {
+  ConflictError,
+  DuplicateCloudConnectionError,
+  NotFoundError,
+  UnauthorizedError,
+} from "../../../../errors/http-errors.js";
 import { BillingSource, CloudConnectionV2, CloudIntegration, CloudProvider } from "../../../../models/index.js";
 import { sendSuccess } from "../../../../utils/api-response.js";
 import { parseWithSchema } from "../../../_shared/validation/zod-validate.js";
-import { syncAutomaticCloudIntegration } from "../../cloud-integration-registry.service.js";
+import {
+  assertCloudAccountIsUnique,
+  syncAutomaticCloudIntegration,
+} from "../../cloud-integration-registry.service.js";
 import {
   buildAwsCloudFormationCreateStackUrl,
   KCX_AWS_CLOUDFORMATION_TEMPLATE_URL,
@@ -319,9 +327,34 @@ export async function handleAwsConnectionCallback(req: Request, res: Response): 
   }
 
   const now = new Date();
+  const normalizedAccountId = payload.account_id.trim();
+  try {
+    await assertCloudAccountIsUnique({
+      providerId: String(connection.providerId),
+      cloudAccountId: normalizedAccountId,
+      excludeDetailRecordType: "automatic_cloud_connection",
+      excludeDetailRecordId: connection.id,
+    });
+  } catch (error) {
+    if (error instanceof DuplicateCloudConnectionError) {
+      await connection.update({
+        status: "failed",
+        errorMessage: error.message,
+        lastValidatedAt: now,
+      });
+      await syncAutomaticCloudIntegration(connection, {
+        status: "failed",
+        statusMessage: "Connection Failed",
+        errorMessage: error.message,
+        lastValidatedAt: now,
+        lastCheckedAt: now,
+      });
+    }
+    throw error;
+  }
 
   await connection.update({
-    cloudAccountId: payload.account_id.trim(),
+    cloudAccountId: normalizedAccountId,
     roleArn: payload.role_arn.trim(),
     stackId: payload.stack_id.trim(),
     exportName: payload.export_name.trim(),

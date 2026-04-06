@@ -26,6 +26,7 @@ import type { TenantUploadHistoryRecord } from "@/features/client-home/api/uploa
 import { AwsAutomaticSetup } from "@/features/client-home/components/AwsAutomaticSetup"
 import { BillingUploadHistorySection } from "@/features/client-home/components/BillingUploadHistorySection"
 import { AwsManualSetup, AWS_MANUAL_EXPLORER_ROUTE_REGEX } from "@/features/client-home/components/AwsManualSetup"
+import { AwsManualSetupSuccess } from "@/features/client-home/components/AwsManualSetupSuccess"
 import { ManualBillingUploadDialog } from "@/features/client-home/components/ManualBillingUploadDialog"
 import { useIngestionStatus, type IngestionStatusPayload } from "@/features/client-home/hooks/useIngestionStatus"
 import {
@@ -70,6 +71,7 @@ function isCloudConnectionsRoute(path: string) {
 const AWS_SETUP_ROUTE_REGEX = /^\/client\/billing\/(?:connect-cloud|connections)\/aws\/setup\/([0-9a-fA-F-]{36})$/
 const CLOUD_PROVIDER_ROUTE_REGEX = /^\/client\/billing\/(?:connect-cloud|connections)\/(aws|azure|gcp|oracle-cloud)(?:\/|$)/
 const CLOUD_SETUP_METHOD_ROUTE_REGEX = /^\/client\/billing\/(?:connect-cloud|connections)\/(?:aws|azure|gcp|oracle-cloud)\/(automatic|manual)(?:\/|$)/
+const AWS_MANUAL_SUCCESS_ROUTE_REGEX = /^\/client\/billing\/(?:connect-cloud|connections)\/aws\/manual\/success(?:\/|$)/
 
 const CLOUD_PROVIDER_LABELS: Record<string, string> = {
   aws: "AWS",
@@ -888,6 +890,19 @@ export function ClientBillingPage() {
                     </CardContent>
                   </Card>
                 </div>
+              </>
+            ) : null}
+
+            {AWS_MANUAL_SUCCESS_ROUTE_REGEX.test(activeRoute) ? (
+              <>
+                <div className="space-y-2">
+                  <p className="kcx-eyebrow text-brand-primary">AWS Manual Setup</p>
+                  <h2 className="text-2xl font-semibold tracking-tight text-text-primary">Success</h2>
+                  <p className="text-sm text-text-secondary">
+                    Your manual AWS connection is complete.
+                  </p>
+                </div>
+                <AwsManualSetupSuccess />
               </>
             ) : null}
 

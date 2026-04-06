@@ -58,6 +58,17 @@ export class ConflictError extends AppError {
   }
 }
 
+export class DuplicateCloudConnectionError extends AppError {
+  constructor(message: string, details?: unknown) {
+    super({
+      message,
+      statusCode: HTTP_STATUS.CONFLICT,
+      errorCode: ERROR_CODE.DUPLICATE_CLOUD_CONNECTION,
+      details,
+    });
+  }
+}
+
 export class ValidationError extends AppError {
   constructor(
     message: string = RESPONSE_MESSAGE.VALIDATION_FAILED,

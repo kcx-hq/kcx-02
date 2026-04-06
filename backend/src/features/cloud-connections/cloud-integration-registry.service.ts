@@ -4,12 +4,15 @@ import {
   CloudProvider,
   ManualCloudConnection,
 } from "../../models/index.js";
+import { Op, UniqueConstraintError } from "sequelize";
+import { DuplicateCloudConnectionError } from "../../errors/http-errors.js";
 import type {
   CloudIntegrationStatus,
   CloudIntegrationMode,
 } from "../../models/cloud-integration.js";
 
 type CloudIntegrationDetailRecordType = "manual_cloud_connection" | "automatic_cloud_connection";
+type CloudIntegrationInstance = InstanceType<typeof CloudIntegration>;
 
 type CloudIntegrationUpsertInput = {
   tenantId: string;
@@ -34,6 +37,20 @@ type CloudConnectionV2Instance = InstanceType<typeof CloudConnectionV2>;
 type ManualCloudConnectionInstance = InstanceType<typeof ManualCloudConnection>;
 
 const MAX_DISPLAY_NAME_ATTEMPTS = 50;
+const DUPLICATE_AWS_ACCOUNT_MESSAGE = "This AWS account is already connected in KCX.";
+
+const isProviderCloudAccountUniqueConstraintError = (error: unknown): boolean => {
+  if (!(error instanceof UniqueConstraintError)) return false;
+
+  const fieldNames = Object.keys(error.fields ?? {});
+  const hasProviderField = fieldNames.includes("provider_id") || fieldNames.includes("providerId");
+  const hasCloudAccountField =
+    fieldNames.includes("cloud_account_id") || fieldNames.includes("cloudAccountId");
+  if (hasProviderField && hasCloudAccountField) return true;
+
+  const message = error.message.toLowerCase();
+  return message.includes("uq_cloud_integrations_provider_cloud_account_id");
+};
 
 const isCloudIntegrationStatus = (value: string): value is CloudIntegrationStatus =>
   value === "draft" ||
@@ -120,6 +137,51 @@ const resolveUniqueDisplayName = async (input: {
   return `${normalizedBase} (${input.connectionMode}-${input.detailRecordId.slice(0, 8)})`;
 };
 
+export const findCloudIntegrationByProviderAndAccountId = async (input: {
+  providerId: string;
+  cloudAccountId: string;
+  excludeDetailRecordType?: CloudIntegrationDetailRecordType;
+  excludeDetailRecordId?: string;
+}): Promise<CloudIntegrationInstance | null> => {
+  const normalizedCloudAccountId = input.cloudAccountId.trim();
+  if (normalizedCloudAccountId.length === 0) return null;
+
+  const where =
+    input.excludeDetailRecordType && input.excludeDetailRecordId
+      ? {
+          providerId: input.providerId,
+          cloudAccountId: normalizedCloudAccountId,
+          [Op.not]: {
+            detailRecordType: input.excludeDetailRecordType,
+            detailRecordId: input.excludeDetailRecordId,
+          },
+        }
+      : {
+          providerId: input.providerId,
+          cloudAccountId: normalizedCloudAccountId,
+        };
+
+  return CloudIntegration.findOne({
+    where,
+    order: [["updatedAt", "DESC"]],
+  });
+};
+
+export const assertCloudAccountIsUnique = async (input: {
+  providerId: string;
+  cloudAccountId: string;
+  excludeDetailRecordType?: CloudIntegrationDetailRecordType;
+  excludeDetailRecordId?: string;
+}) => {
+  const existing = await findCloudIntegrationByProviderAndAccountId(input);
+  if (!existing) return;
+
+  throw new DuplicateCloudConnectionError(DUPLICATE_AWS_ACCOUNT_MESSAGE, {
+    provider: "aws",
+    awsAccountId: input.cloudAccountId,
+  });
+};
+
 export const upsertCloudIntegrationRegistry = async (input: CloudIntegrationUpsertInput) => {
   const existing = await CloudIntegration.findOne({
     where: {
@@ -155,12 +217,23 @@ export const upsertCloudIntegrationRegistry = async (input: CloudIntegrationUpse
     connectedAt: input.connectedAt,
   };
 
-  if (existing) {
-    await existing.update(payload);
-    return existing;
-  }
+  try {
+    if (existing) {
+      await existing.update(payload);
+      return existing;
+    }
 
-  return CloudIntegration.create(payload);
+    return CloudIntegration.create(payload);
+  } catch (error) {
+    if (isProviderCloudAccountUniqueConstraintError(error)) {
+      throw new DuplicateCloudConnectionError(DUPLICATE_AWS_ACCOUNT_MESSAGE, {
+        provider: "aws",
+        awsAccountId: input.cloudAccountId,
+      });
+    }
+
+    throw error;
+  }
 };
 
 export const syncAutomaticCloudIntegration = async (
@@ -249,4 +322,3 @@ export const syncManualCloudIntegration = async (
     connectedAt,
   });
 };
-

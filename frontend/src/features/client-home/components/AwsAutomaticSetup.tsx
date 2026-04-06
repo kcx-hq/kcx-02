@@ -14,8 +14,24 @@ type CloudConnectionCreateResponse = {
   id: string
 }
 
+type ApiErrorPayload = {
+  message?: string
+  error?: {
+    code?: string
+  }
+}
+
 function validateAutoConnectionName(value: string) {
   return value.trim().length > 0
+}
+
+function isDuplicateCloudConnectionError(error: ApiError): boolean {
+  const payload = error.payload && typeof error.payload === "object"
+    ? (error.payload as ApiErrorPayload)
+    : null
+  const code = payload?.error?.code
+  if (error.status === 409 && code === "DUPLICATE_CLOUD_CONNECTION") return true
+  return Boolean(error.message && error.message.toLowerCase().includes("already connected"))
 }
 
 export function AwsAutomaticSetup({ activeRoute }: AwsAutomaticSetupProps) {
@@ -60,6 +76,10 @@ export function AwsAutomaticSetup({ activeRoute }: AwsAutomaticSetupProps) {
           setupTab.close()
         }
         if (error instanceof ApiError) {
+          if (isDuplicateCloudConnectionError(error)) {
+            setAutoError("This AWS account is already connected in KCX.")
+            return
+          }
           setAutoError(error.message || "Failed to create connection")
         } else {
           setAutoError("Failed to create connection")

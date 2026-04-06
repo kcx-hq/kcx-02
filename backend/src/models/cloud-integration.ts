@@ -91,6 +91,13 @@ const createCloudIntegrationModel = (sequelize: Sequelize): typeof CloudIntegrat
       tableName: "cloud_integrations",
       timestamps: true,
       underscored: true,
+      indexes: [
+        {
+          name: "uq_cloud_integrations_provider_cloud_account_id",
+          unique: true,
+          fields: ["provider_id", "cloud_account_id"],
+        },
+      ],
     },
   );
 

@@ -20,11 +20,13 @@ const STATIC_ROUTES = [
   "/client/billing/connections/aws",
   "/client/billing/connections/aws/automatic",
   "/client/billing/connections/aws/manual",
+  "/client/billing/connections/aws/manual/success",
   "/client/billing/connect-cloud",
   "/client/billing/connect-cloud/add",
   "/client/billing/connect-cloud/aws",
   "/client/billing/connect-cloud/aws/automatic",
   "/client/billing/connect-cloud/aws/manual",
+  "/client/billing/connect-cloud/aws/manual/success",
   "/client/support",
   "/client/support/tickets",
   "/client/support/schedule-call",
@@ -69,6 +71,7 @@ const LEGACY_ROUTE_REDIRECTS: Record<string, StaticRoute> = {
   "/client/billing/connections/aws": "/client/billing/connect-cloud/aws",
   "/client/billing/connections/aws/automatic": "/client/billing/connect-cloud/aws/automatic",
   "/client/billing/connections/aws/manual": "/client/billing/connect-cloud/aws/manual",
+  "/client/billing/connections/aws/manual/success": "/client/billing/connect-cloud/aws/manual/success",
   "/client/billing/connections/manual-setup": "/client/billing/connect-cloud/aws/manual",
   "/dashboard/cost-analysis": "/dashboard/cost-explorer",
   "/dashboard/cost-driver": "/dashboard/allocation",
@@ -79,6 +82,7 @@ const VALID_PATH_SET = new Set<string>([...STATIC_ROUTES, ...Object.keys(LEGACY_
 const BLOG_DETAIL_PATH_REGEX = /^\/resources\/blogs?\/([^/]+)$/
 const AWS_CONNECTION_SETUP_PATH_REGEX = /^\/client\/billing\/(?:connect-cloud|connections)\/aws\/setup\/[0-9a-fA-F-]{36}$/
 const AWS_MANUAL_EXPLORER_PATH_REGEX = /^\/client\/billing\/(?:connect-cloud|connections)\/aws\/manual\/explorer(?:\/|$)/
+const AWS_MANUAL_SUCCESS_PATH_REGEX = /^\/client\/billing\/(?:connect-cloud|connections)\/aws\/manual\/success(?:\/|$)/
 
 function normalizePathname(pathname: string): string {
   if (!pathname.startsWith("/")) return `/${pathname}`
@@ -106,6 +110,10 @@ function resolvePathname(pathname: string): RouteResolution {
   }
 
   if (AWS_MANUAL_EXPLORER_PATH_REGEX.test(normalized)) {
+    return { route: normalized, redirectTo: null }
+  }
+
+  if (AWS_MANUAL_SUCCESS_PATH_REGEX.test(normalized)) {
     return { route: normalized, redirectTo: null }
   }
 
@@ -158,7 +166,8 @@ export function handleAppLinkClick(
     VALID_PATH_SET.has(normalizedHref) ||
     BLOG_DETAIL_PATH_REGEX.test(normalizedHref) ||
     AWS_CONNECTION_SETUP_PATH_REGEX.test(normalizedHref) ||
-    AWS_MANUAL_EXPLORER_PATH_REGEX.test(normalizedHref)
+    AWS_MANUAL_EXPLORER_PATH_REGEX.test(normalizedHref) ||
+    AWS_MANUAL_SUCCESS_PATH_REGEX.test(normalizedHref)
   if (!isKnownPath) return
 
   event.preventDefault()

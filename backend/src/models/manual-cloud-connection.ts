@@ -128,6 +128,16 @@ const createManualCloudConnectionModel = (sequelize: Sequelize): typeof ManualCl
       modelName: "ManualCloudConnection",
       tableName: "manual_cloud_connections",
       timestamps: false,
+      indexes: [
+        {
+          name: "idx_manual_cloud_connections_tenant_id",
+          fields: ["tenant_id"],
+        },
+        {
+          name: "idx_manual_cloud_connections_tenant_connection_name",
+          fields: ["tenant_id", "connection_name"],
+        },
+      ],
     },
   );
 
