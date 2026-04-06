@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: KCX AWS Connection + Billing Export Template + EventBridge + Completed columns + Hourly configuration
+Description: KCX AWS Connection + Billing Export Template + EventBridge + Completed columns + Hourly configuration + lamda (only sends for manifest file)
 
 Parameters:
   ExternalId:
@@ -457,9 +457,18 @@ Resources:
               return;
             }
 
+            const isManifest =
+              objectKey.includes('/metadata/') &&
+              objectKey.endsWith('Manifest.json');
+
+            if (!isManifest) {
+              console.log('Skipping non-manifest object:', objectKey);
+              return;
+            }
+
             await postJson(callbackUrl, {
               callback_token: callbackToken,
-              trigger_type: 's3_object_created',
+              trigger_type: 'manifest_created',
               account_id: event.account,
               region: event.region,
               role_arn: roleArn,
