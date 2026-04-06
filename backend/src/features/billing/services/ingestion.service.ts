@@ -1,7 +1,7 @@
 import { Op } from "sequelize";
 
 import { BadRequestError, InternalServerError } from "../../../errors/http-errors.js";
-import { BillingIngestionRun, BillingSource, RawBillingFile, User } from "../../../models/index.js";
+import { BillingIngestionRun, BillingIngestionRunFile, BillingSource, RawBillingFile, User } from "../../../models/index.js";
 
 type CreateIngestionRunParams = {
   billingSourceId: string | number;
@@ -57,7 +57,7 @@ export async function createIngestionRun({
   rawBillingFileId,
 }: CreateIngestionRunParams) {
   try {
-    return await BillingIngestionRun.create({
+    const run = await BillingIngestionRun.create({
       billingSourceId: String(billingSourceId),
       rawBillingFileId: String(rawBillingFileId),
       status: "queued",
@@ -66,6 +66,15 @@ export async function createIngestionRun({
       statusMessage: "Your billing file is queued for processing",
       lastHeartbeatAt: new Date(),
     });
+
+    await BillingIngestionRunFile.create({
+      ingestionRunId: String(run.id),
+      rawBillingFileId: String(rawBillingFileId),
+      fileRole: "data",
+      processingOrder: 0,
+    });
+
+    return run;
   } catch (error) {
     throw new InternalServerError("Failed to create billing ingestion run", {
       reason: error instanceof Error ? error.message : String(error),

@@ -38,7 +38,7 @@ type CreateRawFileRecordParams = {
   originalFilePath: string | null;
   rawStorageBucket: string;
   rawStorageKey: string;
-  fileFormat: "csv" | "parquet";
+  fileFormat: string;
   fileSizeBytes: string;
   status: string;
 };

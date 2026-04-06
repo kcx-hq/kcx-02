@@ -482,6 +482,7 @@ export {
   readBillingFile,
   readCsvHeaders,
   readParquetSchemaColumns,
+  parseParquetSchemaColumnsFromBuffer,
   readCsvRows,
   readParquetRows,
   readCsvRowChunks,

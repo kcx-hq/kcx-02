@@ -4,7 +4,7 @@ import { sendSuccess } from "../../../../utils/api-response.js";
 import { logger } from "../../../../utils/logger.js";
 import { parseWithSchema } from "../../../_shared/validation/zod-validate.js";
 import { ingestionOrchestrator } from "../../../billing/services/ingestion-orchestrator.service.js";
-import { queueExportFileFromEvent } from "./aws-export-ingestion.service.js";
+import { queueExportManifestFromEvent } from "./aws-export-ingestion.service.js";
 import { awsExportFileEventCallbackSchema } from "./aws-export-file-event.schema.js";
 
 async function triggerQueuedIngestionRun(ingestionRunId: string): Promise<void> {
@@ -21,7 +21,7 @@ async function triggerQueuedIngestionRun(ingestionRunId: string): Promise<void> 
 export async function handleAwsExportFileArrived(req: Request, res: Response): Promise<void> {
   const payload = parseWithSchema(awsExportFileEventCallbackSchema, req.body);
 
-  logger.info("AWS export file event received", {
+  logger.info("AWS export manifest event received", {
     callback_token: payload.callback_token,
     trigger_type: payload.trigger_type,
     account_id: payload.account_id,
@@ -32,19 +32,19 @@ export async function handleAwsExportFileArrived(req: Request, res: Response): P
     body: payload,
   });
 
-  const result = await queueExportFileFromEvent({
+  const result = await queueExportManifestFromEvent({
     callbackToken: payload.callback_token,
     accountId: payload.account_id,
     region: payload.region,
     roleArn: payload.role_arn,
     bucketName: payload.bucket_name,
-    objectKey: payload.object_key,
+    manifestKey: payload.object_key,
   });
 
   sendSuccess({
     res,
     req,
-    message: "AWS export file event received",
+    message: "AWS export manifest event received",
     data: result,
   });
 
