@@ -11,7 +11,7 @@ type AwsCloudFormationUrlInput = {
 };
 
 export const KCX_AWS_CLOUDFORMATION_TEMPLATE_URL =
-  "https://kcx-cloudformation-templates.s3.us-east-1.amazonaws.com/aws-template2.yaml";
+  "https://kcx-cloudformation-templates.s3.us-east-1.amazonaws.com/aws-template4.yml";
 
 export function buildAwsCloudFormationCreateStackUrl({
   templateUrl,
@@ -25,12 +25,18 @@ export function buildAwsCloudFormationCreateStackUrl({
   callbackToken,
 }: AwsCloudFormationUrlInput): string {
   const base = "https://console.aws.amazon.com/cloudformation/home#/stacks/create/review";
+  const fileEventCallbackUrl = process.env.AWS_FILE_EVENT_CALLBACK_URL?.trim();
+
+  if (!fileEventCallbackUrl) {
+    throw new Error("AWS_FILE_EVENT_CALLBACK_URL is not configured");
+  }
 
   const queryItems: Array<[string, string]> = [
     ["templateURL", templateUrl],
     ["stackName", stackName],
     ["param_ExternalId", externalId],
     ["param_ConnectionName", connectionName],
+    ["param_FileEventCallbackUrl", fileEventCallbackUrl],
     ["region", region],
   ];
 

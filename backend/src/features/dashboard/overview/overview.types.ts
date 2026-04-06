@@ -50,6 +50,8 @@ export type CostBreakdownItem = {
   name: string;
   billedCost: number;
   contributionPct: number;
+  latitude?: number | null;
+  longitude?: number | null;
 };
 
 export type SavingsInsights = {

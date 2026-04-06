@@ -4,6 +4,7 @@ import { AllCommunityModule, ModuleRegistry } from "ag-grid-community"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { BrowserRouter } from "react-router-dom"
 import '@/styles/globals.css'
+import "leaflet/dist/leaflet.css";
 import App from './App.tsx'
 
 ModuleRegistry.registerModules([AllCommunityModule])

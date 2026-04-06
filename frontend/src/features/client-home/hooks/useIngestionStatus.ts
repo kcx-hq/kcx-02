@@ -34,9 +34,10 @@ export type IngestionStatusPayload = {
 type UseIngestionStatusOptions = {
   ingestionRunId: string | null
   enabled?: boolean
+  onIngestionRunNotFound?: () => void
 }
 
-export function useIngestionStatus({ ingestionRunId, enabled = true }: UseIngestionStatusOptions) {
+export function useIngestionStatus({ ingestionRunId, enabled = true, onIngestionRunNotFound }: UseIngestionStatusOptions) {
   const [status, setStatus] = useState<IngestionStatusPayload | null>(null)
   const [requestError, setRequestError] = useState<string | null>(null)
   const [isPolling, setIsPolling] = useState(false)
@@ -95,6 +96,13 @@ export function useIngestionStatus({ ingestionRunId, enabled = true }: UseIngest
       if (unmountedRef.current || sessionId !== pollSessionIdRef.current) return
 
       if (error instanceof ApiError) {
+        if (error.status === 404) {
+          clearScheduledPoll()
+          setStatus(null)
+          setRequestError(null)
+          onIngestionRunNotFound?.()
+          return
+        }
         setRequestError(error.message || "Failed to fetch ingestion status")
       } else {
         setRequestError("Failed to fetch ingestion status")
@@ -108,7 +116,7 @@ export function useIngestionStatus({ ingestionRunId, enabled = true }: UseIngest
         setIsPolling(false)
       }
     }
-  }, [clearScheduledPoll, enabled, ingestionRunId])
+  }, [clearScheduledPoll, enabled, ingestionRunId, onIngestionRunNotFound])
 
   useEffect(() => {
     unmountedRef.current = false

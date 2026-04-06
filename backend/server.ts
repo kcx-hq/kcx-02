@@ -1,10 +1,6 @@
 import { createServer, type Server } from "node:http";
 import app from "./app.js";
 import env from "./src/config/env.js";
-import {
-  startAwsFirstFileMonitor,
-  stopAwsFirstFileMonitor,
-} from "./src/features/cloud-connections/aws/auto-connection/aws-first-file-monitor.service.js";
 import { sequelize } from "./src/models/index.js";
 import { logger } from "./src/utils/logger.js";
 
@@ -21,7 +17,6 @@ const shutdown = (signal: string): void => {
 
   isShuttingDown = true;
   logger.info("Shutdown initiated", { signal });
-  stopAwsFirstFileMonitor();
 
   if (!server) {
     process.exit(0);
@@ -55,7 +50,6 @@ const startServer = async (): Promise<void> => {
   try {
     await sequelize.authenticate();
     logger.info("Database connected");
-    startAwsFirstFileMonitor();
   } catch (error) {
     logger.error("Database connection failed", {
       error: error instanceof Error ? error.message : String(error),

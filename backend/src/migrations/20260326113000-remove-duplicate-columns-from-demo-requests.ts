@@ -1,4 +1,5 @@
-﻿// @ts-nocheck
+/* eslint-disable @typescript-eslint/ban-ts-comment */
+// @ts-nocheck
 const hasColumn = async (queryInterface, tableName, columnName) => {
     try {
         const columns = await queryInterface.describeTable(tableName);
@@ -65,4 +66,7 @@ const migration = {
     },
 };
 export default migration;
+
+
+
 

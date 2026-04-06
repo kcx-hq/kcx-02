@@ -7,6 +7,16 @@ export default tseslint.config(
     ignores: ["dist/**", "node_modules/**"],
   },
   js.configs.recommended,
+  {
+    files: ["**/*.{js,mjs,cjs}"],
+    languageOptions: {
+      ecmaVersion: 2022,
+      sourceType: "module",
+      globals: {
+        ...globals.node,
+      },
+    },
+  },
   ...tseslint.configs.recommended,
   {
     files: ["**/*.ts"],
@@ -19,6 +29,7 @@ export default tseslint.config(
     },
     rules: {
       "@typescript-eslint/no-explicit-any": "error",
+      "@typescript-eslint/no-unused-vars": ["error", { "argsIgnorePattern": "^_" }],
     },
   },
 );

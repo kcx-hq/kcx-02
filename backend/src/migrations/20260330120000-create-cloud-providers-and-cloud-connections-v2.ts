@@ -1,4 +1,5 @@
-﻿// @ts-nocheck
+/* eslint-disable @typescript-eslint/ban-ts-comment */
+// @ts-nocheck
 const hasTable = async (queryInterface, tableName) => {
     try {
         await queryInterface.describeTable(tableName);
@@ -198,4 +199,7 @@ JOIN cloud_providers cp ON cp.code = LEFT(cc.provider, 30);
     },
 };
 export default migration;
+
+
+
 

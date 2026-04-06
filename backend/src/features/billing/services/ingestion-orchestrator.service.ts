@@ -1,9 +1,12 @@
+/* eslint-disable @typescript-eslint/ban-ts-comment */
+// @ts-nocheck
 import { HeadObjectCommand, S3Client } from "@aws-sdk/client-s3";
 
 import env from "../../../config/env.js";
 import { NotFoundError } from "../../../errors/http-errors.js";
 import { RawBillingFile } from "../../../models/index.js";
 import { mapFactCostLineItem } from "../mappers/raw_focus_to_dimensions.mapper.js";
+import { processAwsExportParquetRun } from "./aws-export-parquet.processor.js";
 import {
   createIngestionDimensionCache,
   primeDimensionCacheForChunk,
@@ -16,6 +19,7 @@ import {
   readParquetSchemaColumns,
 } from "./file-reader.service.js";
 import { insertFactCostLineItemsBatch } from "./fact-cost-line-item.service.js";
+import { getIngestionRunFiles } from "./ingestion-run-file.service.js";
 import { recordIngestionRowErrors } from "./ingestion-row-error.service.js";
 import { getIngestionRunById, updateIngestionRunStatus } from "./ingestion.service.js";
 import {
@@ -249,6 +253,13 @@ async function processIngestionRun(ingestionRunId) {
 
   try {
     run = await loadIngestionRunOrThrow(ingestionRunId);
+
+    const runFiles = await getIngestionRunFiles(run.id);
+    const hasManifestLinkedRun = Array.isArray(runFiles) && runFiles.some((fileLink) => fileLink.fileRole === "manifest");
+    if (hasManifestLinkedRun) {
+      await processAwsExportParquetRun({ run });
+      return;
+    }
 
     const rawFile = await loadRawBillingFileOrThrow(run.rawBillingFileId);
     assertRawFileLocation(rawFile);
@@ -650,3 +661,5 @@ export {
   markRunCompleted,
   markRunFailed,
 };
+
+

@@ -20,6 +20,7 @@ import {
   buildAwsCloudFormationCreateStackUrl,
   KCX_AWS_CLOUDFORMATION_TEMPLATE_URL,
 } from "./aws-cloudformation-url.js";
+import { runInitialBackfillAfterValidation } from "../exports/aws-export-ingestion.service.js";
 import { validateAwsConnection } from "./aws-connection-validation.service.js";
 import { awsConnectionCallbackSchema, createCloudConnectionSchema } from "./cloud-connections.schema.js";
 
@@ -315,6 +316,7 @@ export async function handleGetAwsCloudFormationSetupUrl(req: Request, res: Resp
     data: { url },
   });
 }
+
 export async function handleAwsConnectionCallback(req: Request, res: Response): Promise<void> {
   const payload = parseWithSchema(awsConnectionCallbackSchema, req.body);
 
@@ -401,16 +403,54 @@ export async function handleAwsConnectionCallback(req: Request, res: Response): 
     : await BillingSource.create(billingSourcePayload);
 
   const validationResult = await validateAwsConnection(connection.id);
-  const nextBillingSourceStatus = resolveBillingSourceStatusAfterValidation(
-    validationResult.status,
-    billingSource.status,
-    billingSource.lastFileReceivedAt ?? null,
-  );
+  const validationStatus = String(validationResult.status);
+  const isValidationSuccessful =
+    validationStatus === "validated" || validationStatus === "active" || validationStatus === "active_with_warnings";
 
-  await billingSource.update({
-    status: nextBillingSourceStatus,
-    lastValidatedAt: validationResult.lastValidatedAt,
-  });
+  let initialBackfillSummary: { filesFound: number; filesQueued: number; filesSkipped: number } | null = null;
+  let callbackStatus: string = validationStatus;
+
+  if (isValidationSuccessful) {
+    initialBackfillSummary = await runInitialBackfillAfterValidation(connection.id);
+
+    const isFirstFilePending = initialBackfillSummary.filesFound === 0;
+    const nextBillingSourceStatus = isFirstFilePending ? "waiting_for_first_file" : "syncing";
+    const nextBillingSourceStatusMessage = isFirstFilePending
+      ? "Waiting for first export file from AWS"
+      : "Initial backfill queued";
+
+    const billingSourcePatch: Record<string, unknown> = {
+      status: nextBillingSourceStatus,
+      lastValidatedAt: validationResult.lastValidatedAt,
+    };
+
+    if ("statusMessage" in BillingSource.getAttributes()) {
+      billingSourcePatch.statusMessage = nextBillingSourceStatusMessage;
+    }
+
+    await billingSource.update(billingSourcePatch);
+
+    await connection.update({
+      status: "active",
+      lastValidatedAt: validationResult.lastValidatedAt,
+      errorMessage: validationResult.errorMessage,
+    });
+
+    callbackStatus = nextBillingSourceStatus;
+  } else {
+    await connection.update({
+      status: "failed",
+      lastValidatedAt: validationResult.lastValidatedAt,
+      errorMessage: validationResult.errorMessage,
+    });
+
+    await billingSource.update({
+      status: "failed",
+      lastValidatedAt: validationResult.lastValidatedAt,
+    });
+
+    callbackStatus = "failed";
+  }
 
   await syncAutomaticCloudIntegration(connection, {
     status: validationResult.status,
@@ -432,13 +472,20 @@ export async function handleAwsConnectionCallback(req: Request, res: Response): 
     message: "AWS callback processed",
     data: {
       id: connection.id,
-      status: validationResult.status,
+      status: callbackStatus,
       stack_id: payload.stack_id.trim(),
       export_name: payload.export_name.trim(),
       export_bucket: payload.export_bucket.trim(),
       export_prefix: payload.export_prefix.trim(),
       format: payload.format,
       error_message: validationResult.errorMessage,
+      initial_backfill: initialBackfillSummary
+        ? {
+            files_found: initialBackfillSummary.filesFound,
+            files_queued: initialBackfillSummary.filesQueued,
+            files_skipped: initialBackfillSummary.filesSkipped,
+          }
+        : null,
     },
   });
 }

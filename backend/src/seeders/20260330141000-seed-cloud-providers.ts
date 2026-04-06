@@ -1,7 +1,7 @@
 const seedCodes = ["aws", "azure", "gcp", "oracle", "custom"];
 
 const migration = {
-  async up(queryInterface: any) {
+  async up(queryInterface: import("sequelize").QueryInterface) {
     await queryInterface.sequelize.query(`
 INSERT INTO cloud_providers (code, name, status)
 VALUES
@@ -18,7 +18,7 @@ SET
 `);
   },
 
-  async down(queryInterface: any) {
+  async down(queryInterface: import("sequelize").QueryInterface) {
     await queryInterface.bulkDelete("cloud_providers", { code: seedCodes });
   },
 };

@@ -15,6 +15,7 @@ import createUserModel from "./user.js";
 import createRawBillingFileModel from "./raw-billing-file.js";
 import createBillingSourceModel from "./billing-source.js";
 import createBillingIngestionRunModel from "./billing-ingestion-run.js";
+import createBillingIngestionRunFileModel from "./billing-ingestion-run-file.js";
 import createManualCloudConnectionModel from "./manual-cloud-connection.js";
 import createDimBillingAccountModel from "./billing/dim_billing_account.js";
 import createDimSubAccountModel from "./billing/dim_sub_account.js";
@@ -67,6 +68,7 @@ const Tenant = createTenantModel(sequelize);
 const RawBillingFile = createRawBillingFileModel(sequelize);
 const BillingSource = createBillingSourceModel(sequelize);
 const BillingIngestionRun = createBillingIngestionRunModel(sequelize);
+const BillingIngestionRunFile = createBillingIngestionRunFileModel(sequelize);
 const ManualCloudConnection = createManualCloudConnectionModel(sequelize);
 const DimBillingAccount = createDimBillingAccountModel(sequelize);
 const DimSubAccount = createDimSubAccountModel(sequelize);
@@ -123,6 +125,10 @@ BillingSource.hasMany(BillingIngestionRun, { foreignKey: "billingSourceId" });
 BillingIngestionRun.belongsTo(BillingSource, { foreignKey: "billingSourceId" });
 RawBillingFile.hasMany(BillingIngestionRun, { foreignKey: "rawBillingFileId" });
 BillingIngestionRun.belongsTo(RawBillingFile, { foreignKey: "rawBillingFileId" });
+BillingIngestionRun.hasMany(BillingIngestionRunFile, { foreignKey: "ingestionRunId" });
+BillingIngestionRunFile.belongsTo(BillingIngestionRun, { foreignKey: "ingestionRunId" });
+RawBillingFile.hasMany(BillingIngestionRunFile, { foreignKey: "rawBillingFileId" });
+BillingIngestionRunFile.belongsTo(RawBillingFile, { foreignKey: "rawBillingFileId" });
 Tenant.hasMany(ManualCloudConnection, { foreignKey: "tenantId" });
 ManualCloudConnection.belongsTo(Tenant, { foreignKey: "tenantId" });
 User.hasMany(ManualCloudConnection, { foreignKey: "createdBy" });
@@ -256,6 +262,7 @@ export {
   RawBillingFile,
   BillingSource,
   BillingIngestionRun,
+  BillingIngestionRunFile,
   ManualCloudConnection,
   DimBillingAccount,
   DimSubAccount,

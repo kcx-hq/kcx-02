@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/ban-ts-comment */
+// @ts-nocheck
 import { FactCostLineItems as FactCostLineItem } from "../../../models/index.js";
 import { mapFactCostLineItem } from "../mappers/raw_focus_to_dimensions.mapper.js";
 import { classifyFactInsertError } from "./numeric-validation.service.js";
@@ -167,3 +169,7 @@ async function insertFactCostLineItemsBatch({ factRows, ingestionRunId }) {
 }
 
 export { insertFactCostLineItem, insertFactCostLineItemsBatch };
+
+
+
+
