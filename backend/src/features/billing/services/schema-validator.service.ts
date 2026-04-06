@@ -229,6 +229,15 @@ function normalizeRowToCanonical(rawRow = {}, canonicalHeaderMap = {}) {
   normalizedRow.discount_amount =
     listCost !== null && effectiveCost !== null ? Math.max(listCost - effectiveCost, 0) : null;
 
+  // Backfill charge dimensions from synthetic fields when source files provide
+  // line-item columns directly (e.g. aws exports: line_item_type/pricing_term).
+  if (normalizedRow.ChargeCategory === null && normalizedRow.line_item_type !== null) {
+    normalizedRow.ChargeCategory = normalizedRow.line_item_type;
+  }
+  if (normalizedRow.ChargeClass === null && normalizedRow.pricing_term !== null) {
+    normalizedRow.ChargeClass = normalizedRow.pricing_term;
+  }
+
   return normalizedRow;
 }
 
