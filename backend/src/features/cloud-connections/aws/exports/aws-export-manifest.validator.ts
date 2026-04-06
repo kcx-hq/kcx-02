@@ -53,13 +53,62 @@ const toStringArray = (value: unknown): string[] => {
     .filter((entry) => entry.length > 0);
 };
 
-const normalizeManifestFile = (entry: unknown): ParsedManifestFile | null => {
+const parseS3ObjectLocation = ({
+  input,
+  expectedBucketName,
+}: {
+  input: string;
+  expectedBucketName?: string;
+}): { bucketName: string | null; key: string } => {
+  const normalizedInput = String(input ?? "").trim();
+  if (!normalizedInput) {
+    throw new Error("Manifest file path is empty");
+  }
+
+  if (!normalizedInput.toLowerCase().startsWith("s3://")) {
+    return {
+      bucketName: null,
+      key: normalizedInput.replace(/^\/+/, ""),
+    };
+  }
+
+  const withoutPrefix = normalizedInput.slice("s3://".length);
+  const firstSlashIndex = withoutPrefix.indexOf("/");
+  if (firstSlashIndex <= 0 || firstSlashIndex === withoutPrefix.length - 1) {
+    throw new Error(`Invalid S3 URI in manifest: ${normalizedInput}`);
+  }
+
+  const bucketName = withoutPrefix.slice(0, firstSlashIndex).trim();
+  const key = withoutPrefix.slice(firstSlashIndex + 1).replace(/^\/+/, "").trim();
+  if (!bucketName || !key) {
+    throw new Error(`Invalid S3 URI in manifest: ${normalizedInput}`);
+  }
+
+  if (expectedBucketName && bucketName !== expectedBucketName) {
+    throw new Error(
+      `Manifest file bucket mismatch. expected=${expectedBucketName}, found=${bucketName}, uri=${normalizedInput}`,
+    );
+  }
+
+  return {
+    bucketName,
+    key,
+  };
+};
+
+const normalizeManifestFile = ({
+  entry,
+  expectedBucketName,
+}: {
+  entry: unknown;
+  expectedBucketName?: string;
+}): ParsedManifestFile | null => {
   if (!entry || typeof entry !== "object") {
     return null;
   }
 
   const objectEntry = entry as UnknownObject;
-  const key = pickFirstString([
+  const rawPath = pickFirstString([
     objectEntry.key,
     objectEntry.filePath,
     objectEntry.file_path,
@@ -70,7 +119,16 @@ const normalizeManifestFile = (entry: unknown): ParsedManifestFile | null => {
     objectEntry.url,
   ]);
 
-  if (!key || !key.toLowerCase().endsWith(".parquet")) {
+  if (!rawPath) {
+    return null;
+  }
+
+  const { key } = parseS3ObjectLocation({
+    input: rawPath,
+    expectedBucketName,
+  });
+
+  if (!key.toLowerCase().endsWith(".parquet")) {
     return null;
   }
 
@@ -86,9 +144,11 @@ const normalizeManifestFile = (entry: unknown): ParsedManifestFile | null => {
 export function parseAndValidateAwsManifest({
   manifestKey,
   manifestBody,
+  expectedBucketName,
 }: {
   manifestKey: string;
   manifestBody: string;
+  expectedBucketName?: string;
 }): ParsedManifest {
   let manifestJson: unknown;
   try {
@@ -118,16 +178,19 @@ export function parseAndValidateAwsManifest({
       continue;
     }
 
-    const fromObjectEntries = candidateArray.map(normalizeManifestFile).filter((entry): entry is ParsedManifestFile => !!entry);
+    const fromObjectEntries = candidateArray
+      .map((entry) => normalizeManifestFile({ entry, expectedBucketName }))
+      .filter((entry): entry is ParsedManifestFile => !!entry);
     if (fromObjectEntries.length > 0) {
       parsedFiles = fromObjectEntries;
       break;
     }
 
     const asPathList = toStringArray(candidateArray)
-      .filter((entry) => entry.toLowerCase().endsWith(".parquet"))
+      .map((entry) => parseS3ObjectLocation({ input: entry, expectedBucketName }))
+      .filter((entry) => entry.key.toLowerCase().endsWith(".parquet"))
       .map((entry) => ({
-        key: entry,
+        key: entry.key,
         sizeBytes: null,
         checksum: null,
       }));

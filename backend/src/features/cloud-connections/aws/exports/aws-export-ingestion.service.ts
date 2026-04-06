@@ -674,6 +674,7 @@ export async function queueExportManifestFromEvent(payload: AwsManifestPayload):
   const parsedManifest = parseAndValidateAwsManifest({
     manifestKey: normalizedManifestKey,
     manifestBody,
+    expectedBucketName: normalizedBucketName,
   });
 
   return registerManifestBatchInTransaction({
