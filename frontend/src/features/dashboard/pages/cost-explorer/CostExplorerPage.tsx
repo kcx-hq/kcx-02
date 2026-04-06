@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from "react";
 import type { EChartsOption } from "echarts";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 
 import { useCostExplorerQuery } from "../../hooks/useDashboardQueries";
 import { useDashboardScope } from "../../hooks/useDashboardScope";
@@ -37,9 +37,9 @@ type ChartMode = "line" | "bar";
 export default function CostExplorerPage() {
   const query = useCostExplorerQuery();
   const location = useLocation();
+  const navigate = useNavigate();
   const { scope } = useDashboardScope();
 
-  const [granularity, setGranularity] = useState<Granularity>("daily");
   const [groupBy, setGroupBy] = useState<GroupBy>("none");
   const [metric, setMetric] = useState<Metric>("billed");
   const [compare, setCompare] = useState<CompareKey[]>(["previous-month"]);
@@ -54,6 +54,7 @@ export default function CostExplorerPage() {
   const params = new URLSearchParams(location.search);
   const queryFrom = params.get("billingPeriodStart") ?? params.get("from");
   const queryTo = params.get("billingPeriodEnd") ?? params.get("to");
+  const granularityParam = params.get("granularity");
 
   const parsedFrom = queryFrom ? parseInputDate(queryFrom) : null;
   const parsedTo = queryTo ? parseInputDate(queryTo) : null;
@@ -83,6 +84,19 @@ export default function CostExplorerPage() {
     if (!start || !end || start > end) return 0;
     return Math.floor((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
   }, [end, start]);
+
+  const autoGranularity: Granularity = days <= 2 ? "hourly" : days >= 90 ? "monthly" : "daily";
+  const requestedGranularity: Granularity | null =
+    granularityParam === "hourly" || granularityParam === "daily" || granularityParam === "monthly"
+      ? granularityParam
+      : null;
+  const granularity = requestedGranularity ?? autoGranularity;
+
+  const setGranularityPreference = (next: Granularity) => {
+    const nextParams = new URLSearchParams(location.search);
+    nextParams.set("granularity", next);
+    navigate({ pathname: location.pathname, search: nextParams.toString() }, { replace: true });
+  };
 
   const effectiveGranularity: Granularity = granularity === "hourly" && days > 14 ? "daily" : granularity;
 
@@ -415,7 +429,7 @@ export default function CostExplorerPage() {
   };
 
   const clearAll = () => {
-    setGranularity("daily");
+    setGranularityPreference("daily");
     setGroupBy("none");
     setCompare(["previous-month"]);
     setMetric("billed");
@@ -439,7 +453,7 @@ export default function CostExplorerPage() {
 
   const removeChip = (key: CostExplorerChip["key"]) => {
     if (key === "granularity") {
-      setGranularity("daily");
+      setGranularityPreference("daily");
       return;
     }
     if (key === "group") {
@@ -465,7 +479,7 @@ export default function CostExplorerPage() {
           metric={metric}
           compare={compare}
           chips={chips}
-          onSetGranularity={setGranularity}
+          onSetGranularity={setGranularityPreference}
           onSetGroupBy={setGroupBy}
           onSetMetric={setMetric}
           onToggleCompare={toggleCompare}

@@ -157,30 +157,34 @@ export function CostExplorerChartSection({
         ) : null}
         {!isLoading && !isError && chartReady ? (
           <div className="cost-explorer-chart-stack">
-            <BaseEChart option={option} height={420} />
+            <div key={chartMode} className="cost-explorer-chart-canvas">
+              <BaseEChart option={option} height={420} />
+            </div>
             {topBreakdowns.length ? (
               <div className={`cost-explorer-breakdown-grid${topBreakdowns.length === 1 ? " is-single" : ""}`} aria-label="Top 5 breakdowns">
                 {topBreakdowns.map((group) => (
                   <div key={group.key} className="cost-explorer-breakdown-block">
                     <p className="cost-explorer-breakdown-block__title">{group.label}</p>
-                    <table className="cost-explorer-breakdown-table">
-                      <thead>
-                        <tr>
-                          <th scope="col">Name</th>
-                          <th scope="col">Cost</th>
-                          <th scope="col">Change</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {group.rows.map((row) => (
-                          <tr key={`${group.key}-${row.name}`}>
-                            <td>{row.name}</td>
-                            <td>{row.costLabel}</td>
-                            <td className={`cost-explorer-breakdown-table__change is-${row.changeTone}`}>{row.changeLabel}</td>
+                    <div className="cost-explorer-breakdown-table-wrap">
+                      <table className="cost-explorer-breakdown-table">
+                        <thead>
+                          <tr>
+                            <th scope="col">Name</th>
+                            <th scope="col">Cost</th>
+                            <th scope="col">Change</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                        </thead>
+                        <tbody>
+                          {group.rows.map((row) => (
+                            <tr key={`${group.key}-${row.name}`}>
+                              <td>{row.name}</td>
+                              <td>{row.costLabel}</td>
+                              <td className={`cost-explorer-breakdown-table__change is-${row.changeTone}`}>{row.changeLabel}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
                 ))}
               </div>
