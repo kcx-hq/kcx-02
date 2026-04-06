@@ -98,6 +98,7 @@ const buildSchemaResult = ({ rawBillingFileId, key, validation }) => ({
 export async function processAwsExportParquetRun({ run }) {
   const runId = String(run.id);
   const batchSize = 1000;
+  logger.info("AWS parquet processor: step=start", { runId, batchSize });
 
   await setRunState(runId, {
     status: "validating_schema",
@@ -147,6 +148,12 @@ export async function processAwsExportParquetRun({ run }) {
       if (!rawFile?.rawStorageBucket || !rawFile?.rawStorageKey) {
         throw new Error(`Raw file ${dataLink.rawBillingFileId} is missing raw storage location`);
       }
+      logger.info("AWS parquet processor: step=download_file:start", {
+        runId,
+        rawBillingFileId: String(rawFile.id),
+        bucket: rawFile.rawStorageBucket,
+        key: rawFile.rawStorageKey,
+      });
 
       const base64FileBody = await downloadExportFile({
         roleArn,
@@ -157,9 +164,23 @@ export async function processAwsExportParquetRun({ run }) {
       });
 
       const parquetBuffer = Buffer.from(base64FileBody, "base64");
+      logger.info("AWS parquet processor: step=download_file:done", {
+        runId,
+        rawBillingFileId: String(rawFile.id),
+        bytes: parquetBuffer.length,
+      });
       parquetBuffersByRawFileId.set(String(rawFile.id), parquetBuffer);
 
+      logger.info("AWS parquet processor: step=parse_schema:start", {
+        runId,
+        rawBillingFileId: String(rawFile.id),
+      });
       const parquetColumns = await parseParquetSchemaColumnsFromBuffer(parquetBuffer);
+      logger.info("AWS parquet processor: step=parse_schema:done", {
+        runId,
+        rawBillingFileId: String(rawFile.id),
+        columnCount: parquetColumns.length,
+      });
       const validation = validateHeaders(parquetColumns);
       const schemaResult = buildSchemaResult({
         rawBillingFileId: String(rawFile.id),
@@ -195,6 +216,11 @@ export async function processAwsExportParquetRun({ run }) {
     for (const dataLink of dataLinks) {
       const rawFile = dataLink.RawBillingFile;
       const rawFileId = String(rawFile.id);
+      logger.info("AWS parquet processor: step=process_data_file:start", {
+        runId,
+        rawFileId,
+        key: rawFile.rawStorageKey,
+      });
 
       await setRunState(runId, {
         status: "normalizing",
@@ -213,7 +239,21 @@ export async function processAwsExportParquetRun({ run }) {
       }
 
       let chunkOffset = 0;
+      let chunkIndex = 0;
+      logger.info("AWS parquet processor: step=parse_chunks:start", {
+        runId,
+        rawFileId,
+        batchSize,
+      });
       for await (const chunk of readParquetRowChunksFromBuffer(parquetBuffer, batchSize)) {
+        chunkIndex += 1;
+        logger.info("AWS parquet processor: step=parse_chunks:chunk_received", {
+          runId,
+          rawFileId,
+          chunkIndex,
+          chunkSize: chunk.length,
+          chunkOffset,
+        });
         rowsRead += chunk.length;
 
         try {
@@ -357,6 +397,14 @@ export async function processAwsExportParquetRun({ run }) {
 
         chunkOffset += chunk.length;
       }
+      logger.info("AWS parquet processor: step=parse_chunks:done", {
+        runId,
+        rawFileId,
+        chunkCount: chunkIndex,
+        rowsRead,
+        rowsLoaded,
+        rowsFailed,
+      });
 
       processedDataFiles += 1;
 
@@ -429,6 +477,10 @@ export async function processAwsExportParquetRun({ run }) {
       rowsFailed,
     };
   } catch (error) {
+    logger.error("AWS parquet processor: step=failed", {
+      runId,
+      reason: toErrorMessage(error),
+    });
     await markRunFailed(runId, error, PROGRESS_BY_STAGE.finalizing);
     throw error;
   }
