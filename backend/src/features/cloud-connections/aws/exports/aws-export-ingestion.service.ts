@@ -433,16 +433,54 @@ const assertManifestObjectKey = (objectKey: string): string => {
   return normalized;
 };
 
-const resolveBillingSourceForConnection = async (connectionId: string) => {
-  const billingSource = await BillingSource.findOne({
-    where: { cloudConnectionId: connectionId },
-    order: [["updatedAt", "DESC"]],
-  });
-  if (!billingSource) {
-    throw new NotFoundError("Billing source not found for connection");
+const resolveBillingSourceForConnection = async ({
+  connection,
+  bucketName,
+}: {
+  connection: CloudConnectionInstance;
+  bucketName: string;
+}) => {
+  try {
+    const billingSource = await BillingSource.findOne({
+      where: { cloudConnectionId: connection.id },
+      order: [["updatedAt", "DESC"]],
+    });
+    if (billingSource) {
+      return billingSource;
+    }
+  } catch (error) {
+    logger.error("Primary billing source lookup by cloudConnectionId failed", {
+      connectionId: connection.id,
+      tenantId: connection.tenantId,
+      reason: error instanceof Error ? error.message : String(error),
+      sqlDetail:
+        error && typeof error === "object" && "parent" in error
+          ? String((error as { parent?: { message?: string } }).parent?.message ?? "")
+          : "",
+    });
   }
 
-  return billingSource;
+  // Defensive fallback for environments where billing_sources.cloud_connection_id type drifted.
+  const fallbackBillingSource = await BillingSource.findOne({
+    where: {
+      tenantId: connection.tenantId,
+      cloudProviderId: String(connection.providerId),
+      bucketName,
+    },
+    order: [["updatedAt", "DESC"]],
+  });
+
+  if (fallbackBillingSource) {
+    logger.warn("Resolved billing source using fallback lookup", {
+      connectionId: connection.id,
+      billingSourceId: fallbackBillingSource.id,
+      tenantId: connection.tenantId,
+      bucketName,
+    });
+    return fallbackBillingSource;
+  }
+
+  throw new NotFoundError("Billing source not found for connection");
 };
 
 const findExistingManifestRun = async ({
@@ -642,7 +680,10 @@ export async function queueExportManifestFromEvent(payload: AwsManifestPayload):
     throw new BadRequestError("Region does not match the configured export region");
   }
 
-  const billingSource = await resolveBillingSourceForConnection(connection.id);
+  const billingSource = await resolveBillingSourceForConnection({
+    connection,
+    bucketName: normalizedBucketName,
+  });
   const storedBucketName = String(billingSource.bucketName ?? connection.exportBucket ?? "").trim();
   if (storedBucketName && storedBucketName !== normalizedBucketName) {
     throw new BadRequestError("Bucket name does not match the configured export bucket");
