@@ -139,6 +139,7 @@ export async function processAwsExportParquetRun({ run }) {
     }
 
     const schemaValidationResults = [];
+    const canonicalHeaderMapsByRawFileId = new Map();
     const parquetBuffersByRawFileId = new Map();
 
     for (const dataLink of dataLinks) {
@@ -167,6 +168,7 @@ export async function processAwsExportParquetRun({ run }) {
       });
 
       schemaValidationResults.push(schemaResult);
+      canonicalHeaderMapsByRawFileId.set(String(rawFile.id), validation.canonicalHeaderMap ?? {});
 
       if (!validation.success) {
         const schemaValidationErrorMessage = buildSchemaValidationErrorMessage(validation);
@@ -205,11 +207,7 @@ export async function processAwsExportParquetRun({ run }) {
       });
 
       const parquetRows = await parseParquet(parquetBuffersByRawFileId.get(rawFileId));
-      const schemaResult = schemaValidationResults.find((item) => item.rawBillingFileId === rawFileId);
-      const canonicalHeaderMap = (schemaResult?.matchedCanonicalColumns ?? []).reduce((acc, columnName) => {
-        acc[columnName] = columnName;
-        return acc;
-      }, {});
+      const canonicalHeaderMap = canonicalHeaderMapsByRawFileId.get(rawFileId) ?? {};
 
       for (let offset = 0; offset < parquetRows.length; offset += batchSize) {
         const chunk = parquetRows.slice(offset, offset + batchSize);
