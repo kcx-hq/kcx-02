@@ -1289,6 +1289,10 @@ export function ClientBillingPage() {
   } = useIngestionStatus({
     ingestionRunId: activeIngestionRunId,
     enabled: Boolean(activeIngestionRunId),
+    onIngestionRunNotFound: () => {
+      setActiveIngestionRunId(null)
+      window.localStorage.removeItem(ACTIVE_INGESTION_STORAGE_KEY)
+    },
   })
   const displayIngestionStatus = ingestionStatus ?? lastTerminalIngestionStatus
   const {
@@ -1414,6 +1418,7 @@ export function ClientBillingPage() {
           status: "draft",
           account_type: autoAccountType,
         })
+        
 
         const setup = await apiGet<{ url: string }>(`/cloud-connections/${created.id}/aws-cloudformation-url`)
         if (setupTab) {

@@ -120,11 +120,7 @@ export async function handleManualUploadBillingFile(req: Request, res: Response)
   });
 }
 
-export async function handleGetBillingIngestionRun(req: Request, res: Response): Promise<void> {
-  await handleGetBillingIngestionStatus(req, res);
-}
-
-export async function handleGetBillingIngestionStatus(req: Request, res: Response): Promise<void> {
+export async function getBillingIngestionStatus(req: Request, res: Response): Promise<void> {
   const tenantId = requireTenantId(req);
 
   const runId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;

@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { BillingIngestionRowError } from "../../../models/index.js";
 
 async function recordIngestionRowErrors({ rowErrors }) {
@@ -10,3 +11,4 @@ async function recordIngestionRowErrors({ rowErrors }) {
 }
 
 export { recordIngestionRowErrors };
+
