@@ -2,7 +2,7 @@ import { z } from "zod";
 
 export const awsExportFileEventCallbackSchema = z.object({
   callback_token: z.string().trim().min(1, "callback_token is required"),
-  trigger_type: z.literal("manifest_created"),
+  trigger_type: z.enum(["manifest_created", "s3_object_created"]),
   account_id: z.string().trim().min(1, "account_id is required"),
   region: z.string().trim().min(1, "region is required"),
   role_arn: z.string().trim().min(1, "role_arn is required"),

@@ -4,7 +4,7 @@ import { sendSuccess } from "../../../../utils/api-response.js";
 import { logger } from "../../../../utils/logger.js";
 import { parseWithSchema } from "../../../_shared/validation/zod-validate.js";
 import { ingestionOrchestrator } from "../../../billing/services/ingestion-orchestrator.service.js";
-import { queueExportManifestFromEvent } from "./aws-export-ingestion.service.js";
+import { queueExportFileFromEvent, queueExportManifestFromEvent } from "./aws-export-ingestion.service.js";
 import { awsExportFileEventCallbackSchema } from "./aws-export-file-event.schema.js";
 
 async function triggerQueuedIngestionRun(ingestionRunId: string): Promise<void> {
@@ -20,8 +20,10 @@ async function triggerQueuedIngestionRun(ingestionRunId: string): Promise<void> 
 
 export async function handleAwsExportFileArrived(req: Request, res: Response): Promise<void> {
   const payload = parseWithSchema(awsExportFileEventCallbackSchema, req.body);
+  const normalizedObjectKey = String(payload.object_key ?? "").trim();
+  const isManifestObject = normalizedObjectKey.toLowerCase().endsWith("manifest.json");
 
-  logger.info("AWS export manifest event received", {
+  logger.info("AWS export file event received", {
     callback_token: payload.callback_token,
     trigger_type: payload.trigger_type,
     account_id: payload.account_id,
@@ -32,19 +34,29 @@ export async function handleAwsExportFileArrived(req: Request, res: Response): P
     body: payload,
   });
 
-  const result = await queueExportManifestFromEvent({
-    callbackToken: payload.callback_token,
-    accountId: payload.account_id,
-    region: payload.region,
-    roleArn: payload.role_arn,
-    bucketName: payload.bucket_name,
-    manifestKey: payload.object_key,
-  });
+  const result =
+    payload.trigger_type === "manifest_created" || isManifestObject
+      ? await queueExportManifestFromEvent({
+          callbackToken: payload.callback_token,
+          accountId: payload.account_id,
+          region: payload.region,
+          roleArn: payload.role_arn,
+          bucketName: payload.bucket_name,
+          manifestKey: normalizedObjectKey,
+        })
+      : await queueExportFileFromEvent({
+          callbackToken: payload.callback_token,
+          accountId: payload.account_id,
+          region: payload.region,
+          roleArn: payload.role_arn,
+          bucketName: payload.bucket_name,
+          objectKey: normalizedObjectKey,
+        });
 
   sendSuccess({
     res,
     req,
-    message: "AWS export manifest event received",
+    message: "AWS export file event received",
     data: result,
   });
 
