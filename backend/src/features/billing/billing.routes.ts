@@ -28,7 +28,7 @@ const upload = multer({
   },
 });
 
-router.use(requireAuth);
+router.use("/billing", requireAuth);
 
 router.get("/billing/cloud-providers", asyncHandler(handleGetBillingCloudProviders));
 router.get("/billing/uploads/history", asyncHandler(handleGetBillingUploadHistory));
