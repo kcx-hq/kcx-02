@@ -2,6 +2,7 @@ import { Router } from "express";
 import adminClientsRoutes from "../admin/admin-clients/admin-clients.routes.js";
 import adminDemoRequestsRoutes from "../admin/admin-demo-requests/admin-demo-requests.routes.js";
 import adminBillingUploadsRoutes from "../admin/admin-billing-uploads/admin-billing-uploads.routes.js";
+import adminCloudConnectionsRoutes from "../admin/admin-cloud-connections/admin-cloud-connections.routes.js";
 import adminAuthRoutes from "../admin/admin-auth/admin-auth.routes.js";
 import authRoutes from "../auth/auth.routes.js";
 import awsAutoCloudConnectionsRoutes from "../cloud-connections/aws/auto-connection/cloud-connections.routes.js";
@@ -22,6 +23,7 @@ router.use(adminAuthRoutes);
 router.use(adminClientsRoutes);
 router.use(adminDemoRequestsRoutes);
 router.use(adminBillingUploadsRoutes);
+router.use(adminCloudConnectionsRoutes);
 router.use(awsExportFileEventRoutes);
 
 export default router;
