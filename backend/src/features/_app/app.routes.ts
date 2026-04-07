@@ -1,7 +1,8 @@
 import { Router } from "express";
-import adminClientsRoutes from "../admin-clients/admin-clients.routes.js";
-import adminDemoRequestsRoutes from "../admin-demo-requests/admin-demo-requests.routes.js";
-import adminAuthRoutes from "../admin-auth/admin-auth.routes.js";
+import adminClientsRoutes from "../admin/admin-clients/admin-clients.routes.js";
+import adminDemoRequestsRoutes from "../admin/admin-demo-requests/admin-demo-requests.routes.js";
+import adminBillingUploadsRoutes from "../admin/admin-billing-uploads/admin-billing-uploads.routes.js";
+import adminAuthRoutes from "../admin/admin-auth/admin-auth.routes.js";
 import authRoutes from "../auth/auth.routes.js";
 import awsAutoCloudConnectionsRoutes from "../cloud-connections/aws/auto-connection/cloud-connections.routes.js";
 import awsManualConnectionRoutes from "../cloud-connections/aws/manual-connection/manual-connection.routes.js";
@@ -20,6 +21,7 @@ router.use(dashboardRoutes);
 router.use(adminAuthRoutes);
 router.use(adminClientsRoutes);
 router.use(adminDemoRequestsRoutes);
+router.use(adminBillingUploadsRoutes);
 router.use(awsExportFileEventRoutes);
 
 export default router;

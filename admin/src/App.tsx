@@ -7,6 +7,7 @@ import { ClientsPage } from "@/features/clients/pages/ClientsPage"
 import { DemoRequestsPage } from "@/features/demo-requests/pages/DemoRequestsPage"
 import { SectionPage } from "@/features/sections/pages/SectionPage"
 import { AdminLoginPage } from "@/features/auth/pages/AdminLoginPage"
+import { BillingUploadsPage } from "@/features/billing-uploads/pages/BillingUploadsPage"
 
 export function App() {
   return (
@@ -19,7 +20,7 @@ export function App() {
           <Route path="/clients" element={<ClientsPage />} />
           <Route path="/cloud-connections" element={<SectionPage title="Cloud Connections" />} />
           <Route path="/user" element={<SectionPage title="Users & Roles" />} />
-          <Route path="/billing-uploads" element={<SectionPage title="Billing Uploads" />} />
+          <Route path="/billing-uploads" element={<BillingUploadsPage />} />
           <Route path="/scheduled-meeting" element={<DemoRequestsPage />} />
           <Route path="/issue-management" element={<SectionPage title="Issue Management" />} />
           <Route path="/announcement" element={<SectionPage title="Announcements" />} />
