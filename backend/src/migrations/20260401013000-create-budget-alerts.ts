@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/ban-ts-comment */
 // @ts-nocheck
 const hasTable = async (queryInterface, tableName) => {
   try {
@@ -84,3 +85,5 @@ const migration = {
 };
 
 export default migration;
+
+

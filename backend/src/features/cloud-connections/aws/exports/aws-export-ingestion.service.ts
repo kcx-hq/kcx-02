@@ -1,19 +1,31 @@
 import path from "node:path";
+import crypto from "node:crypto";
 import { Op } from "sequelize";
 
-import env from "../../../../config/env.ts";
-import { BadRequestError, InternalServerError, NotFoundError } from "../../../../errors/http-errors.ts";
-import { BillingIngestionRun, BillingSource, CloudConnectionV2, RawBillingFile, sequelize } from "../../../../models/index.ts";
-import { ingestionOrchestrator } from "../../../billing/services/ingestion-orchestrator.service.ts";
-import { createIngestionRun, getIngestionRunById } from "../../../billing/services/ingestion.service.ts";
+import env from "../../../../config/env.js";
+import { BadRequestError, InternalServerError, NotFoundError } from "../../../../errors/http-errors.js";
+import {
+  BillingIngestionRun,
+  BillingIngestionRunFile,
+  BillingSource,
+  CloudConnectionV2,
+  RawBillingFile,
+  sequelize,
+} from "../../../../models/index.js";
+import { logger } from "../../../../utils/logger.js";
+import type { IngestionRunFileLink } from "../../../billing/services/ingestion-run-file.service.js";
+import { ingestionOrchestrator } from "../../../billing/services/ingestion-orchestrator.service.js";
+import { createIngestionRun, getIngestionRunById } from "../../../billing/services/ingestion.service.js";
 import {
   createRawFileRecord,
   detectFileFormat,
   getProviderNameById,
   uploadToS3,
-} from "../../../billing/services/raw-file.service.ts";
-import { parseCsv, parseParquet } from "../../../billing/services/file-reader.service.ts";
-import { downloadExportFile, listExportFiles } from "../infrastructure/aws-export-reader.service.ts";
+} from "../../../billing/services/raw-file.service.js";
+import { parseCsv, parseParquet } from "../../../billing/services/file-reader.service.js";
+import { downloadExportFile, listExportFiles } from "../infrastructure/aws-export-reader.service.js";
+import { parseAndValidateAwsManifest } from "./aws-export-manifest.validator.js";
+import type { AwsManifestPayload, QueueManifestResult } from "./aws-export-ingestion.types.js";
 
 type BillingSourceInstance = InstanceType<typeof BillingSource>;
 type CloudConnectionInstance = InstanceType<typeof CloudConnectionV2>;
@@ -355,6 +367,16 @@ const queueRawFileAndIngestionRun = async ({
       { transaction },
     );
 
+    await BillingIngestionRunFile.create(
+      {
+        ingestionRunId: String(ingestionRun.id),
+        rawBillingFileId: String(rawBillingFile.id),
+        fileRole: "data",
+        processingOrder: 0,
+      },
+      { transaction },
+    );
+
     return {
       rawBillingFileId: String(rawBillingFile.id),
       ingestionRunId: String(ingestionRun.id),
@@ -400,6 +422,313 @@ type QueueExportFileFromEventResult = {
   rawBillingFileId?: string;
   ingestionRunId?: string;
 };
+
+const MANIFEST_RAW_FILE_FORMAT = "manifest_json";
+
+const assertManifestObjectKey = (objectKey: string): string => {
+  const normalized = requireNonEmpty(objectKey, "objectKey");
+  if (!normalized.toLowerCase().endsWith("manifest.json")) {
+    throw new BadRequestError("Manifest callback must reference a Manifest.json object");
+  }
+  return normalized;
+};
+
+const resolveBillingSourceForConnection = async ({
+  connection,
+  bucketName,
+}: {
+  connection: CloudConnectionInstance;
+  bucketName: string;
+}) => {
+  try {
+    const billingSource = await BillingSource.findOne({
+      where: { cloudConnectionId: connection.id },
+      order: [["updatedAt", "DESC"]],
+    });
+    if (billingSource) {
+      return billingSource;
+    }
+  } catch (error) {
+    logger.error("Primary billing source lookup by cloudConnectionId failed", {
+      connectionId: connection.id,
+      tenantId: connection.tenantId,
+      reason: error instanceof Error ? error.message : String(error),
+      sqlDetail:
+        error && typeof error === "object" && "parent" in error
+          ? String((error as { parent?: { message?: string } }).parent?.message ?? "")
+          : "",
+    });
+  }
+
+  // Defensive fallback for environments where billing_sources.cloud_connection_id type drifted.
+  const fallbackBillingSource = await BillingSource.findOne({
+    where: {
+      tenantId: connection.tenantId,
+      cloudProviderId: String(connection.providerId),
+      bucketName,
+    },
+    order: [["updatedAt", "DESC"]],
+  });
+
+  if (fallbackBillingSource) {
+    logger.warn("Resolved billing source using fallback lookup", {
+      connectionId: connection.id,
+      billingSourceId: fallbackBillingSource.id,
+      tenantId: connection.tenantId,
+      bucketName,
+    });
+    return fallbackBillingSource;
+  }
+
+  throw new NotFoundError("Billing source not found for connection");
+};
+
+const findExistingManifestRun = async ({
+  billingSourceId,
+  manifestObjectKey,
+}: {
+  billingSourceId: string;
+  manifestObjectKey: string;
+}): Promise<{ ingestionRunId: string; manifestRawBillingFileId: string } | null> => {
+  const existingManifestFile = await RawBillingFile.findOne({
+    where: {
+      billingSourceId,
+      originalFilePath: manifestObjectKey,
+      fileFormat: MANIFEST_RAW_FILE_FORMAT,
+    },
+    order: [["createdAt", "DESC"]],
+  });
+
+  if (!existingManifestFile) {
+    return null;
+  }
+
+  const existingRunLink = await BillingIngestionRunFile.findOne({
+    where: {
+      rawBillingFileId: String(existingManifestFile.id),
+      fileRole: "manifest",
+    },
+    order: [["createdAt", "DESC"]],
+  });
+
+  if (!existingRunLink) {
+    return null;
+  }
+
+  return {
+    ingestionRunId: String(existingRunLink.ingestionRunId),
+    manifestRawBillingFileId: String(existingManifestFile.id),
+  };
+};
+
+const registerManifestBatchInTransaction = async ({
+  billingSource,
+  connection,
+  bucketName,
+  parsedManifest,
+  manifestObjectKey,
+  normalizedRegion,
+}: {
+  billingSource: BillingSourceInstance;
+  connection: CloudConnectionInstance;
+  bucketName: string;
+  parsedManifest: ReturnType<typeof parseAndValidateAwsManifest>;
+  manifestObjectKey: string;
+  normalizedRegion: string;
+}): Promise<QueueManifestResult> => {
+  return sequelize.transaction(async (transaction) => {
+    const manifestChecksum = crypto.createHash("sha256").update(JSON.stringify(parsedManifest.rawManifest)).digest("hex");
+
+    const manifestRawFile = await RawBillingFile.create(
+      {
+        billingSourceId: String(billingSource.id),
+        tenantId: billingSource.tenantId,
+        cloudProviderId: String(billingSource.cloudProviderId),
+        sourceType: billingSource.sourceType,
+        setupMode: billingSource.setupMode,
+        uploadedBy: connection.createdBy ?? null,
+        originalFileName: path.basename(manifestObjectKey),
+        originalFilePath: manifestObjectKey,
+        rawStorageBucket: bucketName,
+        rawStorageKey: manifestObjectKey,
+        fileFormat: MANIFEST_RAW_FILE_FORMAT,
+        fileSizeBytes: null,
+        checksum: manifestChecksum,
+        status: "queued",
+      },
+      { transaction },
+    );
+
+    const dataRawFiles: Array<InstanceType<typeof RawBillingFile>> = [];
+    for (const file of parsedManifest.files) {
+      const dataRawFile = await RawBillingFile.create(
+        {
+          billingSourceId: String(billingSource.id),
+          tenantId: billingSource.tenantId,
+          cloudProviderId: String(billingSource.cloudProviderId),
+          sourceType: billingSource.sourceType,
+          setupMode: billingSource.setupMode,
+          uploadedBy: connection.createdBy ?? null,
+          originalFileName: path.basename(file.key),
+          originalFilePath: file.key,
+          rawStorageBucket: bucketName,
+          rawStorageKey: file.key,
+          fileFormat: "parquet",
+          fileSizeBytes: file.sizeBytes === null ? null : String(file.sizeBytes),
+          checksum: file.checksum,
+          status: "queued",
+        },
+        { transaction },
+      );
+
+      dataRawFiles.push(dataRawFile);
+    }
+
+    const ingestionRun = await BillingIngestionRun.create(
+      {
+        billingSourceId: String(billingSource.id),
+        // Keep manifest as a linked metadata file, but anchor run to the first parquet data file.
+        rawBillingFileId: String(dataRawFiles[0].id),
+        status: "queued",
+        rowsRead: 0,
+        rowsLoaded: 0,
+        rowsFailed: 0,
+        progressPercent: 0,
+        currentStep: "queued",
+        statusMessage: "Queued by AWS manifest_created callback",
+      },
+      { transaction },
+    );
+
+    const runFileLinks: IngestionRunFileLink[] = [
+      {
+        ingestionRunId: String(ingestionRun.id),
+        rawBillingFileId: String(manifestRawFile.id),
+        fileRole: "manifest",
+        processingOrder: 0,
+      },
+      ...dataRawFiles.map((dataRawFile, index) => ({
+        ingestionRunId: String(ingestionRun.id),
+        rawBillingFileId: String(dataRawFile.id),
+        fileRole: "data" as const,
+        processingOrder: index + 1,
+      })),
+    ];
+
+    await BillingIngestionRunFile.bulkCreate(
+      runFileLinks.map((link) => ({
+        ingestionRunId: link.ingestionRunId,
+        rawBillingFileId: link.rawBillingFileId,
+        fileRole: link.fileRole,
+        processingOrder: link.processingOrder,
+      })),
+      { transaction },
+    );
+
+    await billingSource.update(
+      {
+        lastFileReceivedAt: new Date(),
+      },
+      { transaction },
+    );
+
+    logger.info("AWS manifest batch queued", {
+      billingSourceId: billingSource.id,
+      ingestionRunId: ingestionRun.id,
+      primaryRawBillingFileId: dataRawFiles[0].id,
+      manifestObjectKey,
+      region: normalizedRegion,
+      parquetFileCount: dataRawFiles.length,
+    });
+
+    return {
+      queued: true,
+      skipped: false,
+      ingestionRunId: String(ingestionRun.id),
+      manifestRawBillingFileId: String(manifestRawFile.id),
+      parquetRawBillingFileIds: dataRawFiles.map((file) => String(file.id)),
+      parquetFileCount: dataRawFiles.length,
+    };
+  });
+};
+
+export async function queueExportManifestFromEvent(payload: AwsManifestPayload): Promise<QueueManifestResult> {
+  const normalizedCallbackToken = requireNonEmpty(payload.callbackToken, "callbackToken");
+  const normalizedAccountId = requireNonEmpty(payload.accountId, "accountId");
+  const normalizedRegion = requireNonEmpty(payload.region, "region");
+  const normalizedRoleArn = requireNonEmpty(payload.roleArn, "roleArn");
+  const normalizedBucketName = requireNonEmpty(payload.bucketName, "bucketName");
+  const normalizedManifestKey = assertManifestObjectKey(payload.manifestKey);
+
+  const connection = await CloudConnectionV2.findOne({
+    where: { callbackToken: normalizedCallbackToken },
+  });
+  if (!connection) {
+    throw new NotFoundError("Invalid callback token");
+  }
+
+  const storedCloudAccountId = String(connection.cloudAccountId ?? "").trim();
+  if (storedCloudAccountId && storedCloudAccountId !== normalizedAccountId) {
+    throw new BadRequestError("Account id does not match the connected cloud account");
+  }
+
+  const storedRoleArn = String(connection.roleArn ?? "").trim();
+  if (storedRoleArn && storedRoleArn !== normalizedRoleArn) {
+    throw new BadRequestError("Role ARN does not match the connected role");
+  }
+
+  const storedExportRegion = String(connection.exportRegion ?? connection.region ?? "").trim();
+  if (storedExportRegion && storedExportRegion !== normalizedRegion) {
+    throw new BadRequestError("Region does not match the configured export region");
+  }
+
+  const billingSource = await resolveBillingSourceForConnection({
+    connection,
+    bucketName: normalizedBucketName,
+  });
+  const storedBucketName = String(billingSource.bucketName ?? connection.exportBucket ?? "").trim();
+  if (storedBucketName && storedBucketName !== normalizedBucketName) {
+    throw new BadRequestError("Bucket name does not match the configured export bucket");
+  }
+
+  const existingManifestRun = await findExistingManifestRun({
+    billingSourceId: String(billingSource.id),
+    manifestObjectKey: normalizedManifestKey,
+  });
+  if (existingManifestRun) {
+    return {
+      queued: false,
+      skipped: true,
+      reason: "Manifest already registered",
+      ingestionRunId: existingManifestRun.ingestionRunId,
+      manifestRawBillingFileId: existingManifestRun.manifestRawBillingFileId,
+    };
+  }
+
+  const downloadedManifestBase64 = await downloadExportFile({
+    roleArn: requireNonEmpty(connection.roleArn, "roleArn"),
+    externalId: connection.externalId ?? null,
+    region: normalizedRegion,
+    bucket: normalizedBucketName,
+    key: normalizedManifestKey,
+  });
+
+  const manifestBody = Buffer.from(downloadedManifestBase64, "base64").toString("utf8");
+  const parsedManifest = parseAndValidateAwsManifest({
+    manifestKey: normalizedManifestKey,
+    manifestBody,
+    expectedBucketName: normalizedBucketName,
+  });
+
+  return registerManifestBatchInTransaction({
+    billingSource,
+    connection,
+    bucketName: normalizedBucketName,
+    parsedManifest,
+    manifestObjectKey: normalizedManifestKey,
+    normalizedRegion,
+  });
+}
 
 const findExistingRawFileByIdentity = async ({
   billingSourceId,

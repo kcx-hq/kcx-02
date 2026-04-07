@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/ban-ts-comment */
 // @ts-nocheck
 const hasTable = async (queryInterface, tableName) => {
   try {
@@ -65,3 +66,5 @@ ALTER TABLE fact_cost_line_items
 };
 
 export default migration;
+
+

@@ -113,8 +113,12 @@ const env = {
   awsFirstFilePollingIntervalMs: optionalPositiveInteger(process.env.AWS_FIRST_FILE_POLLING_INTERVAL_MS) ?? 300000,
   rawBillingFilesBucket: optionalEnv(process.env.RAW_BILLING_FILES_BUCKET),
   billingIngestionBatchSize: optionalPositiveInteger(process.env.BILLING_INGESTION_BATCH_SIZE) ?? 1000,
+  billingIngestionRowConcurrency:
+    optionalPositiveInteger(process.env.BILLING_INGESTION_ROW_CONCURRENCY) ?? 25,
   billingIngestionStatusMinIntervalMs:
     optionalPositiveInteger(process.env.BILLING_INGESTION_STATUS_MIN_INTERVAL_MS) ?? 2000,
+  billingS3UploadSessionTtlMinutes:
+    optionalPositiveInteger(process.env.BILLING_S3_UPLOAD_SESSION_TTL_MINUTES) ?? 45,
 };
 
 export default env;

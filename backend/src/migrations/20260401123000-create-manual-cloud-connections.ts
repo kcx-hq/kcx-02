@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/ban-ts-comment */
 // @ts-nocheck
 const migration = {
   async up(queryInterface, Sequelize) {
@@ -108,3 +109,6 @@ const migration = {
 };
 
 export default migration;
+
+
+

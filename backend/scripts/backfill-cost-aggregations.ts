@@ -1,7 +1,7 @@
 import { Op } from "sequelize";
 
-import { upsertCostAggregationsForRun } from "../src/features/billing/services/cost-aggregation.service.ts";
-import { BillingIngestionRun, RawBillingFile, sequelize } from "../src/models/index.ts";
+import { upsertCostAggregationsForRun } from "../src/features/billing/services/cost-aggregation.service.js";
+import { BillingIngestionRun, RawBillingFile, sequelize } from "../src/models/index.js";
 
 type IngestionRunWithRawFile = InstanceType<typeof BillingIngestionRun> & {
   RawBillingFile?: InstanceType<typeof RawBillingFile>;

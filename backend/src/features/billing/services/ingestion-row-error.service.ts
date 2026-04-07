@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/ban-ts-comment */
 // @ts-nocheck
 import { BillingIngestionRowError } from "../../../models/index.js";
 
@@ -11,4 +12,7 @@ async function recordIngestionRowErrors({ rowErrors }) {
 }
 
 export { recordIngestionRowErrors };
+
+
+
 

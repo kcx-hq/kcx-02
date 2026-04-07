@@ -1,6 +1,7 @@
 import path from "node:path";
+import type { Readable } from "node:stream";
 
-import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { DeleteObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 
 import env from "../../../config/env.js";
 import { BadRequestError, InternalServerError, NotFoundError } from "../../../errors/http-errors.js";
@@ -27,6 +28,14 @@ type UploadToS3Params = {
   key: string;
 };
 
+type UploadStreamToS3Params = {
+  stream: Readable;
+  mimeType?: string | null;
+  bucket: string;
+  key: string;
+  contentLength?: number | null;
+};
+
 type CreateRawFileRecordParams = {
   billingSourceId: string;
   tenantId: string;
@@ -38,7 +47,7 @@ type CreateRawFileRecordParams = {
   originalFilePath: string | null;
   rawStorageBucket: string;
   rawStorageKey: string;
-  fileFormat: "csv" | "parquet";
+  fileFormat: string;
   fileSizeBytes: string;
   status: string;
 };
@@ -143,6 +152,47 @@ export async function uploadToS3({ buffer, mimeType, bucket, key }: UploadToS3Pa
     );
   } catch (error) {
     throw new InternalServerError("Failed to upload file to S3", {
+      reason: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+export async function uploadStreamToS3({
+  stream,
+  mimeType,
+  bucket,
+  key,
+  contentLength,
+}: UploadStreamToS3Params): Promise<void> {
+  try {
+    await s3Client.send(
+      new PutObjectCommand({
+        Bucket: bucket,
+        Key: key,
+        Body: stream,
+        ...(mimeType ? { ContentType: mimeType } : {}),
+        ...(typeof contentLength === "number" && Number.isFinite(contentLength) && contentLength >= 0
+          ? { ContentLength: Math.floor(contentLength) }
+          : {}),
+      }),
+    );
+  } catch (error) {
+    throw new InternalServerError("Failed to upload file stream to S3", {
+      reason: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+export async function deleteFromS3(bucket: string, key: string): Promise<void> {
+  try {
+    await s3Client.send(
+      new DeleteObjectCommand({
+        Bucket: bucket,
+        Key: key,
+      }),
+    );
+  } catch (error) {
+    throw new InternalServerError("Failed to delete file from S3", {
       reason: error instanceof Error ? error.message : String(error),
     });
   }

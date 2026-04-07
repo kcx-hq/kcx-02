@@ -3,7 +3,6 @@ import { businessDateTimeLabelToUTC, isValidIsoDateString } from "../../utils/bu
 import { BUSINESS_TIMEZONE, isValidIanaTimeZone, resolveTimeZone } from "../../utils/timezone.js";
 import { workEmailSchema } from "../_shared/validation/email.schema.js";
 
-const trimmed = z.string().transform((value) => value.trim());
 const optionalTrimmed = z.string().optional().transform((value) => value?.trim() ?? "");
 const SLOT_DURATION_MINUTES = 30;
 const TIME_LABEL_REGEX = /^(0[1-9]|1[0-2]):([0-5]\d)\s*(AM|PM)$/i;

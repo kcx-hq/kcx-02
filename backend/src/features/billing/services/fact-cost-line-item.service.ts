@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/ban-ts-comment */
 // @ts-nocheck
 import { FactCostLineItems as FactCostLineItem } from "../../../models/index.js";
 import { mapFactCostLineItem } from "../mappers/raw_focus_to_dimensions.mapper.js";
@@ -126,7 +127,9 @@ async function insertFactCostLineItemsBatch({ factRows, ingestionRunId }) {
   const createPayloads = factRows.map((entry) => entry.createPayload);
 
   try {
-    await FactCostLineItem.bulkCreate(createPayloads);
+    await FactCostLineItem.bulkCreate(createPayloads, {
+      returning: false,
+    });
     return { insertedCount: createPayloads.length, failedRows: [] };
   } catch (bulkError) {
     const { errorCode: batchErrorCode, errorMessage: batchErrorMessage } = classifyFactInsertError(bulkError);
@@ -168,4 +171,7 @@ async function insertFactCostLineItemsBatch({ factRows, ingestionRunId }) {
 }
 
 export { insertFactCostLineItem, insertFactCostLineItemsBatch };
+
+
+
 

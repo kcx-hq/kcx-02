@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/ban-ts-comment */
 // @ts-nocheck
 import {
   CANONICAL_COLUMNS,
@@ -26,6 +27,15 @@ function toSet(value) {
   if (!value) return new Set();
   if (value instanceof Set) return value;
   return new Set([value]);
+}
+
+function pickDeterministicCanonicalCandidate(candidates) {
+  for (const canonicalColumn of CANONICAL_COLUMNS) {
+    if (candidates.has(canonicalColumn)) {
+      return canonicalColumn;
+    }
+  }
+  return null;
 }
 
 function findCanonicalCandidates(header) {
@@ -88,12 +98,21 @@ function buildCanonicalHeaderMap(headers = []) {
     }
 
     if (candidates.size > 1) {
+      const resolvedCanonical = pickDeterministicCanonicalCandidate(candidates);
       ambiguousHeaders.push({
         header: originalHeader,
         reason: "header_matches_multiple_canonical_columns",
         candidates: toSortedArray(candidates),
         matchedBy,
+        resolvedCanonical,
       });
+      if (!resolvedCanonical) {
+        continue;
+      }
+
+      if (!canonicalHeaderMap[resolvedCanonical]) {
+        canonicalHeaderMap[resolvedCanonical] = originalHeader;
+      }
       continue;
     }
 
@@ -127,7 +146,7 @@ function validateHeaders(headers = []) {
     (requiredColumn) => !canonicalHeaderMap[requiredColumn],
   );
 
-  const success = missingRequiredColumns.length === 0 && ambiguousHeaders.length === 0;
+  const success = missingRequiredColumns.length === 0;
 
   return {
     success,
@@ -191,11 +210,27 @@ function normalizeRowToCanonical(rawRow = {}, canonicalHeaderMap = {}) {
     normalizedRow[canonicalColumn] = value === undefined ? null : value;
   }
 
-  const usageStartRaw = getRawValue(rawRow, canonicalHeaderMap, "ChargePeriodStart", ["ChargePeriodStart"]);
-  const usageEndRaw = getRawValue(rawRow, canonicalHeaderMap, "ChargePeriodEnd", ["ChargePeriodEnd"]);
-  const lineItemTypeRaw = getRawValue(rawRow, canonicalHeaderMap, "ChargeFrequency", ["ChargeFrequency"]);
-  const pricingTermRaw = getRawValue(rawRow, canonicalHeaderMap, "PricingCategory", ["PricingCategory"]);
-  const publicOnDemandCostRaw = getRawValue(rawRow, canonicalHeaderMap, "ListCost", ["ListCost"]);
+  const usageStartRaw = getRawValue(rawRow, canonicalHeaderMap, "usage_start_time", [
+    "usage_start_time",
+    "ChargePeriodStart",
+  ]);
+  const usageEndRaw = getRawValue(rawRow, canonicalHeaderMap, "usage_end_time", [
+    "usage_end_time",
+    "ChargePeriodEnd",
+  ]);
+  const lineItemTypeRaw = getRawValue(rawRow, canonicalHeaderMap, "line_item_type", [
+    "line_item_type",
+    "ChargeCategory",
+  ]);
+  const pricingTermRaw = getRawValue(rawRow, canonicalHeaderMap, "pricing_term", [
+    "pricing_term",
+    "ChargeClass",
+    "PricingCategory",
+  ]);
+  const publicOnDemandCostRaw = getRawValue(rawRow, canonicalHeaderMap, "public_on_demand_cost", [
+    "public_on_demand_cost",
+    "ListCost",
+  ]);
   const effectiveCostRaw = getRawValue(rawRow, canonicalHeaderMap, "EffectiveCost", ["EffectiveCost"]);
 
   normalizedRow.usage_start_time = usageStartRaw === undefined ? null : usageStartRaw;
@@ -209,6 +244,15 @@ function normalizeRowToCanonical(rawRow = {}, canonicalHeaderMap = {}) {
   const effectiveCost = toNumberOrNull(effectiveCostRaw);
   normalizedRow.discount_amount =
     listCost !== null && effectiveCost !== null ? Math.max(listCost - effectiveCost, 0) : null;
+
+  // Backfill charge dimensions from synthetic fields when source files provide
+  // line-item columns directly (e.g. aws exports: line_item_type/pricing_term).
+  if (normalizedRow.ChargeCategory === null && normalizedRow.line_item_type !== null) {
+    normalizedRow.ChargeCategory = normalizedRow.line_item_type;
+  }
+  if (normalizedRow.ChargeClass === null && normalizedRow.pricing_term !== null) {
+    normalizedRow.ChargeClass = normalizedRow.pricing_term;
+  }
 
   return normalizedRow;
 }
@@ -306,4 +350,7 @@ export {
   validateAndNormalizeByFormat,
   buildSchemaValidationErrorMessage,
 };
+
+
+
 

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/ban-ts-comment */
 // @ts-nocheck
 import { Op } from "sequelize";
 
@@ -35,6 +36,18 @@ const toErrorMessage = (error) => {
     return error.message;
   }
   return String(error);
+};
+
+const isUniqueViolation = (error) => {
+  const message = toErrorMessage(error).toLowerCase();
+  const parentMessage =
+    error && typeof error === "object" && "parent" in error && error.parent?.message
+      ? String(error.parent.message).toLowerCase()
+      : "";
+  return (
+    message.includes("duplicate key value violates unique constraint") ||
+    parentMessage.includes("duplicate key value violates unique constraint")
+  );
 };
 
 const serializeKey = (parts) =>
@@ -82,6 +95,15 @@ async function getOrCreateBillingAccount({ rawRow, tenantId, providerId }) {
 
     return created.id;
   } catch (error) {
+    if (isUniqueViolation(error)) {
+      const where = {
+        tenantId,
+        providerId,
+        billingAccountId: mapped.billing_account_id,
+      };
+      const existing = await DimBillingAccount.findOne({ where });
+      if (existing) return existing.id;
+    }
     throw new Error(`Failed to resolve dim_billing_account: ${toErrorMessage(error)}`);
   }
 }
@@ -112,6 +134,15 @@ async function getOrCreateSubAccount({ rawRow, tenantId, providerId }) {
 
     return created.id;
   } catch (error) {
+    if (isUniqueViolation(error)) {
+      const where = {
+        tenantId,
+        providerId,
+        subAccountId: mapped.sub_account_id,
+      };
+      const existing = await DimSubAccount.findOne({ where });
+      if (existing) return existing.id;
+    }
     throw new Error(`Failed to resolve dim_sub_account: ${toErrorMessage(error)}`);
   }
 }
@@ -143,6 +174,16 @@ async function getOrCreateRegion({ rawRow, providerId }) {
 
     return created.id;
   } catch (error) {
+    if (isUniqueViolation(error)) {
+      const where = {
+        providerId,
+        regionId: mapped.region_id,
+        regionName: mapped.region_name,
+        availabilityZone: mapped.availability_zone,
+      };
+      const existing = await DimRegion.findOne({ where });
+      if (existing) return existing.id;
+    }
     throw new Error(`Failed to resolve dim_region: ${toErrorMessage(error)}`);
   }
 }
@@ -174,6 +215,16 @@ async function getOrCreateService({ rawRow, providerId }) {
 
     return created.id;
   } catch (error) {
+    if (isUniqueViolation(error)) {
+      const where = {
+        providerId,
+        serviceName: mapped.service_name,
+        serviceCategory: mapped.service_category,
+        serviceSubcategory: mapped.service_subcategory,
+      };
+      const existing = await DimService.findOne({ where });
+      if (existing) return existing.id;
+    }
     throw new Error(`Failed to resolve dim_service: ${toErrorMessage(error)}`);
   }
 }
@@ -205,6 +256,15 @@ async function getOrCreateResource({ rawRow, tenantId, providerId }) {
 
     return created.id;
   } catch (error) {
+    if (isUniqueViolation(error)) {
+      const where = {
+        tenantId,
+        providerId,
+        resourceId: mapped.resource_id,
+      };
+      const existing = await DimResource.findOne({ where });
+      if (existing) return existing.id;
+    }
     throw new Error(`Failed to resolve dim_resource: ${toErrorMessage(error)}`);
   }
 }
@@ -238,6 +298,17 @@ async function getOrCreateSku({ rawRow, providerId }) {
 
     return created.id;
   } catch (error) {
+    if (isUniqueViolation(error)) {
+      const where = {
+        providerId,
+        skuId: mapped.sku_id,
+        skuPriceId: mapped.sku_price_id,
+        pricingCategory: mapped.pricing_category,
+        pricingUnit: mapped.pricing_unit,
+      };
+      const existing = await DimSku.findOne({ where });
+      if (existing) return existing.id;
+    }
     throw new Error(`Failed to resolve dim_sku: ${toErrorMessage(error)}`);
   }
 }
@@ -265,6 +336,14 @@ async function getOrCreateCharge({ rawRow }) {
 
     return created.id;
   } catch (error) {
+    if (isUniqueViolation(error)) {
+      const where = {
+        chargeCategory: mapped.charge_category,
+        chargeClass: mapped.charge_class,
+      };
+      const existing = await DimCharge.findOne({ where });
+      if (existing) return existing.id;
+    }
     throw new Error(`Failed to resolve dim_charge: ${toErrorMessage(error)}`);
   }
 }
@@ -296,6 +375,10 @@ async function getOrCreateDate(fullDate) {
 
     return created.id;
   } catch (error) {
+    if (isUniqueViolation(error)) {
+      const existing = await DimDate.findOne({ where: { fullDate } });
+      if (existing) return existing.id;
+    }
     throw new Error(`Failed to resolve dim_date: ${toErrorMessage(error)}`);
   }
 }
@@ -336,7 +419,7 @@ async function resolveBillingAccountsBulk({ entries, tenantId, providerId, cache
   }
 
   if (missingPayloads.length > 0) {
-    await DimBillingAccount.bulkCreate(missingPayloads, { ignoreDuplicates: true });
+    await DimBillingAccount.bulkCreate(missingPayloads, { ignoreDuplicates: true, returning: false });
     const resolved = await DimBillingAccount.findAll({
       attributes: ["id", "billingAccountId"],
       where: {
@@ -388,7 +471,7 @@ async function resolveSubAccountsBulk({ entries, tenantId, providerId, cache }) 
   }
 
   if (missingPayloads.length > 0) {
-    await DimSubAccount.bulkCreate(missingPayloads, { ignoreDuplicates: true });
+    await DimSubAccount.bulkCreate(missingPayloads, { ignoreDuplicates: true, returning: false });
     const resolved = await DimSubAccount.findAll({
       attributes: ["id", "subAccountId"],
       where: {
@@ -441,7 +524,7 @@ async function resolveResourcesBulk({ entries, tenantId, providerId, cache }) {
   }
 
   if (missingPayloads.length > 0) {
-    await DimResource.bulkCreate(missingPayloads, { ignoreDuplicates: true });
+    await DimResource.bulkCreate(missingPayloads, { ignoreDuplicates: true, returning: false });
     const resolved = await DimResource.findAll({
       attributes: ["id", "resourceId"],
       where: {
@@ -496,7 +579,7 @@ async function resolveRegionsBulk({ entries, providerId, cache }) {
   }
 
   if (missingPayloads.length > 0) {
-    await DimRegion.bulkCreate(missingPayloads, { ignoreDuplicates: true });
+    await DimRegion.bulkCreate(missingPayloads, { ignoreDuplicates: true, returning: false });
     const resolved = await DimRegion.findAll({
       attributes: ["id", "providerId", "regionId", "regionName", "availabilityZone"],
       where: {
@@ -551,7 +634,7 @@ async function resolveServicesBulk({ entries, providerId, cache }) {
   }
 
   if (missingPayloads.length > 0) {
-    await DimService.bulkCreate(missingPayloads, { ignoreDuplicates: true });
+    await DimService.bulkCreate(missingPayloads, { ignoreDuplicates: true, returning: false });
     const resolved = await DimService.findAll({
       attributes: ["id", "providerId", "serviceName", "serviceCategory", "serviceSubcategory"],
       where: {
@@ -614,7 +697,7 @@ async function resolveSkusBulk({ entries, providerId, cache }) {
   }
 
   if (missingPayloads.length > 0) {
-    await DimSku.bulkCreate(missingPayloads, { ignoreDuplicates: true });
+    await DimSku.bulkCreate(missingPayloads, { ignoreDuplicates: true, returning: false });
     const resolved = await DimSku.findAll({
       attributes: ["id", "providerId", "skuId", "skuPriceId", "pricingCategory", "pricingUnit"],
       where: {
@@ -666,7 +749,7 @@ async function resolveChargesBulk({ entries, cache }) {
   }
 
   if (missingPayloads.length > 0) {
-    await DimCharge.bulkCreate(missingPayloads, { ignoreDuplicates: true });
+    await DimCharge.bulkCreate(missingPayloads, { ignoreDuplicates: true, returning: false });
     const resolved = await DimCharge.findAll({
       attributes: ["id", "chargeCategory", "chargeClass"],
       where: {
@@ -719,7 +802,7 @@ async function resolveDatesBulk({ fullDates, cache }) {
     }
 
     if (payloads.length > 0) {
-      await DimDate.bulkCreate(payloads, { ignoreDuplicates: true });
+      await DimDate.bulkCreate(payloads, { ignoreDuplicates: true, returning: false });
     }
 
     const resolved = await DimDate.findAll({
@@ -1030,4 +1113,7 @@ export {
   resolveDimensions,
   resolveDimensionsWithCache,
 };
+
+
+
 

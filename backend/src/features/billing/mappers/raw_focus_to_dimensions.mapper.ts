@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/ban-ts-comment */
 // @ts-nocheck
 import { sanitizeFactMeasureNumerics } from "../services/numeric-validation.service.js";
 
@@ -192,7 +193,11 @@ const shouldUpsertDimCharge = (rawRow) => {
 };
 
 const mapDateLookups = (rawRow) => ({
-  usage_full_date: toDateOnlyOrNull(rawRow[RAW_COLUMNS.chargePeriodStart]),
+  usage_full_date: toDateOnlyOrNull(
+    rawRow[RAW_COLUMNS.chargePeriodStart] ??
+      rawRow[RAW_COLUMNS.usageStartTime] ??
+      rawRow[RAW_COLUMNS.usageEndTime],
+  ),
   billing_period_start_full_date: toDateOnlyOrNull(rawRow[RAW_COLUMNS.billingPeriodStart]),
   billing_period_end_full_date: toDateOnlyOrNull(rawRow[RAW_COLUMNS.billingPeriodEnd]),
 });
@@ -373,4 +378,7 @@ export {
   mapProviderResolutionInput,
   getNotPersistedRawFields,
 };
+
+
+
 

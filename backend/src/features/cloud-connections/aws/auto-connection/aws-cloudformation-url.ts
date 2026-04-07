@@ -11,7 +11,7 @@ type AwsCloudFormationUrlInput = {
 };
 
 export const KCX_AWS_CLOUDFORMATION_TEMPLATE_URL =
-  "https://kcx-cloudformation-templates.s3.us-east-1.amazonaws.com/aws-template3.yaml";
+  "https://kcx-cloudformation-templates.s3.us-east-1.amazonaws.com/aws-template5.yml";
 
 export function buildAwsCloudFormationCreateStackUrl({
   templateUrl,

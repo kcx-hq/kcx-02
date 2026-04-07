@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/ban-ts-comment */
 // @ts-nocheck
 const migration = {
     async up() {
@@ -9,3 +10,6 @@ const migration = {
     },
 };
 export default migration;
+
+
+

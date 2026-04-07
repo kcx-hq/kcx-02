@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/ban-ts-comment */
 // @ts-nocheck
 const migration = {
   async up(queryInterface) {
@@ -57,3 +58,5 @@ DROP TABLE IF EXISTS budgets;
 };
 
 export default migration;
+
+

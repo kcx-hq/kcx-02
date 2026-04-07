@@ -1,4 +1,5 @@
-﻿// @ts-nocheck
+/* eslint-disable @typescript-eslint/ban-ts-comment */
+// @ts-nocheck
 const migration = {
     async up(queryInterface, Sequelize) {
         await queryInterface.addColumn("DemoRequests", "slotStart", {
@@ -59,4 +60,7 @@ const migration = {
     },
 };
 export default migration;
+
+
+
 

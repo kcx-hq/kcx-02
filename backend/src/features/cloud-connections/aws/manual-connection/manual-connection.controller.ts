@@ -42,6 +42,7 @@ export async function handleCreateManualConnection(req: Request, res: Response):
       message: result.message,
       error: {
         code: result.errorCode,
+        ...(result.details ? { details: result.details } : {}),
       },
     });
     return;
