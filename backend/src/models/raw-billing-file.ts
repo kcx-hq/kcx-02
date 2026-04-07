@@ -6,6 +6,7 @@ import {
   type InferCreationAttributes,
   type Sequelize,
 } from "sequelize";
+import type { BillingSourceSetupMode, BillingSourceType } from "./billing-source.js";
 
 class RawBillingFile extends Model<InferAttributes<RawBillingFile>, InferCreationAttributes<RawBillingFile>> {
   declare id: CreationOptional<string>;
@@ -13,8 +14,8 @@ class RawBillingFile extends Model<InferAttributes<RawBillingFile>, InferCreatio
   declare tenantId: string;
   // migrated from provider string -> cloud_provider_id
   declare cloudProviderId: string;
-  declare sourceType: string;
-  declare setupMode: string;
+  declare sourceType: BillingSourceType | string;
+  declare setupMode: BillingSourceSetupMode | string;
   declare uploadedBy: CreationOptional<string | null>;
   declare originalFileName: string;
   declare originalFilePath: CreationOptional<string | null>;

@@ -7,6 +7,22 @@ import {
   type Sequelize,
 } from "sequelize";
 
+export const BILLING_SOURCE_TYPES = [
+  "manual_upload",
+  "aws_data_exports_cur2",
+  "aws_data_exports_manual",
+  "s3",
+] as const;
+
+export const BILLING_SOURCE_SETUP_MODES = [
+  "manual",
+  "cloud_connected",
+  "temporary",
+] as const;
+
+export type BillingSourceType = (typeof BILLING_SOURCE_TYPES)[number];
+export type BillingSourceSetupMode = (typeof BILLING_SOURCE_SETUP_MODES)[number];
+
 class BillingSource extends Model<InferAttributes<BillingSource>, InferCreationAttributes<BillingSource>> {
   declare id: CreationOptional<string>;
   declare tenantId: string;
@@ -14,10 +30,11 @@ class BillingSource extends Model<InferAttributes<BillingSource>, InferCreationA
   // migrated from provider string -> cloud_provider_id
   declare cloudProviderId: string;
   declare sourceName: string;
-  declare sourceType: string;
-  declare setupMode: string;
+  declare sourceType: BillingSourceType | string;
+  declare setupMode: BillingSourceSetupMode | string;
   declare format: string;
   declare schemaType: string;
+  declare isTemporary: CreationOptional<boolean>;
   declare bucketName: CreationOptional<string | null>;
   declare pathPrefix: CreationOptional<string | null>;
   declare filePattern: CreationOptional<string | null>;
@@ -42,6 +59,7 @@ const createBillingSourceModel = (sequelize: Sequelize): typeof BillingSource =>
       setupMode: { type: DataTypes.STRING(50), allowNull: false, field: "setup_mode" },
       format: { type: DataTypes.STRING(20), allowNull: false },
       schemaType: { type: DataTypes.STRING(50), allowNull: false, field: "schema_type" },
+      isTemporary: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false, field: "is_temporary" },
       bucketName: { type: DataTypes.STRING(255), allowNull: true, field: "bucket_name" },
       pathPrefix: { type: DataTypes.STRING(1000), allowNull: true, field: "path_prefix" },
       filePattern: { type: DataTypes.STRING(255), allowNull: true, field: "file_pattern" },

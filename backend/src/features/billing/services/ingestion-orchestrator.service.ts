@@ -250,6 +250,9 @@ async function processIngestionRun(ingestionRunId) {
 
   let run;
   let latestProgressPercent = PROGRESS_BY_STAGE.queued;
+  let rowsRead = 0;
+  let rowsLoaded = 0;
+  let rowsFailed = 0;
 
   try {
     run = await loadIngestionRunOrThrow(ingestionRunId);
@@ -264,6 +267,25 @@ async function processIngestionRun(ingestionRunId) {
     const rawFile = await loadRawBillingFileOrThrow(run.rawBillingFileId);
     assertRawFileLocation(rawFile);
     const resolvedFileFormat = resolveIngestionFileFormat(rawFile);
+    console.log("[S3-UPLOAD-DEBUG][INGESTION][START]", {
+      tenantId: rawFile.tenantId ?? null,
+      userId: null,
+      sessionId: null,
+      ingestionRunId: String(run.id),
+      runId: String(run.id),
+      rawFileId: String(run.rawBillingFileId),
+      bucket: rawFile.rawStorageBucket,
+      key: rawFile.rawStorageKey,
+      format: resolvedFileFormat,
+    });
+    console.log("[S3-UPLOAD-DEBUG][INGESTION][FORMAT]", {
+      tenantId: rawFile.tenantId ?? null,
+      userId: null,
+      sessionId: null,
+      ingestionRunId: String(run.id),
+      key: rawFile.rawStorageKey,
+      detectedFormat: resolvedFileFormat,
+    });
     const chunkSize = env.billingIngestionBatchSize;
     const minStatusUpdateIntervalMs = env.billingIngestionStatusMinIntervalMs;
 
@@ -272,21 +294,66 @@ async function processIngestionRun(ingestionRunId) {
     await markRunRunning(run.id);
     latestProgressPercent = PROGRESS_BY_STAGE.validating_schema;
 
-    await verifyRawFileExistsInS3({
+    console.log("[S3-UPLOAD-DEBUG][INGESTION][S3_HEAD]", {
+      tenantId: rawFile.tenantId ?? null,
+      userId: null,
+      sessionId: null,
+      ingestionRunId: String(run.id),
       bucket: rawFile.rawStorageBucket,
       key: rawFile.rawStorageKey,
     });
+    try {
+      await verifyRawFileExistsInS3({
+        bucket: rawFile.rawStorageBucket,
+        key: rawFile.rawStorageKey,
+      });
+    } catch (error) {
+      console.error("[S3-UPLOAD-DEBUG][INGESTION][S3_HEAD_FAILED]", {
+        tenantId: rawFile.tenantId ?? null,
+        userId: null,
+        sessionId: null,
+        ingestionRunId: String(run.id),
+        bucket: rawFile.rawStorageBucket,
+        key: rawFile.rawStorageKey,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    }
 
-    const headers =
-      resolvedFileFormat === "csv"
-        ? await readCsvHeaders({
-            bucket: rawFile.rawStorageBucket,
-            key: rawFile.rawStorageKey,
-          })
-        : await readParquetSchemaColumns({
-            bucket: rawFile.rawStorageBucket,
-            key: rawFile.rawStorageKey,
-          });
+    console.log("[S3-UPLOAD-DEBUG][INGESTION][S3_READ_START]", {
+      tenantId: rawFile.tenantId ?? null,
+      userId: null,
+      sessionId: null,
+      ingestionRunId: String(run.id),
+      bucket: rawFile.rawStorageBucket,
+      key: rawFile.rawStorageKey,
+      stage: "schema_headers",
+    });
+    let headers;
+    try {
+      headers =
+        resolvedFileFormat === "csv"
+          ? await readCsvHeaders({
+              bucket: rawFile.rawStorageBucket,
+              key: rawFile.rawStorageKey,
+            })
+          : await readParquetSchemaColumns({
+              bucket: rawFile.rawStorageBucket,
+              key: rawFile.rawStorageKey,
+            });
+    } catch (error) {
+      console.error("[S3-UPLOAD-DEBUG][INGESTION][S3_READ_FAILED]", {
+        tenantId: rawFile.tenantId ?? null,
+        userId: null,
+        sessionId: null,
+        ingestionRunId: String(run.id),
+        bucket: rawFile.rawStorageBucket,
+        key: rawFile.rawStorageKey,
+        error: error instanceof Error ? error.message : String(error),
+        stage: "schema_headers",
+      });
+      throw error;
+    }
 
     const validation = validateHeaders(headers);
     if (!validation.success) {
@@ -316,13 +383,20 @@ async function processIngestionRun(ingestionRunId) {
 
     const dimensionCache = createIngestionDimensionCache();
 
-    let rowsRead = 0;
-    let rowsLoaded = 0;
-    let rowsFailed = 0;
     let chunkIndex = 0;
     let movedToInsertStage = false;
     let failedRowWriteErrors = 0;
     const failureReasonCounts = {};
+
+    console.log("[S3-UPLOAD-DEBUG][INGESTION][S3_READ_START]", {
+      tenantId: rawFile.tenantId ?? null,
+      userId: null,
+      sessionId: null,
+      ingestionRunId: String(run.id),
+      bucket: rawFile.rawStorageBucket,
+      key: rawFile.rawStorageKey,
+      stage: "rows_stream",
+    });
 
     const rowChunkIterator = readBillingRowChunks({
       bucket: rawFile.rawStorageBucket,
@@ -331,44 +405,45 @@ async function processIngestionRun(ingestionRunId) {
       chunkSize,
     })[Symbol.asyncIterator]();
 
-    while (true) {
-      const chunkReadStartedAt = Date.now();
-      const { value: rawChunk, done } = await rowChunkIterator.next();
-      const readMs = Date.now() - chunkReadStartedAt;
+    try {
+      while (true) {
+        const chunkReadStartedAt = Date.now();
+        const { value: rawChunk, done } = await rowChunkIterator.next();
+        const readMs = Date.now() - chunkReadStartedAt;
 
-      if (done) {
-        break;
-      }
+        if (done) {
+          break;
+        }
 
-      chunkIndex += 1;
-      rowsRead += rawChunk.length;
+        chunkIndex += 1;
+        rowsRead += rawChunk.length;
 
-      const normalizeStartedAt = Date.now();
-      const normalizedChunk = rawChunk.map((rawRow) =>
-        normalizeRowToCanonical(rawRow, validation.canonicalHeaderMap),
-      );
-      const normalizeMs = Date.now() - normalizeStartedAt;
-      const chunkStartRowNumber = rowsRead - rawChunk.length + 1;
-      const rowErrorsForChunk = [];
+        const normalizeStartedAt = Date.now();
+        const normalizedChunk = rawChunk.map((rawRow) =>
+          normalizeRowToCanonical(rawRow, validation.canonicalHeaderMap),
+        );
+        const normalizeMs = Date.now() - normalizeStartedAt;
+        const chunkStartRowNumber = rowsRead - rawChunk.length + 1;
+        const rowErrorsForChunk = [];
 
-      const dimensionStartedAt = Date.now();
-      let dimensionCachePrimed = true;
-      try {
-        await primeDimensionCacheForChunk({
-          rawRows: normalizedChunk,
-          tenantId: rawFile.tenantId,
-          providerId: rawFile.cloudProviderId,
-          cache: dimensionCache,
-        });
-      } catch (cachePrimeError) {
-        dimensionCachePrimed = false;
-        console.warn("Dimension cache priming failed; continuing with per-row resolution", {
-          ingestionRunId: run.id,
-          chunkIndex,
-          chunkSize: normalizedChunk.length,
-          reason: toErrorMessage(cachePrimeError),
-        });
-      }
+        const dimensionStartedAt = Date.now();
+        let dimensionCachePrimed = true;
+        try {
+          await primeDimensionCacheForChunk({
+            rawRows: normalizedChunk,
+            tenantId: rawFile.tenantId,
+            providerId: rawFile.cloudProviderId,
+            cache: dimensionCache,
+          });
+        } catch (cachePrimeError) {
+          dimensionCachePrimed = false;
+          console.warn("Dimension cache priming failed; continuing with per-row resolution", {
+            ingestionRunId: run.id,
+            chunkIndex,
+            chunkSize: normalizedChunk.length,
+            reason: toErrorMessage(cachePrimeError),
+          });
+        }
 
       const factRows = [];
       for (const [chunkRowIndex, normalizedRow] of normalizedChunk.entries()) {
@@ -550,21 +625,34 @@ async function processIngestionRun(ingestionRunId) {
       );
       const statusUpdateMs = Date.now() - statusUpdateStartedAt;
 
-      console.info("Ingestion chunk processed", {
-        ingestionRunId: run.id,
-        chunk_index: chunkIndex,
-        chunk_size: rawChunk.length,
-        rows_read: rowsRead,
-        rows_loaded: rowsLoaded,
-        rows_failed: rowsFailed,
-        chunk_rejected_rows: rowErrorsForChunk.length,
-        dimension_cache_primed: dimensionCachePrimed,
-        read_ms: readMs,
-        normalize_ms: normalizeMs,
-        dimension_ms: dimensionMs,
-        fact_insert_ms: factInsertMs,
-        status_update_ms: statusUpdateMs,
+        console.info("Ingestion chunk processed", {
+          ingestionRunId: run.id,
+          chunk_index: chunkIndex,
+          chunk_size: rawChunk.length,
+          rows_read: rowsRead,
+          rows_loaded: rowsLoaded,
+          rows_failed: rowsFailed,
+          chunk_rejected_rows: rowErrorsForChunk.length,
+          dimension_cache_primed: dimensionCachePrimed,
+          read_ms: readMs,
+          normalize_ms: normalizeMs,
+          dimension_ms: dimensionMs,
+          fact_insert_ms: factInsertMs,
+          status_update_ms: statusUpdateMs,
+        });
+      }
+    } catch (error) {
+      console.error("[S3-UPLOAD-DEBUG][INGESTION][S3_READ_FAILED]", {
+        tenantId: rawFile.tenantId ?? null,
+        userId: null,
+        sessionId: null,
+        ingestionRunId: String(run.id),
+        bucket: rawFile.rawStorageBucket,
+        key: rawFile.rawStorageKey,
+        error: error instanceof Error ? error.message : String(error),
+        stage: "rows_stream",
       });
+      throw error;
     }
 
     await updateProgressThrottled(
@@ -617,6 +705,19 @@ async function processIngestionRun(ingestionRunId) {
       warningMessage,
     });
 
+    console.log("[S3-UPLOAD-DEBUG][INGESTION][END]", {
+      tenantId: rawFile.tenantId ?? null,
+      userId: null,
+      sessionId: null,
+      ingestionRunId: String(run.id),
+      runId: String(run.id),
+      bucket: rawFile.rawStorageBucket,
+      key: rawFile.rawStorageKey,
+      status: rowsFailed > 0 ? "completed_with_warnings" : "completed",
+      rowsProcessed: rowsRead,
+      rowsFailed,
+    });
+
     console.info("Ingestion completed", {
       ingestionRunId: run.id,
       rowsRead,
@@ -630,8 +731,23 @@ async function processIngestionRun(ingestionRunId) {
       throw error;
     }
 
+    const failedRawFile =
+      run?.rawBillingFileId ? await loadRawBillingFileOrThrow(run.rawBillingFileId).catch(() => null) : null;
+
     try {
       await markRunFailed(run.id, error, latestProgressPercent);
+      console.log("[S3-UPLOAD-DEBUG][INGESTION][END]", {
+        tenantId: failedRawFile?.tenantId ?? null,
+        userId: null,
+        sessionId: null,
+        ingestionRunId: String(run.id),
+        runId: String(run.id),
+        bucket: failedRawFile?.rawStorageBucket ?? null,
+        key: failedRawFile?.rawStorageKey ?? null,
+        status: "failed",
+        rowsProcessed: rowsRead,
+        rowsFailed,
+      });
     } catch (markError) {
       console.error("Failed to mark ingestion run as failed", {
         ingestionRunId: run.id,

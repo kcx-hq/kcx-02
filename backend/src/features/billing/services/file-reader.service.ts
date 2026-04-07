@@ -314,6 +314,16 @@ async function parseParquetRowsFromBuffer(buffer) {
 
 async function readObjectBuffer({ bucket, key, fileFormat }) {
   assertS3Location({ bucket, key });
+  console.log("[S3-UPLOAD-DEBUG][INGESTION][S3_READ_START]", {
+    tenantId: null,
+    userId: null,
+    sessionId: null,
+    ingestionRunId: null,
+    bucket,
+    key,
+    fileFormat,
+    mode: "buffer",
+  });
   console.info("Reading billing file", { bucket, key, fileFormat });
 
   try {
@@ -329,6 +339,17 @@ async function readObjectBuffer({ bucket, key, fileFormat }) {
     // For large files, switch to streaming ingestion later.
     return await streamToBuffer(response.Body);
   } catch (error) {
+    console.error("[S3-UPLOAD-DEBUG][INGESTION][S3_READ_FAILED]", {
+      tenantId: null,
+      userId: null,
+      sessionId: null,
+      ingestionRunId: null,
+      bucket,
+      key,
+      fileFormat,
+      error: error instanceof Error ? error.message : String(error),
+      mode: "buffer",
+    });
     const reason = error instanceof Error ? error.message : String(error);
 
     if (reason.includes("NoSuchKey") || reason.includes("NotFound")) {
@@ -345,6 +366,16 @@ async function readObjectBuffer({ bucket, key, fileFormat }) {
 
 async function getObjectBodyStream({ bucket, key, fileFormat }) {
   assertS3Location({ bucket, key });
+  console.log("[S3-UPLOAD-DEBUG][INGESTION][S3_READ_START]", {
+    tenantId: null,
+    userId: null,
+    sessionId: null,
+    ingestionRunId: null,
+    bucket,
+    key,
+    fileFormat,
+    mode: "stream",
+  });
   console.info("Opening billing file stream", { bucket, key, fileFormat });
 
   try {
@@ -370,6 +401,17 @@ async function getObjectBodyStream({ bucket, key, fileFormat }) {
     const bodyBuffer = await streamToBuffer(response.Body);
     return Readable.from(bodyBuffer);
   } catch (error) {
+    console.error("[S3-UPLOAD-DEBUG][INGESTION][S3_READ_FAILED]", {
+      tenantId: null,
+      userId: null,
+      sessionId: null,
+      ingestionRunId: null,
+      bucket,
+      key,
+      fileFormat,
+      error: error instanceof Error ? error.message : String(error),
+      mode: "stream",
+    });
     const reason = error instanceof Error ? error.message : String(error);
 
     if (reason.includes("NoSuchKey") || reason.includes("NotFound")) {

@@ -1,5 +1,9 @@
 import { BadRequestError, InternalServerError } from "../../../errors/http-errors.js";
 import { BillingSource, CloudProvider } from "../../../models/index.js";
+import { BILLING_SOURCE_SETUP_MODES, BILLING_SOURCE_TYPES } from "../../../models/billing-source.js";
+
+const MANUAL_SOURCE_TYPE = BILLING_SOURCE_TYPES[0];
+const MANUAL_SETUP_MODE = BILLING_SOURCE_SETUP_MODES[0];
 
 type BillingSourceInstance = InstanceType<typeof BillingSource>;
 
@@ -55,8 +59,8 @@ export async function findManualSource({
     where: {
       tenantId,
       cloudProviderId,
-      sourceType: "manual_upload",
-      setupMode: "manual",
+      sourceType: MANUAL_SOURCE_TYPE,
+      setupMode: MANUAL_SETUP_MODE,
       format,
     },
   });
@@ -73,8 +77,8 @@ export async function createManualSource({
       tenantId,
       cloudProviderId,
       sourceName: `Manual ${providerName.toUpperCase()} Upload`,
-      sourceType: "manual_upload",
-      setupMode: "manual",
+      sourceType: MANUAL_SOURCE_TYPE,
+      setupMode: MANUAL_SETUP_MODE,
       format,
       schemaType: "focus",
       cadence: "manual",

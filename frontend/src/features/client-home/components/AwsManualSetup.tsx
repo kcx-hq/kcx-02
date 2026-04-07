@@ -14,6 +14,13 @@ import {
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import {
   browseAwsManualBucket,
   type AwsManualBrowseBucketItem,
   testAwsManualConnection,
@@ -506,6 +513,71 @@ function AwsLoginSection() {
           <li>3. Start creating a new standard export.</li>
         </ol>
       </div>
+    </section>
+  )
+}
+
+function AwsStepOneScreenshotGuidance() {
+  const [previewOpen, setPreviewOpen] = useState(false)
+  const defaultPreviewScale = 2.75
+
+  return (
+    <section className="space-y-3 rounded-md border border-[color:var(--border-light)] bg-white p-4">
+      <div className="space-y-1">
+        <h4 className="text-base font-semibold text-text-primary">Step 1 Visual Guide</h4>
+        <p className="text-sm text-text-secondary">
+          Use the AWS Billing Data Export screenshot as reference while completing Step 1.
+        </p>
+      </div>
+
+      <div className="rounded-md border border-[color:var(--border-light)] bg-[color:var(--bg-surface)] px-3 py-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-sm text-text-secondary">
+            Open the screenshot preview when you need step-by-step visual guidance.
+          </p>
+          <Button
+            type="button"
+            variant="outline"
+            className="h-9 rounded-md border-[color:var(--border-light)]"
+            onClick={() => setPreviewOpen(true)}
+          >
+            View Guidance Image
+          </Button>
+        </div>
+      </div>
+
+      <div className="rounded-md border border-[color:var(--kcx-border-soft)] bg-[color:var(--highlight-green)] px-3 py-2.5">
+        <p className="text-xs text-text-secondary">
+          Reference only: match the required KCX settings from the section below. Your export name and bucket can differ.
+        </p>
+      </div>
+
+      <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
+        <DialogContent className="flex h-[92vh] w-[96vw] max-w-[96vw] flex-col">
+          <DialogHeader>
+            <DialogTitle>AWS Step 1 Reference</DialogTitle>
+            <DialogDescription>
+              AWS Billing Data Export screen used as setup guidance for Step 1.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="min-h-0 flex-1 overflow-auto rounded-md border border-[color:var(--border-light)] bg-[color:var(--bg-surface)]">
+            <div
+              style={{
+                transform: `scale(${defaultPreviewScale})`,
+                transformOrigin: "top left",
+                width: `${100 / defaultPreviewScale}%`,
+              }}
+            >
+              <img
+                src="/images/aws-manual/s1.jpeg"
+                alt="AWS Billing Data Export step 1 reference screen"
+                className="block h-auto w-full select-none object-contain"
+              />
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </section>
   )
 }
@@ -1483,6 +1555,8 @@ export function AwsManualSetup({ activeRoute }: { activeRoute: string }) {
           </div>
           <div className="border-t border-[color:var(--border-light)]" />
           <AwsLoginSection />
+          <div className="border-t border-[color:var(--border-light)]" />
+          <AwsStepOneScreenshotGuidance />
           <div className="border-t border-[color:var(--border-light)]" />
           <ConfigureExportSection
             bucketName={bucketName}

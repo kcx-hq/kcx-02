@@ -46,7 +46,7 @@ const BILLING_OPTIONS = [
   {
     label: "Upload CSV",
     href: "/client/billing/uploads",
-    description: "Track CSV upload jobs and processing status.",
+    description: "Import billing files from local device or temporary S3 access.",
     icon: FileSpreadsheet,
   },
   {
@@ -667,11 +667,11 @@ export function ClientBillingPage() {
                   <div className="space-y-1">
                     <h1 className="text-2xl font-semibold tracking-tight text-text-primary">Billing</h1>
                     <p className="text-sm text-text-secondary">
-                      Upload billing files. Processing starts automatically after upload.
+                      Choose how you want to provide billing files from your device or temporary S3 access.
                     </p>
                   </div>
                   <Button className="h-10 rounded-md" onClick={() => setUploadDialogOpen(true)}>
-                    Upload File
+                    Choose Source
                   </Button>
                 </div>
                 <div className="rounded-md border border-[color:var(--border-light)] bg-[color:var(--bg-surface)] px-4 py-2.5">

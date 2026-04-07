@@ -115,6 +115,8 @@ const env = {
   billingIngestionBatchSize: optionalPositiveInteger(process.env.BILLING_INGESTION_BATCH_SIZE) ?? 1000,
   billingIngestionStatusMinIntervalMs:
     optionalPositiveInteger(process.env.BILLING_INGESTION_STATUS_MIN_INTERVAL_MS) ?? 2000,
+  billingS3UploadSessionTtlMinutes:
+    optionalPositiveInteger(process.env.BILLING_S3_UPLOAD_SESSION_TTL_MINUTES) ?? 45,
 };
 
 export default env;

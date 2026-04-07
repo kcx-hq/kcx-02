@@ -11,6 +11,11 @@ import {
   handleGetLatestBillingIngestionForSource,
   handleManualUploadBillingFile,
 } from "./billing.controller.js";
+import {
+  handleCreateS3UploadSession,
+  handleImportFromS3UploadSession,
+  handleListS3UploadSessionScope,
+} from "./s3-upload/s3-upload.controller.js";
 
 const router = Router();
 
@@ -27,6 +32,9 @@ router.use(requireAuth);
 
 router.get("/billing/cloud-providers", asyncHandler(handleGetBillingCloudProviders));
 router.get("/billing/uploads/history", asyncHandler(handleGetBillingUploadHistory));
+router.post("/billing/uploads/s3/session", asyncHandler(handleCreateS3UploadSession));
+router.get("/billing/uploads/s3/session/:sessionId/list", asyncHandler(handleListS3UploadSessionScope));
+router.post("/billing/uploads/s3/session/:sessionId/import", asyncHandler(handleImportFromS3UploadSession));
 router.post("/billing/ingestion/upload", upload.single("file"), asyncHandler(handleManualUploadBillingFile));
 router.get("/billing/ingestions/latest-active", asyncHandler(handleGetLatestActiveBillingIngestion));
 router.get("/billing/ingestions/:id/status", asyncHandler(getBillingIngestionStatus));
