@@ -720,11 +720,48 @@ export async function queueExportManifestFromEvent(payload: AwsManifestPayload):
     expectedBucketName: normalizedBucketName,
   });
 
+  const filesToQueue: typeof parsedManifest.files = [];
+  let skippedExistingParquetCount = 0;
+  for (const manifestFile of parsedManifest.files) {
+    const existingParquetFile = await findExistingRawFileByIdentity({
+      billingSourceId: String(billingSource.id),
+      objectKey: manifestFile.key,
+      etag: manifestFile.checksum,
+      fileFormat: "parquet",
+    });
+
+    if (existingParquetFile) {
+      skippedExistingParquetCount += 1;
+      continue;
+    }
+
+    filesToQueue.push(manifestFile);
+  }
+
+  if (filesToQueue.length === 0) {
+    logger.info("AWS manifest callback skipped: all parquet files already registered", {
+      billingSourceId: billingSource.id,
+      manifestObjectKey: normalizedManifestKey,
+      manifestParquetCount: parsedManifest.files.length,
+      skippedExistingParquetCount,
+      region: normalizedRegion,
+    });
+    return {
+      queued: false,
+      skipped: true,
+      reason: "All parquet files already registered",
+      parquetFileCount: 0,
+    };
+  }
+
   return registerManifestBatchInTransaction({
     billingSource,
     connection,
     bucketName: normalizedBucketName,
-    parsedManifest,
+    parsedManifest: {
+      ...parsedManifest,
+      files: filesToQueue,
+    },
     manifestObjectKey: normalizedManifestKey,
     normalizedRegion,
   });
@@ -734,10 +771,12 @@ const findExistingRawFileByIdentity = async ({
   billingSourceId,
   objectKey,
   etag,
+  fileFormat,
 }: {
   billingSourceId: string;
   objectKey: string;
   etag: string | null;
+  fileFormat?: string;
 }): Promise<InstanceType<typeof RawBillingFile> | null> => {
   const normalizedEtag = normalizeEtag(etag);
   const etagCandidates = normalizedEtag ? Array.from(new Set([normalizedEtag, String(etag ?? "").trim()])) : [];
@@ -746,6 +785,7 @@ const findExistingRawFileByIdentity = async ({
     where: {
       billingSourceId,
       originalFilePath: objectKey,
+      ...(fileFormat ? { fileFormat } : {}),
       ...(etagCandidates.length > 0 ? { checksum: { [Op.in]: etagCandidates } } : { checksum: { [Op.is]: null } }),
     },
   });
@@ -889,10 +929,12 @@ export async function runInitialBackfillAfterValidation(connectionId: string): P
   let filesSkipped = 0;
 
   for (const file of files) {
+    const backfillFileFormat = resolveBackfillFileFormat(billingSource, file.key);
     const existingRawFile = await findExistingRawFileByIdentity({
       billingSourceId: String(billingSource.id),
       objectKey: file.key,
       etag: file.etag,
+      fileFormat: backfillFileFormat,
     });
 
     if (existingRawFile) {

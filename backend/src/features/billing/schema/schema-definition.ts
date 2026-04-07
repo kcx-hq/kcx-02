@@ -43,13 +43,19 @@ const CANONICAL_COLUMNS = Object.freeze([
   "Tags",
   "usage_start_time",
   "usage_end_time",
+  "usage_type",
+  "operation",
   "line_item_type",
   "pricing_term",
+  "purchase_option",
   "public_on_demand_cost",
   "discount_amount",
   "credit_amount",
   "refund_amount",
   "tax_cost",
+  "reservation_arn",
+  "savings_plan_arn",
+  "savings_plan_type",
 ]);
 
 /**
@@ -334,6 +340,15 @@ const COLUMN_ALIASES = Object.freeze({
     "charge_period_end",
     "lineItem/UsageEndDate",
   ]),
+  usage_type: Object.freeze([
+    "usage_type",
+    "usagetype",
+    "lineItem/UsageType",
+  ]),
+  operation: Object.freeze([
+    "operation",
+    "lineItem/Operation",
+  ]),
   line_item_type: Object.freeze([
     "line_item_type",
     "ChargeFrequency",
@@ -345,6 +360,11 @@ const COLUMN_ALIASES = Object.freeze({
     "PricingCategory",
     "pricing_category",
     "pricing/term",
+  ]),
+  purchase_option: Object.freeze([
+    "purchase_option",
+    "PurchaseOption",
+    "pricing/purchaseOption",
   ]),
   public_on_demand_cost: Object.freeze([
     "public_on_demand_cost",
@@ -371,6 +391,18 @@ const COLUMN_ALIASES = Object.freeze({
     "tax_cost",
     "tax",
     "tax_amount",
+  ]),
+  reservation_arn: Object.freeze([
+    "reservation_arn",
+    "reservationarn",
+  ]),
+  savings_plan_arn: Object.freeze([
+    "savings_plan_arn",
+    "savingsplanarn",
+  ]),
+  savings_plan_type: Object.freeze([
+    "savings_plan_type",
+    "savingsplantype",
   ]),
 });
 
