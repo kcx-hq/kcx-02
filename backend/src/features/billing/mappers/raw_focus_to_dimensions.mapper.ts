@@ -21,6 +21,8 @@ const RAW_COLUMNS = Object.freeze({
   chargePeriodEnd: "ChargePeriodEnd",
   usageStartTime: "usage_start_time",
   usageEndTime: "usage_end_time",
+  usageType: "usage_type",
+  operation: "operation",
   lineItemType: "line_item_type",
   consumedQuantity: "ConsumedQuantity",
   consumedUnit: "ConsumedUnit",
@@ -30,11 +32,15 @@ const RAW_COLUMNS = Object.freeze({
   discountAmount: "discount_amount",
   pricingCategory: "PricingCategory",
   pricingTerm: "pricing_term",
+  purchaseOption: "purchase_option",
   pricingQuantity: "PricingQuantity",
   pricingUnit: "PricingUnit",
   creditAmount: "credit_amount",
   refundAmount: "refund_amount",
   taxCost: "tax_cost",
+  reservationArn: "reservation_arn",
+  savingsPlanArn: "savings_plan_arn",
+  savingsPlanType: "savings_plan_type",
   providerName: "ProviderName",
   regionId: "RegionId",
   regionName: "RegionName",
@@ -94,6 +100,26 @@ const toDateOnlyOrNull = (value) => {
 const toJsonOrNull = (value) => {
   if (isBlank(value)) return null;
 
+  if (value instanceof Map) {
+    return Object.fromEntries(Array.from(value.entries()).map(([key, mapValue]) => [String(key), mapValue]));
+  }
+
+  if (Array.isArray(value)) {
+    const tupleLike = value.every((entry) => Array.isArray(entry) && entry.length === 2);
+    if (tupleLike) {
+      return Object.fromEntries(value.map(([key, mapValue]) => [String(key), mapValue]));
+    }
+
+    const keyValueStructLike = value.every(
+      (entry) => entry && typeof entry === "object" && "key" in entry && "value" in entry,
+    );
+    if (keyValueStructLike) {
+      return Object.fromEntries(
+        value.map((entry) => [String(entry.key), entry.value]),
+      );
+    }
+  }
+
   if (typeof value === "object") {
     return value;
   }
@@ -107,6 +133,73 @@ const toJsonOrNull = (value) => {
   }
 
   return { raw_value: value };
+};
+
+const toIsoTimestampOrNull = (value) => {
+  if (isBlank(value)) return null;
+
+  if (value instanceof Date) {
+    return Number.isFinite(value.getTime()) ? value.toISOString() : null;
+  }
+
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+
+    const asDate = new Date(trimmed);
+    if (Number.isFinite(asDate.getTime())) return asDate.toISOString();
+
+    if (/^[+-]?\d+$/.test(trimmed)) {
+      return toIsoTimestampOrNull(BigInt(trimmed));
+    }
+
+    return null;
+  }
+
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) return null;
+    const abs = Math.abs(value);
+    const millis =
+      abs >= 1e18 ? value / 1e6 : abs >= 1e15 ? value / 1e3 : abs >= 1e12 ? value : value * 1e3;
+    const date = new Date(millis);
+    return Number.isFinite(date.getTime()) ? date.toISOString() : null;
+  }
+
+  if (typeof value === "bigint") {
+    const abs = value < 0n ? -value : value;
+    const millis =
+      abs >= 1000000000000000000n
+        ? value / 1000000n
+        : abs >= 1000000000000000n
+          ? value / 1000n
+          : abs >= 1000000000000n
+            ? value
+            : value * 1000n;
+    const asNumber = Number(millis);
+    if (!Number.isFinite(asNumber)) return null;
+    const date = new Date(asNumber);
+    return Number.isFinite(date.getTime()) ? date.toISOString() : null;
+  }
+
+  if (typeof value === "object") {
+    if ("value" in value) {
+      return toIsoTimestampOrNull(value.value);
+    }
+
+    const valueOf = typeof value.valueOf === "function" ? value.valueOf() : value;
+    if (valueOf !== value) {
+      return toIsoTimestampOrNull(valueOf);
+    }
+
+    if (typeof value.toString === "function") {
+      const stringified = value.toString();
+      if (stringified && stringified !== "[object Object]") {
+        return toIsoTimestampOrNull(stringified);
+      }
+    }
+  }
+
+  return null;
 };
 
 const hasAnyValue = (obj) =>
@@ -207,10 +300,13 @@ const mapFactMeasures = (rawRow) =>
     billed_cost: rawRow[RAW_COLUMNS.billedCost],
     effective_cost: rawRow[RAW_COLUMNS.effectiveCost],
     list_cost: rawRow[RAW_COLUMNS.listCost],
-    usage_start_time: cleanStringOrNull(rawRow[RAW_COLUMNS.usageStartTime]),
-    usage_end_time: cleanStringOrNull(rawRow[RAW_COLUMNS.usageEndTime]),
+    usage_start_time: toIsoTimestampOrNull(rawRow[RAW_COLUMNS.usageStartTime]),
+    usage_end_time: toIsoTimestampOrNull(rawRow[RAW_COLUMNS.usageEndTime]),
+    usage_type: cleanStringOrNull(rawRow[RAW_COLUMNS.usageType]),
+    operation: cleanStringOrNull(rawRow[RAW_COLUMNS.operation]),
     line_item_type: cleanStringOrNull(rawRow[RAW_COLUMNS.lineItemType]),
     pricing_term: cleanStringOrNull(rawRow[RAW_COLUMNS.pricingTerm]),
+    purchase_option: cleanStringOrNull(rawRow[RAW_COLUMNS.purchaseOption]),
     public_on_demand_cost: rawRow[RAW_COLUMNS.publicOnDemandCost],
     discount_amount: rawRow[RAW_COLUMNS.discountAmount],
     consumed_quantity: rawRow[RAW_COLUMNS.consumedQuantity],
@@ -218,6 +314,9 @@ const mapFactMeasures = (rawRow) =>
     credit_amount: rawRow[RAW_COLUMNS.creditAmount],
     refund_amount: rawRow[RAW_COLUMNS.refundAmount],
     tax_cost: rawRow[RAW_COLUMNS.taxCost],
+    reservation_arn: cleanStringOrNull(rawRow[RAW_COLUMNS.reservationArn]),
+    savings_plan_arn: cleanStringOrNull(rawRow[RAW_COLUMNS.savingsPlanArn]),
+    savings_plan_type: cleanStringOrNull(rawRow[RAW_COLUMNS.savingsPlanType]),
     tags_json: toJsonOrNull(rawRow[RAW_COLUMNS.tags]),
   });
 
@@ -338,8 +437,11 @@ const RAW_TO_ANALYTICS_REFERENCE = Object.freeze({
     ListCost: "list_cost",
     usage_start_time: "usage_start_time",
     usage_end_time: "usage_end_time",
+    usage_type: "usage_type",
+    operation: "operation",
     line_item_type: "line_item_type",
     pricing_term: "pricing_term",
+    purchase_option: "purchase_option",
     public_on_demand_cost: "public_on_demand_cost",
     discount_amount: "discount_amount",
     ConsumedQuantity: "consumed_quantity",
@@ -347,6 +449,9 @@ const RAW_TO_ANALYTICS_REFERENCE = Object.freeze({
     credit_amount: "credit_amount",
     refund_amount: "refund_amount",
     tax_cost: "tax_cost",
+    reservation_arn: "reservation_arn",
+    savings_plan_arn: "savings_plan_arn",
+    savings_plan_type: "savings_plan_type",
     Tags: "tags_json",
   },
 });
