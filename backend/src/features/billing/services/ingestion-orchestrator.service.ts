@@ -5,6 +5,7 @@ import { HeadObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import env from "../../../config/env.js";
 import { NotFoundError } from "../../../errors/http-errors.js";
 import { RawBillingFile } from "../../../models/index.js";
+import { logger } from "../../../utils/logger.js";
 import { mapFactCostLineItem } from "../mappers/raw_focus_to_dimensions.mapper.js";
 import { processAwsExportParquetRun } from "./aws-export-parquet.processor.js";
 import {
@@ -245,8 +246,25 @@ function summarizeTopFailureReasons(reasonCounts, limit = 3) {
     .map(([reason, count]) => `${reason} (${count})`);
 }
 
+function resolveIngestionFlow(runFiles) {
+  const files = Array.isArray(runFiles) ? runFiles : [];
+  const manifestLinks = files.filter((fileLink) => fileLink.fileRole === "manifest");
+  const dataLinks = files.filter((fileLink) => fileLink.fileRole === "data");
+
+  if (manifestLinks.length > 0 && dataLinks.length === 0) {
+    throw new Error("Invalid ingestion run: manifest file link exists but no data file links were found");
+  }
+
+  return {
+    flow: manifestLinks.length > 0 ? "aws_export_manifest" : "raw_file_stream",
+    manifestLinksCount: manifestLinks.length,
+    dataLinksCount: dataLinks.length,
+  };
+}
+
 async function processIngestionRun(ingestionRunId) {
   console.info("Starting ingestion", { ingestionRunId });
+  logger.info("Ingestion orchestrator: step=start", { ingestionRunId });
 
   let run;
   let latestProgressPercent = PROGRESS_BY_STAGE.queued;
@@ -255,116 +273,85 @@ async function processIngestionRun(ingestionRunId) {
   let rowsFailed = 0;
 
   try {
+    logger.info("Ingestion orchestrator: step=load_run:start", { ingestionRunId });
     run = await loadIngestionRunOrThrow(ingestionRunId);
+    logger.info("Ingestion orchestrator: step=load_run:done", {
+      ingestionRunId,
+      runId: run.id,
+      rawBillingFileId: run.rawBillingFileId,
+    });
 
+    logger.info("Ingestion orchestrator: step=load_run_files:start", { runId: run.id });
     const runFiles = await getIngestionRunFiles(run.id);
-    const hasManifestLinkedRun = Array.isArray(runFiles) && runFiles.some((fileLink) => fileLink.fileRole === "manifest");
-    if (hasManifestLinkedRun) {
+    const flowRouting = resolveIngestionFlow(runFiles);
+    logger.info("Ingestion orchestrator: step=load_run_files:done", {
+      runId: run.id,
+      runFilesCount: Array.isArray(runFiles) ? runFiles.length : 0,
+      flow: flowRouting.flow,
+      manifestLinksCount: flowRouting.manifestLinksCount,
+      dataLinksCount: flowRouting.dataLinksCount,
+    });
+    if (flowRouting.flow === "aws_export_manifest") {
+      logger.info("Ingestion orchestrator: step=delegate_aws_parquet:start", { runId: run.id });
       await processAwsExportParquetRun({ run });
+      logger.info("Ingestion orchestrator: step=delegate_aws_parquet:done", { runId: run.id });
       return;
     }
 
+    logger.info("Ingestion orchestrator: step=load_raw_file:start", { rawBillingFileId: run.rawBillingFileId });
     const rawFile = await loadRawBillingFileOrThrow(run.rawBillingFileId);
     assertRawFileLocation(rawFile);
     const resolvedFileFormat = resolveIngestionFileFormat(rawFile);
-    console.log("[S3-UPLOAD-DEBUG][INGESTION][START]", {
-      tenantId: rawFile.tenantId ?? null,
-      userId: null,
-      sessionId: null,
-      ingestionRunId: String(run.id),
-      runId: String(run.id),
-      rawFileId: String(run.rawBillingFileId),
-      bucket: rawFile.rawStorageBucket,
-      key: rawFile.rawStorageKey,
-      format: resolvedFileFormat,
-    });
-    console.log("[S3-UPLOAD-DEBUG][INGESTION][FORMAT]", {
-      tenantId: rawFile.tenantId ?? null,
-      userId: null,
-      sessionId: null,
-      ingestionRunId: String(run.id),
-      key: rawFile.rawStorageKey,
-      detectedFormat: resolvedFileFormat,
-    });
     const chunkSize = env.billingIngestionBatchSize;
     const minStatusUpdateIntervalMs = env.billingIngestionStatusMinIntervalMs;
 
     const updateProgressThrottled = createProgressUpdater(run.id, minStatusUpdateIntervalMs);
 
+    logger.info("Ingestion orchestrator: step=mark_running:start", { runId: run.id });
     await markRunRunning(run.id);
     latestProgressPercent = PROGRESS_BY_STAGE.validating_schema;
+    logger.info("Ingestion orchestrator: step=mark_running:done", { runId: run.id });
 
-    console.log("[S3-UPLOAD-DEBUG][INGESTION][S3_HEAD]", {
-      tenantId: rawFile.tenantId ?? null,
-      userId: null,
-      sessionId: null,
-      ingestionRunId: String(run.id),
+    await verifyRawFileExistsInS3({
       bucket: rawFile.rawStorageBucket,
       key: rawFile.rawStorageKey,
     });
-    try {
-      await verifyRawFileExistsInS3({
-        bucket: rawFile.rawStorageBucket,
-        key: rawFile.rawStorageKey,
-      });
-    } catch (error) {
-      console.error("[S3-UPLOAD-DEBUG][INGESTION][S3_HEAD_FAILED]", {
-        tenantId: rawFile.tenantId ?? null,
-        userId: null,
-        sessionId: null,
-        ingestionRunId: String(run.id),
-        bucket: rawFile.rawStorageBucket,
-        key: rawFile.rawStorageKey,
-        error: error instanceof Error ? error.message : String(error),
-      });
-      throw error;
-    }
 
-    console.log("[S3-UPLOAD-DEBUG][INGESTION][S3_READ_START]", {
-      tenantId: rawFile.tenantId ?? null,
-      userId: null,
-      sessionId: null,
-      ingestionRunId: String(run.id),
-      bucket: rawFile.rawStorageBucket,
-      key: rawFile.rawStorageKey,
-      stage: "schema_headers",
-    });
-    let headers;
-    try {
-      headers =
-        resolvedFileFormat === "csv"
-          ? await readCsvHeaders({
-              bucket: rawFile.rawStorageBucket,
-              key: rawFile.rawStorageKey,
-            })
-          : await readParquetSchemaColumns({
-              bucket: rawFile.rawStorageBucket,
-              key: rawFile.rawStorageKey,
-            });
-    } catch (error) {
-      console.error("[S3-UPLOAD-DEBUG][INGESTION][S3_READ_FAILED]", {
-        tenantId: rawFile.tenantId ?? null,
-        userId: null,
-        sessionId: null,
-        ingestionRunId: String(run.id),
-        bucket: rawFile.rawStorageBucket,
-        key: rawFile.rawStorageKey,
-        error: error instanceof Error ? error.message : String(error),
-        stage: "schema_headers",
-      });
-      throw error;
-    }
+    const headers =
+      resolvedFileFormat === "csv"
+        ? await readCsvHeaders({
+            bucket: rawFile.rawStorageBucket,
+            key: rawFile.rawStorageKey,
+          })
+        : await readParquetSchemaColumns({
+            bucket: rawFile.rawStorageBucket,
+            key: rawFile.rawStorageKey,
+          });
 
+    logger.info("Ingestion orchestrator: step=validate_schema:start", { runId: run.id });
     const validation = validateHeaders(headers);
+    logger.info("Ingestion orchestrator: step=validate_schema:done", {
+      runId: run.id,
+      validationSuccess: validation.success,
+      missingRequiredColumns: validation.missingRequiredColumns?.length ?? 0,
+      unknownHeaders: validation.unknownHeaders?.length ?? 0,
+      ambiguousHeaders: validation.ambiguousHeaders?.length ?? 0,
+    });
     if (!validation.success) {
       const schemaValidationErrorMessage = buildSchemaValidationErrorMessage(validation);
       await markRunFailed(run.id, new Error(schemaValidationErrorMessage), latestProgressPercent);
+      logger.error("Ingestion orchestrator: step=validate_schema:failed", {
+        runId: run.id,
+        schemaValidationErrorMessage,
+      });
       return;
     }
 
+    logger.info("Ingestion orchestrator: step=set_stage:reading_rows", { runId: run.id });
     await setRunStage(run.id, "reading_rows");
     latestProgressPercent = PROGRESS_BY_STAGE.reading_rows;
 
+    logger.info("Ingestion orchestrator: step=set_stage:normalizing", { runId: run.id });
     await setRunStage(run.id, "normalizing", {
       rows_read: 0,
       rows_loaded: 0,
@@ -373,6 +360,7 @@ async function processIngestionRun(ingestionRunId) {
     });
     latestProgressPercent = PROGRESS_BY_STAGE.normalizing;
 
+    logger.info("Ingestion orchestrator: step=set_stage:upserting_dimensions", { runId: run.id });
     await setRunStage(run.id, "upserting_dimensions", {
       rows_read: 0,
       rows_loaded: 0,
@@ -404,6 +392,11 @@ async function processIngestionRun(ingestionRunId) {
       fileFormat: resolvedFileFormat,
       chunkSize,
     })[Symbol.asyncIterator]();
+    logger.info("Ingestion orchestrator: step=row_iteration:start", {
+      runId: run.id,
+      chunkSize,
+      fileFormat: resolvedFileFormat,
+    });
 
     try {
       while (true) {
@@ -654,7 +647,15 @@ async function processIngestionRun(ingestionRunId) {
       });
       throw error;
     }
+    logger.info("Ingestion orchestrator: step=row_iteration:done", {
+      runId: run.id,
+      chunkIndex,
+      rowsRead,
+      rowsLoaded,
+      rowsFailed,
+    });
 
+    logger.info("Ingestion orchestrator: step=set_stage:finalizing", { runId: run.id });
     await updateProgressThrottled(
       {
         rows_read: rowsRead,
@@ -687,6 +688,13 @@ async function processIngestionRun(ingestionRunId) {
         rowsLoaded,
         rowsFailed,
         top_failure_reasons: topReasons,
+      });
+      logger.error("Ingestion orchestrator: step=finalize:all_rows_failed", {
+        runId: run.id,
+        rowsRead,
+        rowsLoaded,
+        rowsFailed,
+        topReasons,
       });
       return;
     }
@@ -726,8 +734,20 @@ async function processIngestionRun(ingestionRunId) {
       failed_row_error_writes: failedRowWriteErrors,
       top_failure_reasons: topReasons,
     });
+    logger.info("Ingestion orchestrator: step=completed", {
+      runId: run.id,
+      rowsRead,
+      rowsLoaded,
+      rowsFailed,
+      failedRowWriteErrors,
+      topReasons,
+    });
   } catch (error) {
     if (!run?.id) {
+      logger.error("Ingestion orchestrator: step=failed_before_run_loaded", {
+        ingestionRunId,
+        reason: toErrorMessage(error),
+      });
       throw error;
     }
 
@@ -736,21 +756,14 @@ async function processIngestionRun(ingestionRunId) {
 
     try {
       await markRunFailed(run.id, error, latestProgressPercent);
-      console.log("[S3-UPLOAD-DEBUG][INGESTION][END]", {
-        tenantId: failedRawFile?.tenantId ?? null,
-        userId: null,
-        sessionId: null,
-        ingestionRunId: String(run.id),
-        runId: String(run.id),
-        bucket: failedRawFile?.rawStorageBucket ?? null,
-        key: failedRawFile?.rawStorageKey ?? null,
-        status: "failed",
-        rowsProcessed: rowsRead,
-        rowsFailed,
-      });
     } catch (markError) {
       console.error("Failed to mark ingestion run as failed", {
         ingestionRunId: run.id,
+        reason: toErrorMessage(markError),
+        originalReason: toErrorMessage(error),
+      });
+      logger.error("Ingestion orchestrator: step=mark_failed:error", {
+        runId: run.id,
         reason: toErrorMessage(markError),
         originalReason: toErrorMessage(error),
       });
@@ -777,5 +790,4 @@ export {
   markRunCompleted,
   markRunFailed,
 };
-
 

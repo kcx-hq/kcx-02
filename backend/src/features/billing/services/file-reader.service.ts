@@ -21,6 +21,16 @@ const s3Client = new S3Client({
 });
 
 const normalizeFormat = (value) => String(value ?? "").trim().toLowerCase();
+const PARQUET_PARSE_TIMEOUT_MS = 120000;
+
+function withTimeout(promise, timeoutMs, label) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error(`${label} timed out after ${timeoutMs}ms`)), timeoutMs),
+    ),
+  ]);
+}
 
 function detectFileFormatFromKey(key) {
   const normalizedKey = String(key ?? "").trim().toLowerCase();
@@ -273,10 +283,18 @@ async function parseParquetRowsFromBuffer(buffer) {
       const cursor = reader.getCursor();
       const rows = [];
 
-      let row = await cursor.next();
+      let row = await withTimeout(
+        cursor.next(),
+        PARQUET_PARSE_TIMEOUT_MS,
+        "parquetjs-lite cursor.next initial read",
+      );
       while (row) {
         rows.push(row);
-        row = await cursor.next();
+        row = await withTimeout(
+          cursor.next(),
+          PARQUET_PARSE_TIMEOUT_MS,
+          "parquetjs-lite cursor.next incremental read",
+        );
       }
 
       return rows;
@@ -292,7 +310,11 @@ async function parseParquetRowsFromBuffer(buffer) {
 
     try {
       const { readParquet, tableFromIPC } = await loadParquetWasmRuntime();
-      const wasmTable = readParquet(new Uint8Array(buffer));
+      const wasmTable = await withTimeout(
+        Promise.resolve(readParquet(new Uint8Array(buffer))),
+        PARQUET_PARSE_TIMEOUT_MS,
+        "parquet-wasm readParquet",
+      );
       const arrowTable = tableFromIPC(wasmTable.intoIPCStream());
       const rows = [];
 
@@ -305,6 +327,62 @@ async function parseParquetRowsFromBuffer(buffer) {
     } catch (fallbackError) {
       throw new Error(
         `Parquet parsing failed with all readers. primary=${
+          primaryError instanceof Error ? primaryError.message : String(primaryError)
+        }; fallback=${fallbackError instanceof Error ? fallbackError.message : String(fallbackError)}`,
+      );
+    }
+  }
+}
+
+async function* readParquetRowChunksFromBuffer(buffer, chunkSize = 1000) {
+  const resolvedChunkSize = Number.isInteger(chunkSize) && chunkSize > 0 ? chunkSize : 1000;
+
+  try {
+    const reader = await openParquetReader(buffer);
+    try {
+      const cursor = reader.getCursor();
+      let chunk = [];
+
+      let row = await withTimeout(
+        cursor.next(),
+        PARQUET_PARSE_TIMEOUT_MS,
+        "parquetjs-lite chunk cursor.next initial read",
+      );
+      while (row) {
+        chunk.push(row);
+        if (chunk.length >= resolvedChunkSize) {
+          yield chunk;
+          chunk = [];
+        }
+        row = await withTimeout(
+          cursor.next(),
+          PARQUET_PARSE_TIMEOUT_MS,
+          "parquetjs-lite chunk cursor.next incremental read",
+        );
+      }
+
+      if (chunk.length > 0) {
+        yield chunk;
+      }
+      return;
+    } finally {
+      if (reader?.close) {
+        await reader.close();
+      }
+    }
+  } catch (primaryError) {
+    console.warn("Primary parquet chunk reader failed; trying parquet-wasm fallback", {
+      reason: primaryError instanceof Error ? primaryError.message : String(primaryError),
+    });
+
+    try {
+      const rows = await parseParquetRowsFromBuffer(buffer);
+      for (let index = 0; index < rows.length; index += resolvedChunkSize) {
+        yield rows.slice(index, index + resolvedChunkSize);
+      }
+    } catch (fallbackError) {
+      throw new Error(
+        `Parquet chunked parsing failed with all readers. primary=${
           primaryError instanceof Error ? primaryError.message : String(primaryError)
         }; fallback=${fallbackError instanceof Error ? fallbackError.message : String(fallbackError)}`,
       );
@@ -529,6 +607,7 @@ export {
   readParquetRows,
   readCsvRowChunks,
   readParquetRowChunks,
+  readParquetRowChunksFromBuffer,
   readBillingRowChunks,
   streamToBuffer,
   parseCsv,

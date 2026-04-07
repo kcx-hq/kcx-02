@@ -587,7 +587,8 @@ const registerManifestBatchInTransaction = async ({
     const ingestionRun = await BillingIngestionRun.create(
       {
         billingSourceId: String(billingSource.id),
-        rawBillingFileId: String(manifestRawFile.id),
+        // Keep manifest as a linked metadata file, but anchor run to the first parquet data file.
+        rawBillingFileId: String(dataRawFiles[0].id),
         status: "queued",
         rowsRead: 0,
         rowsLoaded: 0,
@@ -634,6 +635,7 @@ const registerManifestBatchInTransaction = async ({
     logger.info("AWS manifest batch queued", {
       billingSourceId: billingSource.id,
       ingestionRunId: ingestionRun.id,
+      primaryRawBillingFileId: dataRawFiles[0].id,
       manifestObjectKey,
       region: normalizedRegion,
       parquetFileCount: dataRawFiles.length,

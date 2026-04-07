@@ -9,6 +9,7 @@ export const createCloudConnectionSchema = z.object({
 
 export const awsConnectionCallbackSchema = z.object({
   callback_token: z.string().trim().min(1, "callback_token is required"),
+  event_type: z.enum(["stack_create", "stack_update", "stack_delete"]).optional().default("stack_create"),
   account_id: z.string().trim().min(1, "account_id is required"),
   role_arn: z.string().trim().min(1, "role_arn is required"),
   stack_id: z.string().trim().min(1, "stack_id is required"),
@@ -21,4 +22,7 @@ export const awsConnectionCallbackSchema = z.object({
   source_type: z.literal("aws_data_exports_cur2").optional().default("aws_data_exports_cur2"),
   setup_mode: z.literal("cloud_connected").optional().default("cloud_connected"),
   schema_type: z.literal("cur2_custom").optional().default("cur2_custom"),
+  cadence: z.string().trim().optional().default("hourly"),
 });
+
+export type AwsConnectionCallbackPayload = z.infer<typeof awsConnectionCallbackSchema>;

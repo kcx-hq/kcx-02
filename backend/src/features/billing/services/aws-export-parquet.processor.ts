@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/ban-ts-comment */
 // @ts-nocheck
 import { BillingSource, CloudConnectionV2 } from "../../../models/index.js";
+import env from "../../../config/env.js";
 import { logger } from "../../../utils/logger.js";
 import { downloadExportFile } from "../../cloud-connections/aws/infrastructure/aws-export-reader.service.js";
 import type { AwsParquetSchemaValidationResult } from "../../cloud-connections/aws/exports/aws-export-ingestion.types.js";
@@ -10,7 +11,7 @@ import {
   primeDimensionCacheForChunk,
   resolveDimensionsWithCache,
 } from "./dimension-upsert.service.js";
-import { parseParquet, parseParquetSchemaColumnsFromBuffer } from "./file-reader.service.js";
+import { parseParquetSchemaColumnsFromBuffer, readParquetRowChunksFromBuffer } from "./file-reader.service.js";
 import { insertFactCostLineItemsBatch } from "./fact-cost-line-item.service.js";
 import { getIngestionRunFiles } from "./ingestion-run-file.service.js";
 import { recordIngestionRowErrors } from "./ingestion-row-error.service.js";
@@ -97,7 +98,9 @@ const buildSchemaResult = ({ rawBillingFileId, key, validation }) => ({
 
 export async function processAwsExportParquetRun({ run }) {
   const runId = String(run.id);
-  const batchSize = 1000;
+  const batchSize = env.billingIngestionBatchSize;
+  const rowConcurrency = Math.max(1, env.billingIngestionRowConcurrency);
+  logger.info("AWS parquet processor: step=start", { runId, batchSize });
 
   await setRunState(runId, {
     status: "validating_schema",
@@ -147,6 +150,12 @@ export async function processAwsExportParquetRun({ run }) {
       if (!rawFile?.rawStorageBucket || !rawFile?.rawStorageKey) {
         throw new Error(`Raw file ${dataLink.rawBillingFileId} is missing raw storage location`);
       }
+      logger.info("AWS parquet processor: step=download_file:start", {
+        runId,
+        rawBillingFileId: String(rawFile.id),
+        bucket: rawFile.rawStorageBucket,
+        key: rawFile.rawStorageKey,
+      });
 
       const base64FileBody = await downloadExportFile({
         roleArn,
@@ -157,9 +166,23 @@ export async function processAwsExportParquetRun({ run }) {
       });
 
       const parquetBuffer = Buffer.from(base64FileBody, "base64");
+      logger.info("AWS parquet processor: step=download_file:done", {
+        runId,
+        rawBillingFileId: String(rawFile.id),
+        bytes: parquetBuffer.length,
+      });
       parquetBuffersByRawFileId.set(String(rawFile.id), parquetBuffer);
 
+      logger.info("AWS parquet processor: step=parse_schema:start", {
+        runId,
+        rawBillingFileId: String(rawFile.id),
+      });
       const parquetColumns = await parseParquetSchemaColumnsFromBuffer(parquetBuffer);
+      logger.info("AWS parquet processor: step=parse_schema:done", {
+        runId,
+        rawBillingFileId: String(rawFile.id),
+        columnCount: parquetColumns.length,
+      });
       const validation = validateHeaders(parquetColumns);
       const schemaResult = buildSchemaResult({
         rawBillingFileId: String(rawFile.id),
@@ -195,6 +218,11 @@ export async function processAwsExportParquetRun({ run }) {
     for (const dataLink of dataLinks) {
       const rawFile = dataLink.RawBillingFile;
       const rawFileId = String(rawFile.id);
+      logger.info("AWS parquet processor: step=process_data_file:start", {
+        runId,
+        rawFileId,
+        key: rawFile.rawStorageKey,
+      });
 
       await setRunState(runId, {
         status: "normalizing",
@@ -206,13 +234,31 @@ export async function processAwsExportParquetRun({ run }) {
         rows_failed: rowsFailed,
       });
 
-      const parquetRows = await parseParquet(parquetBuffersByRawFileId.get(rawFileId));
       const canonicalHeaderMap = canonicalHeaderMapsByRawFileId.get(rawFileId) ?? {};
+      const parquetBuffer = parquetBuffersByRawFileId.get(rawFileId);
+      if (!parquetBuffer) {
+        throw new Error(`Parquet buffer missing for raw file ${rawFileId}`);
+      }
 
-      for (let offset = 0; offset < parquetRows.length; offset += batchSize) {
-        const chunk = parquetRows.slice(offset, offset + batchSize);
+      let chunkOffset = 0;
+      let chunkIndex = 0;
+      logger.info("AWS parquet processor: step=parse_chunks:start", {
+        runId,
+        rawFileId,
+        batchSize,
+      });
+      for await (const chunk of readParquetRowChunksFromBuffer(parquetBuffer, batchSize)) {
+        chunkIndex += 1;
+        logger.info("AWS parquet processor: step=parse_chunks:chunk_received", {
+          runId,
+          rawFileId,
+          chunkIndex,
+          chunkSize: chunk.length,
+          chunkOffset,
+        });
         rowsRead += chunk.length;
 
+        const cachePrimeStartedAt = Date.now();
         try {
           await primeDimensionCacheForChunk({
             rawRows: chunk,
@@ -227,89 +273,133 @@ export async function processAwsExportParquetRun({ run }) {
             reason: toErrorMessage(error),
           });
         }
+        const cachePrimeMs = Date.now() - cachePrimeStartedAt;
 
+        const mapRowsStartedAt = Date.now();
         const factRows = [];
+        let chunkProcessedRows = 0;
 
-        for (let index = 0; index < chunk.length; index += 1) {
-          const rowNumber = offset + index + 1;
-          const rawRow = chunk[index];
+        for (let index = 0; index < chunk.length; index += rowConcurrency) {
+          const sliceStart = index;
+          const slice = chunk.slice(sliceStart, sliceStart + rowConcurrency);
+          const sliceResults = await Promise.all(
+            slice.map(async (rawRow, localIndex) => {
+              const chunkIndexPosition = sliceStart + localIndex;
+              const rowNumber = chunkOffset + chunkIndexPosition + 1;
+              try {
+                const normalizedRow = normalizeRowToCanonical(rawRow, canonicalHeaderMap);
+                const dimensions = await resolveDimensionsWithCache({
+                  rawRow: normalizedRow,
+                  tenantId: rawFile.tenantId,
+                  providerId: rawFile.cloudProviderId,
+                  cache: dimensionCache,
+                });
 
-          try {
-            const normalizedRow = normalizeRowToCanonical(rawRow, canonicalHeaderMap);
-            const dimensions = await resolveDimensionsWithCache({
-              rawRow: normalizedRow,
-              tenantId: rawFile.tenantId,
-              providerId: rawFile.cloudProviderId,
-              cache: dimensionCache,
-            });
+                const factPayload = mapFactCostLineItem({
+                  tenant_id: rawFile.tenantId,
+                  billing_source_id: rawFile.billingSourceId,
+                  ingestion_run_id: runId,
+                  provider_id: rawFile.cloudProviderId,
+                  billing_account_key: dimensions.billingAccountKey,
+                  sub_account_key: dimensions.subAccountKey,
+                  region_key: dimensions.regionKey,
+                  service_key: dimensions.serviceKey,
+                  resource_key: dimensions.resourceKey,
+                  sku_key: dimensions.skuKey,
+                  charge_key: dimensions.chargeKey,
+                  usage_date_key: dimensions.usageDateKey,
+                  billing_period_start_date_key: dimensions.billingPeriodStartDateKey,
+                  billing_period_end_date_key: dimensions.billingPeriodEndDateKey,
+                  raw_row: normalizedRow,
+                });
 
-            const factPayload = mapFactCostLineItem({
-              tenant_id: rawFile.tenantId,
-              billing_source_id: rawFile.billingSourceId,
-              ingestion_run_id: runId,
-              provider_id: rawFile.cloudProviderId,
-              billing_account_key: dimensions.billingAccountKey,
-              sub_account_key: dimensions.subAccountKey,
-              region_key: dimensions.regionKey,
-              service_key: dimensions.serviceKey,
-              resource_key: dimensions.resourceKey,
-              sku_key: dimensions.skuKey,
-              charge_key: dimensions.chargeKey,
-              usage_date_key: dimensions.usageDateKey,
-              billing_period_start_date_key: dimensions.billingPeriodStartDateKey,
-              billing_period_end_date_key: dimensions.billingPeriodEndDateKey,
-              raw_row: normalizedRow,
-            });
+                return {
+                  ok: true,
+                  rowNumber,
+                  rawRow: normalizedRow,
+                  createPayload: {
+                    tenantId: factPayload.tenant_id,
+                    billingSourceId: factPayload.billing_source_id,
+                    ingestionRunId: factPayload.ingestion_run_id,
+                    providerId: factPayload.provider_id,
+                    billingAccountKey: factPayload.billing_account_key,
+                    subAccountKey: factPayload.sub_account_key,
+                    regionKey: factPayload.region_key,
+                    serviceKey: factPayload.service_key,
+                    resourceKey: factPayload.resource_key,
+                    skuKey: factPayload.sku_key,
+                    chargeKey: factPayload.charge_key,
+                    usageDateKey: factPayload.usage_date_key,
+                    billingPeriodStartDateKey: factPayload.billing_period_start_date_key,
+                    billingPeriodEndDateKey: factPayload.billing_period_end_date_key,
+                    billedCost: factPayload.billed_cost,
+                    effectiveCost: factPayload.effective_cost,
+                    listCost: factPayload.list_cost,
+                    usageStartTime: factPayload.usage_start_time,
+                    usageEndTime: factPayload.usage_end_time,
+                    lineItemType: factPayload.line_item_type,
+                    pricingTerm: factPayload.pricing_term,
+                    publicOnDemandCost: factPayload.public_on_demand_cost,
+                    discountAmount: factPayload.discount_amount,
+                    creditAmount: factPayload.credit_amount,
+                    refundAmount: factPayload.refund_amount,
+                    taxCost: factPayload.tax_cost,
+                    consumedQuantity: factPayload.consumed_quantity,
+                    pricingQuantity: factPayload.pricing_quantity,
+                    tagsJson: factPayload.tags_json,
+                  },
+                };
+              } catch (error) {
+                return {
+                  ok: false,
+                  rowNumber,
+                  rawRow,
+                  error,
+                };
+              }
+            }),
+          );
 
-            factRows.push({
-              rowNumber,
-              rawRow: normalizedRow,
-              createPayload: {
-                tenantId: factPayload.tenant_id,
-                billingSourceId: factPayload.billing_source_id,
-                ingestionRunId: factPayload.ingestion_run_id,
-                providerId: factPayload.provider_id,
-                billingAccountKey: factPayload.billing_account_key,
-                subAccountKey: factPayload.sub_account_key,
-                regionKey: factPayload.region_key,
-                serviceKey: factPayload.service_key,
-                resourceKey: factPayload.resource_key,
-                skuKey: factPayload.sku_key,
-                chargeKey: factPayload.charge_key,
-                usageDateKey: factPayload.usage_date_key,
-                billingPeriodStartDateKey: factPayload.billing_period_start_date_key,
-                billingPeriodEndDateKey: factPayload.billing_period_end_date_key,
-                billedCost: factPayload.billed_cost,
-                effectiveCost: factPayload.effective_cost,
-                listCost: factPayload.list_cost,
-                usageStartTime: factPayload.usage_start_time,
-                usageEndTime: factPayload.usage_end_time,
-                lineItemType: factPayload.line_item_type,
-                pricingTerm: factPayload.pricing_term,
-                publicOnDemandCost: factPayload.public_on_demand_cost,
-                discountAmount: factPayload.discount_amount,
-                creditAmount: factPayload.credit_amount,
-                refundAmount: factPayload.refund_amount,
-                taxCost: factPayload.tax_cost,
-                consumedQuantity: factPayload.consumed_quantity,
-                pricingQuantity: factPayload.pricing_quantity,
-                tagsJson: factPayload.tags_json,
-              },
-            });
-          } catch (error) {
+          for (const result of sliceResults) {
+            if (result.ok) {
+              factRows.push({
+                rowNumber: result.rowNumber,
+                rawRow: result.rawRow,
+                createPayload: result.createPayload,
+              });
+              continue;
+            }
+
             rowsFailed += 1;
             const rowError = buildRowErrorFromException({
               runId,
               rawBillingFileId: rawFileId,
-              rowNumber,
-              rawRow,
-              error,
+              rowNumber: result.rowNumber,
+              rawRow: result.rawRow,
+              error: result.error,
             });
             allRowErrors.push(rowError);
             failedReasonCounts[rowError.errorCode] = (failedReasonCounts[rowError.errorCode] ?? 0) + 1;
           }
-        }
 
+          chunkProcessedRows += slice.length;
+          if (chunkProcessedRows % Math.max(100, rowConcurrency) === 0 || chunkProcessedRows === chunk.length) {
+            await setRunState(runId, {
+              status: "normalizing",
+              current_step: "normalizing",
+              rows_read: rowsRead,
+              rows_loaded: rowsLoaded,
+              rows_failed: rowsFailed,
+              total_rows_estimated: rowsRead,
+              progress_percent: PROGRESS_BY_STAGE.normalizing,
+              status_message: `Normalizing ${rawFile.rawStorageKey} (${chunkProcessedRows}/${chunk.length})`,
+              last_heartbeat_at: now(),
+            });
+          }
+        }
+        const mapRowsMs = Date.now() - mapRowsStartedAt;
+
+        const insertStartedAt = Date.now();
         if (factRows.length > 0) {
           await setRunState(runId, {
             status: "inserting_facts",
@@ -324,6 +414,19 @@ export async function processAwsExportParquetRun({ run }) {
           });
 
           rowsLoaded += insertResult.insertedCount;
+
+          if (insertResult.batchFallbackError) {
+            logger.warn("AWS parquet processor: step=fact_insert_batch_fallback", {
+              runId,
+              rawFileId,
+              chunkIndex,
+              batchSize: factRows.length,
+              insertedCount: insertResult.insertedCount,
+              failedCount: insertResult.failedRows.length,
+              errorCode: insertResult.batchFallbackError.errorCode,
+              errorMessage: insertResult.batchFallbackError.errorMessage,
+            });
+          }
 
           if (insertResult.failedRows.length > 0) {
             rowsFailed += insertResult.failedRows.length;
@@ -342,6 +445,7 @@ export async function processAwsExportParquetRun({ run }) {
             }
           }
         }
+        const insertMs = Date.now() - insertStartedAt;
 
         await setRunState(runId, {
           rows_read: rowsRead,
@@ -351,7 +455,30 @@ export async function processAwsExportParquetRun({ run }) {
           status_message: STAGE_MESSAGE.inserting_facts,
           progress_percent: PROGRESS_BY_STAGE.inserting_facts,
         });
+
+        logger.info("AWS parquet processor: step=parse_chunks:chunk_processed", {
+          runId,
+          rawFileId,
+          chunkIndex,
+          chunkSize: chunk.length,
+          cachePrimeMs,
+          mapRowsMs,
+          insertMs,
+          rowsRead,
+          rowsLoaded,
+          rowsFailed,
+        });
+
+        chunkOffset += chunk.length;
       }
+      logger.info("AWS parquet processor: step=parse_chunks:done", {
+        runId,
+        rawFileId,
+        chunkCount: chunkIndex,
+        rowsRead,
+        rowsLoaded,
+        rowsFailed,
+      });
 
       processedDataFiles += 1;
 
@@ -424,6 +551,10 @@ export async function processAwsExportParquetRun({ run }) {
       rowsFailed,
     };
   } catch (error) {
+    logger.error("AWS parquet processor: step=failed", {
+      runId,
+      reason: toErrorMessage(error),
+    });
     await markRunFailed(runId, error, PROGRESS_BY_STAGE.finalizing);
     throw error;
   }
