@@ -1,5 +1,6 @@
 import type { Request, Response } from "express";
 import crypto from "node:crypto";
+import type { Transaction } from "sequelize";
 
 import env from "../../../../config/env.js";
 import { HTTP_STATUS } from "../../../../constants/http-status.js";
@@ -9,8 +10,9 @@ import {
   NotFoundError,
   UnauthorizedError,
 } from "../../../../errors/http-errors.js";
-import { BillingSource, CloudConnectionV2, CloudIntegration, CloudProvider } from "../../../../models/index.js";
+import { BillingSource, CloudConnectionV2, CloudIntegration, CloudProvider, sequelize } from "../../../../models/index.js";
 import { sendSuccess } from "../../../../utils/api-response.js";
+import { logger } from "../../../../utils/logger.js";
 import { parseWithSchema } from "../../../_shared/validation/zod-validate.js";
 import {
   assertCloudAccountIsUnique,
@@ -22,7 +24,11 @@ import {
 } from "./aws-cloudformation-url.js";
 import { runInitialBackfillAfterValidation } from "../exports/aws-export-ingestion.service.js";
 import { validateAwsConnection } from "./aws-connection-validation.service.js";
-import { awsConnectionCallbackSchema, createCloudConnectionSchema } from "./cloud-connections.schema.js";
+import {
+  type AwsConnectionCallbackPayload,
+  awsConnectionCallbackSchema,
+  createCloudConnectionSchema,
+} from "./cloud-connections.schema.js";
 
 const requireUserId = (req: Request) => {
   const userId = req.auth?.user.id;
@@ -49,8 +55,34 @@ const PROVIDER_NAME_BY_CODE: Record<string, string> = {
 };
 
 const DEFAULT_AWS_EXPORT_PREFIX = "kcx/data-exports/cur2";
+const DEFAULT_AWS_CALLBACK_CADENCE = "hourly";
+const AWS_CALLBACK_DELETE_EVENT_TYPE = "stack_delete";
 const buildDefaultAwsExportName = (connectionId: string) => `KCX-CUR2-${connectionId.replace(/-/g, "").slice(0, 10)}`;
 type CloudConnectionV2Instance = InstanceType<typeof CloudConnectionV2>;
+type BillingSourceInstance = InstanceType<typeof BillingSource>;
+
+type AwsCallbackLogContext = {
+  connectionId: string;
+  accountId: string;
+  stackId: string;
+  exportName: string;
+  eventType: string;
+};
+
+type BillingSourceUpsertResult = {
+  billingSource: BillingSourceInstance;
+  changed: boolean;
+};
+
+type AwsCallbackAcceptanceResult = {
+  connection: CloudConnectionV2Instance;
+  billingSource: BillingSourceInstance;
+  cadence: string;
+  shouldScheduleValidation: boolean;
+  logContext: AwsCallbackLogContext;
+};
+
+const postCallbackValidationInFlight = new Set<string>();
 
 const ensureAwsAutoSetupFields = async (connection: CloudConnectionV2Instance): Promise<CloudConnectionV2Instance> => {
   const patch: Partial<{
@@ -90,6 +122,446 @@ const resolveBillingSourceStatusAfterValidation = (
   if (currentStatus === "active" || lastFileReceivedAt) return "active";
   return "pending_first_file";
 };
+
+const normalizeCadence = (value: string | null | undefined): string => {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  return normalized || DEFAULT_AWS_CALLBACK_CADENCE;
+};
+
+const isDeleteCallbackEvent = (eventType: string): boolean =>
+  eventType.trim().toLowerCase() === AWS_CALLBACK_DELETE_EVENT_TYPE;
+
+const hasConnectionCoreChanges = (
+  connection: CloudConnectionV2Instance,
+  payload: AwsConnectionCallbackPayload,
+): boolean => {
+  return (
+    String(connection.cloudAccountId ?? "").trim() !== payload.account_id.trim() ||
+    String(connection.roleArn ?? "").trim() !== payload.role_arn.trim() ||
+    String(connection.stackId ?? "").trim() !== payload.stack_id.trim() ||
+    String(connection.exportName ?? "").trim() !== payload.export_name.trim() ||
+    String(connection.exportBucket ?? "").trim() !== payload.export_bucket.trim() ||
+    String(connection.exportPrefix ?? "").trim() !== payload.export_prefix.trim() ||
+    String(connection.exportRegion ?? "").trim() !== payload.export_region.trim() ||
+    String(connection.exportArn ?? "").trim() !== payload.export_arn.trim()
+  );
+};
+
+async function findConnectionByCallbackToken(callbackToken: string): Promise<CloudConnectionV2Instance> {
+  const normalizedCallbackToken = callbackToken.trim();
+  const connection = await CloudConnectionV2.findOne({
+    where: { callbackToken: normalizedCallbackToken },
+  });
+
+  if (!connection) {
+    throw new NotFoundError("Invalid callback token");
+  }
+
+  return connection;
+}
+
+async function upsertBillingSourceFromCallback(input: {
+  connection: CloudConnectionV2Instance;
+  payload: AwsConnectionCallbackPayload;
+  cadence: string;
+  status?: string;
+  transaction: Transaction;
+}): Promise<BillingSourceUpsertResult> {
+  const { connection, payload, cadence, status, transaction } = input;
+
+  const existingBillingSource = await BillingSource.findOne({
+    where: {
+      tenantId: connection.tenantId,
+      cloudConnectionId: connection.id,
+      sourceType: payload.source_type,
+    },
+    transaction,
+    lock: transaction.LOCK.UPDATE,
+  });
+
+  const billingSourcePayload = {
+    tenantId: connection.tenantId,
+    cloudConnectionId: connection.id,
+    cloudProviderId: connection.providerId,
+    sourceName: `AWS Data Exports (${payload.export_name.trim()})`,
+    sourceType: payload.source_type,
+    setupMode: payload.setup_mode,
+    format: payload.format,
+    schemaType: payload.schema_type,
+    bucketName: payload.export_bucket.trim(),
+    pathPrefix: payload.export_prefix.trim(),
+    cadence,
+    status: status ?? "awaiting_validation",
+  };
+
+  if (!existingBillingSource) {
+    const created = await BillingSource.create(billingSourcePayload, { transaction });
+    return { billingSource: created, changed: true };
+  }
+
+  const changed =
+    String(existingBillingSource.sourceName ?? "").trim() !== billingSourcePayload.sourceName ||
+    String(existingBillingSource.format ?? "").trim() !== billingSourcePayload.format ||
+    String(existingBillingSource.schemaType ?? "").trim() !== billingSourcePayload.schemaType ||
+    String(existingBillingSource.bucketName ?? "").trim() !== billingSourcePayload.bucketName ||
+    String(existingBillingSource.pathPrefix ?? "").trim() !== billingSourcePayload.pathPrefix ||
+    String(existingBillingSource.cadence ?? "").trim().toLowerCase() !== cadence ||
+    (status !== undefined && String(existingBillingSource.status ?? "").trim() !== status);
+
+  const billingSource = await existingBillingSource.update(
+    {
+      ...billingSourcePayload,
+      status: status ?? existingBillingSource.status,
+    },
+    { transaction },
+  );
+  return { billingSource, changed };
+}
+
+async function handleAwsDeleteCallback(input: {
+  connection: CloudConnectionV2Instance;
+  payload: AwsConnectionCallbackPayload;
+  cadence: string;
+}): Promise<AwsCallbackAcceptanceResult> {
+  const { connection, payload, cadence } = input;
+  const now = new Date();
+  const logContext: AwsCallbackLogContext = {
+    connectionId: connection.id,
+    accountId: payload.account_id.trim(),
+    stackId: payload.stack_id.trim(),
+    exportName: payload.export_name.trim(),
+    eventType: payload.event_type,
+  };
+
+  const billingSource = await sequelize.transaction(async (transaction) => {
+    await connection.update(
+      {
+        cloudAccountId: payload.account_id.trim(),
+        roleArn: payload.role_arn.trim(),
+        stackId: payload.stack_id.trim(),
+        exportName: payload.export_name.trim(),
+        exportBucket: payload.export_bucket.trim(),
+        exportPrefix: payload.export_prefix.trim(),
+        exportRegion: payload.export_region.trim(),
+        exportArn: payload.export_arn.trim(),
+        status: "suspended",
+        errorMessage: null,
+      },
+      { transaction },
+    );
+
+    const upserted = await upsertBillingSourceFromCallback({
+      connection,
+      payload,
+      cadence,
+      status: "suspended",
+      transaction,
+    });
+
+    return upserted.billingSource;
+  });
+
+  await syncAutomaticCloudIntegration(connection, {
+    status: "suspended",
+    statusMessage: "Disconnected",
+    errorMessage: null,
+    lastCheckedAt: now,
+  });
+
+  logger.info("AWS setup callback accepted (delete)", {
+    ...logContext,
+    cadence,
+    billingSourceId: billingSource.id,
+    status: "suspended",
+  });
+
+  return {
+    connection,
+    billingSource,
+    cadence,
+    shouldScheduleValidation: false,
+    logContext,
+  };
+}
+
+async function acceptAwsCallback(input: {
+  connection: CloudConnectionV2Instance;
+  payload: AwsConnectionCallbackPayload;
+  cadence: string;
+}): Promise<AwsCallbackAcceptanceResult> {
+  const { connection, payload, cadence } = input;
+  const now = new Date();
+  const logContext: AwsCallbackLogContext = {
+    connectionId: connection.id,
+    accountId: payload.account_id.trim(),
+    stackId: payload.stack_id.trim(),
+    exportName: payload.export_name.trim(),
+    eventType: payload.event_type,
+  };
+
+  const coreConnectionChanged = hasConnectionCoreChanges(connection, payload);
+  const shouldScheduleValidation =
+    coreConnectionChanged ||
+    !connection.lastValidatedAt ||
+    connection.status === "draft" ||
+    connection.status === "connecting" ||
+    connection.status === "awaiting_validation";
+
+  const nextConnectionStatus = shouldScheduleValidation ? "awaiting_validation" : connection.status;
+  const nextBillingSourceStatus = shouldScheduleValidation ? "awaiting_validation" : undefined;
+
+  const { billingSource } = await sequelize.transaction(async (transaction) => {
+    await connection.update(
+      {
+        cloudAccountId: payload.account_id.trim(),
+        roleArn: payload.role_arn.trim(),
+        stackId: payload.stack_id.trim(),
+        exportName: payload.export_name.trim(),
+        exportBucket: payload.export_bucket.trim(),
+        exportPrefix: payload.export_prefix.trim(),
+        exportRegion: payload.export_region.trim(),
+        exportArn: payload.export_arn.trim(),
+        status: nextConnectionStatus,
+        connectedAt: connection.connectedAt ?? now,
+        errorMessage: shouldScheduleValidation ? null : connection.errorMessage,
+      },
+      { transaction },
+    );
+
+    return upsertBillingSourceFromCallback({
+      connection,
+      payload,
+      cadence,
+      status: nextBillingSourceStatus,
+      transaction,
+    });
+  });
+
+  await syncAutomaticCloudIntegration(connection, {
+    status:
+      nextConnectionStatus === "suspended"
+        ? "suspended"
+        : nextConnectionStatus === "failed"
+          ? "failed"
+          : shouldScheduleValidation
+            ? "awaiting_validation"
+            : connection.status === "active_with_warnings"
+              ? "active_with_warnings"
+              : "active",
+    statusMessage:
+      nextConnectionStatus === "suspended"
+        ? "Disconnected"
+        : nextConnectionStatus === "failed"
+          ? "Connection Failed"
+          : shouldScheduleValidation
+            ? "Awaiting Validation"
+            : connection.status === "active_with_warnings"
+              ? "Warnings Detected"
+              : "Pending First Ingest",
+    errorMessage: shouldScheduleValidation ? null : connection.errorMessage,
+    lastCheckedAt: now,
+    ...(shouldScheduleValidation ? {} : { lastValidatedAt: connection.lastValidatedAt ?? null }),
+  });
+
+  logger.info("AWS setup callback accepted", {
+    ...logContext,
+    cadence,
+    shouldScheduleValidation,
+    billingSourceId: billingSource.id,
+    status: nextConnectionStatus,
+  });
+
+  return {
+    connection,
+    billingSource,
+    cadence,
+    shouldScheduleValidation,
+    logContext,
+  };
+}
+
+async function processAcceptedAwsCallback(accepted: AwsCallbackAcceptanceResult): Promise<void> {
+  const { connection, billingSource, logContext } = accepted;
+  const now = new Date();
+
+  logger.info("AWS post-callback validation started", {
+    ...logContext,
+    billingSourceId: billingSource.id,
+  });
+
+  try {
+    await assertCloudAccountIsUnique({
+      providerId: String(connection.providerId),
+      cloudAccountId: logContext.accountId,
+      excludeDetailRecordType: "automatic_cloud_connection",
+      excludeDetailRecordId: connection.id,
+    });
+  } catch (error) {
+    if (error instanceof DuplicateCloudConnectionError) {
+      await connection.update({
+        status: "failed",
+        errorMessage: error.message,
+        lastValidatedAt: now,
+      });
+      await billingSource.update({
+        status: "failed",
+        lastValidatedAt: now,
+      });
+      await syncAutomaticCloudIntegration(connection, {
+        status: "failed",
+        statusMessage: "Connection Failed",
+        errorMessage: error.message,
+        lastValidatedAt: now,
+        lastCheckedAt: now,
+      });
+      logger.warn("AWS post-callback validation failed with duplicate cloud account", {
+        ...logContext,
+        billingSourceId: billingSource.id,
+        reason: error.message,
+      });
+      return;
+    }
+    throw error;
+  }
+
+  try {
+    const validationResult = await validateAwsConnection(connection.id);
+    const validationStatus = String(validationResult.status);
+    const isValidationSuccessful =
+      validationStatus === "validated" || validationStatus === "active" || validationStatus === "active_with_warnings";
+
+    if (!isValidationSuccessful) {
+      await billingSource.update({
+        status: "failed",
+        lastValidatedAt: validationResult.lastValidatedAt,
+      });
+      await syncAutomaticCloudIntegration(connection, {
+        status: "failed",
+        statusMessage: "Connection Failed",
+        errorMessage: validationResult.errorMessage,
+        lastValidatedAt: validationResult.lastValidatedAt,
+        lastCheckedAt: validationResult.lastValidatedAt,
+      });
+      logger.warn("AWS post-callback validation finished with failure", {
+        ...logContext,
+        billingSourceId: billingSource.id,
+        validationStatus,
+        error: validationResult.errorMessage,
+      });
+      return;
+    }
+
+    try {
+      const initialBackfillSummary = await runInitialBackfillAfterValidation(connection.id);
+      const isFirstFilePending = initialBackfillSummary.filesFound === 0;
+      const billingStatus = isFirstFilePending ? "waiting_for_first_file" : "syncing";
+
+      await billingSource.update({
+        status: billingStatus,
+        lastValidatedAt: validationResult.lastValidatedAt,
+      });
+
+      await connection.update({
+        status: validationStatus === "active_with_warnings" ? "active_with_warnings" : "active",
+        lastValidatedAt: validationResult.lastValidatedAt,
+        errorMessage: validationResult.errorMessage,
+      });
+
+      await syncAutomaticCloudIntegration(connection, {
+        status: validationResult.status,
+        statusMessage:
+          validationResult.status === "active_with_warnings" ? "Warnings Detected" : "Pending First Ingest",
+        errorMessage: validationResult.errorMessage,
+        lastValidatedAt: validationResult.lastValidatedAt,
+        lastCheckedAt: validationResult.lastValidatedAt,
+      });
+
+      logger.info("AWS post-callback validation and backfill completed", {
+        ...logContext,
+        billingSourceId: billingSource.id,
+        validationStatus: validationResult.status,
+        backfill: {
+          filesFound: initialBackfillSummary.filesFound,
+          filesQueued: initialBackfillSummary.filesQueued,
+          filesSkipped: initialBackfillSummary.filesSkipped,
+        },
+      });
+      return;
+    } catch (error) {
+      const backfillError = error instanceof Error ? error.message : String(error);
+      await connection.update({
+        status: "active_with_warnings",
+        lastValidatedAt: validationResult.lastValidatedAt,
+        errorMessage: `Initial backfill failed: ${backfillError}`,
+      });
+      await billingSource.update({
+        status: "failed",
+        lastValidatedAt: validationResult.lastValidatedAt,
+      });
+      await syncAutomaticCloudIntegration(connection, {
+        status: "active_with_warnings",
+        statusMessage: "Warnings Detected",
+        errorMessage: `Initial backfill failed: ${backfillError}`,
+        lastValidatedAt: validationResult.lastValidatedAt,
+        lastCheckedAt: validationResult.lastValidatedAt,
+      });
+      logger.error("AWS initial backfill failed after successful validation", {
+        ...logContext,
+        billingSourceId: billingSource.id,
+        error: backfillError,
+      });
+      return;
+    }
+  } catch (error) {
+    const validationError = error instanceof Error ? error.message : String(error);
+    const failedAt = new Date();
+    await connection.update({
+      status: "failed",
+      lastValidatedAt: failedAt,
+      errorMessage: validationError,
+    });
+    await billingSource.update({
+      status: "failed",
+      lastValidatedAt: failedAt,
+    });
+    await syncAutomaticCloudIntegration(connection, {
+      status: "failed",
+      statusMessage: "Connection Failed",
+      errorMessage: validationError,
+      lastValidatedAt: failedAt,
+      lastCheckedAt: failedAt,
+    });
+    logger.error("AWS post-callback validation crashed", {
+      ...logContext,
+      billingSourceId: billingSource.id,
+      error: validationError,
+    });
+  }
+}
+
+function schedulePostCallbackValidation(accepted: AwsCallbackAcceptanceResult): void {
+  const { connection, logContext } = accepted;
+
+  if (!accepted.shouldScheduleValidation) {
+    logger.info("AWS post-callback validation skipped (idempotent)", {
+      ...logContext,
+      reason: isDeleteCallbackEvent(logContext.eventType) ? "delete_event" : "already_validated_and_unchanged",
+    });
+    return;
+  }
+
+  if (postCallbackValidationInFlight.has(connection.id)) {
+    logger.info("AWS post-callback validation already in flight", logContext);
+    return;
+  }
+
+  postCallbackValidationInFlight.add(connection.id);
+  setImmediate(() => {
+    void processAcceptedAwsCallback(accepted).finally(() => {
+      postCallbackValidationInFlight.delete(connection.id);
+    });
+  });
+}
 
 export async function handleCreateCloudConnection(req: Request, res: Response): Promise<void> {
   const userId = requireUserId(req);
@@ -319,175 +791,52 @@ export async function handleGetAwsCloudFormationSetupUrl(req: Request, res: Resp
 
 export async function handleAwsConnectionCallback(req: Request, res: Response): Promise<void> {
   const payload = parseWithSchema(awsConnectionCallbackSchema, req.body);
+  const connection = await findConnectionByCallbackToken(payload.callback_token);
+  const cadence = normalizeCadence(payload.cadence);
 
-  const connection = await CloudConnectionV2.findOne({
-    where: { callbackToken: payload.callback_token.trim() },
-  });
-
-  if (!connection) {
-    throw new NotFoundError("Invalid callback token");
-  }
-
-  const now = new Date();
-  const normalizedAccountId = payload.account_id.trim();
-  try {
-    await assertCloudAccountIsUnique({
-      providerId: String(connection.providerId),
-      cloudAccountId: normalizedAccountId,
-      excludeDetailRecordType: "automatic_cloud_connection",
-      excludeDetailRecordId: connection.id,
-    });
-  } catch (error) {
-    if (error instanceof DuplicateCloudConnectionError) {
-      await connection.update({
-        status: "failed",
-        errorMessage: error.message,
-        lastValidatedAt: now,
-      });
-      await syncAutomaticCloudIntegration(connection, {
-        status: "failed",
-        statusMessage: "Connection Failed",
-        errorMessage: error.message,
-        lastValidatedAt: now,
-        lastCheckedAt: now,
-      });
-    }
-    throw error;
-  }
-
-  await connection.update({
-    cloudAccountId: normalizedAccountId,
-    roleArn: payload.role_arn.trim(),
+  logger.info("AWS setup callback received", {
+    connectionId: connection.id,
     stackId: payload.stack_id.trim(),
+    accountId: payload.account_id.trim(),
     exportName: payload.export_name.trim(),
-    exportBucket: payload.export_bucket.trim(),
-    exportPrefix: payload.export_prefix.trim(),
-    exportRegion: payload.export_region.trim(),
-    exportArn: payload.export_arn.trim(),
-    status: "awaiting_validation",
-    connectedAt: now,
-    errorMessage: null,
+    eventType: payload.event_type,
+    cadence,
   });
 
-  await syncAutomaticCloudIntegration(connection, {
-    statusMessage: "Awaiting Validation",
-    errorMessage: null,
-    lastCheckedAt: now,
-  });
-
-  const existingBillingSource = await BillingSource.findOne({
-    where: {
-      tenantId: connection.tenantId,
-      cloudConnectionId: connection.id,
-      sourceType: payload.source_type,
-    },
-  });
-
-  const billingSourcePayload = {
-    tenantId: connection.tenantId,
-    cloudConnectionId: connection.id,
-    cloudProviderId: connection.providerId,
-    sourceName: `AWS Data Exports (${payload.export_name.trim()})`,
-    sourceType: payload.source_type,
-    setupMode: payload.setup_mode,
-    format: payload.format,
-    schemaType: payload.schema_type,
-    bucketName: payload.export_bucket.trim(),
-    pathPrefix: payload.export_prefix.trim(),
-    cadence: "daily",
-    status: "awaiting_validation",
-  };
-
-  const billingSource = existingBillingSource
-    ? await existingBillingSource.update(billingSourcePayload)
-    : await BillingSource.create(billingSourcePayload);
-
-  const validationResult = await validateAwsConnection(connection.id);
-  const validationStatus = String(validationResult.status);
-  const isValidationSuccessful =
-    validationStatus === "validated" || validationStatus === "active" || validationStatus === "active_with_warnings";
-
-  let initialBackfillSummary: { filesFound: number; filesQueued: number; filesSkipped: number } | null = null;
-  let callbackStatus: string = validationStatus;
-
-  if (isValidationSuccessful) {
-    initialBackfillSummary = await runInitialBackfillAfterValidation(connection.id);
-
-    const isFirstFilePending = initialBackfillSummary.filesFound === 0;
-    const nextBillingSourceStatus = isFirstFilePending ? "waiting_for_first_file" : "syncing";
-    const nextBillingSourceStatusMessage = isFirstFilePending
-      ? "Waiting for first export file from AWS"
-      : "Initial backfill queued";
-
-    const billingSourcePatch: Record<string, unknown> = {
-      status: nextBillingSourceStatus,
-      lastValidatedAt: validationResult.lastValidatedAt,
-    };
-
-    if ("statusMessage" in BillingSource.getAttributes()) {
-      billingSourcePatch.statusMessage = nextBillingSourceStatusMessage;
-    }
-
-    await billingSource.update(billingSourcePatch);
-
-    await connection.update({
-      status: "active",
-      lastValidatedAt: validationResult.lastValidatedAt,
-      errorMessage: validationResult.errorMessage,
-    });
-
-    callbackStatus = nextBillingSourceStatus;
-  } else {
-    await connection.update({
-      status: "failed",
-      lastValidatedAt: validationResult.lastValidatedAt,
-      errorMessage: validationResult.errorMessage,
-    });
-
-    await billingSource.update({
-      status: "failed",
-      lastValidatedAt: validationResult.lastValidatedAt,
-    });
-
-    callbackStatus = "failed";
-  }
-
-  await syncAutomaticCloudIntegration(connection, {
-    status: validationResult.status,
-    statusMessage:
-      validationResult.status === "active"
-        ? "Pending First Ingest"
-        : validationResult.status === "active_with_warnings"
-          ? "Warnings Detected"
-          : "Connection Failed",
-    errorMessage: validationResult.errorMessage,
-    lastValidatedAt: validationResult.lastValidatedAt,
-    lastCheckedAt: validationResult.lastValidatedAt,
-  });
+  const accepted = isDeleteCallbackEvent(payload.event_type)
+    ? await handleAwsDeleteCallback({
+        connection,
+        payload,
+        cadence,
+      })
+    : await acceptAwsCallback({
+        connection,
+        payload,
+        cadence,
+      });
 
   sendSuccess({
     res,
     req,
     statusCode: HTTP_STATUS.OK,
-    message: "AWS callback processed",
+    message: "AWS callback accepted",
     data: {
-      id: connection.id,
-      status: callbackStatus,
+      id: accepted.connection.id,
+      status: accepted.connection.status,
+      accepted: true,
+      event_type: payload.event_type,
+      cadence: accepted.cadence,
       stack_id: payload.stack_id.trim(),
       export_name: payload.export_name.trim(),
       export_bucket: payload.export_bucket.trim(),
       export_prefix: payload.export_prefix.trim(),
       format: payload.format,
-      error_message: validationResult.errorMessage,
-      initial_backfill: initialBackfillSummary
-        ? {
-            files_found: initialBackfillSummary.filesFound,
-            files_queued: initialBackfillSummary.filesQueued,
-            files_skipped: initialBackfillSummary.filesSkipped,
-          }
-        : null,
+      error_message: accepted.connection.errorMessage ?? null,
+      async_validation_scheduled: accepted.shouldScheduleValidation,
     },
   });
+
+  schedulePostCallbackValidation(accepted);
 }
 
 export async function handleValidateCloudConnection(req: Request, res: Response): Promise<void> {
