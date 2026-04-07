@@ -1,11 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useState } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { PageSection } from "../../common/components";
-import { useBudgetQuery, useDashboardFiltersQuery } from "../../hooks/useDashboardQueries";
-
-type ScopeType = "overall" | "service" | "region" | "account";
-type BudgetStatus = "active" | "inactive";
-type CompareMetric = "billed-cost" | "effective-cost" | "list-cost";
+import { dashboardApi, type BudgetItem, type BudgetStatus, type BudgetUpsertPayload } from "../../api/dashboardApi";
+import { useBudgetQuery } from "../../hooks/useDashboardQueries";
+import { useDashboardScope } from "../../hooks/useDashboardScope";
 
 type BudgetFormState = {
   budgetName: string;
@@ -14,31 +13,14 @@ type BudgetFormState = {
   startMonth: string;
   endMonth: string;
   ongoing: boolean;
-  scopeType: ScopeType;
-  scopeValue: string;
-  status: BudgetStatus;
-};
-
-type BudgetRow = {
-  id: string;
-  budgetName: string;
-  budgetAmount: number;
-  periodType: "monthly";
-  startMonth: string;
-  endMonth: string;
-  ongoing: boolean;
-  scopeType: ScopeType;
-  scopeValue: string;
-  compareMetric: CompareMetric;
-  threshold: number;
-  currentSpend: number;
   status: BudgetStatus;
 };
 
 const currencyFormatter = new Intl.NumberFormat("en-US", {
   style: "currency",
   currency: "USD",
-  maximumFractionDigits: 0,
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
 });
 
 const percentFormatter = new Intl.NumberFormat("en-US", {
@@ -56,6 +38,19 @@ function toLabelCase(value: string): string {
   return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
+function resolveBudgetHealth(usagePercent: number, thresholdPercent: number): {
+  label: "In Budget" | "Warning" | "Over Budget";
+  className: "is-safe" | "is-warning" | "is-over";
+} {
+  if (usagePercent >= 1) {
+    return { label: "Over Budget", className: "is-over" };
+  }
+  if (usagePercent >= thresholdPercent / 100) {
+    return { label: "Warning", className: "is-warning" };
+  }
+  return { label: "In Budget", className: "is-safe" };
+}
+
 function createInitialFormState(): BudgetFormState {
   const now = new Date();
   const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
@@ -67,152 +62,104 @@ function createInitialFormState(): BudgetFormState {
     startMonth: formatYearMonth(now),
     endMonth: formatYearMonth(nextMonth),
     ongoing: false,
-    scopeType: "overall",
-    scopeValue: "All Resources",
     status: "active",
   };
 }
 
-const initialBudgets: BudgetRow[] = [
-  {
-    id: "bud-1",
-    budgetName: "Global Monthly Guardrail",
-    budgetAmount: 32000,
-    periodType: "monthly",
-    startMonth: "2026-04",
-    endMonth: "",
-    ongoing: true,
-    scopeType: "overall",
-    scopeValue: "All Resources",
-    compareMetric: "billed-cost",
-    threshold: 80,
-    currentSpend: 19860,
-    status: "active",
-  },
-  {
-    id: "bud-2",
-    budgetName: "Compute Services",
-    budgetAmount: 18000,
-    periodType: "monthly",
-    startMonth: "2026-04",
-    endMonth: "2026-12",
-    ongoing: false,
-    scopeType: "service",
-    scopeValue: "EC2",
-    compareMetric: "billed-cost",
-    threshold: 85,
-    currentSpend: 14240,
-    status: "active",
-  },
-  {
-    id: "bud-3",
-    budgetName: "US-East Spend",
-    budgetAmount: 9500,
-    periodType: "monthly",
-    startMonth: "2026-03",
-    endMonth: "2026-11",
-    ongoing: false,
-    scopeType: "region",
-    scopeValue: "us-east-1",
-    compareMetric: "billed-cost",
-    threshold: 75,
-    currentSpend: 7425,
-    status: "inactive",
-  },
-];
-
 export default function BudgetPage() {
+  const queryClient = useQueryClient();
+  const { scope } = useDashboardScope();
   const budgetQuery = useBudgetQuery();
-  const filtersQuery = useDashboardFiltersQuery();
 
   const [form, setForm] = useState<BudgetFormState>(createInitialFormState);
   const [selectedBudgetId, setSelectedBudgetId] = useState<string | null>(null);
   const [isBudgetModalOpen, setIsBudgetModalOpen] = useState(false);
-  const [budgets, setBudgets] = useState<BudgetRow[]>(initialBudgets);
   const [currentPage, setCurrentPage] = useState(1);
-  const rowsPerPage = 5;
+  const rowsPerPage = 10;
+  const budgets = budgetQuery.data?.items ?? [];
 
-  const scopeOptions = useMemo(() => {
-    if (form.scopeType === "overall") {
-      return ["All Resources"];
-    }
+  const invalidateBudgetQuery = async () => {
+    await queryClient.invalidateQueries({ queryKey: ["dashboard", "budget"] });
+  };
 
-    if (form.scopeType === "service") {
-      return (filtersQuery.data?.services ?? []).map((item) => item.name);
-    }
+  const createBudgetMutation = useMutation({
+    mutationFn: async (payload: BudgetUpsertPayload) => {
+      if (!scope) {
+        throw new Error("Dashboard scope is not resolved yet");
+      }
+      return dashboardApi.createBudget(scope, payload);
+    },
+    onSuccess: async () => {
+      await invalidateBudgetQuery();
+      setCurrentPage(1);
+      onReset();
+      setIsBudgetModalOpen(false);
+    },
+  });
 
-    if (form.scopeType === "region") {
-      return (filtersQuery.data?.regions ?? []).map((item) => item.name);
-    }
+  const updateBudgetMutation = useMutation({
+    mutationFn: async ({ budgetId, payload }: { budgetId: string; payload: BudgetUpsertPayload }) => {
+      if (!scope) {
+        throw new Error("Dashboard scope is not resolved yet");
+      }
+      return dashboardApi.updateBudget(scope, budgetId, payload);
+    },
+    onSuccess: async () => {
+      await invalidateBudgetQuery();
+      onReset();
+      setIsBudgetModalOpen(false);
+    },
+  });
 
-    return (filtersQuery.data?.accounts ?? []).map((item) => item.name);
-  }, [filtersQuery.data?.accounts, filtersQuery.data?.regions, filtersQuery.data?.services, form.scopeType]);
-
-  useEffect(() => {
-    if (scopeOptions.length === 0) return;
-    if (scopeOptions.includes(form.scopeValue)) return;
-
-    setForm((current) => ({
-      ...current,
-      scopeValue: scopeOptions[0] ?? "",
-    }));
-  }, [form.scopeValue, scopeOptions]);
+  const updateStatusMutation = useMutation({
+    mutationFn: async ({ budgetId, status }: { budgetId: string; status: BudgetStatus }) => {
+      if (!scope) {
+        throw new Error("Dashboard scope is not resolved yet");
+      }
+      return dashboardApi.updateBudgetStatus(scope, budgetId, status);
+    },
+    onSuccess: async () => {
+      await invalidateBudgetQuery();
+    },
+  });
 
   const formCanSubmit =
     form.budgetName.trim().length > 0 &&
     Number(form.budgetAmount) > 0 &&
     form.startMonth.trim().length > 0 &&
-    (form.ongoing || form.endMonth.trim().length > 0) &&
-    form.scopeValue.trim().length > 0;
+    (form.ongoing || form.endMonth.trim().length > 0);
 
   const onReset = () => {
     setForm(createInitialFormState());
     setSelectedBudgetId(null);
   };
 
-  const mapFormToBudget = (currentSpend: number, id: string): BudgetRow => ({
-    id,
+  const buildBudgetPayload = (): BudgetUpsertPayload => ({
     budgetName: form.budgetName.trim(),
     budgetAmount: Number(form.budgetAmount),
-    periodType: form.periodType,
+    periodType: "monthly",
     startMonth: form.startMonth,
     endMonth: form.ongoing ? "" : form.endMonth,
     ongoing: form.ongoing,
-    scopeType: form.scopeType,
-    scopeValue: form.scopeValue,
-    compareMetric: "billed-cost",
-    threshold: 80,
-    currentSpend,
+    scopeType: "overall",
+    scopeValue: "All Resources",
     status: form.status,
   });
 
-  const onSaveBudget = () => {
+  const onSaveBudget = async () => {
     if (!formCanSubmit) return;
-
-    const amount = Number(form.budgetAmount);
-    const newBudget = mapFormToBudget(amount * 0.35, `bud-${Date.now()}`);
-    setBudgets((current) => [newBudget, ...current]);
-    setCurrentPage(1);
-    onReset();
-    setIsBudgetModalOpen(false);
+    await createBudgetMutation.mutateAsync(buildBudgetPayload());
   };
 
-  const onUpdateBudget = () => {
+  const onUpdateBudget = async () => {
     if (!selectedBudgetId || !formCanSubmit) return;
-
-    setBudgets((current) =>
-      current.map((item) => {
-        if (item.id !== selectedBudgetId) {
-          return item;
-        }
-        return mapFormToBudget(item.currentSpend, item.id);
-      }),
-    );
-    onReset();
-    setIsBudgetModalOpen(false);
+    await updateBudgetMutation.mutateAsync({
+      budgetId: selectedBudgetId,
+      payload: buildBudgetPayload(),
+    });
   };
 
-  const onEditBudget = (budget: BudgetRow) => {
+  const onEditBudget = (budget: BudgetItem) => {
     setSelectedBudgetId(budget.id);
     setForm({
       budgetName: budget.budgetName,
@@ -221,19 +168,17 @@ export default function BudgetPage() {
       startMonth: budget.startMonth,
       endMonth: budget.endMonth,
       ongoing: budget.ongoing,
-      scopeType: budget.scopeType,
-      scopeValue: budget.scopeValue,
       status: budget.status,
     });
     setIsBudgetModalOpen(true);
   };
 
-  const onToggleStatus = (budgetId: string) => {
-    setBudgets((current) =>
-      current.map((budget) =>
-        budget.id === budgetId ? { ...budget, status: budget.status === "active" ? "inactive" : "active" } : budget,
-      ),
-    );
+  const onToggleStatus = async (budget: BudgetItem) => {
+    const nextStatus: BudgetStatus = budget.status === "active" ? "inactive" : "active";
+    await updateStatusMutation.mutateAsync({
+      budgetId: budget.id,
+      status: nextStatus,
+    });
   };
 
   const totalRows = budgets.length;
@@ -243,11 +188,14 @@ export default function BudgetPage() {
   const endRow = totalRows > 0 ? Math.min(safePage * rowsPerPage, totalRows) : 0;
   const visibleBudgets = budgets.slice((safePage - 1) * rowsPerPage, safePage * rowsPerPage);
 
+  const isSubmitting =
+    createBudgetMutation.isPending || updateBudgetMutation.isPending || updateStatusMutation.isPending;
+
   return (
     <div className="dashboard-page budget-page">
       <PageSection
         title="Budget Setup"
-        description="Open the modal form to create a new budget policy or update an existing one."
+        description="Create and manage budgets to control cloud spend by scope, time period, and status from one place."
         actions={
           <button
             type="button"
@@ -257,7 +205,7 @@ export default function BudgetPage() {
               setIsBudgetModalOpen(true);
             }}
           >
-            Open Budget Setup Form
+            + Create Budget
           </button>
         }
         className="budget-setup-section"
@@ -276,7 +224,7 @@ export default function BudgetPage() {
         >
           <DialogContent className="budget-setup-dialog">
             <DialogHeader>
-              <DialogTitle>{selectedBudgetId ? "Update Budget Policy" : "Create Budget Policy"}</DialogTitle>
+              <DialogTitle>{selectedBudgetId ? "Update Budget" : "Create Budget"}</DialogTitle>
             </DialogHeader>
 
             <form
@@ -374,23 +322,6 @@ export default function BudgetPage() {
               <section className="budget-form-section">
                 <div className="budget-form-grid">
                   <label className="budget-field">
-                    <span className="budget-field__label">Scope Type</span>
-                    <select
-                      className="budget-field__control"
-                      value={form.scopeType}
-                      onChange={(event) => {
-                        const scopeType = event.target.value as ScopeType;
-                        setForm((current) => ({ ...current, scopeType, scopeValue: "" }));
-                      }}
-                    >
-                      <option value="overall">Overall</option>
-                      <option value="service">Service</option>
-                      <option value="region">Region</option>
-                      <option value="account">Account</option>
-                    </select>
-                  </label>
-
-                  <label className="budget-field">
                     <span className="budget-field__label">Status</span>
                     <select
                       className="budget-field__control"
@@ -405,20 +336,40 @@ export default function BudgetPage() {
               </section>
 
               <div className="budget-actions">
-                <button className="budget-action-button budget-action-button--primary" type="submit" disabled={!formCanSubmit}>
-                  Save Budget
-                </button>
-                <button className="budget-action-button budget-action-button--ghost" type="button" onClick={onReset}>
-                  Reset
-                </button>
-                <button
-                  className="budget-action-button budget-action-button--accent"
-                  type="button"
-                  disabled={!selectedBudgetId || !formCanSubmit}
-                  onClick={onUpdateBudget}
-                >
-                  Update Budget
-                </button>
+                {selectedBudgetId ? (
+                  <>
+                    <button
+                      className="budget-action-button budget-action-button--ghost"
+                      type="button"
+                      onClick={() => {
+                        onReset();
+                        setIsBudgetModalOpen(false);
+                      }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      className="budget-action-button budget-action-button--primary"
+                      type="submit"
+                      disabled={!formCanSubmit || isSubmitting}
+                    >
+                      Save Changes
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button className="budget-action-button budget-action-button--ghost" type="button" onClick={onReset}>
+                      Clear Form
+                    </button>
+                    <button
+                      className="budget-action-button budget-action-button--primary"
+                      type="submit"
+                      disabled={!formCanSubmit || isSubmitting}
+                    >
+                      Create Budget
+                    </button>
+                  </>
+                )}
               </div>
             </form>
           </DialogContent>
@@ -429,13 +380,11 @@ export default function BudgetPage() {
             <thead>
               <tr>
                 <th>Budget Name</th>
-                <th>Scope Type</th>
-                <th>Scope Value</th>
                 <th>Period</th>
                 <th>Budget Amount</th>
                 <th>Current Spend</th>
                 <th>Usage %</th>
-                <th>Threshold</th>
+                <th>Budget Health</th>
                 <th>Status</th>
                 <th>Actions</th>
               </tr>
@@ -443,14 +392,12 @@ export default function BudgetPage() {
             <tbody>
               {visibleBudgets.map((budget) => {
                 const usagePercent = budget.budgetAmount > 0 ? budget.currentSpend / budget.budgetAmount : 0;
-                const usageClass =
-                  usagePercent >= 1 ? "is-over" : usagePercent >= budget.threshold / 100 ? "is-warning" : "is-safe";
+                const budgetHealth = resolveBudgetHealth(usagePercent, budget.threshold);
+                const usageClass = budgetHealth.className;
 
                 return (
                   <tr key={budget.id}>
                     <td className="budget-table__name">{budget.budgetName}</td>
-                    <td>{toLabelCase(budget.scopeType)}</td>
-                    <td>{budget.scopeValue}</td>
                     <td>{budget.ongoing ? `${budget.startMonth} onwards` : `${budget.startMonth} to ${budget.endMonth}`}</td>
                     <td>{currencyFormatter.format(budget.budgetAmount)}</td>
                     <td>{currencyFormatter.format(budget.currentSpend)}</td>
@@ -462,7 +409,9 @@ export default function BudgetPage() {
                         </span>
                       </div>
                     </td>
-                    <td>{budget.threshold}%</td>
+                    <td>
+                      <span className={`budget-health-pill ${budgetHealth.className}`}>{budgetHealth.label}</span>
+                    </td>
                     <td>
                       <span className={`budget-status-pill ${budget.status === "active" ? "is-active" : "is-inactive"}`}>
                         {toLabelCase(budget.status)}
@@ -473,7 +422,7 @@ export default function BudgetPage() {
                         <button type="button" onClick={() => onEditBudget(budget)}>
                           Edit
                         </button>
-                        <button type="button" onClick={() => onToggleStatus(budget.id)}>
+                        <button type="button" disabled={isSubmitting} onClick={() => void onToggleStatus(budget)}>
                           {budget.status === "active" ? "Pause" : "Activate"}
                         </button>
                       </div>

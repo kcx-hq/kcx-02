@@ -1200,16 +1200,19 @@
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+  justify-content: flex-end;
 }
 
 .budget-action-button {
-  min-height: 34px;
+  min-height: 36px;
+  min-width: 132px;
   border-radius: 9px;
   border: 1px solid color-mix(in srgb, var(--dashboard-border-light) 72%, var(--dashboard-white-strong) 28%);
   font-family: inherit;
-  font-size: 0.73rem;
-  font-weight: 650;
-  padding: 0 12px;
+  font-size: 0.76rem;
+  font-weight: 680;
+  letter-spacing: 0.01em;
+  padding: 0 14px;
   cursor: pointer;
   transition: border-color 140ms ease, color 140ms ease, transform 130ms ease, background-color 140ms ease;
 }
@@ -1219,14 +1222,30 @@
 }
 
 .budget-action-button:disabled {
-  opacity: 0.54;
+  opacity: 1;
   cursor: not-allowed;
+  transform: none;
 }
 
 .budget-action-button--primary {
-  border-color: color-mix(in srgb, var(--dashboard-accent) 36%, var(--dashboard-border-light) 64%);
-  background: color-mix(in srgb, var(--dashboard-accent) 15%, var(--dashboard-surface-card) 85%);
-  color: #184b4f;
+  border-color: #2d7a61;
+  background: #2f8a6a;
+  color: #ffffff;
+  box-shadow: 0 2px 8px rgba(47, 138, 106, 0.28);
+}
+
+.budget-action-button--primary:hover:not(:disabled) {
+  border-color: #256b55;
+  background: #27795e;
+  color: #ffffff;
+}
+
+.budget-action-button--primary:disabled {
+  border-color: #8fb4a6;
+  background: #d8ebe3;
+  color: #2f5f55;
+  box-shadow: none;
+  cursor: not-allowed;
 }
 
 .budget-action-button--ghost {
@@ -1234,10 +1253,10 @@
   color: #35525b;
 }
 
-.budget-action-button--accent {
-  border-color: color-mix(in srgb, #255976 35%, var(--dashboard-border-light) 65%);
-  background: color-mix(in srgb, #2f6988 10%, var(--dashboard-surface-card) 90%);
-  color: #214f67;
+.budget-action-button--ghost:disabled {
+  border-color: color-mix(in srgb, var(--dashboard-border-light) 84%, var(--dashboard-white-strong) 16%);
+  background: color-mix(in srgb, var(--dashboard-surface-main) 84%, var(--dashboard-white-strong) 16%);
+  color: #7f9198;
 }
 
 .budget-table-section .dashboard-template-section__body {
@@ -1401,6 +1420,35 @@
   color: #7b5f67;
   border-color: color-mix(in srgb, #7b5f67 24%, var(--dashboard-border-light) 76%);
   background: color-mix(in srgb, #7b5f67 10%, var(--dashboard-surface-card) 90%);
+}
+
+.budget-health-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 0 9px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--dashboard-border-light) 76%, var(--dashboard-white-strong) 24%);
+  font-size: 0.66rem;
+  font-weight: 660;
+}
+
+.budget-health-pill.is-safe {
+  color: #1d7a5c;
+  border-color: color-mix(in srgb, #1d7a5c 26%, var(--dashboard-border-light) 74%);
+  background: color-mix(in srgb, #1d7a5c 12%, var(--dashboard-surface-card) 88%);
+}
+
+.budget-health-pill.is-warning {
+  color: #8f611f;
+  border-color: color-mix(in srgb, #d28a2f 34%, var(--dashboard-border-light) 66%);
+  background: color-mix(in srgb, #d28a2f 13%, var(--dashboard-surface-card) 87%);
+}
+
+.budget-health-pill.is-over {
+  color: #8f3340;
+  border-color: color-mix(in srgb, #b45662 34%, var(--dashboard-border-light) 66%);
+  background: color-mix(in srgb, #b45662 13%, var(--dashboard-surface-card) 87%);
 }
 
 .budget-table-actions {

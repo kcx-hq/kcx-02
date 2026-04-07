@@ -2,7 +2,12 @@ import { Router } from "express";
 import { asyncHandler } from "../../utils/async-handler.js";
 import { handleGetAllocationDashboard } from "./allocation/allocation.controller.js";
 import { handleGetAnomaliesAlertsDashboard } from "./anomalies-alerts/anomalies-alerts.controller.js";
-import { handleGetBudgetDashboard } from "./budget/budget.controller.js";
+import {
+  handleCreateBudget,
+  handleGetBudgetDashboard,
+  handleUpdateBudget,
+  handleUpdateBudgetStatus,
+} from "./budget/budget.controller.js";
 import { handleGetDashboardScope, handleGetDashboardTestTotalSpend } from "./dashboard.controller.js";
 import { handleGetCostExplorerDashboard } from "./cost-explorer/cost-explorer.controller.js";
 import { handleGetOptimizationDashboard } from "./optimization/optimization.controller.js";
@@ -43,6 +48,9 @@ router.get("/dashboard/allocation", asyncHandler(handleGetAllocationDashboard));
 router.get("/dashboard/optimization", asyncHandler(handleGetOptimizationDashboard));
 router.get("/dashboard/anomalies-alerts", asyncHandler(handleGetAnomaliesAlertsDashboard));
 router.get("/dashboard/budget", asyncHandler(handleGetBudgetDashboard));
+router.post("/dashboard/budget", asyncHandler(handleCreateBudget));
+router.patch("/dashboard/budget/:budgetId", asyncHandler(handleUpdateBudget));
+router.patch("/dashboard/budget/:budgetId/status", asyncHandler(handleUpdateBudgetStatus));
 router.get("/dashboard/report", asyncHandler(handleGetReportDashboard));
 router.get("/dashboard/test-total-spend", asyncHandler(handleGetDashboardTestTotalSpend));
 

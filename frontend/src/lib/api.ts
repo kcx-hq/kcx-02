@@ -99,6 +99,34 @@ export async function apiGet<TData>(path: string, init?: RequestInit): Promise<T
   return payload.data
 }
 
+export async function apiPatch<TData>(path: string, body: unknown, init?: RequestInit): Promise<TData> {
+  const url = joinUrl(appEnv.apiBaseUrl, path)
+  const token = getAuthToken()
+  const response = await fetch(url, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(init?.headers ?? {}),
+    },
+    body: JSON.stringify(body),
+    ...init,
+  })
+
+  const payload = (await response.json().catch(() => null)) as ApiResponse<TData> | null
+
+  if (!response.ok) {
+    handleUnauthorized(path, response.status)
+    throw new ApiError(payload?.message ?? "Request failed", response.status, payload)
+  }
+  if (!payload || payload.success !== true) {
+    handleUnauthorized(path, response.status)
+    throw new ApiError(payload?.message ?? "Request failed", response.status, payload)
+  }
+
+  return payload.data
+}
+
 export async function apiPostForm<TData>(path: string, formData: FormData, init?: RequestInit): Promise<TData> {
   const url = joinUrl(appEnv.apiBaseUrl, path)
   const token = getAuthToken()
