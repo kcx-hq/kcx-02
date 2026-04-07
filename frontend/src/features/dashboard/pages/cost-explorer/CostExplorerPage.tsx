@@ -1,6 +1,5 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { EChartsOption } from "echarts";
-import { useLocation, useNavigate } from "react-router-dom";
 
 import { useCostExplorerQuery } from "../../hooks/useDashboardQueries";
 import { useDashboardScope } from "../../hooks/useDashboardScope";
@@ -16,175 +15,167 @@ import {
   type Metric,
 } from "./costExplorer.types";
 import {
-  buildTimeLabels,
   calculateDeltaPercent,
   compactCurrencyFormatter,
   currencyFormatter,
-  generatePrimaryValues,
-  parseInputDate,
-  parseMoneyToken,
-  parsePercentToken,
   percentFormatter,
-  rangeByPreset,
-  shiftAsPreviousPeriod,
-  formatInputDate,
-  summaryToMap,
+  parseInputDate,
 } from "./costExplorer.utils";
 import { CostExplorerChartSection, CostExplorerFiltersPanel } from "./components";
 
 type ChartMode = "line" | "bar";
+type RowsPerPage = 5 | 10 | 15;
+
+const ENTITY_SERIES_PALETTE = [
+  "#1f77b4",
+  "#d62728",
+  "#2ca02c",
+  "#9467bd",
+  "#ff7f0e",
+  "#17becf",
+  "#8c564b",
+  "#e377c2",
+  "#bcbd22",
+  "#7f7f7f",
+  "#393b79",
+  "#637939",
+  "#8c6d31",
+  "#843c39",
+  "#7b4173",
+];
+
+const COMPARISON_SERIES_COLORS: Record<CompareKey, string> = {
+  "previous-month": "#4f46e5",
+  budget: "#b45309",
+  forecast: "#7e22ce",
+};
 
 export default function CostExplorerPage() {
-  const query = useCostExplorerQuery();
-  const location = useLocation();
-  const navigate = useNavigate();
   const { scope } = useDashboardScope();
 
   const [groupBy, setGroupBy] = useState<GroupBy>("none");
-  const [metric, setMetric] = useState<Metric>("billed");
-  const [compare, setCompare] = useState<CompareKey[]>(["previous-month"]);
+  const [selectedMetrics, setSelectedMetrics] = useState<Metric[]>(["billed"]);
+  const [compare, setCompare] = useState<CompareKey[]>([]);
+  const [granularity, setGranularity] = useState<Granularity>("daily");
   const [chartMode, setChartMode] = useState<ChartMode>("line");
+  const [rowsPerPage, setRowsPerPage] = useState<RowsPerPage>(5);
+  const [breakdownPage, setBreakdownPage] = useState(1);
+
+  const multiMetricMode = selectedMetrics.length > 1;
+  const activeGroupBy: GroupBy = multiMetricMode ? "none" : groupBy;
+  const activeCompareKey: CompareKey | null = multiMetricMode ? null : (compare[0] ?? null);
+
+  const billedQuery = useCostExplorerQuery(
+    { granularity, groupBy: activeGroupBy, metric: "billed", compareKey: activeCompareKey },
+    selectedMetrics.includes("billed"),
+  );
+  const effectiveQuery = useCostExplorerQuery(
+    { granularity, groupBy: activeGroupBy, metric: "effective", compareKey: activeCompareKey },
+    selectedMetrics.includes("effective"),
+  );
+  const listQuery = useCostExplorerQuery(
+    { granularity, groupBy: activeGroupBy, metric: "list", compareKey: activeCompareKey },
+    selectedMetrics.includes("list"),
+  );
+
+  const queryByMetric = useMemo(
+    () => ({
+      billed: billedQuery,
+      effective: effectiveQuery,
+      list: listQuery,
+    }),
+    [billedQuery, effectiveQuery, listQuery],
+  );
+
+  const primaryMetric = selectedMetrics[0] ?? "billed";
+  const primaryQuery = queryByMetric[primaryMetric];
+  const activeQueries = selectedMetrics.map((item) => queryByMetric[item]);
 
   const granularityRef = useRef<HTMLButtonElement | null>(null);
   const groupRef = useRef<HTMLButtonElement | null>(null);
   const compareRef = useRef<HTMLButtonElement | null>(null);
   const metricRef = useRef<HTMLButtonElement | null>(null);
 
-  const fallbackRange = rangeByPreset("last-30d");
-  const params = new URLSearchParams(location.search);
-  const queryFrom = params.get("billingPeriodStart") ?? params.get("from");
-  const queryTo = params.get("billingPeriodEnd") ?? params.get("to");
-  const granularityParam = params.get("granularity");
-
-  const parsedFrom = queryFrom ? parseInputDate(queryFrom) : null;
-  const parsedTo = queryTo ? parseInputDate(queryTo) : null;
   const scopeFrom = scope?.from ? parseInputDate(scope.from) : null;
   const scopeTo = scope?.to ? parseInputDate(scope.to) : null;
 
-  const resolvedRange =
-    parsedFrom && parsedTo && parsedFrom <= parsedTo
-      ? { from: formatInputDate(parsedFrom), to: formatInputDate(parsedTo) }
-      : scopeFrom && scopeTo && scopeFrom <= scopeTo
-        ? { from: formatInputDate(scopeFrom), to: formatInputDate(scopeTo) }
-        : fallbackRange;
-
-  const from = resolvedRange.from;
-  const to = resolvedRange.to;
-
-  const summary = useMemo(() => summaryToMap(query.data), [query.data]);
-  const topService = summary.topService ?? "Compute";
-  const monthToDate = parseMoneyToken(summary.monthToDate) ?? 96_400;
-  const trend = parsePercentToken(summary.trend) ?? 3.2;
-
-  const start = parseInputDate(from);
-  const end = parseInputDate(to);
-  const validRange = Boolean(start && end && start <= end);
-
   const days = useMemo(() => {
-    if (!start || !end || start > end) return 0;
-    return Math.floor((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-  }, [end, start]);
+    if (!scopeFrom || !scopeTo || scopeFrom > scopeTo) return 0;
+    return Math.floor((scopeTo.getTime() - scopeFrom.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+  }, [scopeFrom, scopeTo]);
 
-  const autoGranularity: Granularity = days <= 2 ? "hourly" : days >= 90 ? "monthly" : "daily";
-  const requestedGranularity: Granularity | null =
-    granularityParam === "hourly" || granularityParam === "daily" || granularityParam === "monthly"
-      ? granularityParam
-      : null;
-  const granularity = requestedGranularity ?? autoGranularity;
+  const effectiveGranularity = (primaryQuery.data?.filtersApplied.effectiveGranularity ??
+    (granularity === "hourly" && days > 14 ? "daily" : granularity)) as Granularity;
 
-  const setGranularityPreference = (next: Granularity) => {
-    const nextParams = new URLSearchParams(location.search);
-    nextParams.set("granularity", next);
-    navigate({ pathname: location.pathname, search: nextParams.toString() }, { replace: true });
-  };
-
-  const effectiveGranularity: Granularity = granularity === "hourly" && days > 14 ? "daily" : granularity;
-
-  const labels = useMemo(
-    () => (validRange ? buildTimeLabels(from, to, effectiveGranularity) : []),
-    [effectiveGranularity, from, to, validRange],
-  );
-
-  const primary = useMemo(
-    () => generatePrimaryValues(labels.length, monthToDate, trend, effectiveGranularity, metric),
-    [effectiveGranularity, labels.length, metric, monthToDate, trend],
-  );
-
+  const labels = primaryQuery.data?.chart.labels ?? [];
+  const primarySeries = (primaryQuery.data?.chart.series ?? []) as ChartSeries[];
   const series = useMemo<ChartSeries[]>(() => {
-    if (!labels.length) return [];
+    if (!multiMetricMode) {
+      return primarySeries;
+    }
 
-    const list: ChartSeries[] = [];
+    const lines: ChartSeries[] = [];
+    selectedMetrics.forEach((selectedMetric) => {
+      const metricQuery = queryByMetric[selectedMetric];
+      const data = metricQuery.data;
+      if (!data) return;
 
-    if (groupBy === "none") {
-      list.push({
-        name: metric === "billed" ? "Billed Cost" : "Effective Cost",
-        values: primary,
-        kind: "primary",
+      const metricSeries = data.chart.series.find((item) => item.kind !== "comparison");
+      if (!metricSeries) return;
+
+      const metricValuesByBucket = new Map<string, number>();
+      data.chart.labels.forEach((label, index) => {
+        metricValuesByBucket.set(label.bucketStart, Number(metricSeries.values[index] ?? 0));
       });
-    } else {
-      const byService = [
-        { name: topService, weight: 0.43, wobble: 1.06 },
-        { name: "Storage", weight: 0.31, wobble: 0.98 },
-        { name: "Network", weight: 0.26, wobble: 1.01 },
-      ];
-      const byRegion = [
-        { name: "us-east-1", weight: 0.46, wobble: 1.05 },
-        { name: "us-west-2", weight: 0.32, wobble: 0.98 },
-        { name: "eu-west-1", weight: 0.22, wobble: 0.95 },
-      ];
-      const byAccount = [
-        { name: "Production", weight: 0.52, wobble: 1.08 },
-        { name: "Shared Services", weight: 0.28, wobble: 0.93 },
-        { name: "Sandbox", weight: 0.2, wobble: 0.88 },
-      ];
 
-      const definitions = groupBy === "service" ? byService : groupBy === "region" ? byRegion : byAccount;
+      const values = labels.map(
+        (label, index) => metricValuesByBucket.get(label.bucketStart) ?? Number(metricSeries.values[index] ?? 0),
+      );
 
-      for (const definition of definitions) {
-        list.push({
-          name: definition.name,
-          kind: "group",
-          values: primary.map((value, index) =>
-            Math.max(0, value * definition.weight * (definition.wobble + Math.sin(index / 4) * 0.02)),
-          ),
-        });
+      lines.push({
+        name: METRIC_OPTIONS.find((item) => item.key === selectedMetric)?.label ?? metricSeries.name,
+        kind: "primary",
+        values,
+      });
+    });
+
+    return lines;
+  }, [labels, multiMetricMode, primarySeries, queryByMetric, selectedMetrics]);
+
+  const seriesColorByName = useMemo(() => {
+    const map = new Map<string, string>();
+    let entityColorIndex = 0;
+
+    for (const item of series) {
+      if (item.kind === "comparison") {
+        const comparisonColor =
+          (item.compareKey ? COMPARISON_SERIES_COLORS[item.compareKey] : undefined) ?? "#4f7088";
+        map.set(item.name, comparisonColor);
+        continue;
+      }
+
+      if (!map.has(item.name)) {
+        map.set(item.name, ENTITY_SERIES_PALETTE[entityColorIndex % ENTITY_SERIES_PALETTE.length]);
+        entityColorIndex += 1;
       }
     }
 
-    const orderedCompare = [...compare].sort((a, b) => (a < b ? -1 : 1));
-    for (const key of orderedCompare) {
-      if (key === "previous-month") {
-        list.push({
-          name: "Previous Month",
-          kind: "comparison",
-          compareKey: key,
-          values: shiftAsPreviousPeriod(primary, effectiveGranularity),
-        });
-      } else if (key === "budget") {
-        list.push({
-          name: "Budget",
-          kind: "comparison",
-          compareKey: key,
-          values: primary.map((value, index) => value * (1.06 + Math.sin(index / 7) * 0.01)),
-        });
-      } else {
-        list.push({
-          name: "Forecast",
-          kind: "comparison",
-          compareKey: key,
-          values: primary.map((value, index) => value * (1.03 + index / Math.max(labels.length, 1) / 90)),
-        });
-      }
-    }
+    return map;
+  }, [series]);
 
-    return list;
-  }, [compare, effectiveGranularity, groupBy, labels.length, metric, primary, topService]);
+  const baseValues = useMemo(() => {
+    if (!labels.length) return [];
+    const chartSeries = series.filter((item) => item.kind !== "comparison");
+    return labels.map((_, index) =>
+      chartSeries.reduce((sum, item) => sum + Number(item.values[index] ?? 0), 0),
+    );
+  }, [labels, series]);
 
   const seriesMeta = useMemo(() => new Map(series.map((item) => [item.name, item])), [series]);
 
   const option = useMemo<EChartsOption>(
     () => ({
-      color: ["#1f8b7a", "#2f6fdb", "#ca8b17", "#4f7088", "#d06453", "#4f8ca6", "#6d7f8a"],
+      color: series.map((item) => seriesColorByName.get(item.name) ?? "#4f7088"),
       tooltip: {
         trigger: "axis",
         backgroundColor: "rgba(21, 35, 48, 0.95)",
@@ -201,7 +192,7 @@ export default function CostExplorerPage() {
           if (!points.length) return "";
 
           const pointIndex = points[0]?.dataIndex ?? 0;
-          const base = primary[pointIndex] ?? 0;
+          const base = baseValues[pointIndex] ?? 0;
           const title = labels[pointIndex]?.long ?? "";
           const rows = points
             .map((point) => {
@@ -217,7 +208,10 @@ export default function CostExplorerPage() {
             })
             .join("");
 
-          const context = groupBy !== "none" ? `<div style="margin-top:6px; color:#a7bcc8;">Grouped by ${groupBy}</div>` : "";
+          const context =
+            activeGroupBy !== "none"
+              ? `<div style="margin-top:6px; color:#a7bcc8;">Grouped by ${activeGroupBy}</div>`
+              : "";
           return `<div style="min-width:220px;"><div style="font-weight:600; margin-bottom:4px;">${title}</div>${rows}${context}</div>`;
         },
       },
@@ -252,6 +246,7 @@ export default function CostExplorerPage() {
         const comparisonLineType = item.compareKey === "previous-month" ? "dashed" : item.compareKey === "budget" ? "dotted" : "solid";
         const isComparison = item.kind === "comparison";
         const isBar = chartMode === "bar";
+        const seriesColor = seriesColorByName.get(item.name) ?? "#4f7088";
         return {
           name: item.name,
           type: isBar ? "bar" : "line",
@@ -265,33 +260,44 @@ export default function CostExplorerPage() {
           lineStyle: isBar
             ? undefined
             : {
+                color: seriesColor,
                 width: isComparison ? 1.9 : 2.4,
                 type: comparisonLineType,
                 opacity: isComparison ? 0.9 : 1,
               },
-          areaStyle: chartMode === "line" && index === 0 && groupBy === "none" ? { opacity: 0.08 } : undefined,
+          areaStyle:
+            chartMode === "line" && index === 0 && activeGroupBy === "none"
+              ? { color: seriesColor, opacity: 0.08 }
+              : undefined,
           barMaxWidth: isBar ? 22 : undefined,
-          itemStyle: isBar ? { borderRadius: [4, 4, 0, 0] } : undefined,
-          data: item.values,
+          itemStyle: isBar ? { color: seriesColor, borderRadius: [4, 4, 0, 0] } : { color: seriesColor },
+          data: item.values.map((value) => Number(value ?? 0)),
           z: isComparison ? 2 : 3,
         };
       }),
     }),
-    [chartMode, groupBy, labels, primary, series, seriesMeta],
+    [activeGroupBy, baseValues, chartMode, labels, series, seriesColorByName, seriesMeta],
   );
 
-  const compareLabel = compare.length
-    ? compare.map((key) => COMPARE_OPTIONS.find((item) => item.key === key)?.label ?? key).join(" + ")
+  const compareLabel = activeCompareKey
+    ? COMPARE_OPTIONS.find((item) => item.key === activeCompareKey)?.label ?? activeCompareKey
     : "None";
 
-  const periodSpend = primary.reduce((total, value) => total + value, 0);
+  const periodSpend = primaryQuery.data?.kpis.periodSpend ?? 0;
+  const previousPeriodSpend = primaryQuery.data?.kpis.previousPeriodSpend ?? 0;
+  const trend = primaryQuery.data?.kpis.trendPct ?? 0;
   const trendLabel = `${trend >= 0 ? "+" : ""}${percentFormatter.format(trend)}%`;
   const trendTone: "positive" | "negative" = trend >= 0 ? "negative" : "positive";
 
   const chartKpis = [
     {
-      label: "Period Spend",
+      label: "Total Spend",
       value: compactCurrencyFormatter.format(periodSpend),
+      tone: "default" as const,
+    },
+    {
+      label: "Prev Spend",
+      value: compactCurrencyFormatter.format(previousPeriodSpend),
       tone: "default" as const,
     },
     {
@@ -299,107 +305,176 @@ export default function CostExplorerPage() {
       value: trendLabel,
       tone: trendTone,
     },
-    {
-      label: "Top Service",
-      value: topService,
-      tone: "default" as const,
-    },
   ];
 
-  const topBreakdowns = useMemo(() => {
-    const compareImpact =
-      compare[0] === "budget" ? 1.2 : compare[0] === "forecast" ? 0.8 : compare[0] === "previous-month" ? 0.4 : 0;
-    const metricImpact = metric === "effective" ? -0.6 : 0.2;
-    const volumeFactor = Math.max(0.76, Math.min(1.22, labels.length / 30));
+  const allBreakdowns = useMemo(() => {
+    const mergeRowsByName = (
+      rows: Array<{
+        name: string;
+        cost: number;
+        changePct: number;
+        relatedServices?: string[];
+        relatedResourceTypes?: string[];
+      }>,
+    ) => {
+      const byName = new Map<
+        string,
+        {
+          name: string;
+          cost: number;
+          weightedChangeSum: number;
+          weight: number;
+          relatedServices: Set<string>;
+          relatedResourceTypes: Set<string>;
+        }
+      >();
 
-    const buildRows = (
-      dimension: GroupBy,
-      defs: Array<{ name: string; weight: number; deltaBias: number }>,
-      baseScale: number,
-    ) =>
-      defs
-        .map((def, index) => {
-          const wave = 1 + Math.sin((days + (index + 2) * 3) / 6) * 0.06 + Math.cos((labels.length + index * 4) / 7) * 0.04;
-          const groupBoost = groupBy === dimension ? 1.08 - index * 0.012 : 1;
-          const cost = Math.max(0, periodSpend * def.weight * baseScale * wave * groupBoost * volumeFactor);
-          const change = trend + def.deltaBias + compareImpact + metricImpact + (groupBy === dimension ? 0.9 : 0);
-          return { name: def.name, cost, change };
-        })
-        .sort((a, b) => b.cost - a.cost)
-        .slice(0, 5)
-        .map((row, index) => {
-          const changeTone: "positive" | "negative" | "neutral" =
-            row.change < 0 ? "positive" : row.change > 0 ? "negative" : "neutral";
-          return {
-            rank: index + 1,
-            name: row.name,
-            costLabel: compactCurrencyFormatter.format(row.cost),
-            changeLabel: `${row.change >= 0 ? "+" : ""}${percentFormatter.format(row.change)}%`,
-            changeTone,
-          };
+      rows.forEach((row) => {
+        const normalizedName = row.name?.trim() || "Unspecified";
+        const key = normalizedName.toLowerCase();
+        const existing = byName.get(key);
+        const weight = row.cost > 0 ? row.cost : 1;
+
+        if (!existing) {
+          byName.set(key, {
+            name: normalizedName,
+            cost: row.cost,
+            weightedChangeSum: row.changePct * weight,
+            weight,
+            relatedServices: new Set((row.relatedServices ?? []).filter((item) => item.trim().length > 0)),
+            relatedResourceTypes: new Set((row.relatedResourceTypes ?? []).filter((item) => item.trim().length > 0)),
+          });
+          return;
+        }
+
+        existing.cost += row.cost;
+        existing.weightedChangeSum += row.changePct * weight;
+        existing.weight += weight;
+        (row.relatedServices ?? []).forEach((serviceName) => {
+          if (serviceName.trim().length > 0) {
+            existing.relatedServices.add(serviceName);
+          }
         });
+        (row.relatedResourceTypes ?? []).forEach((resourceType) => {
+          if (resourceType.trim().length > 0) {
+            existing.relatedResourceTypes.add(resourceType);
+          }
+        });
+      });
+
+      return [...byName.values()]
+        .map((item) => ({
+          name: item.name,
+          cost: item.cost,
+          changePct: item.weight > 0 ? item.weightedChangeSum / item.weight : 0,
+          relatedServices: [...item.relatedServices].slice(0, 6),
+          relatedResourceTypes: [...item.relatedResourceTypes].slice(0, 6),
+        }))
+        .sort((a, b) => b.cost - a.cost);
+    };
 
     return [
       {
         key: "service" as const,
-        label: "Top 5 Services",
-        rows: buildRows(
-          "service",
-          [
-            { name: topService, weight: 0.24, deltaBias: 1.3 },
-            { name: "Storage", weight: 0.2, deltaBias: -0.2 },
-            { name: "Network", weight: 0.15, deltaBias: 0.5 },
-            { name: "Database", weight: 0.13, deltaBias: 0.8 },
-            { name: "Analytics", weight: 0.1, deltaBias: 0.2 },
-            { name: "Security", weight: 0.09, deltaBias: -0.4 },
-            { name: "AI Platform", weight: 0.09, deltaBias: 1.5 },
-          ],
-          1,
-        ),
+        label: "Services by Cost",
+        rows: mergeRowsByName(primaryQuery.data?.breakdowns.service ?? []),
+      },
+      {
+        key: "service-category" as const,
+        label: "Service Categories by Cost",
+        rows: mergeRowsByName(primaryQuery.data?.breakdowns.serviceCategory ?? []),
+      },
+      {
+        key: "resource" as const,
+        label: "Resources by Cost",
+        rows: mergeRowsByName(primaryQuery.data?.breakdowns.resource ?? []),
       },
       {
         key: "account" as const,
-        label: "Top 5 Accounts",
-        rows: buildRows(
-          "account",
-          [
-            { name: "Production", weight: 0.34, deltaBias: 1.1 },
-            { name: "Shared Services", weight: 0.19, deltaBias: 0.1 },
-            { name: "Sandbox", weight: 0.12, deltaBias: -1.2 },
-            { name: "Data Platform", weight: 0.11, deltaBias: 0.7 },
-            { name: "Customer Apps", weight: 0.1, deltaBias: 0.4 },
-            { name: "Internal Tools", weight: 0.08, deltaBias: -0.3 },
-            { name: "Analytics", weight: 0.06, deltaBias: 0.5 },
-          ],
-          1,
-        ),
+        label: "Accounts by Cost",
+        rows: mergeRowsByName(primaryQuery.data?.breakdowns.account ?? []),
       },
       {
         key: "region" as const,
-        label: "Top 5 Regions",
-        rows: buildRows(
-          "region",
-          [
-            { name: "us-east-1", weight: 0.28, deltaBias: 0.9 },
-            { name: "us-west-2", weight: 0.18, deltaBias: 0.4 },
-            { name: "eu-west-1", weight: 0.15, deltaBias: 0.2 },
-            { name: "ap-south-1", weight: 0.12, deltaBias: 1.2 },
-            { name: "ap-southeast-1", weight: 0.11, deltaBias: 0.6 },
-            { name: "eu-central-1", weight: 0.1, deltaBias: 0.1 },
-            { name: "sa-east-1", weight: 0.06, deltaBias: -0.5 },
-          ],
-          1,
-        ),
+        label: "Regions by Cost",
+        rows: mergeRowsByName(primaryQuery.data?.breakdowns.region ?? []),
       },
     ];
-  }, [compare, days, groupBy, labels.length, metric, periodSpend, topService, trend]);
+  }, [primaryQuery.data]);
+
+  const selectedBreakdown = useMemo(() => {
+    if (
+      activeGroupBy !== "service" &&
+      activeGroupBy !== "service-category" &&
+      activeGroupBy !== "resource" &&
+      activeGroupBy !== "account" &&
+      activeGroupBy !== "region"
+    ) {
+      return null;
+    }
+    return allBreakdowns.find((item) => item.key === activeGroupBy) ?? null;
+  }, [activeGroupBy, allBreakdowns]);
+
+  const totalRows = selectedBreakdown?.rows.length ?? 0;
+  const totalPages = Math.max(1, Math.ceil(totalRows / rowsPerPage));
+  const safePage = Math.min(Math.max(breakdownPage, 1), totalPages);
+
+  useEffect(() => {
+    setBreakdownPage(1);
+  }, [activeGroupBy, rowsPerPage]);
+
+  useEffect(() => {
+    if (breakdownPage > totalPages) {
+      setBreakdownPage(totalPages);
+    }
+  }, [breakdownPage, totalPages]);
 
   const visibleBreakdowns = useMemo(() => {
-    if (groupBy === "service" || groupBy === "account" || groupBy === "region") {
-      return topBreakdowns.filter((item) => item.key === groupBy);
+    if (!selectedBreakdown) {
+      return [];
     }
-    return [];
-  }, [groupBy, topBreakdowns]);
+
+    const pageStartIndex = (safePage - 1) * rowsPerPage;
+    const pageEndIndex = pageStartIndex + rowsPerPage;
+    const pageRows = selectedBreakdown.rows.slice(pageStartIndex, pageEndIndex).map((row) => {
+      const changeTone: "positive" | "negative" | "neutral" =
+        row.changePct < 0 ? "positive" : row.changePct > 0 ? "negative" : "neutral";
+      return {
+        name: row.name,
+        subtitle: (() => {
+          if (activeGroupBy === "service-category") {
+            return Array.isArray(row.relatedServices) && row.relatedServices.length > 0
+              ? row.relatedServices.join(", ")
+              : undefined;
+          }
+          if (activeGroupBy === "resource") {
+            const serviceText =
+              Array.isArray(row.relatedServices) && row.relatedServices.length > 0
+                ? `Service: ${row.relatedServices.join(", ")}`
+                : "";
+            const typeText =
+              Array.isArray(row.relatedResourceTypes) && row.relatedResourceTypes.length > 0
+                ? `Type: ${row.relatedResourceTypes.join(", ")}`
+                : "";
+            const combined = [serviceText, typeText].filter(Boolean).join(" | ");
+            return combined.length > 0 ? combined : undefined;
+          }
+          return undefined;
+        })(),
+        costLabel: compactCurrencyFormatter.format(row.cost),
+        changeLabel: `${row.changePct >= 0 ? "+" : ""}${percentFormatter.format(row.changePct)}%`,
+        changeTone,
+      };
+    });
+
+    return [
+      {
+        key: selectedBreakdown.key,
+        label: selectedBreakdown.label,
+        rows: pageRows,
+      },
+    ];
+  }, [activeGroupBy, rowsPerPage, safePage, selectedBreakdown]);
 
   const chips: CostExplorerChip[] = [
     {
@@ -410,7 +485,7 @@ export default function CostExplorerPage() {
     {
       key: "group",
       label: "Group",
-      value: GROUP_BY_OPTIONS.find((item) => item.key === groupBy)?.label ?? "None",
+      value: GROUP_BY_OPTIONS.find((item) => item.key === activeGroupBy)?.label ?? "None",
     },
     {
       key: "compare",
@@ -420,19 +495,51 @@ export default function CostExplorerPage() {
     {
       key: "metric",
       label: "Metric",
-      value: METRIC_OPTIONS.find((item) => item.key === metric)?.label ?? "Billed Cost",
+      value: selectedMetrics
+        .map((key) => METRIC_OPTIONS.find((item) => item.key === key)?.label ?? key)
+        .join(" VS "),
     },
   ];
 
   const toggleCompare = (key: CompareKey) => {
+    if (multiMetricMode) {
+      setSelectedMetrics([selectedMetrics[0] ?? "billed"]);
+    }
     setCompare((current) => (current[0] === key ? [] : [key]));
   };
 
+  const toggleMetricSelection = (next: Metric) => {
+    setSelectedMetrics((current) => {
+      const exists = current.includes(next);
+      if (exists) {
+        if (current.length === 1) {
+          return current;
+        }
+        return current.filter((item) => item !== next);
+      }
+      const updated = [...current, next];
+      if (updated.length > 1) {
+        setGroupBy("none");
+        setCompare([]);
+      }
+      return updated;
+    });
+  };
+
+  const setGroupByWithMetricMode = (next: GroupBy) => {
+    if (multiMetricMode && next !== "none") {
+      setSelectedMetrics([selectedMetrics[0] ?? "billed"]);
+    }
+    setGroupBy(next);
+  };
+
   const clearAll = () => {
-    setGranularityPreference("daily");
+    setGranularity("daily");
     setGroupBy("none");
-    setCompare(["previous-month"]);
-    setMetric("billed");
+    setSelectedMetrics(["billed"]);
+    setCompare([]);
+    setRowsPerPage(5);
+    setBreakdownPage(1);
   };
 
   const editChip = (key: CostExplorerChip["key"]) => {
@@ -453,7 +560,7 @@ export default function CostExplorerPage() {
 
   const removeChip = (key: CostExplorerChip["key"]) => {
     if (key === "granularity") {
-      setGranularityPreference("daily");
+      setGranularity("daily");
       return;
     }
     if (key === "group") {
@@ -464,10 +571,15 @@ export default function CostExplorerPage() {
       setCompare([]);
       return;
     }
-    setMetric("billed");
+    setSelectedMetrics(["billed"]);
   };
 
-  const chartReady = validRange && labels.length > 0 && series.length > 0;
+  const chartReady = labels.length > 0 && series.some((item) => item.values.length > 0);
+  const isLoading = activeQueries.some((item) => item.isLoading);
+  const isError = activeQueries.some((item) => item.isError);
+  const firstError = activeQueries.find((item) => item.error);
+  const errorMessage = (firstError?.error as Error | undefined)?.message;
+  const isFetching = activeQueries.some((item) => item.isFetching);
 
   return (
     <div className="dashboard-page cost-explorer-page">
@@ -476,12 +588,12 @@ export default function CostExplorerPage() {
           effectiveGranularity={effectiveGranularity}
           days={days}
           groupBy={groupBy}
-          metric={metric}
+          selectedMetrics={selectedMetrics}
           compare={compare}
           chips={chips}
-          onSetGranularity={setGranularityPreference}
-          onSetGroupBy={setGroupBy}
-          onSetMetric={setMetric}
+          onSetGranularity={setGranularity}
+          onSetGroupBy={setGroupByWithMetricMode}
+          onToggleMetric={toggleMetricSelection}
           onToggleCompare={toggleCompare}
           onEditChip={editChip}
           onRemoveChip={removeChip}
@@ -496,16 +608,34 @@ export default function CostExplorerPage() {
 
         <CostExplorerChartSection
           option={option}
-          isLoading={query.isLoading}
-          isError={query.isError}
-          errorMessage={query.error?.message}
-          isFetching={query.isFetching}
+          isLoading={isLoading}
+          isError={isError}
+          errorMessage={errorMessage}
+          isFetching={isFetching}
           chartReady={chartReady}
           chartMode={chartMode}
           onChartModeChange={setChartMode}
           kpis={chartKpis}
           topBreakdowns={visibleBreakdowns}
-          onRetry={() => query.refetch()}
+          rowsPerPage={rowsPerPage}
+          onRowsPerPageChange={setRowsPerPage}
+          breakdownPagination={
+            selectedBreakdown
+              ? {
+                  currentPage: safePage,
+                  totalPages,
+                  totalRows,
+                  startRow: totalRows > 0 ? (safePage - 1) * rowsPerPage + 1 : 0,
+                  endRow: totalRows > 0 ? Math.min(safePage * rowsPerPage, totalRows) : 0,
+                }
+              : null
+          }
+          onBreakdownPageChange={setBreakdownPage}
+          onRetry={() => {
+            activeQueries.forEach((query) => {
+              void query.refetch();
+            });
+          }}
           onReset={clearAll}
         />
       </section>

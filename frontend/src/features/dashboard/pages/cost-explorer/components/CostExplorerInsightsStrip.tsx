@@ -22,7 +22,9 @@ export function CostExplorerInsightsStrip({
       <article className="cost-explorer-insight-card">
         <p className="cost-explorer-insight-card__label">Period Spend</p>
         <p className="cost-explorer-insight-card__value">{compactCurrencyFormatter.format(spend)}</p>
-        <p className="cost-explorer-insight-card__meta">{metric === "billed" ? "Billed basis" : "Effective basis"}</p>
+        <p className="cost-explorer-insight-card__meta">
+          {metric === "billed" ? "Billed basis" : metric === "effective" ? "Effective basis" : "List basis"}
+        </p>
       </article>
       <article className="cost-explorer-insight-card">
         <p className="cost-explorer-insight-card__label">Previous Period</p>

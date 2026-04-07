@@ -151,7 +151,7 @@ export const generatePrimaryValues = (
 
   const unit =
     granularity === "monthly" ? monthlyBase : granularity === "daily" ? monthlyBase / 30 : monthlyBase / (30 * 24);
-  const metricFactor = metric === "effective" ? 0.89 : 1;
+  const metricFactor = metric === "effective" ? 0.89 : metric === "list" ? 1.14 : 1;
 
   return Array.from({ length: count }, (_, idx) => {
     const ratio = count > 1 ? idx / (count - 1) : 0;

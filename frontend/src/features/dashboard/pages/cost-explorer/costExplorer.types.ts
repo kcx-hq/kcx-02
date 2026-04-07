@@ -1,8 +1,8 @@
 export type DatePreset = "last-7d" | "last-30d" | "mtd" | "qtd" | "ytd" | "custom";
 export type Granularity = "hourly" | "daily" | "monthly";
-export type GroupBy = "none" | "service" | "region" | "account";
+export type GroupBy = "none" | "service" | "service-category" | "resource" | "region" | "account";
 export type CompareKey = "previous-month" | "budget" | "forecast";
-export type Metric = "billed" | "effective";
+export type Metric = "billed" | "effective" | "list";
 export type SeriesKind = "primary" | "group" | "comparison";
 
 export type TimeLabel = {
@@ -37,6 +37,8 @@ export const DATE_PRESETS: Array<{ key: DatePreset; label: string }> = [
 export const GROUP_BY_OPTIONS: Array<{ key: GroupBy; label: string }> = [
   { key: "none", label: "None" },
   { key: "service", label: "Service" },
+  { key: "service-category", label: "Service Category" },
+  { key: "resource", label: "Resource" },
   { key: "region", label: "Region" },
   { key: "account", label: "Account" },
 ];
@@ -50,4 +52,5 @@ export const COMPARE_OPTIONS: Array<{ key: CompareKey; label: string }> = [
 export const METRIC_OPTIONS: Array<{ key: Metric; label: string }> = [
   { key: "billed", label: "Billed Cost" },
   { key: "effective", label: "Effective Cost" },
+  { key: "list", label: "List Cost" },
 ];

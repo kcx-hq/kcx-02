@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import {
   dashboardApi,
+  type CostExplorerFiltersQuery,
   type DashboardResolvedScope,
   type OverviewAnomaliesResponse,
   type OverviewFiltersQuery,
@@ -52,12 +53,12 @@ export function useOverviewRecommendationsQuery(filters?: OverviewFiltersQuery) 
   });
 }
 
-export function useCostExplorerQuery() {
+export function useCostExplorerQuery(filters?: CostExplorerFiltersQuery, enabledOverride: boolean = true) {
   const { scope } = useDashboardScope();
   return useQuery({
-    queryKey: ["dashboard", "cost-explorer", scope],
-    queryFn: () => dashboardApi.getCostExplorer(assertScope(scope)),
-    enabled: Boolean(scope),
+    queryKey: ["dashboard", "cost-explorer", scope, filters],
+    queryFn: () => dashboardApi.getCostExplorer(assertScope(scope), filters),
+    enabled: Boolean(scope) && enabledOverride,
   });
 }
 

@@ -2,7 +2,7 @@ import { sequelize } from "../src/models/index.ts";
 import {
   manuallyIngestFile,
   manuallyIngestLatestFile,
-} from "../src/features/cloud-connections/aws/auto-connection/aws-export-ingestion.service.ts";
+} from "../src/features/cloud-connections/aws/exports/aws-export-ingestion.service.ts";
 
 type CliArgs = {
   connectionId: string;

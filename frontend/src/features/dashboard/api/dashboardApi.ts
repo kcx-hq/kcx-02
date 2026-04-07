@@ -1,6 +1,8 @@
 import { apiGet } from "@/lib/api";
 import type {
   BudgetActualForecastPoint,
+  CostExplorerFiltersQuery,
+  CostExplorerResponse,
   CostBreakdownItem,
   DashboardOverviewResponse,
   OverviewAnomaliesResponse,
@@ -49,6 +51,27 @@ function withOverviewFilters(
   appendArray("regionKeys", filters?.regionKeys);
   appendArray("severity", filters?.severity);
   appendArray("status", filters?.status);
+
+  const query = params.toString();
+  return query.length > 0 ? `${path}?${query}` : path;
+}
+
+function withCostExplorerFilters(
+  path: string,
+  scope: DashboardResolvedScope,
+  filters?: CostExplorerFiltersQuery,
+): string {
+  const params = new URLSearchParams(buildDashboardQueryParams(scope));
+
+  if (filters?.granularity) params.set("granularity", filters.granularity);
+  if (filters?.groupBy) params.set("groupBy", filters.groupBy);
+  if (filters?.metric) params.set("metric", filters.metric);
+
+  if (filters?.compareKey) {
+    params.set("compareKey", filters.compareKey);
+  } else if (filters?.compareKey === null) {
+    params.delete("compareKey");
+  }
 
   const query = params.toString();
   return query.length > 0 ? `${path}?${query}` : path;
@@ -103,8 +126,8 @@ export const dashboardApi = {
     return apiGet<OverviewFiltersResponse>(withOverviewFilters("/dashboard/filters", scope, filters));
   },
 
-  getCostExplorer(scope: DashboardResolvedScope) {
-    return apiGet<DashboardSectionData>(withDashboardQuery("/dashboard/cost-explorer", scope));
+  getCostExplorer(scope: DashboardResolvedScope, filters?: CostExplorerFiltersQuery) {
+    return apiGet<CostExplorerResponse>(withCostExplorerFilters("/dashboard/cost-explorer", scope, filters));
   },
 
   getResources(scope: DashboardResolvedScope) {
@@ -134,6 +157,14 @@ export const dashboardApi = {
 
 export type {
   BudgetActualForecastPoint,
+  CostExplorerBreakdownRow,
+  CostExplorerCompareKey,
+  CostExplorerFiltersQuery,
+  CostExplorerGranularity,
+  CostExplorerGroupBy,
+  CostExplorerMetric,
+  CostExplorerResponse,
+  CostExplorerSeries,
   CostBreakdownItem,
   DashboardOverviewResponse,
   OverviewAnomaliesResponse,

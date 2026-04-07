@@ -16,12 +16,12 @@ type CostExplorerFiltersPanelProps = {
   effectiveGranularity: Granularity;
   days: number;
   groupBy: GroupBy;
-  metric: Metric;
+  selectedMetrics: Metric[];
   compare: CompareKey[];
   chips: CostExplorerChip[];
   onSetGranularity: (granularity: Granularity) => void;
   onSetGroupBy: (groupBy: GroupBy) => void;
-  onSetMetric: (metric: Metric) => void;
+  onToggleMetric: (metric: Metric) => void;
   onToggleCompare: (key: CompareKey) => void;
   onEditChip: (key: CostExplorerChip["key"]) => void;
   onRemoveChip: (key: CostExplorerChip["key"]) => void;
@@ -43,12 +43,12 @@ export function CostExplorerFiltersPanel({
   effectiveGranularity,
   days,
   groupBy,
-  metric,
+  selectedMetrics,
   compare,
   chips,
   onSetGranularity,
   onSetGroupBy,
-  onSetMetric,
+  onToggleMetric,
   onToggleCompare,
   onEditChip,
   onRemoveChip,
@@ -95,7 +95,11 @@ export function CostExplorerFiltersPanel({
 
   const granularityLabel = `${effectiveGranularity[0].toUpperCase()}${effectiveGranularity.slice(1)}`;
   const groupLabel = GROUP_BY_OPTIONS.find((item) => item.key === groupBy)?.label ?? "None";
-  const metricLabel = METRIC_OPTIONS.find((item) => item.key === metric)?.label ?? "Billed Cost";
+  const metricLabel = selectedMetrics.length
+    ? selectedMetrics
+        .map((key) => METRIC_OPTIONS.find((item) => item.key === key)?.label ?? key)
+        .join(" VS ")
+    : "Billed Cost";
   const compareLabel = compare.length
     ? compare.map((key) => COMPARE_OPTIONS.find((item) => item.key === key)?.label ?? key).join(" + ")
     : "None";
@@ -120,8 +124,7 @@ export function CostExplorerFiltersPanel({
   };
 
   const onSelectMetric = (value: Metric) => {
-    onSetMetric(value);
-    setActivePopover(null);
+    onToggleMetric(value);
   };
 
   const onSelectCompare = (key: CompareKey) => {
@@ -234,6 +237,40 @@ export function CostExplorerFiltersPanel({
     );
   };
 
+  const renderMultiFilterList = <T extends string>(params: {
+    options: Array<FilterOption<T>>;
+    selected: T[];
+    onToggle: (value: T) => void;
+    emptyLabel: string;
+  }) => {
+    if (!params.options.length) {
+      return <p className="cost-explorer-filter-popover__empty">{params.emptyLabel}</p>;
+    }
+
+    return (
+      <div className="cost-explorer-filter-popover__list" role="listbox">
+        {params.options.map((option) => {
+          const selected = params.selected.includes(option.key);
+          return (
+            <button
+              key={option.key}
+              type="button"
+              className={`cost-explorer-filter-option${selected ? " is-active" : ""}`}
+              onClick={() => params.onToggle(option.key)}
+              role="option"
+              aria-selected={selected}
+            >
+              <span className="cost-explorer-filter-option__content">
+                <span className="cost-explorer-filter-option__label">{option.label}</span>
+              </span>
+              {selected ? <Check className="cost-explorer-filter-option__check" size={15} aria-hidden="true" /> : null}
+            </button>
+          );
+        })}
+      </div>
+    );
+  };
+
   return (
     <section className="cost-explorer-control-surface" aria-label="Cost explorer filters" ref={rootRef}>
       <div className="cost-explorer-toolbar-row">
@@ -314,10 +351,10 @@ export function CostExplorerFiltersPanel({
             <div className="cost-explorer-filter-popover" role="dialog" aria-label="Metric options">
               <p className="cost-explorer-filter-popover__title">Metric</p>
               {renderPopoverSearch("metric", "Search metrics...")}
-              {renderFilterList({
+              {renderMultiFilterList({
                 options: filteredMetricOptions,
-                selected: metric,
-                onSelect: onSelectMetric,
+                selected: selectedMetrics,
+                onToggle: onSelectMetric,
                 emptyLabel: "No metrics found.",
               })}
             </div>

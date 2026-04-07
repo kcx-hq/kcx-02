@@ -20,16 +20,26 @@ type CostExplorerChartSectionProps = {
     tone?: "default" | "positive" | "negative";
   }>;
   topBreakdowns: Array<{
-    key: "service" | "account" | "region";
+    key: "service" | "service-category" | "resource" | "account" | "region";
     label: string;
     rows: Array<{
-      rank: number;
       name: string;
+      subtitle?: string;
       costLabel: string;
       changeLabel: string;
       changeTone: "positive" | "negative" | "neutral";
     }>;
   }>;
+  rowsPerPage: 5 | 10 | 15;
+  onRowsPerPageChange: (limit: 5 | 10 | 15) => void;
+  breakdownPagination: {
+    currentPage: number;
+    totalPages: number;
+    totalRows: number;
+    startRow: number;
+    endRow: number;
+  } | null;
+  onBreakdownPageChange: (page: number) => void;
   onRetry: () => void;
   onReset: () => void;
 };
@@ -45,22 +55,32 @@ export function CostExplorerChartSection({
   onChartModeChange,
   kpis,
   topBreakdowns,
+  rowsPerPage,
+  onRowsPerPageChange,
+  breakdownPagination,
+  onBreakdownPageChange,
   onRetry,
   onReset,
 }: CostExplorerChartSectionProps) {
   const modeMenuRef = useRef<HTMLDivElement | null>(null);
+  const rowsMenuRef = useRef<HTMLDivElement | null>(null);
   const [modeMenuOpen, setModeMenuOpen] = useState(false);
+  const [rowsMenuOpen, setRowsMenuOpen] = useState(false);
+  const showRefreshSkeleton = isFetching && !isLoading && chartReady;
 
   useEffect(() => {
     const handlePointerDown = (event: MouseEvent) => {
-      if (!modeMenuRef.current) return;
-      if (modeMenuRef.current.contains(event.target as Node)) return;
+      const target = event.target as Node;
+      if (modeMenuRef.current?.contains(target)) return;
+      if (rowsMenuRef.current?.contains(target)) return;
       setModeMenuOpen(false);
+      setRowsMenuOpen(false);
     };
 
     const handleEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setModeMenuOpen(false);
+        setRowsMenuOpen(false);
       }
     };
 
@@ -156,15 +176,54 @@ export function CostExplorerChartSection({
           />
         ) : null}
         {!isLoading && !isError && chartReady ? (
-          <div className="cost-explorer-chart-stack">
+          <div className={`cost-explorer-chart-stack${showRefreshSkeleton ? " is-fetching" : ""}`}>
             <div key={chartMode} className="cost-explorer-chart-canvas">
               <BaseEChart option={option} height={420} />
             </div>
             {topBreakdowns.length ? (
-              <div className={`cost-explorer-breakdown-grid${topBreakdowns.length === 1 ? " is-single" : ""}`} aria-label="Top 5 breakdowns">
+              <div className={`cost-explorer-breakdown-grid${topBreakdowns.length === 1 ? " is-single" : ""}`} aria-label="Cost breakdowns">
                 {topBreakdowns.map((group) => (
                   <div key={group.key} className="cost-explorer-breakdown-block">
-                    <p className="cost-explorer-breakdown-block__title">{group.label}</p>
+                    <div className="cost-explorer-breakdown-block__head">
+                      <p className="cost-explorer-breakdown-block__title">{group.label}</p>
+                      <div className="cost-explorer-breakdown-controls">
+                        <div className="cost-explorer-breakdown-limit" ref={rowsMenuRef}>
+                          <button
+                            type="button"
+                            className={`cost-explorer-breakdown-limit__trigger${rowsMenuOpen ? " is-open" : ""}`}
+                            onClick={() => setRowsMenuOpen((current) => !current)}
+                            aria-haspopup="menu"
+                            aria-expanded={rowsMenuOpen}
+                          >
+                            <span>Rows: {rowsPerPage}</span>
+                            <ChevronDown size={14} aria-hidden="true" />
+                          </button>
+                          {rowsMenuOpen ? (
+                            <div className="cost-explorer-breakdown-limit__menu" role="menu" aria-label="Rows per page">
+                              {[5, 10, 15].map((limit) => {
+                                const limitValue = limit as 5 | 10 | 15;
+                                const isActive = rowsPerPage === limitValue;
+                                return (
+                                  <button
+                                    key={limit}
+                                    type="button"
+                                    role="menuitemradio"
+                                    aria-checked={isActive}
+                                    className={`cost-explorer-breakdown-limit__item${isActive ? " is-active" : ""}`}
+                                    onClick={() => {
+                                      onRowsPerPageChange(limitValue);
+                                      setRowsMenuOpen(false);
+                                    }}
+                                  >
+                                    {limit}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          ) : null}
+                        </div>
+                      </div>
+                    </div>
                     <div className="cost-explorer-breakdown-table-wrap">
                       <table className="cost-explorer-breakdown-table">
                         <thead>
@@ -177,7 +236,12 @@ export function CostExplorerChartSection({
                         <tbody>
                           {group.rows.map((row) => (
                             <tr key={`${group.key}-${row.name}`}>
-                              <td>{row.name}</td>
+                              <td>
+                                <div className="cost-explorer-breakdown-table__name-main">{row.name}</div>
+                                {row.subtitle ? (
+                                  <div className="cost-explorer-breakdown-table__name-sub">{row.subtitle}</div>
+                                ) : null}
+                              </td>
                               <td>{row.costLabel}</td>
                               <td className={`cost-explorer-breakdown-table__change is-${row.changeTone}`}>{row.changeLabel}</td>
                             </tr>
@@ -185,8 +249,51 @@ export function CostExplorerChartSection({
                         </tbody>
                       </table>
                     </div>
+                    {breakdownPagination ? (
+                      <div className="cost-explorer-breakdown-pagination">
+                        <p className="cost-explorer-breakdown-pagination__meta">
+                          {breakdownPagination.startRow}-{breakdownPagination.endRow} of {breakdownPagination.totalRows}
+                        </p>
+                        <div className="cost-explorer-breakdown-pagination__actions">
+                          <button
+                            type="button"
+                            className="cost-explorer-breakdown-pagination__btn"
+                            disabled={breakdownPagination.currentPage <= 1}
+                            onClick={() => onBreakdownPageChange(breakdownPagination.currentPage - 1)}
+                          >
+                            Prev
+                          </button>
+                          <span className="cost-explorer-breakdown-pagination__page">
+                            Page {breakdownPagination.currentPage} / {breakdownPagination.totalPages}
+                          </span>
+                          <button
+                            type="button"
+                            className="cost-explorer-breakdown-pagination__btn"
+                            disabled={breakdownPagination.currentPage >= breakdownPagination.totalPages}
+                            onClick={() => onBreakdownPageChange(breakdownPagination.currentPage + 1)}
+                          >
+                            Next
+                          </button>
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
                 ))}
+              </div>
+            ) : null}
+            {showRefreshSkeleton ? (
+              <div className="cost-explorer-refresh-skeleton" aria-hidden="true">
+                <div className="cost-explorer-refresh-skeleton__chips">
+                  <span className="cost-explorer-refresh-skeleton__chip" />
+                  <span className="cost-explorer-refresh-skeleton__chip" />
+                  <span className="cost-explorer-refresh-skeleton__chip" />
+                </div>
+                <div className="cost-explorer-refresh-skeleton__chart" />
+                <div className="cost-explorer-refresh-skeleton__table">
+                  <span className="cost-explorer-refresh-skeleton__row" />
+                  <span className="cost-explorer-refresh-skeleton__row" />
+                  <span className="cost-explorer-refresh-skeleton__row" />
+                </div>
               </div>
             ) : null}
           </div>

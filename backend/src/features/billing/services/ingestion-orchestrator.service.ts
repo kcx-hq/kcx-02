@@ -24,6 +24,7 @@ import {
   normalizeRowToCanonical,
   validateHeaders,
 } from "./schema-validator.service.js";
+import { upsertCostAggregationsForRun } from "./cost-aggregation.service.js";
 
 const SUPPORTED_FORMATS = new Set(["csv", "parquet"]);
 const PROGRESS_BY_STAGE = {
@@ -575,6 +576,16 @@ async function processIngestionRun(ingestionRunId) {
       rows_failed: rowsFailed,
       total_rows_estimated: rowsRead,
     });
+
+    if (rowsLoaded > 0) {
+      await upsertCostAggregationsForRun({
+        ingestionRunId: run.id,
+        tenantId: rawFile.tenantId,
+        providerId: rawFile.cloudProviderId,
+        billingSourceId: rawFile.billingSourceId,
+        uploadedBy: rawFile.uploadedBy,
+      });
+    }
 
     const topReasons = summarizeTopFailureReasons(failureReasonCounts);
     if (rowsLoaded === 0 && rowsFailed > 0) {
