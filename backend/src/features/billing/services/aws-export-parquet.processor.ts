@@ -256,6 +256,7 @@ export async function processAwsExportParquetRun({ run }) {
         });
         rowsRead += chunk.length;
 
+        const cachePrimeStartedAt = Date.now();
         try {
           await primeDimensionCacheForChunk({
             rawRows: chunk,
@@ -270,7 +271,9 @@ export async function processAwsExportParquetRun({ run }) {
             reason: toErrorMessage(error),
           });
         }
+        const cachePrimeMs = Date.now() - cachePrimeStartedAt;
 
+        const mapRowsStartedAt = Date.now();
         const factRows = [];
 
         for (let index = 0; index < chunk.length; index += 1) {
@@ -352,7 +355,9 @@ export async function processAwsExportParquetRun({ run }) {
             failedReasonCounts[rowError.errorCode] = (failedReasonCounts[rowError.errorCode] ?? 0) + 1;
           }
         }
+        const mapRowsMs = Date.now() - mapRowsStartedAt;
 
+        const insertStartedAt = Date.now();
         if (factRows.length > 0) {
           await setRunState(runId, {
             status: "inserting_facts",
@@ -367,6 +372,19 @@ export async function processAwsExportParquetRun({ run }) {
           });
 
           rowsLoaded += insertResult.insertedCount;
+
+          if (insertResult.batchFallbackError) {
+            logger.warn("AWS parquet processor: step=fact_insert_batch_fallback", {
+              runId,
+              rawFileId,
+              chunkIndex,
+              batchSize: factRows.length,
+              insertedCount: insertResult.insertedCount,
+              failedCount: insertResult.failedRows.length,
+              errorCode: insertResult.batchFallbackError.errorCode,
+              errorMessage: insertResult.batchFallbackError.errorMessage,
+            });
+          }
 
           if (insertResult.failedRows.length > 0) {
             rowsFailed += insertResult.failedRows.length;
@@ -385,6 +403,7 @@ export async function processAwsExportParquetRun({ run }) {
             }
           }
         }
+        const insertMs = Date.now() - insertStartedAt;
 
         await setRunState(runId, {
           rows_read: rowsRead,
@@ -393,6 +412,19 @@ export async function processAwsExportParquetRun({ run }) {
           total_rows_estimated: rowsRead,
           status_message: STAGE_MESSAGE.inserting_facts,
           progress_percent: PROGRESS_BY_STAGE.inserting_facts,
+        });
+
+        logger.info("AWS parquet processor: step=parse_chunks:chunk_processed", {
+          runId,
+          rawFileId,
+          chunkIndex,
+          chunkSize: chunk.length,
+          cachePrimeMs,
+          mapRowsMs,
+          insertMs,
+          rowsRead,
+          rowsLoaded,
+          rowsFailed,
         });
 
         chunkOffset += chunk.length;
