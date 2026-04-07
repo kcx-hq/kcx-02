@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { PageSection } from "../../common/components";
 import { useBudgetQuery, useDashboardFiltersQuery } from "../../hooks/useDashboardQueries";
 
@@ -15,7 +16,6 @@ type BudgetFormState = {
   ongoing: boolean;
   scopeType: ScopeType;
   scopeValue: string;
-  compareMetric: CompareMetric;
   status: BudgetStatus;
 };
 
@@ -69,7 +69,6 @@ function createInitialFormState(): BudgetFormState {
     ongoing: false,
     scopeType: "overall",
     scopeValue: "All Resources",
-    compareMetric: "billed-cost",
     status: "active",
   };
 }
@@ -128,7 +127,10 @@ export default function BudgetPage() {
 
   const [form, setForm] = useState<BudgetFormState>(createInitialFormState);
   const [selectedBudgetId, setSelectedBudgetId] = useState<string | null>(null);
+  const [isBudgetModalOpen, setIsBudgetModalOpen] = useState(false);
   const [budgets, setBudgets] = useState<BudgetRow[]>(initialBudgets);
+  const [currentPage, setCurrentPage] = useState(1);
+  const rowsPerPage = 5;
 
   const scopeOptions = useMemo(() => {
     if (form.scopeType === "overall") {
@@ -145,6 +147,16 @@ export default function BudgetPage() {
 
     return (filtersQuery.data?.accounts ?? []).map((item) => item.name);
   }, [filtersQuery.data?.accounts, filtersQuery.data?.regions, filtersQuery.data?.services, form.scopeType]);
+
+  useEffect(() => {
+    if (scopeOptions.length === 0) return;
+    if (scopeOptions.includes(form.scopeValue)) return;
+
+    setForm((current) => ({
+      ...current,
+      scopeValue: scopeOptions[0] ?? "",
+    }));
+  }, [form.scopeValue, scopeOptions]);
 
   const formCanSubmit =
     form.budgetName.trim().length > 0 &&
@@ -168,7 +180,7 @@ export default function BudgetPage() {
     ongoing: form.ongoing,
     scopeType: form.scopeType,
     scopeValue: form.scopeValue,
-    compareMetric: form.compareMetric,
+    compareMetric: "billed-cost",
     threshold: 80,
     currentSpend,
     status: form.status,
@@ -180,7 +192,9 @@ export default function BudgetPage() {
     const amount = Number(form.budgetAmount);
     const newBudget = mapFormToBudget(amount * 0.35, `bud-${Date.now()}`);
     setBudgets((current) => [newBudget, ...current]);
+    setCurrentPage(1);
     onReset();
+    setIsBudgetModalOpen(false);
   };
 
   const onUpdateBudget = () => {
@@ -195,6 +209,7 @@ export default function BudgetPage() {
       }),
     );
     onReset();
+    setIsBudgetModalOpen(false);
   };
 
   const onEditBudget = (budget: BudgetRow) => {
@@ -208,9 +223,9 @@ export default function BudgetPage() {
       ongoing: budget.ongoing,
       scopeType: budget.scopeType,
       scopeValue: budget.scopeValue,
-      compareMetric: budget.compareMetric,
       status: budget.status,
     });
+    setIsBudgetModalOpen(true);
   };
 
   const onToggleStatus = (budgetId: string) => {
@@ -221,184 +236,194 @@ export default function BudgetPage() {
     );
   };
 
+  const totalRows = budgets.length;
+  const totalPages = Math.max(1, Math.ceil(totalRows / rowsPerPage));
+  const safePage = Math.min(Math.max(currentPage, 1), totalPages);
+  const startRow = totalRows > 0 ? (safePage - 1) * rowsPerPage + 1 : 0;
+  const endRow = totalRows > 0 ? Math.min(safePage * rowsPerPage, totalRows) : 0;
+  const visibleBudgets = budgets.slice((safePage - 1) * rowsPerPage, safePage * rowsPerPage);
+
   return (
     <div className="dashboard-page budget-page">
       <PageSection
         title="Budget Setup"
-        description="Create and manage budget policies by scope, period, and compare metric."
+        description="Open the modal form to create a new budget policy or update an existing one."
+        actions={
+          <button
+            type="button"
+            className="budget-action-button budget-action-button--primary"
+            onClick={() => {
+              onReset();
+              setIsBudgetModalOpen(true);
+            }}
+          >
+            Open Budget Setup Form
+          </button>
+        }
         className="budget-setup-section"
       >
         {budgetQuery.isLoading ? <p className="dashboard-note">Loading budget baseline...</p> : null}
         {budgetQuery.isError ? <p className="dashboard-note">Failed to load budget baseline: {budgetQuery.error.message}</p> : null}
 
-        <form
-          className="budget-setup-form"
-          onSubmit={(event) => {
-            event.preventDefault();
-            if (selectedBudgetId) {
-              onUpdateBudget();
-            } else {
-              onSaveBudget();
+        <Dialog
+          open={isBudgetModalOpen}
+          onOpenChange={(open) => {
+            setIsBudgetModalOpen(open);
+            if (!open) {
+              onReset();
             }
           }}
         >
-          <label className="budget-field">
-            <span className="budget-field__label">Budget Name</span>
-            <input
-              className="budget-field__control"
-              type="text"
-              value={form.budgetName}
-              onChange={(event) => setForm((current) => ({ ...current, budgetName: event.target.value }))}
-              placeholder="e.g. Global Monthly Guardrail"
-            />
-          </label>
+          <DialogContent className="budget-setup-dialog">
+            <DialogHeader>
+              <DialogTitle>{selectedBudgetId ? "Update Budget Policy" : "Create Budget Policy"}</DialogTitle>
+            </DialogHeader>
 
-          <label className="budget-field">
-            <span className="budget-field__label">Budget Amount</span>
-            <input
-              className="budget-field__control"
-              type="number"
-              min="0"
-              step="0.01"
-              value={form.budgetAmount}
-              onChange={(event) => setForm((current) => ({ ...current, budgetAmount: event.target.value }))}
-              placeholder="0.00"
-            />
-          </label>
-
-          <label className="budget-field">
-            <span className="budget-field__label">Period Type</span>
-            <select
-              className="budget-field__control"
-              value={form.periodType}
-              onChange={(event) =>
-                setForm((current) => ({ ...current, periodType: event.target.value as BudgetFormState["periodType"] }))
-              }
-            >
-              <option value="monthly">Monthly</option>
-            </select>
-          </label>
-
-          <label className="budget-field">
-            <span className="budget-field__label">Start Month</span>
-            <input
-              className="budget-field__control"
-              type="month"
-              value={form.startMonth}
-              onChange={(event) => setForm((current) => ({ ...current, startMonth: event.target.value }))}
-            />
-          </label>
-
-          <label className="budget-field">
-            <span className="budget-field__label">End Month</span>
-            <input
-              className="budget-field__control"
-              type="month"
-              value={form.endMonth}
-              disabled={form.ongoing}
-              onChange={(event) => setForm((current) => ({ ...current, endMonth: event.target.value }))}
-            />
-          </label>
-
-          <label className="budget-field budget-field--checkbox">
-            <span className="budget-field__label">Ongoing</span>
-            <span className="budget-checkbox">
-              <input
-                type="checkbox"
-                checked={form.ongoing}
-                onChange={(event) => {
-                  const ongoing = event.target.checked;
-                  setForm((current) => ({ ...current, ongoing, endMonth: ongoing ? "" : current.endMonth }));
-                }}
-              />
-              <span>Run without end month</span>
-            </span>
-          </label>
-
-          <label className="budget-field">
-            <span className="budget-field__label">Scope Type</span>
-            <select
-              className="budget-field__control"
-              value={form.scopeType}
-              onChange={(event) => {
-                const scopeType = event.target.value as ScopeType;
-                const fallbackValue = scopeType === "overall" ? "All Resources" : "";
-                setForm((current) => ({ ...current, scopeType, scopeValue: fallbackValue }));
+            <form
+              className="budget-setup-form"
+              onSubmit={(event) => {
+                event.preventDefault();
+                if (selectedBudgetId) {
+                  onUpdateBudget();
+                } else {
+                  onSaveBudget();
+                }
               }}
             >
-              <option value="overall">Overall</option>
-              <option value="service">Service</option>
-              <option value="region">Region</option>
-              <option value="account">Account</option>
-            </select>
-          </label>
+              <section className="budget-form-section">
+                <div className="budget-form-grid">
+                  <label className="budget-field">
+                    <span className="budget-field__label">Budget Name</span>
+                    <input
+                      className="budget-field__control"
+                      type="text"
+                      value={form.budgetName}
+                      onChange={(event) => setForm((current) => ({ ...current, budgetName: event.target.value }))}
+                      placeholder="e.g. Global Monthly Guardrail"
+                    />
+                  </label>
 
-          <label className="budget-field">
-            <span className="budget-field__label">Scope Value</span>
-            <select
-              className="budget-field__control"
-              value={form.scopeValue}
-              onChange={(event) => setForm((current) => ({ ...current, scopeValue: event.target.value }))}
-              disabled={scopeOptions.length === 0}
-            >
-              {scopeOptions.length === 0 ? <option value="">No options available</option> : null}
-              {scopeOptions.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
-          </label>
+                  <label className="budget-field">
+                    <span className="budget-field__label">Budget Amount</span>
+                    <input
+                      className="budget-field__control"
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={form.budgetAmount}
+                      onChange={(event) => setForm((current) => ({ ...current, budgetAmount: event.target.value }))}
+                      placeholder="0.00"
+                    />
+                  </label>
+                </div>
+              </section>
 
-          <label className="budget-field">
-            <span className="budget-field__label">Compare Metric</span>
-            <select
-              className="budget-field__control"
-              value={form.compareMetric}
-              onChange={(event) => setForm((current) => ({ ...current, compareMetric: event.target.value as CompareMetric }))}
-            >
-              <option value="billed-cost">Billed Cost</option>
-              <option value="effective-cost">Effective Cost</option>
-              <option value="list-cost">List Cost</option>
-            </select>
-          </label>
+              <section className="budget-form-section">
+                <div className="budget-form-grid">
+                  <label className="budget-field">
+                    <span className="budget-field__label">Period Type</span>
+                    <select
+                      className="budget-field__control"
+                      value={form.periodType}
+                      onChange={(event) =>
+                        setForm((current) => ({ ...current, periodType: event.target.value as BudgetFormState["periodType"] }))
+                      }
+                    >
+                      <option value="monthly">Monthly</option>
+                    </select>
+                  </label>
 
-          <label className="budget-field">
-            <span className="budget-field__label">Status</span>
-            <select
-              className="budget-field__control"
-              value={form.status}
-              onChange={(event) => setForm((current) => ({ ...current, status: event.target.value as BudgetStatus }))}
-            >
-              <option value="active">Active</option>
-              <option value="inactive">Inactive</option>
-            </select>
-          </label>
+                  <label className="budget-field">
+                    <span className="budget-field__label">Start Month</span>
+                    <input
+                      className="budget-field__control"
+                      type="month"
+                      value={form.startMonth}
+                      onChange={(event) => setForm((current) => ({ ...current, startMonth: event.target.value }))}
+                    />
+                  </label>
 
-          <div className="budget-actions">
-            <button className="budget-action-button budget-action-button--primary" type="submit" disabled={!formCanSubmit}>
-              Save Budget
-            </button>
-            <button className="budget-action-button budget-action-button--ghost" type="button" onClick={onReset}>
-              Reset
-            </button>
-            <button
-              className="budget-action-button budget-action-button--accent"
-              type="button"
-              disabled={!selectedBudgetId || !formCanSubmit}
-              onClick={onUpdateBudget}
-            >
-              Update Budget
-            </button>
-          </div>
-        </form>
-      </PageSection>
+                  <label className="budget-field">
+                    <span className="budget-field__label">End Month</span>
+                    <input
+                      className="budget-field__control"
+                      type="month"
+                      value={form.endMonth}
+                      disabled={form.ongoing}
+                      onChange={(event) => setForm((current) => ({ ...current, endMonth: event.target.value }))}
+                    />
+                  </label>
 
-      <PageSection
-        title="Configured Budgets"
-        description="Track allocated budget against current spend and policy threshold."
-        className="budget-table-section"
-      >
+                  <label className="budget-field budget-field--checkbox">
+                    <span className="budget-field__label">Ongoing</span>
+                    <span className="budget-checkbox">
+                      <input
+                        type="checkbox"
+                        checked={form.ongoing}
+                        onChange={(event) => {
+                          const ongoing = event.target.checked;
+                          setForm((current) => ({ ...current, ongoing, endMonth: ongoing ? "" : current.endMonth }));
+                        }}
+                      />
+                      <span>Run without end month</span>
+                    </span>
+                  </label>
+                </div>
+              </section>
+
+              <section className="budget-form-section">
+                <div className="budget-form-grid">
+                  <label className="budget-field">
+                    <span className="budget-field__label">Scope Type</span>
+                    <select
+                      className="budget-field__control"
+                      value={form.scopeType}
+                      onChange={(event) => {
+                        const scopeType = event.target.value as ScopeType;
+                        setForm((current) => ({ ...current, scopeType, scopeValue: "" }));
+                      }}
+                    >
+                      <option value="overall">Overall</option>
+                      <option value="service">Service</option>
+                      <option value="region">Region</option>
+                      <option value="account">Account</option>
+                    </select>
+                  </label>
+
+                  <label className="budget-field">
+                    <span className="budget-field__label">Status</span>
+                    <select
+                      className="budget-field__control"
+                      value={form.status}
+                      onChange={(event) => setForm((current) => ({ ...current, status: event.target.value as BudgetStatus }))}
+                    >
+                      <option value="active">Active</option>
+                      <option value="inactive">Inactive</option>
+                    </select>
+                  </label>
+                </div>
+              </section>
+
+              <div className="budget-actions">
+                <button className="budget-action-button budget-action-button--primary" type="submit" disabled={!formCanSubmit}>
+                  Save Budget
+                </button>
+                <button className="budget-action-button budget-action-button--ghost" type="button" onClick={onReset}>
+                  Reset
+                </button>
+                <button
+                  className="budget-action-button budget-action-button--accent"
+                  type="button"
+                  disabled={!selectedBudgetId || !formCanSubmit}
+                  onClick={onUpdateBudget}
+                >
+                  Update Budget
+                </button>
+              </div>
+            </form>
+          </DialogContent>
+        </Dialog>
+        <div className="budget-unified-divider" aria-hidden="true" />
         <div className="budget-table-shell">
           <table className="budget-table">
             <thead>
@@ -416,7 +441,7 @@ export default function BudgetPage() {
               </tr>
             </thead>
             <tbody>
-              {budgets.map((budget) => {
+              {visibleBudgets.map((budget) => {
                 const usagePercent = budget.budgetAmount > 0 ? budget.currentSpend / budget.budgetAmount : 0;
                 const usageClass =
                   usagePercent >= 1 ? "is-over" : usagePercent >= budget.threshold / 100 ? "is-warning" : "is-safe";
@@ -458,6 +483,33 @@ export default function BudgetPage() {
               })}
             </tbody>
           </table>
+        </div>
+
+        <div className="budget-pagination">
+          <p className="budget-pagination__meta">
+            Showing {startRow}-{endRow} of {totalRows}
+          </p>
+          <div className="budget-pagination__actions">
+            <button
+              type="button"
+              className="budget-pagination__btn"
+              disabled={safePage <= 1}
+              onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+            >
+              Previous
+            </button>
+            <span className="budget-pagination__page">
+              Page {safePage} of {totalPages}
+            </span>
+            <button
+              type="button"
+              className="budget-pagination__btn"
+              disabled={safePage >= totalPages}
+              onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
+            >
+              Next
+            </button>
+          </div>
         </div>
       </PageSection>
     </div>
