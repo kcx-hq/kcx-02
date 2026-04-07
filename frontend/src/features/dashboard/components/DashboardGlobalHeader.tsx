@@ -210,6 +210,7 @@ export function DashboardGlobalHeader() {
   const selectedAccount = searchParams.get("subAccountKey") ?? "";
   const selectedService = searchParams.get("serviceKey") ?? "";
   const selectedRegion = searchParams.get("regionKey") ?? "";
+  const hasAppliedBillingRange = Boolean(effectiveBillingStart && effectiveBillingEnd);
 
   const filtersQuery = useDashboardFiltersQuery({
     ...(effectiveBillingStart ? { billingPeriodStart: effectiveBillingStart } : {}),
@@ -429,7 +430,7 @@ export function DashboardGlobalHeader() {
           <div className="dashboard-date-range-picker" ref={dateMenuRef}>
             <button
               type="button"
-              className={`dashboard-date-range-trigger${isRangeMenuOpen ? " is-open" : ""}`}
+              className={`dashboard-date-range-trigger${hasAppliedBillingRange ? " is-active" : ""}${isRangeMenuOpen ? " is-open" : ""}`}
               onClick={toggleRangeMenu}
               aria-haspopup="dialog"
               aria-expanded={isRangeMenuOpen}

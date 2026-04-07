@@ -14,6 +14,11 @@ type IngestionRangeRow = {
   to_date: string | null;
 };
 
+const DATE_ONLY_REGEX = /^\d{4}-\d{2}-\d{2}$/;
+
+const isDateOnly = (value: string | undefined): value is string =>
+  typeof value === "string" && DATE_ONLY_REGEX.test(value);
+
 export class DashboardScopeResolver {
   async resolve(input: DashboardRequest): Promise<DashboardScope> {
     if (Array.isArray(input.rawBillingFileIds) && input.rawBillingFileIds.length > 0) {
@@ -100,13 +105,32 @@ export class DashboardScopeResolver {
       );
     }
 
+    const usageFrom = usageRange.from_date;
+    const usageTo = usageRange.to_date;
+    const requestedFrom = isDateOnly(input.from) ? input.from : undefined;
+    const requestedTo = isDateOnly(input.to) ? input.to : undefined;
+
+    let resolvedFrom = requestedFrom ?? usageFrom;
+    let resolvedTo = requestedTo ?? usageTo;
+
+    // Keep requested range inside upload usage boundaries.
+    if (resolvedFrom < usageFrom) resolvedFrom = usageFrom;
+    if (resolvedFrom > usageTo) resolvedFrom = usageTo;
+    if (resolvedTo < usageFrom) resolvedTo = usageFrom;
+    if (resolvedTo > usageTo) resolvedTo = usageTo;
+
+    if (resolvedFrom > resolvedTo) {
+      resolvedFrom = usageFrom;
+      resolvedTo = usageTo;
+    }
+
     return {
       scopeType: "upload",
       tenantId: input.tenantId,
       rawBillingFileIds,
       ingestionRunIds,
-      from: usageRange.from_date,
-      to: usageRange.to_date,
+      from: resolvedFrom,
+      to: resolvedTo,
     };
   }
 }

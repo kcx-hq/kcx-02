@@ -414,6 +414,17 @@
   background: color-mix(in srgb, var(--dashboard-surface-card) 66%, var(--dashboard-white-soft) 34%);
 }
 
+.dashboard-date-range-trigger.is-active {
+  border-color: color-mix(in srgb, var(--dashboard-accent) 42%, var(--dashboard-border-light) 58%);
+  background: color-mix(in srgb, var(--dashboard-accent) 12%, var(--dashboard-surface-card) 88%);
+  color: color-mix(in srgb, var(--dashboard-accent) 78%, #1f3d3f 22%);
+}
+
+.dashboard-date-range-trigger.is-active .dashboard-date-range-trigger__icon,
+.dashboard-date-range-trigger.is-active .dashboard-date-range-trigger__caret {
+  color: color-mix(in srgb, var(--dashboard-accent) 65%, #365651 35%);
+}
+
 .dashboard-date-range-trigger.is-open {
   border-color: color-mix(in srgb, var(--dashboard-accent) 52%, var(--dashboard-border-light) 48%);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--dashboard-accent) 16%, transparent 84%);

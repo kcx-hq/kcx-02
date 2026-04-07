@@ -85,8 +85,8 @@ export const buildDashboardRequest = (req: Request): DashboardRequest => ({
   // Preferred multi-file upload scope input.
   rawBillingFileIds: parseIntegerList(req.query.rawBillingFileIds, "rawBillingFileIds"),
   tenantId: resolveDashboardTenantId(req),
-  from: parseOptionalString(req.query.from),
-  to: parseOptionalString(req.query.to),
+  from: parseOptionalString(req.query.from) ?? parseOptionalString(req.query.billingPeriodStart),
+  to: parseOptionalString(req.query.to) ?? parseOptionalString(req.query.billingPeriodEnd),
   providerId: parseOptionalInteger(req.query.providerId, "providerId"),
   billingAccountKey: parseOptionalInteger(req.query.billingAccountKey, "billingAccountKey"),
   subAccountKey: parseOptionalInteger(req.query.subAccountKey, "subAccountKey"),
