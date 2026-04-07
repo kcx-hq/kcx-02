@@ -1,5 +1,7 @@
-import { apiGet } from "@/lib/api";
+import { apiGet, apiPatch, apiPost } from "@/lib/api";
 import type {
+  BudgetDashboardResponse,
+  BudgetUpsertPayload,
   BudgetActualForecastPoint,
   CostExplorerFiltersQuery,
   CostExplorerResponse,
@@ -147,7 +149,25 @@ export const dashboardApi = {
   },
 
   getBudget(scope: DashboardResolvedScope) {
-    return apiGet<DashboardSectionData>(withDashboardQuery("/dashboard/budget", scope));
+    return apiGet<BudgetDashboardResponse>(withDashboardQuery("/dashboard/budget", scope));
+  },
+
+  createBudget(scope: DashboardResolvedScope, payload: BudgetUpsertPayload) {
+    return apiPost<BudgetDashboardResponse["items"][number]>(withDashboardQuery("/dashboard/budget", scope), payload);
+  },
+
+  updateBudget(scope: DashboardResolvedScope, budgetId: string, payload: BudgetUpsertPayload) {
+    return apiPatch<BudgetDashboardResponse["items"][number]>(
+      withDashboardQuery(`/dashboard/budget/${budgetId}`, scope),
+      payload,
+    );
+  },
+
+  updateBudgetStatus(scope: DashboardResolvedScope, budgetId: string, status: "active" | "inactive") {
+    return apiPatch<BudgetDashboardResponse["items"][number]>(
+      withDashboardQuery(`/dashboard/budget/${budgetId}/status`, scope),
+      { status },
+    );
   },
 
   getReport(scope: DashboardResolvedScope) {
@@ -157,6 +177,10 @@ export const dashboardApi = {
 
 export type {
   BudgetActualForecastPoint,
+  BudgetDashboardResponse,
+  BudgetItem,
+  BudgetStatus,
+  BudgetUpsertPayload,
   CostExplorerBreakdownRow,
   CostExplorerCompareKey,
   CostExplorerFiltersQuery,

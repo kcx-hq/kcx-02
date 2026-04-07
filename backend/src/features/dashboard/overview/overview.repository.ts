@@ -491,16 +491,25 @@ export class OverviewRepository {
               interval '1 month'
             )::date AS month_start
           ),
+          selected_budget AS (
+            SELECT b.*
+            FROM budgets b
+            WHERE b.tenant_id = $1
+              AND b.period = 'monthly'
+              AND COALESCE(NULLIF(b.scope_filter->>'status', ''), 'active') = 'active'
+              AND b.start_date <= CURRENT_DATE
+              AND (b.end_date IS NULL OR b.end_date >= CURRENT_DATE)
+            ORDER BY b.updated_at DESC, b.created_at DESC
+            LIMIT 1
+          ),
           budgets_monthly AS (
             SELECT
               m.month_start,
-              COALESCE(SUM(b.budget_amount), 0)::double precision AS budget
+              COALESCE(SUM(sb.budget_amount), 0)::double precision AS budget
             FROM months m
-            LEFT JOIN budgets b
-              ON b.tenant_id = $1
-             AND b.period = 'monthly'
-             AND b.start_date <= (m.month_start + interval '1 month - 1 day')::date
-             AND (b.end_date IS NULL OR b.end_date >= m.month_start)
+            LEFT JOIN selected_budget sb
+              ON sb.start_date <= (m.month_start + interval '1 month - 1 day')::date
+             AND (sb.end_date IS NULL OR sb.end_date >= m.month_start)
             GROUP BY 1
           ),
           forecast_monthly AS (
@@ -508,9 +517,8 @@ export class OverviewRepository {
               date_trunc('month', be.evaluated_at)::date AS month_start,
               COALESCE(SUM(be.forecast_spend), 0)::double precision AS forecast
             FROM budget_evaluations be
-            JOIN budgets b ON b.id = be.budget_id
-            WHERE b.tenant_id = $1
-              AND be.evaluated_at::date BETWEEN $2 AND $3
+            JOIN selected_budget sb ON sb.id = be.budget_id
+            WHERE be.evaluated_at::date BETWEEN $2 AND $3
             GROUP BY 1
           )
           SELECT

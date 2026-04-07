@@ -46,6 +46,45 @@ export type DashboardSectionData = {
   summary: DashboardSummaryItem[];
 };
 
+export type BudgetScopeType = "overall" | "service" | "region" | "account";
+export type BudgetStatus = "active" | "inactive";
+export type BudgetCompareMetric = "billed-cost" | "effective-cost" | "list-cost";
+
+export type BudgetItem = {
+  id: string;
+  budgetName: string;
+  budgetAmount: number;
+  periodType: "monthly";
+  startMonth: string;
+  endMonth: string;
+  ongoing: boolean;
+  scopeType: BudgetScopeType;
+  scopeValue: string;
+  compareMetric: BudgetCompareMetric;
+  threshold: number;
+  currentSpend: number;
+  status: BudgetStatus;
+};
+
+export type BudgetDashboardResponse = {
+  section: "budget";
+  title: "Budget";
+  message: string;
+  items: BudgetItem[];
+};
+
+export type BudgetUpsertPayload = {
+  budgetName: string;
+  budgetAmount: number;
+  periodType: "monthly";
+  startMonth: string;
+  endMonth: string;
+  ongoing: boolean;
+  scopeType: BudgetScopeType;
+  scopeValue: string;
+  status: BudgetStatus;
+};
+
 export type OverviewSortOrder = "asc" | "desc";
 
 export type OverviewFiltersQuery = {
