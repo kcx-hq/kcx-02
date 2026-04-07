@@ -218,9 +218,14 @@ const toBucketStartIso = (value: string | Date): string => {
 
 export class CostExplorerRepository {
   private getSourceConfig(
+    scope: DashboardScope,
     effectiveGranularity: CostExplorerGranularity,
     groupBy?: Exclude<CostExplorerGroupBy, "none">,
   ): SourceConfig {
+    if (scope.scopeType === "upload") {
+      return factConfigByGranularity[effectiveGranularity];
+    }
+
     if (groupBy === "resource") {
       return factConfigByGranularity[effectiveGranularity];
     }
@@ -303,7 +308,7 @@ export class CostExplorerRepository {
     from: string,
     to: string,
   ): Promise<Array<{ bucketStart: string; value: number }>> {
-    const config = aggregationConfigByGranularity[effectiveGranularity];
+    const config = this.getSourceConfig(scope, effectiveGranularity);
     const where = this.buildScopeWhereClause(scope, config, from, to);
     const metricColumn = resolveMetricColumn(metric);
 
@@ -335,7 +340,7 @@ export class CostExplorerRepository {
     groupBy: Exclude<CostExplorerGroupBy, "none">,
     limit: number,
   ): Promise<Array<{ key: GroupDimensionKey; name: string }>> {
-    const config = this.getSourceConfig(effectiveGranularity, groupBy);
+    const config = this.getSourceConfig(scope, effectiveGranularity, groupBy);
     const where = this.buildScopeWhereClause(scope, config, from, to);
     const metricColumn = resolveMetricColumn(metric);
 
@@ -384,7 +389,7 @@ export class CostExplorerRepository {
   ): Promise<Array<{ bucketStart: string; key: GroupDimensionKey; value: number }>> {
     if (!groupKeys.length) return [];
 
-    const config = this.getSourceConfig(effectiveGranularity, groupBy);
+    const config = this.getSourceConfig(scope, effectiveGranularity, groupBy);
     const where = this.buildScopeWhereClause(scope, config, from, to);
     const metricColumn = resolveMetricColumn(metric);
     const dimension = this.getDimensionSql(groupBy, config.alias);
@@ -494,7 +499,7 @@ export class CostExplorerRepository {
       return new Map();
     }
 
-    const config = aggregationConfigByGranularity[filters.effectiveGranularity];
+    const config = this.getSourceConfig(scope, filters.effectiveGranularity, "service-category");
     const metricColumn = resolveMetricColumn(filters.metric);
     const where = this.buildScopeWhereClause(scope, config, filters.from, filters.to);
 
@@ -550,7 +555,7 @@ export class CostExplorerRepository {
       return new Map();
     }
 
-    const config = this.getSourceConfig(filters.effectiveGranularity, "resource");
+    const config = this.getSourceConfig(scope, filters.effectiveGranularity, "resource");
     const metricColumn = resolveMetricColumn(filters.metric);
     const where = this.buildScopeWhereClause(scope, config, filters.from, filters.to);
 
@@ -797,7 +802,7 @@ export class CostExplorerRepository {
     dimension: Exclude<CostExplorerGroupBy, "none">,
     limit: number,
   ): Promise<CostExplorerBreakdownRow[]> {
-    const config = this.getSourceConfig(filters.effectiveGranularity, dimension);
+    const config = this.getSourceConfig(scope, filters.effectiveGranularity, dimension);
     const metricColumn = resolveMetricColumn(filters.metric);
     const currentWhere = this.buildScopeWhereClause(scope, config, filters.from, filters.to);
     const previous = buildPreviousPeriod(filters.from, filters.to);

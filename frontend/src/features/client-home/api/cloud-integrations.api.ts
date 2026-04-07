@@ -36,6 +36,20 @@ export type CloudIntegrationListItem = {
   updated_at: string | null
 }
 
+export type CloudIntegrationDashboardScope = {
+  cloud_integration_id: string
+  display_name: string
+  cloud_account_id: string | null
+  detail_record_id: string
+  detail_record_type: string
+  raw_billing_file_ids: number[]
+  ingested_files_count: number
+}
+
 export async function getTenantCloudIntegrations() {
   return apiGet<CloudIntegrationListItem[]>("/cloud-integrations")
+}
+
+export async function getCloudIntegrationDashboardScope(cloudIntegrationId: string) {
+  return apiGet<CloudIntegrationDashboardScope>(`/cloud-integrations/${cloudIntegrationId}/dashboard-scope`)
 }
