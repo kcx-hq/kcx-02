@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/ban-ts-comment */
 // @ts-nocheck
 import { BillingSource, CloudConnectionV2 } from "../../../models/index.js";
+import env from "../../../config/env.js";
 import { logger } from "../../../utils/logger.js";
 import { downloadExportFile } from "../../cloud-connections/aws/infrastructure/aws-export-reader.service.js";
 import type { AwsParquetSchemaValidationResult } from "../../cloud-connections/aws/exports/aws-export-ingestion.types.js";
@@ -97,7 +98,8 @@ const buildSchemaResult = ({ rawBillingFileId, key, validation }) => ({
 
 export async function processAwsExportParquetRun({ run }) {
   const runId = String(run.id);
-  const batchSize = 1000;
+  const batchSize = env.billingIngestionBatchSize;
+  const rowConcurrency = Math.max(1, env.billingIngestionRowConcurrency);
   logger.info("AWS parquet processor: step=start", { runId, batchSize });
 
   await setRunState(runId, {
@@ -275,84 +277,124 @@ export async function processAwsExportParquetRun({ run }) {
 
         const mapRowsStartedAt = Date.now();
         const factRows = [];
+        let chunkProcessedRows = 0;
 
-        for (let index = 0; index < chunk.length; index += 1) {
-          const rowNumber = chunkOffset + index + 1;
-          const rawRow = chunk[index];
+        for (let index = 0; index < chunk.length; index += rowConcurrency) {
+          const sliceStart = index;
+          const slice = chunk.slice(sliceStart, sliceStart + rowConcurrency);
+          const sliceResults = await Promise.all(
+            slice.map(async (rawRow, localIndex) => {
+              const chunkIndexPosition = sliceStart + localIndex;
+              const rowNumber = chunkOffset + chunkIndexPosition + 1;
+              try {
+                const normalizedRow = normalizeRowToCanonical(rawRow, canonicalHeaderMap);
+                const dimensions = await resolveDimensionsWithCache({
+                  rawRow: normalizedRow,
+                  tenantId: rawFile.tenantId,
+                  providerId: rawFile.cloudProviderId,
+                  cache: dimensionCache,
+                });
 
-          try {
-            const normalizedRow = normalizeRowToCanonical(rawRow, canonicalHeaderMap);
-            const dimensions = await resolveDimensionsWithCache({
-              rawRow: normalizedRow,
-              tenantId: rawFile.tenantId,
-              providerId: rawFile.cloudProviderId,
-              cache: dimensionCache,
-            });
+                const factPayload = mapFactCostLineItem({
+                  tenant_id: rawFile.tenantId,
+                  billing_source_id: rawFile.billingSourceId,
+                  ingestion_run_id: runId,
+                  provider_id: rawFile.cloudProviderId,
+                  billing_account_key: dimensions.billingAccountKey,
+                  sub_account_key: dimensions.subAccountKey,
+                  region_key: dimensions.regionKey,
+                  service_key: dimensions.serviceKey,
+                  resource_key: dimensions.resourceKey,
+                  sku_key: dimensions.skuKey,
+                  charge_key: dimensions.chargeKey,
+                  usage_date_key: dimensions.usageDateKey,
+                  billing_period_start_date_key: dimensions.billingPeriodStartDateKey,
+                  billing_period_end_date_key: dimensions.billingPeriodEndDateKey,
+                  raw_row: normalizedRow,
+                });
 
-            const factPayload = mapFactCostLineItem({
-              tenant_id: rawFile.tenantId,
-              billing_source_id: rawFile.billingSourceId,
-              ingestion_run_id: runId,
-              provider_id: rawFile.cloudProviderId,
-              billing_account_key: dimensions.billingAccountKey,
-              sub_account_key: dimensions.subAccountKey,
-              region_key: dimensions.regionKey,
-              service_key: dimensions.serviceKey,
-              resource_key: dimensions.resourceKey,
-              sku_key: dimensions.skuKey,
-              charge_key: dimensions.chargeKey,
-              usage_date_key: dimensions.usageDateKey,
-              billing_period_start_date_key: dimensions.billingPeriodStartDateKey,
-              billing_period_end_date_key: dimensions.billingPeriodEndDateKey,
-              raw_row: normalizedRow,
-            });
+                return {
+                  ok: true,
+                  rowNumber,
+                  rawRow: normalizedRow,
+                  createPayload: {
+                    tenantId: factPayload.tenant_id,
+                    billingSourceId: factPayload.billing_source_id,
+                    ingestionRunId: factPayload.ingestion_run_id,
+                    providerId: factPayload.provider_id,
+                    billingAccountKey: factPayload.billing_account_key,
+                    subAccountKey: factPayload.sub_account_key,
+                    regionKey: factPayload.region_key,
+                    serviceKey: factPayload.service_key,
+                    resourceKey: factPayload.resource_key,
+                    skuKey: factPayload.sku_key,
+                    chargeKey: factPayload.charge_key,
+                    usageDateKey: factPayload.usage_date_key,
+                    billingPeriodStartDateKey: factPayload.billing_period_start_date_key,
+                    billingPeriodEndDateKey: factPayload.billing_period_end_date_key,
+                    billedCost: factPayload.billed_cost,
+                    effectiveCost: factPayload.effective_cost,
+                    listCost: factPayload.list_cost,
+                    usageStartTime: factPayload.usage_start_time,
+                    usageEndTime: factPayload.usage_end_time,
+                    lineItemType: factPayload.line_item_type,
+                    pricingTerm: factPayload.pricing_term,
+                    publicOnDemandCost: factPayload.public_on_demand_cost,
+                    discountAmount: factPayload.discount_amount,
+                    creditAmount: factPayload.credit_amount,
+                    refundAmount: factPayload.refund_amount,
+                    taxCost: factPayload.tax_cost,
+                    consumedQuantity: factPayload.consumed_quantity,
+                    pricingQuantity: factPayload.pricing_quantity,
+                    tagsJson: factPayload.tags_json,
+                  },
+                };
+              } catch (error) {
+                return {
+                  ok: false,
+                  rowNumber,
+                  rawRow,
+                  error,
+                };
+              }
+            }),
+          );
 
-            factRows.push({
-              rowNumber,
-              rawRow: normalizedRow,
-              createPayload: {
-                tenantId: factPayload.tenant_id,
-                billingSourceId: factPayload.billing_source_id,
-                ingestionRunId: factPayload.ingestion_run_id,
-                providerId: factPayload.provider_id,
-                billingAccountKey: factPayload.billing_account_key,
-                subAccountKey: factPayload.sub_account_key,
-                regionKey: factPayload.region_key,
-                serviceKey: factPayload.service_key,
-                resourceKey: factPayload.resource_key,
-                skuKey: factPayload.sku_key,
-                chargeKey: factPayload.charge_key,
-                usageDateKey: factPayload.usage_date_key,
-                billingPeriodStartDateKey: factPayload.billing_period_start_date_key,
-                billingPeriodEndDateKey: factPayload.billing_period_end_date_key,
-                billedCost: factPayload.billed_cost,
-                effectiveCost: factPayload.effective_cost,
-                listCost: factPayload.list_cost,
-                usageStartTime: factPayload.usage_start_time,
-                usageEndTime: factPayload.usage_end_time,
-                lineItemType: factPayload.line_item_type,
-                pricingTerm: factPayload.pricing_term,
-                publicOnDemandCost: factPayload.public_on_demand_cost,
-                discountAmount: factPayload.discount_amount,
-                creditAmount: factPayload.credit_amount,
-                refundAmount: factPayload.refund_amount,
-                taxCost: factPayload.tax_cost,
-                consumedQuantity: factPayload.consumed_quantity,
-                pricingQuantity: factPayload.pricing_quantity,
-                tagsJson: factPayload.tags_json,
-              },
-            });
-          } catch (error) {
+          for (const result of sliceResults) {
+            if (result.ok) {
+              factRows.push({
+                rowNumber: result.rowNumber,
+                rawRow: result.rawRow,
+                createPayload: result.createPayload,
+              });
+              continue;
+            }
+
             rowsFailed += 1;
             const rowError = buildRowErrorFromException({
               runId,
               rawBillingFileId: rawFileId,
-              rowNumber,
-              rawRow,
-              error,
+              rowNumber: result.rowNumber,
+              rawRow: result.rawRow,
+              error: result.error,
             });
             allRowErrors.push(rowError);
             failedReasonCounts[rowError.errorCode] = (failedReasonCounts[rowError.errorCode] ?? 0) + 1;
+          }
+
+          chunkProcessedRows += slice.length;
+          if (chunkProcessedRows % Math.max(100, rowConcurrency) === 0 || chunkProcessedRows === chunk.length) {
+            await setRunState(runId, {
+              status: "normalizing",
+              current_step: "normalizing",
+              rows_read: rowsRead,
+              rows_loaded: rowsLoaded,
+              rows_failed: rowsFailed,
+              total_rows_estimated: rowsRead,
+              progress_percent: PROGRESS_BY_STAGE.normalizing,
+              status_message: `Normalizing ${rawFile.rawStorageKey} (${chunkProcessedRows}/${chunk.length})`,
+              last_heartbeat_at: now(),
+            });
           }
         }
         const mapRowsMs = Date.now() - mapRowsStartedAt;
