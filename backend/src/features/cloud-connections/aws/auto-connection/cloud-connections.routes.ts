@@ -6,6 +6,7 @@ import awsExportFileEventRoutes from "../exports/aws-export-file-event.routes.js
 import {
   handleAwsConnectionCallback,
   handleCreateCloudConnection,
+  handleGetCloudIntegrationDashboardScope,
   handleGetCloudIntegrations,
   handleGetAwsCloudFormationSetupUrl,
   handleGetCloudConnection,
@@ -22,6 +23,7 @@ router.use("/cloud-integrations", requireAuth);
 
 router.post("/cloud-connections", asyncHandler(handleCreateCloudConnection));
 router.get("/cloud-integrations", asyncHandler(handleGetCloudIntegrations));
+router.get("/cloud-integrations/:id/dashboard-scope", asyncHandler(handleGetCloudIntegrationDashboardScope));
 router.get("/cloud-connections/:id", asyncHandler(handleGetCloudConnection));
 router.get("/cloud-connections/:id/aws-cloudformation-url", asyncHandler(handleGetAwsCloudFormationSetupUrl));
 router.post("/cloud-connections/:id/validate", asyncHandler(handleValidateCloudConnection));

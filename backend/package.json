@@ -8,6 +8,7 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/server.js",
     "ingest:aws:manual": "node dist/scripts/manual-aws-export-ingestion.js",
+    "backfill:cost-aggregations": "npm run build && node dist/scripts/backfill-cost-aggregations.js",
     "diagnose:billing:parquet": "node scripts/diagnose-billing-parquet.mjs",
     "lint": "eslint . --ext .ts",
     "lint:fix": "eslint . --ext .ts --fix",

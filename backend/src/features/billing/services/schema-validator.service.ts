@@ -210,11 +210,27 @@ function normalizeRowToCanonical(rawRow = {}, canonicalHeaderMap = {}) {
     normalizedRow[canonicalColumn] = value === undefined ? null : value;
   }
 
-  const usageStartRaw = getRawValue(rawRow, canonicalHeaderMap, "ChargePeriodStart", ["ChargePeriodStart"]);
-  const usageEndRaw = getRawValue(rawRow, canonicalHeaderMap, "ChargePeriodEnd", ["ChargePeriodEnd"]);
-  const lineItemTypeRaw = getRawValue(rawRow, canonicalHeaderMap, "ChargeFrequency", ["ChargeFrequency"]);
-  const pricingTermRaw = getRawValue(rawRow, canonicalHeaderMap, "PricingCategory", ["PricingCategory"]);
-  const publicOnDemandCostRaw = getRawValue(rawRow, canonicalHeaderMap, "ListCost", ["ListCost"]);
+  const usageStartRaw = getRawValue(rawRow, canonicalHeaderMap, "usage_start_time", [
+    "usage_start_time",
+    "ChargePeriodStart",
+  ]);
+  const usageEndRaw = getRawValue(rawRow, canonicalHeaderMap, "usage_end_time", [
+    "usage_end_time",
+    "ChargePeriodEnd",
+  ]);
+  const lineItemTypeRaw = getRawValue(rawRow, canonicalHeaderMap, "line_item_type", [
+    "line_item_type",
+    "ChargeCategory",
+  ]);
+  const pricingTermRaw = getRawValue(rawRow, canonicalHeaderMap, "pricing_term", [
+    "pricing_term",
+    "ChargeClass",
+    "PricingCategory",
+  ]);
+  const publicOnDemandCostRaw = getRawValue(rawRow, canonicalHeaderMap, "public_on_demand_cost", [
+    "public_on_demand_cost",
+    "ListCost",
+  ]);
   const effectiveCostRaw = getRawValue(rawRow, canonicalHeaderMap, "EffectiveCost", ["EffectiveCost"]);
 
   normalizedRow.usage_start_time = usageStartRaw === undefined ? null : usageStartRaw;

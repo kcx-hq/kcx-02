@@ -36,6 +36,9 @@ import createFactCommitmentCoverageModel from "./billing/fact_commitment_coverag
 import createBudgetsModel from "./billing/budgets.js";
 import createBudgetEvaluationsModel from "./billing/budget_evaluations.js";
 import createBudgetAlertsModel from "./billing/budget_alerts.js";
+import createAggCostHourlyModel from "./billing/agg_cost_hourly.js";
+import createAggCostDailyModel from "./billing/agg_cost_daily.js";
+import createAggCostMonthlyModel from "./billing/agg_cost_monthly.js";
 
 const dbUrl = new URL(env.dbUrl);
 if (!dbUrl.searchParams.has("sslmode")) {
@@ -89,6 +92,9 @@ const FactCommitmentCoverage = createFactCommitmentCoverageModel(sequelize);
 const Budgets = createBudgetsModel(sequelize);
 const BudgetEvaluations = createBudgetEvaluationsModel(sequelize);
 const BudgetAlerts = createBudgetAlertsModel(sequelize);
+const AggCostHourly = createAggCostHourlyModel(sequelize);
+const AggCostDaily = createAggCostDailyModel(sequelize);
+const AggCostMonthly = createAggCostMonthlyModel(sequelize);
 
 User.hasMany(DemoRequest, { foreignKey: "userId" });
 DemoRequest.belongsTo(User, { foreignKey: "userId" });
@@ -227,6 +233,39 @@ FactCommitmentCoverage.belongsTo(Tenant, { foreignKey: "tenantId" });
 CloudConnectionV2.hasMany(FactCommitmentCoverage, { foreignKey: "cloudConnectionId" });
 FactCommitmentCoverage.belongsTo(CloudConnectionV2, { foreignKey: "cloudConnectionId" });
 
+Tenant.hasMany(AggCostHourly, { foreignKey: "tenantId" });
+AggCostHourly.belongsTo(Tenant, { foreignKey: "tenantId" });
+BillingSource.hasMany(AggCostHourly, { foreignKey: "billingSourceId" });
+AggCostHourly.belongsTo(BillingSource, { foreignKey: "billingSourceId" });
+BillingIngestionRun.hasMany(AggCostHourly, { foreignKey: "ingestionRunId" });
+AggCostHourly.belongsTo(BillingIngestionRun, { foreignKey: "ingestionRunId" });
+CloudProvider.hasMany(AggCostHourly, { foreignKey: "providerId" });
+AggCostHourly.belongsTo(CloudProvider, { foreignKey: "providerId" });
+User.hasMany(AggCostHourly, { foreignKey: "uploadedBy" });
+AggCostHourly.belongsTo(User, { foreignKey: "uploadedBy" });
+
+Tenant.hasMany(AggCostDaily, { foreignKey: "tenantId" });
+AggCostDaily.belongsTo(Tenant, { foreignKey: "tenantId" });
+BillingSource.hasMany(AggCostDaily, { foreignKey: "billingSourceId" });
+AggCostDaily.belongsTo(BillingSource, { foreignKey: "billingSourceId" });
+BillingIngestionRun.hasMany(AggCostDaily, { foreignKey: "ingestionRunId" });
+AggCostDaily.belongsTo(BillingIngestionRun, { foreignKey: "ingestionRunId" });
+CloudProvider.hasMany(AggCostDaily, { foreignKey: "providerId" });
+AggCostDaily.belongsTo(CloudProvider, { foreignKey: "providerId" });
+User.hasMany(AggCostDaily, { foreignKey: "uploadedBy" });
+AggCostDaily.belongsTo(User, { foreignKey: "uploadedBy" });
+
+Tenant.hasMany(AggCostMonthly, { foreignKey: "tenantId" });
+AggCostMonthly.belongsTo(Tenant, { foreignKey: "tenantId" });
+BillingSource.hasMany(AggCostMonthly, { foreignKey: "billingSourceId" });
+AggCostMonthly.belongsTo(BillingSource, { foreignKey: "billingSourceId" });
+BillingIngestionRun.hasMany(AggCostMonthly, { foreignKey: "ingestionRunId" });
+AggCostMonthly.belongsTo(BillingIngestionRun, { foreignKey: "ingestionRunId" });
+CloudProvider.hasMany(AggCostMonthly, { foreignKey: "providerId" });
+AggCostMonthly.belongsTo(CloudProvider, { foreignKey: "providerId" });
+User.hasMany(AggCostMonthly, { foreignKey: "uploadedBy" });
+AggCostMonthly.belongsTo(User, { foreignKey: "uploadedBy" });
+
 Tenant.hasMany(Budgets, { foreignKey: "tenantId" });
 Budgets.belongsTo(Tenant, { foreignKey: "tenantId" });
 CloudConnectionV2.hasMany(Budgets, { foreignKey: "cloudConnectionId" });
@@ -283,4 +322,7 @@ export {
   Budgets,
   BudgetEvaluations,
   BudgetAlerts,
+  AggCostHourly,
+  AggCostDaily,
+  AggCostMonthly,
 };

@@ -28,6 +28,7 @@ import {
   normalizeRowToCanonical,
   validateHeaders,
 } from "./schema-validator.service.js";
+import { upsertCostAggregationsForRun } from "./cost-aggregation.service.js";
 
 const SUPPORTED_FORMATS = new Set(["csv", "parquet"]);
 const PROGRESS_BY_STAGE = {
@@ -557,13 +558,19 @@ async function processIngestionRun(ingestionRunId) {
               listCost: factPayload.list_cost,
               usageStartTime: factPayload.usage_start_time,
               usageEndTime: factPayload.usage_end_time,
+              usageType: factPayload.usage_type,
+              operation: factPayload.operation,
               lineItemType: factPayload.line_item_type,
               pricingTerm: factPayload.pricing_term,
+              purchaseOption: factPayload.purchase_option,
               publicOnDemandCost: factPayload.public_on_demand_cost,
               discountAmount: factPayload.discount_amount,
               creditAmount: factPayload.credit_amount,
               refundAmount: factPayload.refund_amount,
               taxCost: factPayload.tax_cost,
+              reservationArn: factPayload.reservation_arn,
+              savingsPlanArn: factPayload.savings_plan_arn,
+              savingsPlanType: factPayload.savings_plan_type,
               consumedQuantity: factPayload.consumed_quantity,
               pricingQuantity: factPayload.pricing_quantity,
               tagsJson: factPayload.tags_json,
@@ -722,6 +729,16 @@ async function processIngestionRun(ingestionRunId) {
       rows_failed: rowsFailed,
       total_rows_estimated: rowsRead,
     });
+
+    if (rowsLoaded > 0) {
+      await upsertCostAggregationsForRun({
+        ingestionRunId: run.id,
+        tenantId: rawFile.tenantId,
+        providerId: rawFile.cloudProviderId,
+        billingSourceId: rawFile.billingSourceId,
+        uploadedBy: rawFile.uploadedBy,
+      });
+    }
 
     const topReasons = summarizeTopFailureReasons(failureReasonCounts);
     if (rowsLoaded === 0 && rowsFailed > 0) {
