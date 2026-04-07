@@ -222,20 +222,29 @@ export function DashboardGlobalHeader() {
     return match?.label ?? "Overview";
   }, [location.pathname]);
 
-  const uploadedFileName = useMemo(() => {
+  const uploadedFileLabel = useMemo(() => {
     if (scope?.scopeType !== "upload") {
       return null;
     }
 
-    const firstRawFileId = scope.rawBillingFileIds[0];
+    const scopedRawFileIds = scope.rawBillingFileIds;
+    const fileCount = scopedRawFileIds.length;
+    const firstRawFileId = scopedRawFileIds[0];
     if (!firstRawFileId) {
       return scope.title;
     }
 
-    const matching = (uploadHistoryQuery.data ?? []).find(
+    const records = uploadHistoryQuery.data ?? [];
+    const matching = records.find(
       (record) => Number(record.rawBillingFileId) === Number(firstRawFileId),
     );
-    return matching?.fileName ?? scope.title;
+
+    const firstFileName = matching?.fileName?.trim() || "Selected upload files";
+    if (fileCount <= 1) {
+      return firstFileName;
+    }
+
+    return `${firstFileName} + ${fileCount - 1} more`;
   }, [scope, uploadHistoryQuery.data]);
 
   useEffect(() => {
@@ -422,7 +431,7 @@ export function DashboardGlobalHeader() {
         </nav>
 
         <div className="dashboard-global-header__center">
-          {uploadedFileName ? <span className="dashboard-header-file-pill">{uploadedFileName}</span> : null}
+          {uploadedFileLabel ? <span className="dashboard-header-file-pill">{uploadedFileLabel}</span> : null}
         </div>
 
         <div className="dashboard-global-header__actions">

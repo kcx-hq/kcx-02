@@ -45,16 +45,18 @@ export class DashboardScopeResolver {
 
     const ingestionRuns = await sequelize.query<IngestionRunLookupRow>(
       `
-        SELECT DISTINCT ON (bir.raw_billing_file_id)
-          bir.raw_billing_file_id,
+        SELECT DISTINCT ON (birf.raw_billing_file_id)
+          birf.raw_billing_file_id,
           bir.id
-        FROM billing_ingestion_runs bir
-        JOIN raw_billing_files rbf ON rbf.id = bir.raw_billing_file_id
-        WHERE bir.raw_billing_file_id = ANY($1::bigint[])
+        FROM billing_ingestion_run_files birf
+        JOIN billing_ingestion_runs bir ON bir.id = birf.ingestion_run_id
+        JOIN raw_billing_files rbf ON rbf.id = birf.raw_billing_file_id
+        WHERE birf.raw_billing_file_id = ANY($1::bigint[])
+          AND birf.file_role = 'data'
           AND bir.status IN ('completed', 'completed_with_warnings')
           AND rbf.tenant_id = $2
         ORDER BY
-          bir.raw_billing_file_id,
+          birf.raw_billing_file_id,
           bir.finished_at DESC NULLS LAST,
           bir.id DESC;
       `,

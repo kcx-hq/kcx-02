@@ -1,6 +1,6 @@
 import type { Request, Response } from "express";
 import crypto from "node:crypto";
-import type { Transaction } from "sequelize";
+import { Op, type Transaction } from "sequelize";
 
 import env from "../../../../config/env.js";
 import { HTTP_STATUS } from "../../../../constants/http-status.js";
@@ -10,7 +10,15 @@ import {
   NotFoundError,
   UnauthorizedError,
 } from "../../../../errors/http-errors.js";
-import { BillingSource, CloudConnectionV2, CloudIntegration, CloudProvider, sequelize } from "../../../../models/index.js";
+import {
+  BillingIngestionRun,
+  BillingIngestionRunFile,
+  BillingSource,
+  CloudConnectionV2,
+  CloudIntegration,
+  CloudProvider,
+  sequelize,
+} from "../../../../models/index.js";
 import { sendSuccess } from "../../../../utils/api-response.js";
 import { logger } from "../../../../utils/logger.js";
 import { parseWithSchema } from "../../../_shared/validation/zod-validate.js";
@@ -736,6 +744,91 @@ export async function handleGetCloudIntegrations(req: Request, res: Response): P
         updated_at: integration.updatedAt?.toISOString() ?? null,
       };
     }),
+  });
+}
+
+export async function handleGetCloudIntegrationDashboardScope(req: Request, res: Response): Promise<void> {
+  requireUserId(req);
+  const tenantId = requireTenantId(req);
+  const id = req.params.id;
+
+  if (typeof id !== "string" || id.trim().length === 0) {
+    throw new NotFoundError("Cloud integration not found");
+  }
+
+  const integration = await CloudIntegration.findOne({
+    where: { id, tenantId },
+  });
+
+  if (!integration) {
+    throw new NotFoundError("Cloud integration not found");
+  }
+
+  const billingSources = await BillingSource.findAll({
+    where: {
+      tenantId,
+      cloudConnectionId: integration.detailRecordId,
+    },
+    attributes: ["id"],
+  });
+
+  const billingSourceIds = billingSources.map((source) => String(source.id));
+
+  let rawBillingFileIds: number[] = [];
+  if (billingSourceIds.length > 0) {
+    const completedIngestionRuns = await BillingIngestionRun.findAll({
+      where: {
+        billingSourceId: {
+          [Op.in]: billingSourceIds,
+        },
+        status: {
+          [Op.in]: ["completed", "completed_with_warnings"],
+        },
+      },
+      attributes: ["id"],
+      order: [["updatedAt", "DESC"]],
+    });
+
+    const completedIngestionRunIds = completedIngestionRuns
+      .map((run) => Number(run.id))
+      .filter((ingestionRunId) => Number.isInteger(ingestionRunId));
+
+    if (completedIngestionRunIds.length > 0) {
+      const runFiles = await BillingIngestionRunFile.findAll({
+        where: {
+          ingestionRunId: {
+            [Op.in]: completedIngestionRunIds,
+          },
+          fileRole: "data",
+        },
+        attributes: ["rawBillingFileId"],
+        order: [["createdAt", "DESC"]],
+      });
+
+      rawBillingFileIds = [
+        ...new Set(
+          runFiles
+            .map((runFile) => Number(runFile.rawBillingFileId))
+            .filter((rawBillingFileId) => Number.isInteger(rawBillingFileId)),
+        ),
+      ];
+    }
+  }
+
+  sendSuccess({
+    res,
+    req,
+    statusCode: HTTP_STATUS.OK,
+    message: "Cloud integration dashboard scope loaded",
+    data: {
+      cloud_integration_id: integration.id,
+      display_name: integration.displayName,
+      cloud_account_id: integration.cloudAccountId,
+      detail_record_id: integration.detailRecordId,
+      detail_record_type: integration.detailRecordType,
+      raw_billing_file_ids: rawBillingFileIds,
+      ingested_files_count: rawBillingFileIds.length,
+    },
   });
 }
 
