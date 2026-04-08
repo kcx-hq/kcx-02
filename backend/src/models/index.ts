@@ -225,8 +225,12 @@ FactAnomalies.belongsTo(DimResource, { foreignKey: "resourceKey" });
 
 Tenant.hasMany(FactRecommendations, { foreignKey: "tenantId" });
 FactRecommendations.belongsTo(Tenant, { foreignKey: "tenantId" });
-CloudConnectionV2.hasMany(FactRecommendations, { foreignKey: "cloudConnectionId" });
-FactRecommendations.belongsTo(CloudConnectionV2, { foreignKey: "cloudConnectionId" });
+DimService.hasMany(FactRecommendations, { foreignKey: "serviceKey" });
+FactRecommendations.belongsTo(DimService, { foreignKey: "serviceKey" });
+DimSubAccount.hasMany(FactRecommendations, { foreignKey: "subAccountKey" });
+FactRecommendations.belongsTo(DimSubAccount, { foreignKey: "subAccountKey" });
+DimRegion.hasMany(FactRecommendations, { foreignKey: "regionKey" });
+FactRecommendations.belongsTo(DimRegion, { foreignKey: "regionKey" });
 
 Tenant.hasMany(FactCommitmentCoverage, { foreignKey: "tenantId" });
 FactCommitmentCoverage.belongsTo(Tenant, { foreignKey: "tenantId" });

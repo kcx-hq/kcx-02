@@ -12,36 +12,70 @@ class FactRecommendations extends Model<
   InferCreationAttributes<FactRecommendations>
 > {
   declare id: CreationOptional<string>;
-  declare tenantId: CreationOptional<string | null>;
-  declare cloudConnectionId: string;
-  declare recommendationType: CreationOptional<string | null>;
-  declare resourceId: CreationOptional<string | null>;
-  declare serviceName: CreationOptional<string | null>;
-  declare potentialMonthlySavings: CreationOptional<string | null>;
-  declare riskLevel: CreationOptional<string | null>;
-  declare confidenceScore: CreationOptional<string | null>;
+  declare tenantId: string;
+  declare awsAccountId: string;
+  declare awsRegionCode: string;
+  declare category: string;
+  declare recommendationType: string;
+  declare serviceKey: CreationOptional<string | null>;
+  declare subAccountKey: CreationOptional<string | null>;
+  declare regionKey: CreationOptional<string | null>;
+  declare resourceId: string;
+  declare resourceArn: CreationOptional<string | null>;
+  declare resourceName: CreationOptional<string | null>;
+  declare currentResourceType: CreationOptional<string | null>;
+  declare recommendedResourceType: CreationOptional<string | null>;
+  declare currentMonthlyCost: CreationOptional<string>;
+  declare estimatedMonthlySavings: CreationOptional<string>;
+  declare projectedMonthlyCost: CreationOptional<string>;
+  declare performanceRiskScore: CreationOptional<string | null>;
+  declare performanceRiskLevel: CreationOptional<string | null>;
+  declare sourceSystem: CreationOptional<string>;
   declare status: CreationOptional<string>;
-  declare reason: CreationOptional<string | null>;
+  declare effortLevel: CreationOptional<string | null>;
+  declare riskLevel: CreationOptional<string | null>;
+  declare recommendationTitle: CreationOptional<string | null>;
+  declare recommendationText: CreationOptional<string | null>;
+  declare observationStart: CreationOptional<Date | null>;
+  declare observationEnd: CreationOptional<Date | null>;
+  declare rawPayloadJson: CreationOptional<string | null>;
   declare createdAt: CreationOptional<Date>;
-  declare closedAt: CreationOptional<Date | null>;
+  declare updatedAt: CreationOptional<Date>;
 }
 
 const createFactRecommendationsModel = (sequelize: Sequelize): typeof FactRecommendations => {
   FactRecommendations.init(
     {
-      id: { type: DataTypes.UUID, allowNull: false, primaryKey: true, defaultValue: sequelize.literal("gen_random_uuid()") },
-      tenantId: { type: DataTypes.UUID, allowNull: true, field: "tenant_id" },
-      cloudConnectionId: { type: DataTypes.UUID, allowNull: false, field: "cloud_connection_id" },
-      recommendationType: { type: DataTypes.TEXT, allowNull: true, field: "recommendation_type" },
-      resourceId: { type: DataTypes.TEXT, allowNull: true, field: "resource_id" },
-      serviceName: { type: DataTypes.TEXT, allowNull: true, field: "service_name" },
-      potentialMonthlySavings: { type: DataTypes.DECIMAL(18, 6), allowNull: true, field: "potential_monthly_savings" },
-      riskLevel: { type: DataTypes.TEXT, allowNull: true, field: "risk_level" },
-      confidenceScore: { type: DataTypes.DECIMAL(5, 2), allowNull: true, field: "confidence_score" },
-      status: { type: DataTypes.TEXT, allowNull: false, defaultValue: "open" },
-      reason: { type: DataTypes.TEXT, allowNull: true },
+      id: { type: DataTypes.BIGINT, allowNull: false, autoIncrement: true, primaryKey: true },
+      tenantId: { type: DataTypes.UUID, allowNull: false, field: "tenant_id" },
+      awsAccountId: { type: DataTypes.STRING(50), allowNull: false, field: "aws_account_id" },
+      awsRegionCode: { type: DataTypes.STRING(50), allowNull: false, field: "aws_region_code" },
+      category: { type: DataTypes.STRING(50), allowNull: false },
+      recommendationType: { type: DataTypes.STRING(100), allowNull: false, field: "recommendation_type" },
+      serviceKey: { type: DataTypes.BIGINT, allowNull: true, field: "service_key" },
+      subAccountKey: { type: DataTypes.BIGINT, allowNull: true, field: "sub_account_key" },
+      regionKey: { type: DataTypes.BIGINT, allowNull: true, field: "region_key" },
+      resourceId: { type: DataTypes.STRING(255), allowNull: false, field: "resource_id" },
+      resourceArn: { type: DataTypes.TEXT, allowNull: true, field: "resource_arn" },
+      resourceName: { type: DataTypes.STRING(255), allowNull: true, field: "resource_name" },
+      currentResourceType: { type: DataTypes.STRING(100), allowNull: true, field: "current_resource_type" },
+      recommendedResourceType: { type: DataTypes.STRING(100), allowNull: true, field: "recommended_resource_type" },
+      currentMonthlyCost: { type: DataTypes.DECIMAL(18, 4), allowNull: false, defaultValue: "0", field: "current_monthly_cost" },
+      estimatedMonthlySavings: { type: DataTypes.DECIMAL(18, 4), allowNull: false, defaultValue: "0", field: "estimated_monthly_savings" },
+      projectedMonthlyCost: { type: DataTypes.DECIMAL(18, 4), allowNull: false, defaultValue: "0", field: "projected_monthly_cost" },
+      performanceRiskScore: { type: DataTypes.DECIMAL(10, 4), allowNull: true, field: "performance_risk_score" },
+      performanceRiskLevel: { type: DataTypes.STRING(20), allowNull: true, field: "performance_risk_level" },
+      sourceSystem: { type: DataTypes.STRING(50), allowNull: false, defaultValue: "AWS_COMPUTE_OPTIMIZER", field: "source_system" },
+      status: { type: DataTypes.STRING(20), allowNull: false, defaultValue: "OPEN" },
+      effortLevel: { type: DataTypes.STRING(20), allowNull: true, field: "effort_level" },
+      riskLevel: { type: DataTypes.STRING(20), allowNull: true, field: "risk_level" },
+      recommendationTitle: { type: DataTypes.STRING(255), allowNull: true, field: "recommendation_title" },
+      recommendationText: { type: DataTypes.TEXT, allowNull: true, field: "recommendation_text" },
+      observationStart: { type: DataTypes.DATE, allowNull: true, field: "observation_start" },
+      observationEnd: { type: DataTypes.DATE, allowNull: true, field: "observation_end" },
+      rawPayloadJson: { type: DataTypes.TEXT, allowNull: true, field: "raw_payload_json" },
       createdAt: { type: DataTypes.DATE, allowNull: false, defaultValue: sequelize.literal("NOW()"), field: "created_at" },
-      closedAt: { type: DataTypes.DATE, allowNull: true, field: "closed_at" },
+      updatedAt: { type: DataTypes.DATE, allowNull: false, defaultValue: sequelize.literal("NOW()"), field: "updated_at" },
     },
     {
       sequelize,

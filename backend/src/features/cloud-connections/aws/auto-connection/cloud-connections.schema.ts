@@ -25,4 +25,67 @@ export const awsConnectionCallbackSchema = z.object({
   cadence: z.string().trim().optional().default("hourly"),
 });
 
+export const generateAwsCloudFormationSetupSchema = z.object({
+  stackName: z.string().trim().min(1, "stackName is required"),
+  externalId: z.string().trim().min(1, "externalId is required"),
+  connectionName: z.string().trim().min(1, "connectionName is required"),
+  region: z.string().trim().min(1, "region is required"),
+  exportPrefix: z.string().trim().min(1, "exportPrefix cannot be empty").optional(),
+  exportName: z.string().trim().min(1, "exportName cannot be empty").optional(),
+  callbackUrl: z.string().trim().min(1, "callbackUrl cannot be empty").optional(),
+  callbackToken: z.string().trim().min(1, "callbackToken cannot be empty").optional(),
+  enableBillingExport: z.boolean().optional().default(true),
+  enableActionRole: z.boolean().optional().default(true),
+  enableEC2Module: z.boolean().optional().default(true),
+  useTagScopedAccess: z.boolean().optional().default(false),
+  resourceTagKey: z.string().trim().min(1, "resourceTagKey cannot be empty").optional(),
+  resourceTagValue: z.string().trim().min(1, "resourceTagValue cannot be empty").optional(),
+  accountType: z.enum(["payer", "member"]).optional(),
+}).superRefine((value, ctx) => {
+  if (value.enableBillingExport) {
+    if (!value.callbackUrl) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["callbackUrl"],
+        message: "callbackUrl is required when billing export is enabled",
+      });
+    }
+
+    if (!value.callbackToken) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["callbackToken"],
+        message: "callbackToken is required when billing export is enabled",
+      });
+    }
+  }
+
+  if (!value.enableActionRole && value.enableEC2Module) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["enableEC2Module"],
+      message: "enableEC2Module cannot be true when enableActionRole is false",
+    });
+  }
+
+  if (value.useTagScopedAccess) {
+    if (!value.resourceTagKey) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["resourceTagKey"],
+        message: "resourceTagKey is required when tag scoped access is enabled",
+      });
+    }
+
+    if (!value.resourceTagValue) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["resourceTagValue"],
+        message: "resourceTagValue is required when tag scoped access is enabled",
+      });
+    }
+  }
+});
+
 export type AwsConnectionCallbackPayload = z.infer<typeof awsConnectionCallbackSchema>;
+export type GenerateAwsCloudFormationSetupPayload = z.infer<typeof generateAwsCloudFormationSetupSchema>;

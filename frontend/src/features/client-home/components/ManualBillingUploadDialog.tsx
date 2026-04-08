@@ -36,6 +36,8 @@ type ManualBillingUploadDialogProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
   onIngestionQueued?: (payload: { ingestionRunId: string }) => void
+  initialSource?: UploadSource
+  hideSourceTabs?: boolean
 }
 
 type UploadSource = "local" | "s3"
@@ -88,8 +90,10 @@ export function ManualBillingUploadDialog({
   open,
   onOpenChange,
   onIngestionQueued,
+  initialSource = "local",
+  hideSourceTabs = false,
 }: ManualBillingUploadDialogProps) {
-  const [source, setSource] = useState<UploadSource>("local")
+  const [source, setSource] = useState<UploadSource>(initialSource)
 
   const [providers, setProviders] = useState<CloudProvider[]>([])
   const [selectedProviderId, setSelectedProviderId] = useState("")
@@ -149,6 +153,11 @@ export function ManualBillingUploadDialog({
     })()
   }, [open, source])
 
+  useEffect(() => {
+    if (!open) return
+    setSource(initialSource)
+  }, [initialSource, open])
+
   function onFileChange(event: React.ChangeEvent<HTMLInputElement>) {
     setLocalError(null)
     setSuccessMessage(null)
@@ -172,7 +181,7 @@ export function ManualBillingUploadDialog({
 
   function closeDialog() {
     onOpenChange(false)
-    setSource("local")
+    setSource(initialSource)
     setFile(null)
     setLocalError(null)
     setSuccessMessage(null)
@@ -359,24 +368,26 @@ export function ManualBillingUploadDialog({
         </DialogHeader>
 
         <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-2 rounded-md border border-[color:var(--border-light)] p-1">
-            <Button
-              type="button"
-              variant={source === "local" ? "default" : "ghost"}
-              className="h-9 rounded-md"
-              onClick={() => setSource("local")}
-            >
-              Upload from Local
-            </Button>
-            <Button
-              type="button"
-              variant={source === "s3" ? "default" : "ghost"}
-              className="h-9 rounded-md"
-              onClick={() => setSource("s3")}
-            >
-              Upload from S3
-            </Button>
-          </div>
+          {!hideSourceTabs ? (
+            <div className="grid grid-cols-2 gap-2 rounded-md border border-[color:var(--border-light)] p-1">
+              <Button
+                type="button"
+                variant={source === "local" ? "default" : "ghost"}
+                className="h-9 rounded-md"
+                onClick={() => setSource("local")}
+              >
+                Upload from Local
+              </Button>
+              <Button
+                type="button"
+                variant={source === "s3" ? "default" : "ghost"}
+                className="h-9 rounded-md"
+                onClick={() => setSource("s3")}
+              >
+                Upload from S3
+              </Button>
+            </div>
+          ) : null}
 
           {source === "local" ? (
             <div className="space-y-4">
