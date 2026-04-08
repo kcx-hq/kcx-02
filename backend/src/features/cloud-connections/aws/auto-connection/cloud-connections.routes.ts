@@ -25,6 +25,7 @@ router.get("/cloud-integrations", asyncHandler(handleGetCloudIntegrations));
 router.get("/cloud-integrations/:id/dashboard-scope", asyncHandler(handleGetCloudIntegrationDashboardScope));
 router.get("/cloud-connections/:id", asyncHandler(handleGetCloudConnection));
 router.get("/cloud-connections/:id/aws-cloudformation-url", asyncHandler(handleGetAwsCloudFormationSetupUrl));
+router.post("/cloud-connections/:id/aws-cloudformation-url", asyncHandler(handleGetAwsCloudFormationSetupUrl));
 router.post("/cloud-connections/:id/validate", asyncHandler(handleValidateCloudConnection));
 
 export default router;
