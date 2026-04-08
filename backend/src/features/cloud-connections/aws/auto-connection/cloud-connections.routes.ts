@@ -18,7 +18,8 @@ const router = Router();
 router.post("/api/aws/callback", asyncHandler(handleAwsConnectionCallback));
 router.use(awsExportFileEventRoutes);
 
-router.use(requireAuth);
+router.use("/cloud-connections", requireAuth);
+router.use("/cloud-integrations", requireAuth);
 
 router.post("/cloud-connections", asyncHandler(handleCreateCloudConnection));
 router.get("/cloud-integrations", asyncHandler(handleGetCloudIntegrations));
