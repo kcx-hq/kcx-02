@@ -4,6 +4,7 @@ type AwsCloudFormationUrlInput = {
   externalId: string;
   connectionName: string;
   region: string;
+  fileEventCallbackUrl: string;
   exportPrefix?: string;
   exportName?: string;
   callbackUrl?: string;
@@ -19,17 +20,13 @@ export function buildAwsCloudFormationCreateStackUrl({
   externalId,
   connectionName,
   region,
+  fileEventCallbackUrl,
   exportPrefix,
   exportName,
   callbackUrl,
   callbackToken,
 }: AwsCloudFormationUrlInput): string {
   const base = "https://console.aws.amazon.com/cloudformation/home#/stacks/create/review";
-  const fileEventCallbackUrl = process.env.AWS_FILE_EVENT_CALLBACK_URL?.trim();
-
-  if (!fileEventCallbackUrl) {
-    throw new Error("AWS_FILE_EVENT_CALLBACK_URL is not configured");
-  }
 
   const queryItems: Array<[string, string]> = [
     ["templateURL", templateUrl],

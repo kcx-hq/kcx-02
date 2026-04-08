@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { requireAuth } from "../../middlewares/auth.middleware.js";
 import { asyncHandler } from "../../utils/async-handler.js";
 import { handleGetAllocationDashboard } from "./allocation/allocation.controller.js";
 import { handleGetAnomaliesAlertsDashboard } from "./anomalies-alerts/anomalies-alerts.controller.js";
@@ -27,6 +28,8 @@ import { handleGetReportDashboard } from "./report/report.controller.js";
 import { handleGetResourcesDashboard } from "./resources/resources.controller.js";
 
 const router = Router();
+
+router.use("/dashboard", requireAuth);
 
 router.get("/dashboard/scope", asyncHandler(handleGetDashboardScope));
 router.get("/dashboard/overview", asyncHandler(handleGetOverviewDashboard));

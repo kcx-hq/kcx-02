@@ -7,6 +7,7 @@ import { HTTP_STATUS } from "../../../../constants/http-status.js";
 import {
   ConflictError,
   DuplicateCloudConnectionError,
+  InternalServerError,
   NotFoundError,
   UnauthorizedError,
 } from "../../../../errors/http-errors.js";
@@ -851,6 +852,11 @@ export async function handleGetAwsCloudFormationSetupUrl(req: Request, res: Resp
   if (!stackName || !externalId || !callbackToken || !connectionName || !region) {
     throw new NotFoundError("CloudFormation setup is not available for this connection");
   }
+  if (!env.awsFileEventCallbackUrl) {
+    throw new InternalServerError(
+      "AWS CloudFormation setup is temporarily unavailable because callback configuration is missing",
+    );
+  }
 
   const url = buildAwsCloudFormationCreateStackUrl({
     templateUrl: KCX_AWS_CLOUDFORMATION_TEMPLATE_URL,
@@ -858,6 +864,7 @@ export async function handleGetAwsCloudFormationSetupUrl(req: Request, res: Resp
     externalId,
     connectionName,
     region,
+    fileEventCallbackUrl: env.awsFileEventCallbackUrl,
     exportPrefix: DEFAULT_AWS_EXPORT_PREFIX,
     exportName: buildDefaultAwsExportName(connection.id),
     callbackUrl: env.awsCallbackUrl,
