@@ -48,7 +48,8 @@ type AutomaticDetailRow = {
   callback_token: string | null;
   stack_name: string | null;
   stack_id: string | null;
-  role_arn: string | null;
+  billing_role_arn: string | null;
+  action_role_arn: string | null;
   cloud_account_id: string | null;
   payer_account_id: string | null;
   export_name: string | null;
@@ -172,7 +173,9 @@ export const mapAutomaticConnectionDetail = (row: AutomaticDetailRow): Automatic
   callbackToken: maskCallbackToken(row.callback_token),
   stackName: row.stack_name,
   stackId: row.stack_id,
-  roleArn: row.role_arn,
+  billingRoleArn: row.billing_role_arn,
+  actionRoleArn: row.action_role_arn,
+  roleArn: row.billing_role_arn,
   cloudAccountId: row.cloud_account_id,
   payerAccountId: row.payer_account_id,
   export: {

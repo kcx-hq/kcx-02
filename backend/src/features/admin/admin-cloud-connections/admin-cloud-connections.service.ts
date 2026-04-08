@@ -96,7 +96,8 @@ type AutomaticDetailRow = {
   callback_token: string | null;
   stack_name: string | null;
   stack_id: string | null;
-  role_arn: string | null;
+  billing_role_arn: string | null;
+  action_role_arn: string | null;
   cloud_account_id: string | null;
   payer_account_id: string | null;
   export_name: string | null;
@@ -467,7 +468,8 @@ const resolveConnectionDetail = async (integration: IntegrationRow) => {
         callback_token,
         stack_name,
         stack_id,
-        role_arn,
+        billing_role_arn,
+        action_role_arn,
         cloud_account_id,
         payer_account_id,
         export_name,

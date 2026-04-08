@@ -150,9 +150,15 @@ const hasConnectionCoreChanges = (
   connection: CloudConnectionV2Instance,
   payload: AwsConnectionCallbackPayload,
 ): boolean => {
+  const nextBillingRoleArn = String(payload.billing_role_arn ?? "").trim();
+  const nextActionRoleArn = payload.action_role_arn?.trim();
+  const hasActionRoleArnChange =
+    typeof nextActionRoleArn === "string" && String(connection.actionRoleArn ?? "").trim() !== nextActionRoleArn;
+
   return (
     String(connection.cloudAccountId ?? "").trim() !== payload.account_id.trim() ||
-    String(connection.roleArn ?? "").trim() !== payload.role_arn.trim() ||
+    String(connection.billingRoleArn ?? "").trim() !== nextBillingRoleArn ||
+    hasActionRoleArnChange ||
     String(connection.stackId ?? "").trim() !== payload.stack_id.trim() ||
     String(connection.exportName ?? "").trim() !== payload.export_name.trim() ||
     String(connection.exportBucket ?? "").trim() !== payload.export_bucket.trim() ||
@@ -239,6 +245,8 @@ async function handleAwsDeleteCallback(input: {
   cadence: string;
 }): Promise<AwsCallbackAcceptanceResult> {
   const { connection, payload, cadence } = input;
+  const billingRoleArn = String(payload.billing_role_arn ?? "").trim();
+  const actionRoleArn = payload.action_role_arn?.trim();
   const now = new Date();
   const logContext: AwsCallbackLogContext = {
     connectionId: connection.id,
@@ -252,7 +260,8 @@ async function handleAwsDeleteCallback(input: {
     await connection.update(
       {
         cloudAccountId: payload.account_id.trim(),
-        roleArn: payload.role_arn.trim(),
+        billingRoleArn,
+        ...(actionRoleArn ? { actionRoleArn } : {}),
         stackId: payload.stack_id.trim(),
         exportName: payload.export_name.trim(),
         exportBucket: payload.export_bucket.trim(),
@@ -286,6 +295,8 @@ async function handleAwsDeleteCallback(input: {
   logger.info("AWS setup callback accepted (delete)", {
     ...logContext,
     cadence,
+    billingRoleArn: connection.billingRoleArn ?? null,
+    actionRoleArn: connection.actionRoleArn ?? null,
     billingSourceId: billingSource.id,
     status: "suspended",
   });
@@ -305,6 +316,8 @@ async function acceptAwsCallback(input: {
   cadence: string;
 }): Promise<AwsCallbackAcceptanceResult> {
   const { connection, payload, cadence } = input;
+  const billingRoleArn = String(payload.billing_role_arn ?? "").trim();
+  const actionRoleArn = payload.action_role_arn?.trim();
   const now = new Date();
   const logContext: AwsCallbackLogContext = {
     connectionId: connection.id,
@@ -329,7 +342,8 @@ async function acceptAwsCallback(input: {
     await connection.update(
       {
         cloudAccountId: payload.account_id.trim(),
-        roleArn: payload.role_arn.trim(),
+        billingRoleArn,
+        ...(actionRoleArn ? { actionRoleArn } : {}),
         stackId: payload.stack_id.trim(),
         exportName: payload.export_name.trim(),
         exportBucket: payload.export_bucket.trim(),
@@ -381,6 +395,8 @@ async function acceptAwsCallback(input: {
   logger.info("AWS setup callback accepted", {
     ...logContext,
     cadence,
+    billingRoleArn: connection.billingRoleArn ?? null,
+    actionRoleArn: connection.actionRoleArn ?? null,
     shouldScheduleValidation,
     billingSourceId: billingSource.id,
     status: nextConnectionStatus,
@@ -949,6 +965,8 @@ export async function handleAwsConnectionCallback(req: Request, res: Response): 
     connectionId: connection.id,
     stackId: payload.stack_id.trim(),
     accountId: payload.account_id.trim(),
+    billingRoleArn: String(payload.billing_role_arn ?? "").trim(),
+    actionRoleArn: payload.action_role_arn?.trim() ?? null,
     exportName: payload.export_name.trim(),
     eventType: payload.event_type,
     cadence,

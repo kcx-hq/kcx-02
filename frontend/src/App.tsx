@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react"
 
 import { Header } from "@/components/layout/Header"
+import { ActionPage } from "@/features/actions"
 import {
   ClientBillingPage,
   ClientLayout,
@@ -52,6 +53,7 @@ const CLIENT_WORKSPACE_ROUTES = new Set([
   "/client/support/schedule-call",
   "/client/support/live-chat",
   "/client/users",
+  "/client/actions",
   "/client/profile",
 ])
 const AWS_CONNECTION_SETUP_ROUTE_REGEX = /^\/client\/billing\/(?:connect-cloud|connections)\/aws\/setup\/[0-9a-fA-F-]{36}$/
@@ -198,6 +200,11 @@ export function App() {
       {route === "/client/users" ? (
         <ClientLayout>
           <ClientUsersPage />
+        </ClientLayout>
+      ) : null}
+      {route === "/client/actions" ? (
+        <ClientLayout>
+          <ActionPage />
         </ClientLayout>
       ) : null}
       {route === "/client/profile" ? (

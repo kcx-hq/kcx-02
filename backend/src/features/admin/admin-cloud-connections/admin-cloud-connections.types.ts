@@ -121,6 +121,8 @@ export type AutomaticConnectionDetail = {
   callbackToken: string | null;
   stackName: string | null;
   stackId: string | null;
+  billingRoleArn: string | null;
+  actionRoleArn: string | null;
   roleArn: string | null;
   cloudAccountId: string | null;
   payerAccountId: string | null;
