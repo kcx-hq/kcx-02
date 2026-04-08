@@ -62,7 +62,8 @@ CREATE TABLE ${tableName} (
 
   cloud_account_id VARCHAR(50),
   payer_account_id VARCHAR(50),
-  role_arn TEXT,
+  billing_role_arn TEXT,
+  action_role_arn TEXT,
 
   created_by UUID REFERENCES users(id) ON DELETE SET NULL,
 
@@ -135,7 +136,8 @@ INSERT INTO cloud_connections__v2 (
   stack_id,
   cloud_account_id,
   payer_account_id,
-  role_arn,
+  billing_role_arn,
+  action_role_arn,
   created_by,
   connected_at,
   last_validated_at,
@@ -169,7 +171,8 @@ SELECT
   NULL AS stack_id,
   NULL AS cloud_account_id,
   NULL AS payer_account_id,
-  NULL AS role_arn,
+  NULL AS billing_role_arn,
+  NULL AS action_role_arn,
   cc.user_id AS created_by,
   NULL AS connected_at,
   NULL AS last_validated_at,

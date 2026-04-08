@@ -1,165 +1,42 @@
-﻿import { useEffect, useMemo, useState, type ReactNode } from "react"
+import { useEffect, useMemo, useState, type ReactNode } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 
-// STEP 1:
-// Client prepares billing data source (S3 bucket)
-// This feeds into cross-account access setup in Step 2
-
-import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
-import {
-  ArrowRight,
-  Cloud,
-  Wrench,
-} from "lucide-react"
-
 import type { TenantUploadHistoryRecord } from "@/features/client-home/api/upload-history.api"
+import { getCloudIntegrationDashboardScope } from "@/features/client-home/api/cloud-integrations.api"
 import { AwsAutomaticSetup } from "@/features/client-home/components/AwsAutomaticSetup"
-import { BillingUploadHistorySection } from "@/features/client-home/components/BillingUploadHistorySection"
 import { AwsManualSetup, AWS_MANUAL_EXPLORER_ROUTE_REGEX } from "@/features/client-home/components/AwsManualSetup"
 import { AwsManualSetupSuccess } from "@/features/client-home/components/AwsManualSetupSuccess"
+import { ClientPageHeader } from "@/features/client-home/components/ClientPageHeader"
 import { ManualBillingUploadDialog } from "@/features/client-home/components/ManualBillingUploadDialog"
+import { AddCloudConnectionSection } from "@/features/client-home/components/billing/AddCloudConnectionSection"
+import { AwsSetupConnectionSection } from "@/features/client-home/components/billing/AwsSetupConnectionSection"
+import { BillingHubSection } from "@/features/client-home/components/billing/BillingHubSection"
+import { BillingUploadsSection } from "@/features/client-home/components/billing/BillingUploadsSection"
+import {
+  ACTIVE_INGESTION_STORAGE_KEY,
+  AWS_MANUAL_SUCCESS_ROUTE_REGEX,
+  AWS_SETUP_ROUTE_REGEX,
+  CLOUD_PROVIDER_LABELS,
+  CLOUD_PROVIDER_ROUTE_REGEX,
+  CLOUD_SETUP_METHOD_ROUTE_REGEX,
+  isCloudConnectionsRoute,
+  mapCloudIntegrationOverviewRow,
+  normalizeUploadStatusLabel,
+  type CloudConnection,
+} from "@/features/client-home/components/billing/billingHelpers"
+import { CloudProviderComingSoonSection } from "@/features/client-home/components/billing/CloudProviderComingSoonSection"
+import { IngestionDetailsDialog } from "@/features/client-home/components/billing/IngestionDetailsDialog"
 import { useIngestionStatus, type IngestionStatusPayload } from "@/features/client-home/hooks/useIngestionStatus"
 import {
   TENANT_UPLOAD_HISTORY_QUERY_KEY,
   useTenantUploadHistory,
 } from "@/features/client-home/hooks/useTenantUploadHistory"
 import { useTenantCloudIntegrations } from "@/features/client-home/hooks/useTenantCloudIntegrations"
-import {
-  getCloudIntegrationDashboardScope,
-  type CloudIntegrationListItem,
-  type CloudIntegrationStatus,
-} from "@/features/client-home/api/cloud-integrations.api"
-import { ClientPageHeader } from "@/features/client-home/components/ClientPageHeader"
 import { useUploadHistorySelectionStore } from "@/features/client-home/stores/uploadHistorySelection.store"
 import { dashboardApi } from "@/features/dashboard/api/dashboardApi"
 import { ApiError, apiGet } from "@/lib/api"
 import { handleAppLinkClick, navigateTo, useCurrentRoute } from "@/lib/navigation"
-import { cn } from "@/lib/utils"
-
-const ADD_CONNECTION_PROVIDERS = [
-  { name: "AWS", icon: "/aws.svg", availability: "Available", description: "Connect AWS billing for cost ingestion.", href: "/client/billing/connect-cloud/aws" },
-  { name: "Azure", icon: "/azure.svg", availability: "Beta", description: "Azure billing integration is currently in beta.", href: "/client/billing/connect-cloud/azure" },
-  { name: "GCP", icon: "/gcp.svg", availability: "Planned", description: "GCP billing integration will be available soon.", href: "/client/billing/connect-cloud/gcp" },
-  { name: "Oracle Cloud", icon: "/oracle.svg", availability: "Planned", description: "Oracle billing integration will be available soon.", href: "/client/billing/connect-cloud/oracle-cloud" },
-] as const
-
-function isCloudConnectionsRoute(path: string) {
-  return path.startsWith("/client/billing/connect-cloud") || path.startsWith("/client/billing/connections")
-}
-
-const AWS_SETUP_ROUTE_REGEX = /^\/client\/billing\/(?:connect-cloud|connections)\/aws\/setup\/([0-9a-fA-F-]{36})$/
-const CLOUD_PROVIDER_ROUTE_REGEX = /^\/client\/billing\/(?:connect-cloud|connections)\/(aws|azure|gcp|oracle-cloud)(?:\/|$)/
-const CLOUD_SETUP_METHOD_ROUTE_REGEX = /^\/client\/billing\/(?:connect-cloud|connections)\/(?:aws|azure|gcp|oracle-cloud)\/(automatic|manual)(?:\/|$)/
-const AWS_MANUAL_SUCCESS_ROUTE_REGEX = /^\/client\/billing\/(?:connect-cloud|connections)\/aws\/manual\/success(?:\/|$)/
-
-const CLOUD_PROVIDER_LABELS: Record<string, string> = {
-  aws: "AWS",
-  azure: "Azure",
-  gcp: "GCP",
-  "oracle-cloud": "Oracle Cloud",
-}
-
-type CloudConnection = {
-  id: string
-  connection_name: string
-  provider: string
-  status: string
-  account_type: string
-}
-
-const ACTIVE_INGESTION_STORAGE_KEY = "kcx.activeBillingIngestionRunId"
-
-type CloudIntegrationOverviewRow = {
-  id: string
-  connectionName: string
-  provider: string
-  cloudAccountId: string | null
-  lastChecked: string
-  lastIngestOrMessage: string
-  statusLabel: "NOT AVAILABLE" | "CONNECTING" | "PENDING" | "HEALTHY" | "WARNING" | "FAILED" | "SUSPENDED"
-}
-
-function normalizeUploadStatusLabel(value: string | null | undefined): "Idle" | "Queued" | "Processing" | "Completed" | "Warning" | "Failed" {
-  if (!value) return "Idle"
-  if (value === "queued") return "Queued"
-  if (value === "completed") return "Completed"
-  if (value === "completed_with_warnings" || value === "warning") return "Warning"
-  if (value === "failed") return "Failed"
-  return "Processing"
-}
-
-function formatCloudIntegrationLastChecked(row: CloudIntegrationListItem) {
-  const candidate =
-    row.last_checked_at ??
-    row.last_validated_at ??
-    row.updated_at ??
-    row.created_at
-
-  if (!candidate) return "-"
-
-  const date = new Date(candidate)
-  if (Number.isNaN(date.getTime())) return "-"
-
-  return date.toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  })
-}
-
-function mapCloudIntegrationStatusLabel(status: CloudIntegrationStatus): CloudIntegrationOverviewRow["statusLabel"] {
-  if (status === "draft") return "NOT AVAILABLE"
-  if (status === "connecting") return "CONNECTING"
-  if (status === "awaiting_validation") return "PENDING"
-  if (status === "active") return "HEALTHY"
-  if (status === "active_with_warnings") return "WARNING"
-  if (status === "failed") return "FAILED"
-  return "SUSPENDED"
-}
-
-function mapCloudIntegrationStatusMessage(row: CloudIntegrationListItem) {
-  const status = row.status
-  const hasError = typeof row.error_message === "string" && row.error_message.trim().length > 0
-
-  if (hasError && status === "failed") {
-    return row.error_message!.trim()
-  }
-
-  if (row.status_message && row.status_message.trim().length > 0) {
-    return row.status_message.trim()
-  }
-
-  if (status === "draft") return "Setup In Progress"
-  if (status === "connecting") return "Connecting"
-  if (status === "awaiting_validation") return "Awaiting Validation"
-  if (status === "active") return "Pending First Ingest"
-  if (status === "active_with_warnings") return "Warnings Detected"
-  if (status === "failed") return "Connection Failed"
-  return "Suspended"
-}
-
-function mapCloudIntegrationOverviewRow(row: CloudIntegrationListItem): CloudIntegrationOverviewRow {
-  const providerLabel = row.provider?.name?.trim() || row.provider?.code?.toUpperCase() || "Unknown"
-
-  return {
-    id: row.id,
-    connectionName: row.display_name,
-    provider: providerLabel,
-    cloudAccountId: row.cloud_account_id,
-    lastChecked: formatCloudIntegrationLastChecked(row),
-    lastIngestOrMessage: mapCloudIntegrationStatusMessage(row),
-    statusLabel: mapCloudIntegrationStatusLabel(row.status),
-  }
-}
+import { Button } from "@/components/ui/button"
 
 export function ClientBillingPage() {
   const queryClient = useQueryClient()
@@ -167,24 +44,29 @@ export function ClientBillingPage() {
   const activeRoute = route
   const isBillingHubRoute = activeRoute === "/client/billing"
   const isBillingUploadsRoute = activeRoute === "/client/billing/uploads"
-  const isCloudConnectionsListingRoute =
-    activeRoute === "/client/billing/connect-cloud" ||
-    activeRoute === "/client/billing/connect-cloud/add" ||
-    activeRoute === "/client/billing/connections" ||
-    activeRoute === "/client/billing/connections/add"
-  const shouldLoadCloudIntegrations = isCloudConnectionsListingRoute || isBillingHubRoute
+  const isAddCloudConnectionRoute =
+    activeRoute === "/client/billing/connect-cloud/add" || activeRoute === "/client/billing/connections/add"
+  const isLegacyCloudConnectionsOverviewRoute =
+    activeRoute === "/client/billing/connect-cloud" || activeRoute === "/client/billing/connections"
+  const isLegacyAwsSetupChoiceRoute =
+    activeRoute === "/client/billing/connect-cloud/aws" || activeRoute === "/client/billing/connections/aws"
+  const shouldLoadCloudIntegrations = isBillingHubRoute
   const [cloudConnectionsSearch, setCloudConnectionsSearch] = useState("")
+
   const cloudProviderSlug = useMemo(() => {
     const match = CLOUD_PROVIDER_ROUTE_REGEX.exec(activeRoute)
     if (!match) return null
     return match[1]
   }, [activeRoute])
+
   const cloudProviderName = cloudProviderSlug ? CLOUD_PROVIDER_LABELS[cloudProviderSlug] : null
+
   const cloudSetupMethod = useMemo(() => {
     const match = CLOUD_SETUP_METHOD_ROUTE_REGEX.exec(activeRoute)
     if (!match) return null
     return match[1] === "automatic" ? "Automatic" : "Manual"
   }, [activeRoute])
+
   const cloudProviderRoute = cloudProviderSlug ? `/client/billing/connect-cloud/${cloudProviderSlug}` : null
 
   const pageHeaderTitle: ReactNode = useMemo(() => {
@@ -212,7 +94,11 @@ export function ClientBillingPage() {
           <>
             <span className={dividerClass}>/</span>
             {cloudSetupMethod && cloudProviderRoute ? (
-              <a href={cloudProviderRoute} onClick={(event) => handleAppLinkClick(event, cloudProviderRoute)} className={linkClass}>
+              <a
+                href={cloudProviderRoute}
+                onClick={(event) => handleAppLinkClick(event, cloudProviderRoute)}
+                className={linkClass}
+              >
                 {cloudProviderName}
               </a>
             ) : (
@@ -229,11 +115,14 @@ export function ClientBillingPage() {
       </>
     )
   }, [activeRoute, cloudProviderName, cloudProviderRoute, cloudSetupMethod])
+
   const pageHeaderDescription = isCloudConnectionsRoute(activeRoute)
     ? "Manage connected cloud accounts and integration setup."
     : "Choose how you want to start billing ingestion."
 
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false)
+  const [localUploadDialogOpen, setLocalUploadDialogOpen] = useState(false)
+  const [s3UploadDialogOpen, setS3UploadDialogOpen] = useState(false)
   const [activeIngestionRunId, setActiveIngestionRunId] = useState<string | null>(() => {
     if (typeof window === "undefined") return null
     return window.localStorage.getItem(ACTIVE_INGESTION_STORAGE_KEY)
@@ -251,9 +140,7 @@ export function ClientBillingPage() {
   const [setupLoading, setSetupLoading] = useState(false)
   const [setupError, setSetupError] = useState<string | null>(null)
 
-  const {
-    status: ingestionStatus,
-  } = useIngestionStatus({
+  const { status: ingestionStatus } = useIngestionStatus({
     ingestionRunId: activeIngestionRunId,
     enabled: Boolean(activeIngestionRunId),
     onIngestionRunNotFound: () => {
@@ -261,7 +148,9 @@ export function ClientBillingPage() {
       window.localStorage.removeItem(ACTIVE_INGESTION_STORAGE_KEY)
     },
   })
+
   const displayIngestionStatus = ingestionStatus ?? lastTerminalIngestionStatus
+
   const {
     data: uploadHistoryRecords = [],
     isLoading: isUploadHistoryLoading,
@@ -269,6 +158,7 @@ export function ClientBillingPage() {
     error: uploadHistoryError,
     refetch: refetchUploadHistory,
   } = useTenantUploadHistory(isBillingUploadsRoute)
+
   const {
     data: cloudIntegrationRows = [],
     isLoading: isCloudIntegrationsLoading,
@@ -276,17 +166,23 @@ export function ClientBillingPage() {
     error: cloudIntegrationsError,
     refetch: refetchCloudIntegrations,
   } = useTenantCloudIntegrations(shouldLoadCloudIntegrations)
+
   const [dashboardActionLoading, setDashboardActionLoading] = useState(false)
   const [dashboardConnectionActionId, setDashboardConnectionActionId] = useState<string | null>(null)
   const [dashboardActionError, setDashboardActionError] = useState<string | null>(null)
+
   const retainOnlyFiles = useUploadHistorySelectionStore((state) => state.retainOnlyFiles)
   const clearSelectedFiles = useUploadHistorySelectionStore((state) => state.clearSelectedFiles)
-  const uploadHistoryErrorMessage = uploadHistoryError instanceof ApiError ? uploadHistoryError.message : "Failed to load upload history"
+
+  const uploadHistoryErrorMessage =
+    uploadHistoryError instanceof ApiError ? uploadHistoryError.message : "Failed to load upload history"
+
   const [detailsRunId, setDetailsRunId] = useState<string | null>(null)
   const [detailsDialogOpen, setDetailsDialogOpen] = useState(false)
   const [detailsLoading, setDetailsLoading] = useState(false)
   const [detailsError, setDetailsError] = useState<string | null>(null)
   const [detailsStatus, setDetailsStatus] = useState<IngestionStatusPayload | null>(null)
+
   const compactStatusLabel = useMemo(() => {
     if (displayIngestionStatus?.status) {
       return normalizeUploadStatusLabel(displayIngestionStatus.status)
@@ -294,10 +190,9 @@ export function ClientBillingPage() {
     const latestStatus = uploadHistoryRecords[0]?.status
     return normalizeUploadStatusLabel(latestStatus)
   }, [displayIngestionStatus, uploadHistoryRecords])
-  const cloudOverviewRows = useMemo(
-    () => cloudIntegrationRows.map(mapCloudIntegrationOverviewRow),
-    [cloudIntegrationRows],
-  )
+
+  const cloudOverviewRows = useMemo(() => cloudIntegrationRows.map(mapCloudIntegrationOverviewRow), [cloudIntegrationRows])
+
   const filteredCloudOverviewRows = useMemo(() => {
     const normalizedSearch = cloudConnectionsSearch.trim().toLowerCase()
     if (!normalizedSearch) return cloudOverviewRows
@@ -311,15 +206,21 @@ export function ClientBillingPage() {
       )
     })
   }, [cloudConnectionsSearch, cloudOverviewRows])
+
   const cloudIntegrationsErrorMessage =
-    cloudIntegrationsError instanceof ApiError
-      ? cloudIntegrationsError.message
-      : "Unable to load cloud connections."
+    cloudIntegrationsError instanceof ApiError ? cloudIntegrationsError.message : "Unable to load cloud connections."
+
+  useEffect(() => {
+    if (isLegacyCloudConnectionsOverviewRoute || isLegacyAwsSetupChoiceRoute) {
+      navigateTo("/client/billing/connect-cloud/add")
+    }
+  }, [isLegacyAwsSetupChoiceRoute, isLegacyCloudConnectionsOverviewRoute])
 
   useEffect(() => {
     if (!setupConnectionId) return
     setSetupLoading(true)
     setSetupError(null)
+
     void (async () => {
       try {
         const connection = await apiGet<CloudConnection>(`/cloud-connections/${setupConnectionId}`)
@@ -391,52 +292,6 @@ export function ClientBillingPage() {
       setDashboardActionError(null)
     }
   }, [clearSelectedFiles, isBillingUploadsRoute])
-
-  function validateAutoConnectionName(value: string) {
-    return value.trim().length > 0
-  }
-
-  function onSubmitAutomaticSetup() {
-    setAutoTouched(true)
-    setupError(null)
-    if (!validateAutoConnectionName(autoConnectionName)) return
-
-    // Open a tab immediately from the user click to avoid popup blockers.
-    // Do not use noopener here because some browsers return null window handles,
-    // which prevents us from assigning the backend URL after async calls complete.
-    const setupTab = window.open("about:blank", "_blank")
-    setAutoSubmitting(true)
-    void (async () => {
-      try {
-        const created = await apiPost<CloudConnection>("/cloud-connections", {
-          connection_name: autoConnectionName.trim(),
-          provider: "aws",
-          status: "draft",
-          account_type: autoAccountType,
-        })
-        
-
-        const setup = await apiGet<{ url: string }>(`/cloud-connections/${created.id}/aws-cloudformation-url`)
-        if (setupTab) {
-          setupTab.opener = null
-          setupTab.location.href = setup.url
-        } else {
-          window.open(setup.url, "_blank", "noopener,noreferrer")
-        }
-      } catch (error) {
-        if (setupTab && !setupTab.closed) {
-          setupTab.close()
-        }
-        if (error instanceof ApiError) {
-          setupError(error.message || "Failed to create connection")
-        } else {
-          setupError("Failed to create connection")
-        }
-      } finally {
-        setAutoSubmitting(false)
-      }
-    })()
-  }
 
   function handleIngestionQueued(payload: { ingestionRunId: string }) {
     setLastTerminalIngestionStatus(null)
@@ -553,132 +408,50 @@ export function ClientBillingPage() {
   if (isBillingHubRoute) {
     return (
       <>
-        <ClientPageHeader eyebrow="Billing Workspace" title="Billing" description="Manage ingestion and cloud connections." />
-        <section aria-label="Billing ingestion and connections" className="space-y-5">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <h2 className="text-2xl font-semibold tracking-tight text-text-primary">Ingestion</h2>
-            <Button className="h-10 rounded-md" onClick={() => navigateTo("/client/billing/connect-cloud/add")}>
-              + Add New Connection
-            </Button>
+        <section aria-label="Billing header" className="flex flex-wrap items-start justify-between gap-3">
+          <div className="space-y-1">
+            <p className="text-sm font-medium text-text-muted">Billing / Ingestion</p>
+            <h1 className="text-2xl font-semibold tracking-tight text-text-primary">Billing</h1>
           </div>
-
-          <div className="flex flex-wrap gap-3">
-            <Button variant="outline" className="h-10 rounded-md border-[color:var(--border-light)]" onClick={() => navigateTo("/client/billing/uploads")}>
-              Manual Upload
-            </Button>
-            <Button variant="outline" className="h-10 rounded-md border-[color:var(--border-light)]" onClick={() => navigateTo("/client/billing/connect-cloud")}>
-              Connect S3
-            </Button>
-          </div>
-
-          <div className="border-b border-[color:var(--border-light)]" />
-
-          <section className="space-y-4">
-            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-              <h3 className="text-xl font-semibold tracking-tight text-text-primary">Active Connections</h3>
-              <div className="w-full md:w-80">
-                <input
-                  type="text"
-                  placeholder="Search connections"
-                  value={cloudConnectionsSearch}
-                  onChange={(event) => setCloudConnectionsSearch(event.target.value)}
-                  className="h-11 w-full rounded-md border border-[color:var(--border-light)] bg-white px-3 text-sm text-text-primary outline-none focus:border-[color:var(--kcx-border-strong)]"
-                />
-              </div>
-            </div>
-
-            <div className="overflow-x-auto rounded-md border border-[color:var(--border-light)] bg-white">
-              <table className="w-full min-w-[980px] border-separate border-spacing-0 text-sm">
-                <thead className="bg-[color:var(--bg-surface)]">
-                  <tr className="text-left text-xs font-semibold uppercase tracking-[0.08em] text-text-muted">
-                    <th className="border-b border-[color:var(--border-light)] px-3 py-2.5">Connection Name</th>
-                    <th className="border-b border-[color:var(--border-light)] px-3 py-2.5">Provider</th>
-                    <th className="border-b border-[color:var(--border-light)] px-3 py-2.5">Account</th>
-                    <th className="border-b border-[color:var(--border-light)] px-3 py-2.5">Last Checked</th>
-                    <th className="border-b border-[color:var(--border-light)] px-3 py-2.5">Last Ingest / Status Message</th>
-                    <th className="border-b border-[color:var(--border-light)] px-3 py-2.5">Status</th>
-                    <th className="border-b border-[color:var(--border-light)] px-3 py-2.5 text-right">Action</th>
-                  </tr>
-                </thead>
-                {isCloudIntegrationsLoading ? (
-                  <tbody>
-                    <tr>
-                      <td className="px-3 py-6 text-text-secondary" colSpan={7}>Loading cloud connections...</td>
-                    </tr>
-                  </tbody>
-                ) : isCloudIntegrationsError ? (
-                  <tbody>
-                    <tr>
-                      <td className="px-3 py-6" colSpan={7}>
-                        <div className="flex items-center justify-between gap-3">
-                          <span className="text-rose-600">{cloudIntegrationsErrorMessage}</span>
-                          <Button variant="outline" size="sm" className="h-8 rounded-md" onClick={() => void refetchCloudIntegrations()}>
-                            Retry
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  </tbody>
-                ) : filteredCloudOverviewRows.length === 0 ? (
-                  <tbody>
-                    <tr>
-                      <td className="px-3 py-6 text-text-secondary" colSpan={7}>
-                        {cloudOverviewRows.length === 0
-                          ? "No cloud connections found. Connect AWS below to create your first billing integration."
-                          : "No cloud connections match your search."}
-                      </td>
-                    </tr>
-                  </tbody>
-                ) : (
-                  <tbody>
-                    {filteredCloudOverviewRows.map((row) => (
-                      <tr key={row.id} className="transition-colors hover:bg-[color:var(--bg-surface)]">
-                        <td className="border-b border-[color:var(--border-light)] px-3 py-3">
-                          <span className="font-medium text-brand-primary">{row.connectionName}</span>
-                        </td>
-                        <td className="border-b border-[color:var(--border-light)] px-3 py-3 text-text-primary">{row.provider}</td>
-                        <td className="border-b border-[color:var(--border-light)] px-3 py-3 text-text-primary">
-                          {row.cloudAccountId || "-"}
-                        </td>
-                        <td className="border-b border-[color:var(--border-light)] px-3 py-3 text-text-primary">{row.lastChecked}</td>
-                        <td className="border-b border-[color:var(--border-light)] px-3 py-3 text-text-primary">{row.lastIngestOrMessage}</td>
-                        <td className="border-b border-[color:var(--border-light)] px-3 py-3">
-                          <Badge
-                            variant="outline"
-                            className={cn(
-                              "rounded-md",
-                              row.statusLabel === "HEALTHY"
-                                ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                                : row.statusLabel === "WARNING"
-                                  ? "border-amber-200 bg-amber-50 text-amber-700"
-                                  : row.statusLabel === "FAILED"
-                                    ? "border-rose-200 bg-rose-50 text-rose-700"
-                                    : "border-[color:var(--border-light)] bg-[color:var(--bg-surface)] text-text-secondary"
-                            )}
-                          >
-                            {row.statusLabel}
-                          </Badge>
-                        </td>
-                        <td className="border-b border-[color:var(--border-light)] px-3 py-3 text-right">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-8 rounded-md"
-                            disabled={dashboardActionLoading}
-                            onClick={() => handleOpenCloudConnectionDashboard(row.id)}
-                          >
-                            {dashboardConnectionActionId === row.id ? "Opening..." : "Dashboard"}
-                          </Button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                )}
-              </table>
-            </div>
-            {dashboardActionError ? <p className="text-sm text-rose-600">{dashboardActionError}</p> : null}
-          </section>
+          <Button className="h-10 rounded-md" onClick={() => navigateTo("/client/billing/connect-cloud/add")}>
+            + Add Connection
+          </Button>
         </section>
+        <BillingHubSection
+          cloudConnectionsSearch={cloudConnectionsSearch}
+          onCloudConnectionsSearchChange={setCloudConnectionsSearch}
+          cloudOverviewRows={cloudOverviewRows}
+          filteredCloudOverviewRows={filteredCloudOverviewRows}
+          isCloudIntegrationsLoading={isCloudIntegrationsLoading}
+          isCloudIntegrationsError={isCloudIntegrationsError}
+          cloudIntegrationsErrorMessage={cloudIntegrationsErrorMessage}
+          dashboardActionError={dashboardActionError}
+          dashboardActionLoading={dashboardActionLoading}
+          dashboardConnectionActionId={dashboardConnectionActionId}
+          onRetryCloudIntegrations={() => {
+            void refetchCloudIntegrations()
+          }}
+          onOpenCloudConnectionDashboard={handleOpenCloudConnectionDashboard}
+          onOpenLocalUploadModal={() => setLocalUploadDialogOpen(true)}
+          onOpenS3UploadModal={() => setS3UploadDialogOpen(true)}
+          onOpenUploadHistory={() => navigateTo("/client/billing/uploads")}
+        />
+
+        <ManualBillingUploadDialog
+          open={localUploadDialogOpen}
+          onOpenChange={setLocalUploadDialogOpen}
+          onIngestionQueued={handleIngestionQueued}
+          initialSource="local"
+          hideSourceTabs
+        />
+
+        <ManualBillingUploadDialog
+          open={s3UploadDialogOpen}
+          onOpenChange={setS3UploadDialogOpen}
+          onIngestionQueued={handleIngestionQueued}
+          initialSource="s3"
+          hideSourceTabs
+        />
       </>
     )
   }
@@ -686,339 +459,59 @@ export function ClientBillingPage() {
   return (
     <>
       {!isBillingUploadsRoute ? (
-        <>
-          <ClientPageHeader
-            eyebrow="Billing Workspace"
-            title={pageHeaderTitle}
-            description={pageHeaderDescription}
-          />
-        </>
+        <ClientPageHeader
+          eyebrow="Billing Workspace"
+          title={pageHeaderTitle}
+          description={pageHeaderDescription}
+        />
       ) : null}
 
       <section aria-label="Billing workspace options">
-        <Card className="rounded-md border-[color:var(--border-light)] bg-white shadow-sm-custom">
-          <CardContent className="space-y-6 p-6">
+        <div className="rounded-md border-[color:var(--border-light)] bg-white shadow-sm-custom">
+          <div className="space-y-6 p-6">
             {isBillingUploadsRoute ? (
-              <>
-                <div className="flex flex-wrap items-start justify-between gap-4">
-                  <div className="space-y-1">
-                    <h1 className="text-2xl font-semibold tracking-tight text-text-primary">Billing</h1>
-                    <p className="text-sm text-text-secondary">
-                      Choose how you want to provide billing files from your device or temporary S3 access.
-                    </p>
-                  </div>
-                  <Button className="h-10 rounded-md" onClick={() => setUploadDialogOpen(true)}>
-                    Choose Source
-                  </Button>
-                </div>
-                <div className="rounded-md border border-[color:var(--border-light)] bg-[color:var(--bg-surface)] px-4 py-2.5">
-                  <p className="text-sm text-text-secondary">
-                    <span className="font-medium text-text-primary">Status:</span> {compactStatusLabel} Â· Auto-processing on
-                  </p>
-                </div>
-                <BillingUploadHistorySection
-                  records={uploadHistoryRecords}
-                  isLoading={isUploadHistoryLoading}
-                  isError={isUploadHistoryError}
-                  errorMessage={uploadHistoryErrorMessage}
-                  dashboardActionError={dashboardActionError}
-                  dashboardActionLoading={dashboardActionLoading}
-                  onRetry={() => void refetchUploadHistory()}
-                  onViewDetails={handleViewUploadDetails}
-                  onRetryUpload={handleRetryUploadRecord}
-                  onOpenDashboard={handleOpenDashboard}
-                />
-              </>
+              <BillingUploadsSection
+                compactStatusLabel={compactStatusLabel}
+                uploadHistoryRecords={uploadHistoryRecords}
+                isUploadHistoryLoading={isUploadHistoryLoading}
+                isUploadHistoryError={isUploadHistoryError}
+                uploadHistoryErrorMessage={uploadHistoryErrorMessage}
+                dashboardActionError={dashboardActionError}
+                dashboardActionLoading={dashboardActionLoading}
+                onChooseSource={() => setUploadDialogOpen(true)}
+                onRetryUploadHistory={() => {
+                  void refetchUploadHistory()
+                }}
+                onViewUploadDetails={handleViewUploadDetails}
+                onRetryUploadRecord={handleRetryUploadRecord}
+                onOpenDashboard={handleOpenDashboard}
+              />
             ) : null}
 
-            {isCloudConnectionsListingRoute ? (
-              <>
-                <div className="space-y-1">
-                  <p className="kcx-eyebrow text-brand-primary">Cloud Connections</p>
-                  <h2 className="text-2xl font-semibold tracking-tight text-text-primary">Connections Overview</h2>
-                  <p className="text-sm text-text-secondary">Manage connected cloud accounts and open scoped dashboards.</p>
-                </div>
-
-                <section className="rounded-md border border-[color:var(--border-light)] bg-[color:var(--bg-surface)] p-4 md:p-5">
-                  <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                    <p className="text-sm text-text-secondary">Current cloud connections and latest ingestion health.</p>
-                    <div className="w-full md:w-72">
-                      <input
-                        type="text"
-                        placeholder="Search connections"
-                        value={cloudConnectionsSearch}
-                        onChange={(event) => setCloudConnectionsSearch(event.target.value)}
-                        className="h-10 w-full rounded-md border border-[color:var(--border-light)] bg-white px-3 text-sm text-text-primary outline-none focus:border-[color:var(--kcx-border-strong)]"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="mt-4 overflow-x-auto rounded-md border border-[color:var(--border-light)] bg-white">
-                    <table className="w-full min-w-[980px] border-separate border-spacing-0 text-sm">
-                      <thead className="bg-[color:var(--bg-surface)]">
-                        <tr className="text-left text-xs font-semibold uppercase tracking-[0.08em] text-text-muted">
-                          <th className="border-b border-[color:var(--border-light)] px-3 py-2.5">Connection Name</th>
-                          <th className="border-b border-[color:var(--border-light)] px-3 py-2.5">Provider</th>
-                          <th className="border-b border-[color:var(--border-light)] px-3 py-2.5">Account</th>
-                          <th className="border-b border-[color:var(--border-light)] px-3 py-2.5">Last Checked</th>
-                          <th className="border-b border-[color:var(--border-light)] px-3 py-2.5">Last Ingest / Status Message</th>
-                          <th className="border-b border-[color:var(--border-light)] px-3 py-2.5">Status</th>
-                          <th className="border-b border-[color:var(--border-light)] px-3 py-2.5 text-right">Action</th>
-                        </tr>
-                      </thead>
-                      {isCloudIntegrationsLoading ? (
-                        <tbody>
-                          <tr>
-                            <td className="px-3 py-6 text-text-secondary" colSpan={7}>Loading cloud connections...</td>
-                          </tr>
-                        </tbody>
-                      ) : isCloudIntegrationsError ? (
-                        <tbody>
-                          <tr>
-                            <td className="px-3 py-6" colSpan={7}>
-                              <div className="flex items-center justify-between gap-3">
-                                <span className="text-rose-600">{cloudIntegrationsErrorMessage}</span>
-                                <Button variant="outline" size="sm" className="h-8 rounded-md" onClick={() => void refetchCloudIntegrations()}>
-                                  Retry
-                                </Button>
-                              </div>
-                            </td>
-                          </tr>
-                        </tbody>
-                      ) : filteredCloudOverviewRows.length === 0 ? (
-                        <tbody>
-                          <tr>
-                            <td className="px-3 py-6 text-text-secondary" colSpan={7}>
-                              {cloudOverviewRows.length === 0
-                                ? "No cloud connections found. Connect AWS below to create your first billing integration."
-                                : "No cloud connections match your search."}
-                            </td>
-                          </tr>
-                        </tbody>
-                      ) : (
-                        <tbody>
-                          {filteredCloudOverviewRows.map((row) => (
-                            <tr key={row.id} className="transition-colors hover:bg-[color:var(--bg-surface)]">
-                              <td className="border-b border-[color:var(--border-light)] px-3 py-3">
-                                <span className="font-medium text-brand-primary">{row.connectionName}</span>
-                              </td>
-                              <td className="border-b border-[color:var(--border-light)] px-3 py-3 text-text-primary">{row.provider}</td>
-                              <td className="border-b border-[color:var(--border-light)] px-3 py-3 text-text-primary">
-                                {row.cloudAccountId || "-"}
-                              </td>
-                              <td className="border-b border-[color:var(--border-light)] px-3 py-3 text-text-primary">{row.lastChecked}</td>
-                              <td className="border-b border-[color:var(--border-light)] px-3 py-3 text-text-primary">{row.lastIngestOrMessage}</td>
-                              <td className="border-b border-[color:var(--border-light)] px-3 py-3">
-                                <Badge
-                                  variant="outline"
-                                  className={cn(
-                                    "rounded-md",
-                                    row.statusLabel === "HEALTHY"
-                                      ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                                      : row.statusLabel === "WARNING"
-                                        ? "border-amber-200 bg-amber-50 text-amber-700"
-                                        : row.statusLabel === "FAILED"
-                                          ? "border-rose-200 bg-rose-50 text-rose-700"
-                                          : "border-[color:var(--border-light)] bg-[color:var(--bg-surface)] text-text-secondary"
-                                  )}
-                                >
-                                  {row.statusLabel}
-                                </Badge>
-                              </td>
-                              <td className="border-b border-[color:var(--border-light)] px-3 py-3 text-right">
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  className="h-8 rounded-md"
-                                  disabled={dashboardActionLoading}
-                                  onClick={() => handleOpenCloudConnectionDashboard(row.id)}
-                                >
-                                  {dashboardConnectionActionId === row.id ? "Opening..." : "Dashboard"}
-                                </Button>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      )}
-                    </table>
-                  </div>
-                  {dashboardActionError ? <p className="mt-3 text-sm text-rose-600">{dashboardActionError}</p> : null}
-                </section>
-
-                <section className="rounded-md border border-[color:var(--border-light)] bg-white">
-                  <div className="border-b border-[color:var(--border-light)] px-4 py-3">
-                    <h3 className="text-base font-semibold text-text-primary">Connect a New Cloud</h3>
-                    <p className="text-sm text-text-secondary">Select a provider to set up a new billing integration.</p>
-                  </div>
-                  <div className="divide-y divide-[color:var(--border-light)]">
-                    {ADD_CONNECTION_PROVIDERS.map((provider) => {
-                      const isEnabled = provider.name === "AWS" && Boolean(provider.href)
-
-                      return (
-                        <div key={provider.name} className="flex flex-wrap items-center gap-3 px-4 py-3">
-                          <span className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-[color:var(--border-light)] bg-[color:var(--bg-surface)]">
-                            <img src={provider.icon} alt={provider.name} className="h-5 w-5 object-contain" />
-                          </span>
-                          <div className="min-w-0 flex-1">
-                            <p className="text-sm font-semibold text-text-primary">{provider.name}</p>
-                            <p className="text-xs text-text-secondary">{provider.description}</p>
-                          </div>
-                          <Badge
-                            variant="outline"
-                            className={cn(
-                              "rounded-md",
-                              isEnabled
-                                ? "border-[color:var(--kcx-border-soft)] bg-[color:var(--highlight-green)] text-brand-primary"
-                                : "border-[color:var(--border-light)] bg-[color:var(--bg-surface)] text-text-muted"
-                            )}
-                          >
-                            {provider.availability}
-                          </Badge>
-                          {isEnabled && provider.href ? (
-                            <Button variant="outline" className="h-9 rounded-md" onClick={() => navigateTo(provider.href)}>
-                              Connect
-                            </Button>
-                          ) : (
-                            <Button variant="outline" className="h-9 rounded-md" disabled>
-                              Coming Soon
-                            </Button>
-                          )}
-                        </div>
-                      )
-                    })}
-                  </div>
-                </section>
-              </>
+            {isAddCloudConnectionRoute ? (
+              <AddCloudConnectionSection
+                onAutomaticSetup={() => navigateTo("/client/billing/connect-cloud/aws/automatic")}
+                onManualSetup={() => navigateTo("/client/billing/connect-cloud/aws/manual")}
+              />
             ) : null}
 
-            {activeRoute === "/client/billing/connect-cloud/aws" || activeRoute === "/client/billing/connections/aws" ? (
-              <>
-                <div className="space-y-2">
-                  <p className="kcx-eyebrow text-brand-primary">AWS Setup Choice</p>
-                  <h2 className="text-2xl font-semibold tracking-tight text-text-primary">Choose Setup Method</h2>
-                  <p className="text-sm text-text-secondary">
-                    Select how you want to connect AWS billing data into KCX.
-                  </p>
-                </div>
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                  <Card className="rounded-md border-[color:var(--border-light)] bg-[color:var(--bg-surface)]">
-                    <CardContent className="space-y-3 p-5">
-                      <span className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-[color:var(--border-light)] bg-white text-text-secondary">
-                        <Cloud className="h-4 w-4" />
-                      </span>
-                      <h3 className="text-base font-semibold text-text-primary">Automatic Setup </h3>
-                      <p className="text-sm text-text-secondary">Guided cloud-native onboarding with secure automated provisioning.</p>
-                      <Button
-                        variant="outline"
-                        className="h-10 rounded-md border-[color:var(--border-light)]"
-                        onClick={() => navigateTo("/client/billing/connect-cloud/aws/automatic")}
-                      >
-                        Start Automatic Setup
-                      </Button>
-                    </CardContent>
-                  </Card>
-                  <Card className="rounded-md border-[color:var(--kcx-border-soft)] bg-[color:var(--highlight-green)]">
-                    <CardContent className="space-y-3 p-5">
-                      <span className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-[color:var(--kcx-border-soft)] bg-white text-brand-primary">
-                        <Wrench className="h-4 w-4" />
-                      </span>
-                      <h3 className="text-base font-semibold text-text-primary">Manual Setup</h3>
-                      <p className="text-sm text-text-secondary">Guided manual setup using custom trust policy and IAM role validation.</p>
-                      <Button className="h-10 rounded-md" onClick={() => navigateTo("/client/billing/connect-cloud/aws/manual")}>
-                        Open Manual Setup
-                      </Button>
-                    </CardContent>
-                  </Card>
-                </div>
-              </>
+            {cloudProviderSlug && cloudProviderSlug !== "aws" && cloudProviderName ? (
+              <CloudProviderComingSoonSection cloudProviderName={cloudProviderName} />
             ) : null}
 
-            {cloudProviderSlug && cloudProviderSlug !== "aws" ? (
-              <>
-                <div className="space-y-2">
-                  <p className="kcx-eyebrow text-brand-primary">{cloudProviderName} Integration</p>
-                  <h2 className="text-2xl font-semibold tracking-tight text-text-primary">{cloudProviderName} Setup</h2>
-                  <p className="text-sm text-text-secondary">
-                    Billing integration setup for {cloudProviderName} is coming soon.
-                  </p>
-                </div>
-                <div className="rounded-md border border-dashed border-[color:var(--border-light)] bg-[color:var(--bg-surface)] p-4 text-sm text-text-muted">
-                  This provider route is ready. Detailed onboarding steps for {cloudProviderName} will be added soon.
-                </div>
-              </>
-            ) : null}
-
-            {activeRoute === "/client/billing/connect-cloud/aws/automatic" || activeRoute === "/client/billing/connections/aws/automatic" ? (
+            {activeRoute === "/client/billing/connect-cloud/aws/automatic" ||
+            activeRoute === "/client/billing/connections/aws/automatic" ? (
               <AwsAutomaticSetup activeRoute={activeRoute} />
             ) : null}
 
             {setupConnectionId ? (
-              <>
-                <div className="space-y-2">
-                  <p className="kcx-eyebrow text-brand-primary">Setup AWS Connection</p>
-                  <h2 className="text-2xl font-semibold tracking-tight text-text-primary">Setup AWS Connection</h2>
-                  <p className="text-sm text-text-secondary">Review connection details and launch guided setup.</p>
-                </div>
-
-                <div className="grid grid-cols-1 gap-4">
-                  <Card className="rounded-md border-[color:var(--border-light)] bg-white">
-                    <CardContent className="space-y-4 p-5">
-                      <div className="space-y-1">
-                        <p className="text-sm font-semibold text-text-primary">Connection Info</p>
-                        <p className="text-sm text-text-secondary">Connection Name, provider, and status.</p>
-                      </div>
-
-                      {setupLoading ? (
-                        <p className="text-sm text-text-secondary">Loading connection...</p>
-                      ) : setupError ? (
-                        <p className="text-sm text-rose-600">{setupError}</p>
-                      ) : setupConnection ? (
-                        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                          <div className="space-y-1">
-                            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-text-muted">Connection Name</p>
-                            <p className="text-sm font-medium text-text-primary">{setupConnection.connection_name}</p>
-                          </div>
-                          <div className="space-y-1">
-                            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-text-muted">Provider</p>
-                            <p className="text-sm font-medium text-text-primary">{setupConnection.provider.toUpperCase()}</p>
-                          </div>
-                          <div className="space-y-1">
-                            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-text-muted">Status</p>
-                            <p className="text-sm font-medium text-text-primary">
-                              {setupConnection.status.charAt(0).toUpperCase() + setupConnection.status.slice(1)}
-                            </p>
-                          </div>
-                        </div>
-                      ) : (
-                        <p className="text-sm text-text-secondary">Connection not found.</p>
-                      )}
-                    </CardContent>
-                  </Card>
-
-                  <Card className="rounded-md border-[color:var(--kcx-border-soft)] bg-[color:var(--highlight-green)]">
-                    <CardContent className="space-y-3 p-5">
-                      <div className="space-y-1">
-                        <p className="text-sm font-semibold text-text-primary">Setup Button</p>
-                        <p className="text-sm text-text-secondary">Launch AWS setup in a new window.</p>
-                      </div>
-                      <Button
-                        className="h-10 rounded-md"
-                        onClick={() => window.open("/integrations/aws", "_blank", "noopener,noreferrer")}
-                      >
-                        Launch AWS Setup
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        className="h-10 rounded-md"
-                        onClick={() => navigateTo("/client/billing/connect-cloud/aws")}
-                      >
-                        Back to Setup Choice
-                        <ArrowRight className="ml-1.5 h-4 w-4" />
-                      </Button>
-                    </CardContent>
-                  </Card>
-                </div>
-              </>
+              <AwsSetupConnectionSection
+                setupLoading={setupLoading}
+                setupError={setupError}
+                setupConnection={setupConnection}
+                onLaunchAwsSetup={() => window.open("/integrations/aws", "_blank", "noopener,noreferrer")}
+                onBackToSetupChoice={() => navigateTo("/client/billing/connect-cloud/aws")}
+              />
             ) : null}
 
             {AWS_MANUAL_SUCCESS_ROUTE_REGEX.test(activeRoute) ? (
@@ -1026,9 +519,7 @@ export function ClientBillingPage() {
                 <div className="space-y-2">
                   <p className="kcx-eyebrow text-brand-primary">AWS Manual Setup</p>
                   <h2 className="text-2xl font-semibold tracking-tight text-text-primary">Success</h2>
-                  <p className="text-sm text-text-secondary">
-                    Your manual AWS connection is complete.
-                  </p>
+                  <p className="text-sm text-text-secondary">Your manual AWS connection is complete.</p>
                 </div>
                 <AwsManualSetupSuccess />
               </>
@@ -1041,66 +532,25 @@ export function ClientBillingPage() {
                 <div className="space-y-2">
                   <p className="kcx-eyebrow text-brand-primary">AWS Manual Setup</p>
                   <h2 className="text-2xl font-semibold tracking-tight text-text-primary">Manual Setup</h2>
-                  <p className="text-sm text-text-secondary">
-                    Connect your AWS billing data in one guided setup flow.
-                  </p>
+                  <p className="text-sm text-text-secondary">Connect your AWS billing data in one guided setup flow.</p>
                 </div>
                 <AwsManualSetup activeRoute={activeRoute} />
               </>
             ) : null}
-
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       </section>
-      <Dialog open={detailsDialogOpen} onOpenChange={setDetailsDialogOpen}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Ingestion details</DialogTitle>
-            <DialogDescription>
-              Run ID: {detailsRunId ?? "N/A"}
-            </DialogDescription>
-          </DialogHeader>
 
-          {detailsLoading ? (
-            <p className="text-sm text-text-secondary">Loading details...</p>
-          ) : detailsError ? (
-            <div className="space-y-3">
-              <p className="text-sm text-rose-600">{detailsError}</p>
-              <Button variant="outline" size="sm" onClick={() => detailsRunId ? handleViewUploadDetails(detailsRunId) : null}>
-                Retry
-              </Button>
-            </div>
-          ) : detailsStatus ? (
-            <div className="space-y-3 text-sm">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.08em] text-text-muted">Status</p>
-                  <p className="font-medium text-text-primary">{normalizeUploadStatusLabel(detailsStatus.status)}</p>
-                </div>
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.08em] text-text-muted">Progress</p>
-                  <p className="font-medium text-text-primary">{Math.round(detailsStatus.progressPercent)}%</p>
-                </div>
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.08em] text-text-muted">Rows Loaded</p>
-                  <p className="font-medium text-text-primary">{detailsStatus.rowsLoaded}</p>
-                </div>
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.08em] text-text-muted">Rows Failed</p>
-                  <p className="font-medium text-text-primary">{detailsStatus.rowsFailed}</p>
-                </div>
-              </div>
-              {detailsStatus.statusMessage ? (
-                <p className="rounded-md border border-[color:var(--border-light)] bg-[color:var(--bg-surface)] p-3 text-text-secondary">
-                  {detailsStatus.statusMessage}
-                </p>
-              ) : null}
-            </div>
-          ) : (
-            <p className="text-sm text-text-secondary">No details available for this ingestion run.</p>
-          )}
-        </DialogContent>
-      </Dialog>
+      <IngestionDetailsDialog
+        open={detailsDialogOpen}
+        detailsRunId={detailsRunId}
+        detailsLoading={detailsLoading}
+        detailsError={detailsError}
+        detailsStatus={detailsStatus}
+        onOpenChange={setDetailsDialogOpen}
+        onRetry={handleViewUploadDetails}
+      />
+
       <ManualBillingUploadDialog
         open={uploadDialogOpen}
         onOpenChange={setUploadDialogOpen}
@@ -1109,8 +559,3 @@ export function ClientBillingPage() {
     </>
   )
 }
-
-function setAutoTouched(arg0: boolean) {
-  throw new Error("Function not implemented.")
-}
-

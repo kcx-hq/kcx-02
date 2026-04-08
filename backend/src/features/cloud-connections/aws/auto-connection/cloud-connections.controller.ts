@@ -28,14 +28,15 @@ import {
 } from "../../cloud-integration-registry.service.js";
 import {
   buildAwsCloudFormationCreateStackUrl,
-  KCX_AWS_CLOUDFORMATION_TEMPLATE_URL,
 } from "./aws-cloudformation-url.js";
 import { runInitialBackfillAfterValidation } from "../exports/aws-export-ingestion.service.js";
 import { validateAwsConnection } from "./aws-connection-validation.service.js";
 import {
   type AwsConnectionCallbackPayload,
+  type GenerateAwsCloudFormationSetupPayload,
   awsConnectionCallbackSchema,
   createCloudConnectionSchema,
+  generateAwsCloudFormationSetupSchema,
 } from "./cloud-connections.schema.js";
 
 const requireUserId = (req: Request) => {
@@ -92,6 +93,12 @@ type AwsCallbackAcceptanceResult = {
 
 const postCallbackValidationInFlight = new Set<string>();
 
+const normalizeOptional = (value: string | undefined): string | undefined => {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+};
+
 const ensureAwsAutoSetupFields = async (connection: CloudConnectionV2Instance): Promise<CloudConnectionV2Instance> => {
   const patch: Partial<{
     externalId: string;
@@ -143,9 +150,15 @@ const hasConnectionCoreChanges = (
   connection: CloudConnectionV2Instance,
   payload: AwsConnectionCallbackPayload,
 ): boolean => {
+  const nextBillingRoleArn = String(payload.billing_role_arn ?? "").trim();
+  const nextActionRoleArn = payload.action_role_arn?.trim();
+  const hasActionRoleArnChange =
+    typeof nextActionRoleArn === "string" && String(connection.actionRoleArn ?? "").trim() !== nextActionRoleArn;
+
   return (
     String(connection.cloudAccountId ?? "").trim() !== payload.account_id.trim() ||
-    String(connection.roleArn ?? "").trim() !== payload.role_arn.trim() ||
+    String(connection.billingRoleArn ?? "").trim() !== nextBillingRoleArn ||
+    hasActionRoleArnChange ||
     String(connection.stackId ?? "").trim() !== payload.stack_id.trim() ||
     String(connection.exportName ?? "").trim() !== payload.export_name.trim() ||
     String(connection.exportBucket ?? "").trim() !== payload.export_bucket.trim() ||
@@ -232,6 +245,8 @@ async function handleAwsDeleteCallback(input: {
   cadence: string;
 }): Promise<AwsCallbackAcceptanceResult> {
   const { connection, payload, cadence } = input;
+  const billingRoleArn = String(payload.billing_role_arn ?? "").trim();
+  const actionRoleArn = payload.action_role_arn?.trim();
   const now = new Date();
   const logContext: AwsCallbackLogContext = {
     connectionId: connection.id,
@@ -245,7 +260,8 @@ async function handleAwsDeleteCallback(input: {
     await connection.update(
       {
         cloudAccountId: payload.account_id.trim(),
-        roleArn: payload.role_arn.trim(),
+        billingRoleArn,
+        ...(actionRoleArn ? { actionRoleArn } : {}),
         stackId: payload.stack_id.trim(),
         exportName: payload.export_name.trim(),
         exportBucket: payload.export_bucket.trim(),
@@ -279,6 +295,8 @@ async function handleAwsDeleteCallback(input: {
   logger.info("AWS setup callback accepted (delete)", {
     ...logContext,
     cadence,
+    billingRoleArn: connection.billingRoleArn ?? null,
+    actionRoleArn: connection.actionRoleArn ?? null,
     billingSourceId: billingSource.id,
     status: "suspended",
   });
@@ -298,6 +316,8 @@ async function acceptAwsCallback(input: {
   cadence: string;
 }): Promise<AwsCallbackAcceptanceResult> {
   const { connection, payload, cadence } = input;
+  const billingRoleArn = String(payload.billing_role_arn ?? "").trim();
+  const actionRoleArn = payload.action_role_arn?.trim();
   const now = new Date();
   const logContext: AwsCallbackLogContext = {
     connectionId: connection.id,
@@ -322,7 +342,8 @@ async function acceptAwsCallback(input: {
     await connection.update(
       {
         cloudAccountId: payload.account_id.trim(),
-        roleArn: payload.role_arn.trim(),
+        billingRoleArn,
+        ...(actionRoleArn ? { actionRoleArn } : {}),
         stackId: payload.stack_id.trim(),
         exportName: payload.export_name.trim(),
         exportBucket: payload.export_bucket.trim(),
@@ -374,6 +395,8 @@ async function acceptAwsCallback(input: {
   logger.info("AWS setup callback accepted", {
     ...logContext,
     cadence,
+    billingRoleArn: connection.billingRoleArn ?? null,
+    actionRoleArn: connection.actionRoleArn ?? null,
     shouldScheduleValidation,
     billingSourceId: billingSource.id,
     status: nextConnectionStatus,
@@ -654,6 +677,11 @@ export async function handleCreateCloudConnection(req: Request, res: Response): 
       provider: provider.code,
       status: connection.status,
       account_type: connection.accountType,
+      stack_name: connection.stackName,
+      external_id: connection.externalId,
+      callback_token: connection.callbackToken,
+      region: connection.region,
+      callback_url: env.awsCallbackUrl ?? null,
     },
   });
 }
@@ -842,26 +870,72 @@ export async function handleGetAwsCloudFormationSetupUrl(req: Request, res: Resp
   if (!connection) throw new NotFoundError("Connection not found");
 
   const ensured = await ensureAwsAutoSetupFields(connection);
-  const stackName = ensured.stackName;
-  const externalId = ensured.externalId;
-  const callbackToken = ensured.callbackToken;
-  const connectionName = connection.connectionName;
-  const region = ensured.region;
+
+  let postPayload: GenerateAwsCloudFormationSetupPayload | null = null;
+  if (req.method.toUpperCase() === "POST") {
+    postPayload = parseWithSchema(generateAwsCloudFormationSetupSchema, req.body);
+  }
+
+  const stackName = normalizeOptional(postPayload?.stackName) ?? ensured.stackName ?? undefined;
+  const externalId = normalizeOptional(postPayload?.externalId) ?? ensured.externalId ?? undefined;
+  const callbackToken = normalizeOptional(postPayload?.callbackToken) ?? ensured.callbackToken ?? undefined;
+  const connectionName = normalizeOptional(postPayload?.connectionName) ?? connection.connectionName ?? undefined;
+  const region = normalizeOptional(postPayload?.region) ?? ensured.region ?? undefined;
+
+  const enableBillingExport = postPayload?.enableBillingExport ?? true;
+  const enableActionRole = postPayload?.enableActionRole ?? true;
+  const enableEC2Module = enableActionRole ? (postPayload?.enableEC2Module ?? true) : false;
+  const useTagScopedAccess = postPayload?.useTagScopedAccess ?? false;
+
+  const exportPrefix = normalizeOptional(postPayload?.exportPrefix) ?? DEFAULT_AWS_EXPORT_PREFIX;
+  const exportName = normalizeOptional(postPayload?.exportName) ?? buildDefaultAwsExportName(connection.id);
+  const callbackUrl = normalizeOptional(postPayload?.callbackUrl) ?? env.awsCallbackUrl ?? undefined;
+  const resourceTagKey = useTagScopedAccess ? normalizeOptional(postPayload?.resourceTagKey) : undefined;
+  const resourceTagValue = useTagScopedAccess ? normalizeOptional(postPayload?.resourceTagValue) : undefined;
 
   if (!stackName || !externalId || !callbackToken || !connectionName || !region) {
     throw new NotFoundError("CloudFormation setup is not available for this connection");
   }
 
+  const patch: Partial<{
+    stackName: string;
+    externalId: string;
+    callbackToken: string;
+    region: string;
+    accountType: "payer" | "member";
+    exportPrefix: string;
+    exportName: string;
+  }> = {};
+
+  if (ensured.stackName !== stackName) patch.stackName = stackName;
+  if (ensured.externalId !== externalId) patch.externalId = externalId;
+  if (ensured.callbackToken !== callbackToken) patch.callbackToken = callbackToken;
+  if (ensured.region !== region) patch.region = region;
+  if (normalizeOptional(connection.exportPrefix ?? undefined) !== exportPrefix) patch.exportPrefix = exportPrefix;
+  if (normalizeOptional(connection.exportName ?? undefined) !== exportName) patch.exportName = exportName;
+  if (postPayload?.accountType && connection.accountType !== postPayload.accountType) {
+    patch.accountType = postPayload.accountType;
+  }
+
+  if (Object.keys(patch).length > 0) {
+    await connection.update(patch);
+  }
+
   const url = buildAwsCloudFormationCreateStackUrl({
-    templateUrl: KCX_AWS_CLOUDFORMATION_TEMPLATE_URL,
     stackName,
     externalId,
     connectionName,
     region,
-    exportPrefix: DEFAULT_AWS_EXPORT_PREFIX,
-    exportName: buildDefaultAwsExportName(connection.id),
-    callbackUrl: env.awsCallbackUrl,
+    exportPrefix,
+    exportName,
+    callbackUrl,
     callbackToken,
+    enableBillingExport,
+    enableActionRole,
+    enableEC2Module,
+    useTagScopedAccess,
+    resourceTagKey,
+    resourceTagValue,
   });
 
   if (connection.status === "draft") {
@@ -891,6 +965,8 @@ export async function handleAwsConnectionCallback(req: Request, res: Response): 
     connectionId: connection.id,
     stackId: payload.stack_id.trim(),
     accountId: payload.account_id.trim(),
+    billingRoleArn: String(payload.billing_role_arn ?? "").trim(),
+    actionRoleArn: payload.action_role_arn?.trim() ?? null,
     exportName: payload.export_name.trim(),
     eventType: payload.event_type,
     cadence,

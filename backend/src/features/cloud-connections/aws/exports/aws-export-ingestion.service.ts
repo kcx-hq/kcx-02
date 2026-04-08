@@ -1,4 +1,4 @@
-import path from "node:path";
+﻿import path from "node:path";
 import crypto from "node:crypto";
 import { Op } from "sequelize";
 
@@ -80,7 +80,7 @@ const normalizeEtag = (etag: string | null | undefined): string | null => {
 
 const resolveExportContext = (connection: CloudConnectionInstance, source: BillingSourceInstance): IngestionContext => {
   const exportBucket = requireNonEmpty(source.bucketName ?? connection.exportBucket, "export bucket");
-  requireNonEmpty(connection.roleArn, "roleArn");
+  requireNonEmpty(connection.billingRoleArn, "billingRoleArn");
   const exportRegion = resolveExportRegion(connection);
 
   return {
@@ -227,7 +227,7 @@ async function ingestResolvedFile({
   }
 
   const downloadedBodyBase64 = await downloadExportFile({
-    roleArn: requireNonEmpty(connection.roleArn, "roleArn"),
+    roleArn: requireNonEmpty(connection.billingRoleArn, "billingRoleArn"),
     externalId: connection.externalId ?? null,
     region: exportRegion,
     bucket: exportBucket,
@@ -672,7 +672,7 @@ export async function queueExportManifestFromEvent(payload: AwsManifestPayload):
     throw new BadRequestError("Account id does not match the connected cloud account");
   }
 
-  const storedRoleArn = String(connection.roleArn ?? "").trim();
+  const storedRoleArn = String(connection.billingRoleArn ?? "").trim();
   if (storedRoleArn && storedRoleArn !== normalizedRoleArn) {
     throw new BadRequestError("Role ARN does not match the connected role");
   }
@@ -706,7 +706,7 @@ export async function queueExportManifestFromEvent(payload: AwsManifestPayload):
   }
 
   const downloadedManifestBase64 = await downloadExportFile({
-    roleArn: requireNonEmpty(connection.roleArn, "roleArn"),
+    roleArn: requireNonEmpty(connection.billingRoleArn, "billingRoleArn"),
     externalId: connection.externalId ?? null,
     region: normalizedRegion,
     bucket: normalizedBucketName,
@@ -818,7 +818,7 @@ export async function queueExportFileFromEvent({
     throw new BadRequestError("Account id does not match the connected cloud account");
   }
 
-  const storedRoleArn = String(connection.roleArn ?? "").trim();
+  const storedRoleArn = String(connection.billingRoleArn ?? "").trim();
   if (storedRoleArn && storedRoleArn !== normalizedRoleArn) {
     throw new BadRequestError("Role ARN does not match the connected role");
   }
@@ -860,7 +860,7 @@ export async function queueExportFileFromEvent({
   }
 
   const fileFormat = resolveBackfillFileFormat(billingSource, normalizedObjectKey);
-  const roleArnForDownload = requireNonEmpty(connection.roleArn, "roleArn");
+  const roleArnForDownload = requireNonEmpty(connection.billingRoleArn, "billingRoleArn");
   const providerName = await getProviderNameById(String(billingSource.cloudProviderId));
   const rawStorageKey = buildRawStorageKey({
     tenantId: billingSource.tenantId,
@@ -910,7 +910,7 @@ export async function queueExportFileFromEvent({
 export async function runInitialBackfillAfterValidation(connectionId: string): Promise<InitialBackfillSummary> {
   const { connection, billingSource } = await loadConnectionAndSource(connectionId);
 
-  const roleArn = requireNonEmpty(connection.roleArn, "roleArn");
+  const roleArn = requireNonEmpty(connection.billingRoleArn, "billingRoleArn");
   const exportRegion = requireNonEmpty(connection.exportRegion, "exportRegion");
   const exportBucket = requireNonEmpty(billingSource.bucketName, "bucketName");
   const pathPrefix = normalizePrefix(requireNonEmpty(billingSource.pathPrefix, "pathPrefix"));
@@ -965,7 +965,7 @@ export async function manuallyIngestLatestFile(connectionId: string): Promise<Ma
   const prefix = normalizePrefix(billingSource.pathPrefix ?? connection.exportPrefix);
 
   const files = await listExportFiles({
-    roleArn: requireNonEmpty(connection.roleArn, "roleArn"),
+    roleArn: requireNonEmpty(connection.billingRoleArn, "billingRoleArn"),
     externalId: connection.externalId ?? null,
     region: context.exportRegion,
     bucket: context.exportBucket,
@@ -993,3 +993,5 @@ export async function manuallyIngestFile(connectionId: string, key: string): Pro
     fileKey: normalizedKey,
   });
 }
+
+
