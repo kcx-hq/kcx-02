@@ -91,11 +91,11 @@ export async function fetchAwsEc2RightsizingRecommendationsFromComputeOptimizer(
   reason: string;
   recommendations: AwsComputeOptimizerEc2RecommendationInput[];
 }> {
-  const roleArn = String(connection.roleArn ?? "").trim();
+  const roleArn = String(connection.actionRoleArn ?? connection.billingRoleArn ?? "").trim();
   if (!roleArn) {
     return {
       skipped: true,
-      reason: "Cloud connection role ARN is missing",
+      reason: "Cloud connection action/billing role ARN is missing",
       recommendations: [],
     };
   }

@@ -93,6 +93,8 @@ Resources:
                 Action:
                   - sts:GetCallerIdentity
                   - ec2:DescribeRegions
+                  - compute-optimizer:GetEC2InstanceRecommendations
+                  - compute-optimizer:GetEnrollmentStatus
                 Resource: "*"
 
               - Sid: ListExportBucket
