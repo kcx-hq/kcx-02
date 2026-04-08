@@ -37,10 +37,6 @@ export function validateDashboardRequest(input: DashboardRequest): void {
     throw new BadRequestError("Provide either rawBillingFileId/rawBillingFileIds or from and to");
   }
 
-  if (hasUploadScope && hasDateRange) {
-    throw new BadRequestError("Provide either rawBillingFileId/rawBillingFileIds or from and to, not both");
-  }
-
   if (hasRawBillingFileIds && !input.rawBillingFileIds?.every((id) => Number.isInteger(id))) {
     throw new BadRequestError("rawBillingFileIds must contain valid integers");
   }

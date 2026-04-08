@@ -3,6 +3,7 @@ type AwsCloudFormationUrlInput = {
   externalId: string;
   connectionName: string;
   region: string;
+  fileEventCallbackUrl: string;
   exportPrefix?: string;
   exportName?: string;
   callbackUrl?: string;

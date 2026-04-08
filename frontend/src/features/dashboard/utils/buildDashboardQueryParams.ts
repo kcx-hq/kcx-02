@@ -35,6 +35,12 @@ export function buildDashboardQueryParams(
     if (scopeOrInput.rawBillingFileIds.length > 0) {
       params.set("rawBillingFileIds", scopeOrInput.rawBillingFileIds.join(","));
     }
+    if (scopeOrInput.from) {
+      params.set("from", scopeOrInput.from);
+    }
+    if (scopeOrInput.to) {
+      params.set("to", scopeOrInput.to);
+    }
     return params.toString();
   }
 
@@ -43,6 +49,12 @@ export function buildDashboardQueryParams(
     params.set("rawBillingFileIds", input.rawBillingFileIds.join(","));
     if (input.tenantId) {
       params.set("tenantId", String(input.tenantId));
+    }
+    if (input.from) {
+      params.set("from", input.from);
+    }
+    if (input.to) {
+      params.set("to", input.to);
     }
     return params.toString();
   }
@@ -60,6 +72,8 @@ export function buildDashboardQueryParams(
 
 export function parseDashboardScopeInputFromSearch(search: string): DashboardScopeInput {
   const params = new URLSearchParams(search);
+  const from = params.get("from") ?? params.get("billingPeriodStart");
+  const to = params.get("to") ?? params.get("billingPeriodEnd");
   const rawBillingFileIdsParamValues = params.getAll("rawBillingFileIds");
   const rawBillingFileIds = rawBillingFileIdsParamValues
     .flatMap((entry) => entry.split(","))
@@ -70,8 +84,8 @@ export function parseDashboardScopeInputFromSearch(search: string): DashboardSco
     tenantId: params.get("tenantId") ?? undefined,
     rawBillingFileId: parseOptionalInteger(params.get("rawBillingFileId")),
     rawBillingFileIds: rawBillingFileIds.length > 0 ? [...new Set(rawBillingFileIds)] : undefined,
-    from: params.get("from") ?? undefined,
-    to: params.get("to") ?? undefined,
+    from: from ?? undefined,
+    to: to ?? undefined,
     providerId: parseOptionalInteger(params.get("providerId")),
     billingAccountKey: parseOptionalInteger(params.get("billingAccountKey")),
     subAccountKey: parseOptionalInteger(params.get("subAccountKey")),

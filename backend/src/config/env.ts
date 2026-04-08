@@ -96,6 +96,8 @@ const env = {
   mailgunFrom: optionalEnv(process.env.MAILGUN_FROM),
   frontendBaseUrl: optionalEnv(process.env.FRONTEND_BASE_URL),
   awsCallbackUrl: optionalEnv(process.env.AWS_CALLBACK_URL),
+  awsFileEventCallbackUrl:
+    optionalEnv(process.env.AWS_FILE_EVENT_CALLBACK_URL) ?? optionalEnv(process.env.AWS_CALLBACK_URL),
   awsValidationAccessKeyId:
     optionalEnv(process.env.AWS_VALIDATION_ACCESS_KEY_ID) ?? optionalEnv(process.env.AWS_ACCESS_KEY_ID),
   awsValidationSecretAccessKey:

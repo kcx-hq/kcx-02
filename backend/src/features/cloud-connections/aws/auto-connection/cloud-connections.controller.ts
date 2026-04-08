@@ -7,6 +7,7 @@ import { HTTP_STATUS } from "../../../../constants/http-status.js";
 import {
   ConflictError,
   DuplicateCloudConnectionError,
+  InternalServerError,
   NotFoundError,
   UnauthorizedError,
 } from "../../../../errors/http-errors.js";
@@ -890,11 +891,17 @@ export async function handleGetAwsCloudFormationSetupUrl(req: Request, res: Resp
   const exportPrefix = normalizeOptional(postPayload?.exportPrefix) ?? DEFAULT_AWS_EXPORT_PREFIX;
   const exportName = normalizeOptional(postPayload?.exportName) ?? buildDefaultAwsExportName(connection.id);
   const callbackUrl = normalizeOptional(postPayload?.callbackUrl) ?? env.awsCallbackUrl ?? undefined;
+  const fileEventCallbackUrl = env.awsFileEventCallbackUrl;
   const resourceTagKey = useTagScopedAccess ? normalizeOptional(postPayload?.resourceTagKey) : undefined;
   const resourceTagValue = useTagScopedAccess ? normalizeOptional(postPayload?.resourceTagValue) : undefined;
 
   if (!stackName || !externalId || !callbackToken || !connectionName || !region) {
     throw new NotFoundError("CloudFormation setup is not available for this connection");
+  }
+  if (!fileEventCallbackUrl) {
+    throw new InternalServerError(
+      "AWS CloudFormation setup is temporarily unavailable because callback configuration is missing",
+    );
   }
 
   const patch: Partial<{
@@ -926,6 +933,7 @@ export async function handleGetAwsCloudFormationSetupUrl(req: Request, res: Resp
     externalId,
     connectionName,
     region,
+    fileEventCallbackUrl,
     exportPrefix,
     exportName,
     callbackUrl,

@@ -502,7 +502,7 @@ export function DemoRequestForm({
                 }}
                 autoComplete="organization"
                 required
-                placeholder="KCX Labs"
+                placeholder="KCX"
                 tone={tone}
                 invalid={touched.companyName && Boolean(errors.companyName)}
                 errorId={errors.companyName ? `${formId}-companyName__error` : undefined}

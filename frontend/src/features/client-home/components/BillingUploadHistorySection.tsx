@@ -23,6 +23,8 @@ type BillingUploadHistorySectionProps = {
   onOpenDashboard: (selectedRawBillingFileIds: number[]) => void
 }
 
+const PAGE_SIZE = 10
+
 const FILTER_OPTIONS: Array<{ value: "all" | NormalizedStatus; label: string }> = [
   { value: "all", label: "All statuses" },
   { value: "idle", label: "Idle" },
@@ -134,6 +136,7 @@ export function BillingUploadHistorySection({
 }: BillingUploadHistorySectionProps) {
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState<"all" | NormalizedStatus>("all")
+  const [page, setPage] = useState(1)
   const selectedFileIds = useUploadHistorySelectionStore((state) => state.selectedFileIds)
   const toggleFile = useUploadHistorySelectionStore((state) => state.toggleFile)
   const toggleSelectAll = useUploadHistorySelectionStore((state) => state.toggleSelectAll)
@@ -150,15 +153,26 @@ export function BillingUploadHistorySection({
     })
   }, [records, searchTerm, statusFilter])
 
+  const totalPages = Math.max(1, Math.ceil(filteredRecords.length / PAGE_SIZE))
+  const currentPage = Math.min(page, totalPages)
+
+  const paginatedRecords = useMemo(() => {
+    const startIndex = (currentPage - 1) * PAGE_SIZE
+    return filteredRecords.slice(startIndex, startIndex + PAGE_SIZE)
+  }, [currentPage, filteredRecords])
+
   const visibleRawBillingFileIds = useMemo(() => {
-    return filteredRecords
+    return paginatedRecords
       .map((record) => Number(record.rawBillingFileId))
       .filter((id) => Number.isInteger(id))
-  }, [filteredRecords])
+  }, [paginatedRecords])
 
   const allVisibleSelected =
     visibleRawBillingFileIds.length > 0 &&
     visibleRawBillingFileIds.every((rawBillingFileId) => selectedFileIds.includes(rawBillingFileId))
+
+  const paginationStart = filteredRecords.length === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1
+  const paginationEnd = Math.min(currentPage * PAGE_SIZE, filteredRecords.length)
 
   return (
     <section className="space-y-4" aria-label="Files and processing history">
@@ -170,7 +184,10 @@ export function BillingUploadHistorySection({
             <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
             <input
               value={searchTerm}
-              onChange={(event) => setSearchTerm(event.target.value)}
+              onChange={(event) => {
+                setSearchTerm(event.target.value)
+                setPage(1)
+              }}
               placeholder="Search file name"
               className="h-9 w-full rounded-md border border-[color:var(--border-light)] bg-white pl-8 pr-3 text-sm outline-none transition-colors focus:border-[color:var(--kcx-border-strong)]"
             />
@@ -179,7 +196,10 @@ export function BillingUploadHistorySection({
             <span className="sr-only">Filter by status</span>
             <select
               value={statusFilter}
-              onChange={(event) => setStatusFilter(event.target.value as "all" | NormalizedStatus)}
+              onChange={(event) => {
+                setStatusFilter(event.target.value as "all" | NormalizedStatus)
+                setPage(1)
+              }}
               className="h-9 rounded-md border border-[color:var(--border-light)] bg-white px-3 text-sm text-text-primary outline-none transition-colors focus:border-[color:var(--kcx-border-strong)]"
               aria-label="Filter by status"
             >
@@ -247,7 +267,7 @@ export function BillingUploadHistorySection({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredRecords.map((record) => {
+              {paginatedRecords.map((record) => {
                 const status = normalizeStatus(record.status)
                 const canRetry = status === "failed" || status === "warning"
                 const rawBillingFileId = Number(record.rawBillingFileId)
@@ -293,6 +313,37 @@ export function BillingUploadHistorySection({
           </Table>
         )}
       </div>
+
+      {!isLoading && !isError && filteredRecords.length > 0 ? (
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-sm text-text-secondary">
+            Showing {paginationStart}-{paginationEnd} of {filteredRecords.length}
+          </p>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 rounded-md"
+              disabled={currentPage <= 1}
+              onClick={() => setPage((previous) => Math.max(previous - 1, 1))}
+            >
+              Previous
+            </Button>
+            <span className="min-w-[90px] text-center text-sm text-text-secondary">
+              Page {currentPage} of {totalPages}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 rounded-md"
+              disabled={currentPage >= totalPages}
+              onClick={() => setPage((previous) => Math.min(previous + 1, totalPages))}
+            >
+              Next
+            </Button>
+          </div>
+        </div>
+      ) : null}
     </section>
   )
 }

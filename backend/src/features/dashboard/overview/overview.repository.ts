@@ -445,11 +445,11 @@ export class OverviewRepository {
         SELECT COALESCE(COUNT(*), 0)::bigint AS total
         FROM fact_recommendations fr
         WHERE fr.tenant_id = $1
-          AND fr.status = $2
+          AND UPPER(fr.status) = $2
           AND fr.created_at::date BETWEEN $3 AND $4;
       `,
       {
-        bind: [filters.tenantId, "open", filters.billingPeriodStart, filters.billingPeriodEnd],
+        bind: [filters.tenantId, "OPEN", filters.billingPeriodStart, filters.billingPeriodEnd],
         type: QueryTypes.SELECT,
       },
     );
@@ -460,13 +460,13 @@ export class OverviewRepository {
     const bindValues: unknown[] = [filters.tenantId, filters.billingPeriodStart, filters.billingPeriodEnd];
     let statusCondition = "";
     if (Array.isArray(filters.status) && filters.status.length > 0) {
-      bindValues.push(filters.status);
-      statusCondition = `AND fr.status = ANY($${bindValues.length}::text[])`;
+      bindValues.push(filters.status.map((status) => status.toUpperCase()));
+      statusCondition = `AND UPPER(fr.status) = ANY($${bindValues.length}::text[])`;
     }
 
     const rows = await sequelize.query<{ total_savings: number | string | null }>(
       `
-        SELECT COALESCE(SUM(fr.potential_monthly_savings), 0)::double precision AS total_savings
+        SELECT COALESCE(SUM(fr.estimated_monthly_savings), 0)::double precision AS total_savings
         FROM fact_recommendations fr
         WHERE fr.tenant_id = $1
           AND fr.created_at::date BETWEEN $2 AND $3
@@ -700,15 +700,15 @@ export class OverviewRepository {
   }
 
   async getRecommendations(filters: OverviewFilters): Promise<PaginatedResult<OverviewRecommendation>> {
-    const sortBy = filters.sortBy === "createdAt" ? "created_at" : "estimated_savings";
+    const sortBy = filters.sortBy === "createdAt" ? "created_at" : "estimated_monthly_savings";
     const sortOrder = filters.sortOrder === "asc" ? "ASC" : "DESC";
     const offset = (filters.page - 1) * filters.pageSize;
 
     const bindValues: unknown[] = [filters.tenantId, filters.billingPeriodStart, filters.billingPeriodEnd];
     let statusCondition = "";
     if (Array.isArray(filters.status) && filters.status.length > 0) {
-      bindValues.push(filters.status);
-      statusCondition = `AND fr.status = ANY($${bindValues.length}::text[])`;
+      bindValues.push(filters.status.map((status) => status.toUpperCase()));
+      statusCondition = `AND UPPER(fr.status) = ANY($${bindValues.length}::text[])`;
     }
     bindValues.push(filters.pageSize, offset);
 
@@ -717,14 +717,15 @@ export class OverviewRepository {
         SELECT
           fr.id AS recommendation_id,
           fr.recommendation_type,
-          fr.service_name,
-          COALESCE(fr.potential_monthly_savings, 0)::double precision AS estimated_savings,
-          NULL::text AS effort_level,
+          ds.service_name,
+          COALESCE(fr.estimated_monthly_savings, 0)::double precision AS estimated_savings,
+          fr.effort_level,
           fr.risk_level,
           fr.status,
-          fr.reason,
+          fr.recommendation_text AS reason,
           COUNT(*) OVER() AS total_count
         FROM fact_recommendations fr
+        LEFT JOIN dim_service ds ON ds.id = fr.service_key
         WHERE fr.tenant_id = $1
           AND fr.created_at::date BETWEEN $2 AND $3
           ${statusCondition}
@@ -737,8 +738,8 @@ export class OverviewRepository {
     const total = toNumber(rows[0]?.total_count);
     return {
       items: rows.map((row) => {
-        const isActive = row.status === "open";
-        const riskLevel = row.risk_level ?? "unknown";
+        const isActive = String(row.status).toUpperCase() === "OPEN";
+        const riskLevel = row.risk_level ?? "UNKNOWN";
         return {
           recommendationId: row.recommendation_id,
           recommendationType: row.recommendation_type,
@@ -750,7 +751,7 @@ export class OverviewRepository {
           isActive,
           actions: {
             viewEnabled: true,
-            applyEnabled: isActive && riskLevel !== "high",
+            applyEnabled: isActive && String(riskLevel).toUpperCase() !== "HIGH",
           },
           reason: row.reason,
         };
