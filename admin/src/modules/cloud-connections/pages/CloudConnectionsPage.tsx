@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react"
+import { RefreshCw } from "lucide-react"
 
 import {
   fetchAdminCloudConnectionByIntegrationId,
@@ -22,7 +23,7 @@ import { ApiError } from "@/lib/api"
 import { Button } from "@/shared/ui/button"
 import { Card, CardContent } from "@/shared/ui/card"
 
-const DEFAULT_LIMIT = 20
+const DEFAULT_LIMIT = 10
 
 type SortBy =
   | "displayName"
@@ -54,7 +55,6 @@ export function CloudConnectionsPage() {
   const [items, setItems] = useState<AdminCloudConnectionListItem[]>([])
   const [summary, setSummary] = useState<AdminCloudConnectionsListResponse["summary"]>(DEFAULT_SUMMARY)
   const [page, setPage] = useState(1)
-  const [limit, setLimit] = useState(DEFAULT_LIMIT)
   const [total, setTotal] = useState(0)
   const [totalPages, setTotalPages] = useState(0)
 
@@ -86,8 +86,8 @@ export function CloudConnectionsPage() {
   const providerOptions = useMemo(() => {
     const values = new Map<string, string>()
     for (const item of items) {
-      const key = item.provider.code
-      const label = `${item.provider.name} (${item.provider.code})`
+      const key = String(item.provider.code || "").trim().toLowerCase()
+      const label = key.toUpperCase() || "UNKNOWN"
       if (!values.has(key)) values.set(key, label)
     }
     return Array.from(values.entries()).map(([value, label]) => ({ value, label }))
@@ -102,7 +102,7 @@ export function CloudConnectionsPage() {
       token,
       buildListQuery({
         page,
-        limit,
+        limit: DEFAULT_LIMIT,
         search,
         provider,
         mode,
@@ -129,7 +129,7 @@ export function CloudConnectionsPage() {
   useEffect(() => {
     loadList()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token, page, limit, search, provider, mode, status, billingSourceLinked, dateFrom, dateTo, sortBy, sortOrder])
+  }, [token, page, search, provider, mode, status, billingSourceLinked, dateFrom, dateTo, sortBy, sortOrder])
 
   const loadDetails = (integrationId: string) => {
     if (!token) return
@@ -178,17 +178,30 @@ export function CloudConnectionsPage() {
     setSortBy("updatedAt")
     setSortOrder("desc")
     setPage(1)
-    setLimit(DEFAULT_LIMIT)
   }
 
   return (
     <>
       <div className="space-y-5">
-        <div>
-          <h1 className="text-xl font-semibold tracking-[-0.02em] text-[color:rgba(15,23,42,0.92)]">Cloud Connections</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Monitor persistent cloud integrations, linkage health, and latest ingestion context.
-          </p>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h1 className="text-xl font-semibold tracking-[-0.02em] text-[color:rgba(15,23,42,0.92)]">Cloud Connections</h1>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Monitor persistent cloud integrations, linkage health, and latest ingestion context.
+            </p>
+          </div>
+          <Button
+            type="button"
+            size="icon"
+            variant="outline"
+            className="h-9 w-9"
+            onClick={loadList}
+            disabled={loading}
+            aria-label="Refresh cloud connections"
+            title="Refresh"
+          >
+            <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+          </Button>
         </div>
 
         <CloudConnectionsSummaryCards summary={summary} />
@@ -255,18 +268,6 @@ export function CloudConnectionsPage() {
                 Page {page} of {Math.max(totalPages, 1)} - {total} total
               </div>
               <div className="flex items-center gap-2">
-                <select
-                  value={limit}
-                  onChange={(event) => {
-                    setLimit(Number(event.target.value))
-                    setPage(1)
-                  }}
-                  className="h-9 rounded-lg border border-[color:rgba(15,23,42,0.12)] bg-white px-2.5 text-sm outline-none ring-[color:rgba(47,125,106,0.35)] focus:ring-2"
-                >
-                  <option value={20}>20 / page</option>
-                  <option value={50}>50 / page</option>
-                  <option value={100}>100 / page</option>
-                </select>
                 <Button
                   size="sm"
                   variant="outline"
@@ -305,4 +306,3 @@ export function CloudConnectionsPage() {
     </>
   )
 }
-

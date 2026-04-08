@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react"
+import { RefreshCw } from "lucide-react"
 
 import {
   fetchAdminBillingUploadByRunId,
@@ -128,11 +129,25 @@ export function BillingUploadsPage() {
   return (
     <>
       <div className="space-y-5">
-        <div>
-          <h1 className="text-xl font-semibold tracking-[-0.02em] text-[color:rgba(15,23,42,0.92)]">Billing Uploads</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Monitor billing file intake and ingestion run health across clients.
-          </p>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h1 className="text-xl font-semibold tracking-[-0.02em] text-[color:rgba(15,23,42,0.92)]">Billing Uploads</h1>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Monitor billing file intake and ingestion run health across clients.
+            </p>
+          </div>
+          <Button
+            type="button"
+            size="icon"
+            variant="outline"
+            className="h-9 w-9"
+            onClick={loadList}
+            disabled={loading}
+            aria-label="Refresh billing uploads"
+            title="Refresh"
+          >
+            <RefreshCw className="h-4 w-4" />
+          </Button>
         </div>
 
         <BillingUploadsSummaryCards

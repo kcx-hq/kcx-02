@@ -27,14 +27,12 @@ type CloudConnectionsSummaryCardsProps = {
 
 export function CloudConnectionsSummaryCards({ summary }: CloudConnectionsSummaryCardsProps) {
   return (
-    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
       <MetricCard title="Total" value={summary.total} note="Filtered set" />
       <MetricCard title="Active" value={summary.active} note="Healthy integrations" />
-      <MetricCard title="Awaiting Validation" value={summary.awaitingValidation} note="Pending checks" />
       <MetricCard title="Failed" value={summary.failed} note="Needs investigation" />
       <MetricCard title="Suspended" value={summary.suspended} note="Disconnected state" />
       <MetricCard title="Source Missing" value={summary.billingSourceMissing} note="No linked billing source" />
     </div>
   )
 }
-
