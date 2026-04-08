@@ -16,12 +16,12 @@ const router = Router();
 
 router.use(scheduleDemoRoutes);
 router.use(authRoutes);
+router.use(adminAuthRoutes);
 router.use(awsAutoCloudConnectionsRoutes);
 router.use(awsManualConnectionRoutes);
 router.use(awsEc2Routes);
 router.use(billingRoutes);
 router.use(dashboardRoutes);
-router.use(adminAuthRoutes);
 router.use(adminClientsRoutes);
 router.use(adminDemoRequestsRoutes);
 router.use(adminBillingUploadsRoutes);
