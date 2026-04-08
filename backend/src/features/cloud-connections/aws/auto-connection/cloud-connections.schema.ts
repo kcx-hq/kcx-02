@@ -1,5 +1,12 @@
 import { z } from "zod";
 
+const awsRoleArnPattern = /^arn:aws:iam::\d{12}:role\/[\w+=,.@\-_/]+$/i;
+const awsIamRoleArnSchema = z
+  .string()
+  .trim()
+  .min(1, "role ARN is required")
+  .regex(awsRoleArnPattern, "role ARN must be a valid AWS IAM role ARN");
+
 export const createCloudConnectionSchema = z.object({
   connection_name: z.string().trim().min(1, "Connection name is required"),
   provider: z.enum(["aws", "azure", "gcp", "oracle", "custom"]).optional().default("aws"),
@@ -11,7 +18,11 @@ export const awsConnectionCallbackSchema = z.object({
   callback_token: z.string().trim().min(1, "callback_token is required"),
   event_type: z.enum(["stack_create", "stack_update", "stack_delete"]).optional().default("stack_create"),
   account_id: z.string().trim().min(1, "account_id is required"),
-  role_arn: z.string().trim().min(1, "role_arn is required"),
+  role_arn: awsIamRoleArnSchema.optional(),
+  billing_role_arn: awsIamRoleArnSchema.optional(),
+  billingRoleArn: awsIamRoleArnSchema.optional(),
+  action_role_arn: awsIamRoleArnSchema.optional(),
+  actionRoleArn: awsIamRoleArnSchema.optional(),
   stack_id: z.string().trim().min(1, "stack_id is required"),
   export_name: z.string().trim().min(1, "export_name is required"),
   export_bucket: z.string().trim().min(1, "export_bucket is required"),
@@ -23,6 +34,24 @@ export const awsConnectionCallbackSchema = z.object({
   setup_mode: z.literal("cloud_connected").optional().default("cloud_connected"),
   schema_type: z.literal("cur2_custom").optional().default("cur2_custom"),
   cadence: z.string().trim().optional().default("hourly"),
+}).superRefine((value, ctx) => {
+  const billingRoleArn = value.billing_role_arn ?? value.billingRoleArn ?? value.role_arn;
+  if (!billingRoleArn) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["billing_role_arn"],
+      message: "billing_role_arn is required",
+    });
+  }
+}).transform((value) => {
+  const billingRoleArn = value.billing_role_arn ?? value.billingRoleArn ?? value.role_arn;
+  const actionRoleArn = value.action_role_arn ?? value.actionRoleArn;
+
+  return {
+    ...value,
+    billing_role_arn: billingRoleArn,
+    action_role_arn: actionRoleArn,
+  };
 });
 
 export const generateAwsCloudFormationSetupSchema = z.object({

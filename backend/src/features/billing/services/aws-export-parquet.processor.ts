@@ -123,10 +123,10 @@ export async function processAwsExportParquetRun({ run }) {
       throw new Error(`Cloud connection not found for billing source ${source.id}`);
     }
 
-    const roleArn = String(connection.roleArn ?? "").trim();
+    const roleArn = String(connection.billingRoleArn ?? "").trim();
     const region = String(connection.exportRegion ?? connection.region ?? "").trim();
     if (!roleArn || !region) {
-      throw new Error("AWS connection is missing roleArn/exportRegion");
+      throw new Error("AWS connection is missing billingRoleArn/exportRegion");
     }
 
     const linkedFiles = await getIngestionRunFiles(runId);

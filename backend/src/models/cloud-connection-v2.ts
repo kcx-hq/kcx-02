@@ -34,7 +34,8 @@ class CloudConnectionV2 extends Model<
   declare stackId: CreationOptional<string | null>;
   declare cloudAccountId: CreationOptional<string | null>;
   declare payerAccountId: CreationOptional<string | null>;
-  declare roleArn: CreationOptional<string | null>;
+  declare billingRoleArn: CreationOptional<string | null>;
+  declare actionRoleArn: CreationOptional<string | null>;
   declare exportName: CreationOptional<string | null>;
   declare exportBucket: CreationOptional<string | null>;
   declare exportPrefix: CreationOptional<string | null>;
@@ -81,7 +82,8 @@ const createCloudConnectionV2Model = (sequelize: Sequelize): typeof CloudConnect
       stackId: { type: DataTypes.TEXT, allowNull: true, field: "stack_id" },
       cloudAccountId: { type: DataTypes.STRING(50), allowNull: true, field: "cloud_account_id" },
       payerAccountId: { type: DataTypes.STRING(50), allowNull: true, field: "payer_account_id" },
-      roleArn: { type: DataTypes.TEXT, allowNull: true, field: "role_arn" },
+      billingRoleArn: { type: DataTypes.TEXT, allowNull: true, field: "billing_role_arn" },
+      actionRoleArn: { type: DataTypes.TEXT, allowNull: true, field: "action_role_arn" },
       exportName: { type: DataTypes.STRING(255), allowNull: true, field: "export_name" },
       exportBucket: { type: DataTypes.STRING(255), allowNull: true, field: "export_bucket" },
       exportPrefix: { type: DataTypes.STRING(1000), allowNull: true, field: "export_prefix" },

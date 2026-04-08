@@ -25,7 +25,7 @@ export async function validateAwsConnection(connectionId: string): Promise<AwsVa
     throw new Error("Cloud connection not found");
   }
 
-  const roleArn = connection.roleArn?.trim();
+  const billingRoleArn = connection.billingRoleArn?.trim();
   const externalId = connection.externalId?.trim();
   const expectedAccountId = connection.cloudAccountId?.trim();
   const exportBucket = connection.exportBucket?.trim();
@@ -33,8 +33,8 @@ export async function validateAwsConnection(connectionId: string): Promise<AwsVa
   const region = connection.region?.trim() || "us-east-1";
   const validatedAt = new Date();
 
-  if (!roleArn || !externalId || !expectedAccountId) {
-    const errorMessage = "Missing role ARN, external ID, or cloud account ID for validation";
+  if (!billingRoleArn || !externalId || !expectedAccountId) {
+    const errorMessage = "Missing billing role ARN, external ID, or cloud account ID for validation";
     await connection.update({
       status: "failed",
       lastValidatedAt: validatedAt,
@@ -85,7 +85,7 @@ export async function validateAwsConnection(connectionId: string): Promise<AwsVa
   try {
     const assumeRole = await stsClient.send(
       new AssumeRoleCommand({
-        RoleArn: roleArn,
+        RoleArn: billingRoleArn,
         ExternalId: externalId,
         RoleSessionName: buildRoleSessionName(connection.id),
       }),

@@ -29,6 +29,11 @@ Parameters:
     Default: arn:aws:iam::275017715736:root
     Description: KCX IAM principal ARN allowed to assume the client role
 
+  ActionRoleArn:
+    Type: String
+    Default: ''
+    Description: Optional ARN of the action role from parent stack
+
   ExportPrefix:
     Type: String
     Default: kcx/data-exports/cur2
@@ -340,6 +345,8 @@ Resources:
                     callback_token: props.CallbackToken,
                     event_type: 'stack_delete',
                     account_id: props.AccountId,
+                    billing_role_arn: props.RoleArn,
+                    action_role_arn: props.ActionRoleArn || undefined,
                     role_arn: props.RoleArn,
                     stack_id: props.StackId,
                     export_name: props.ExportName,
@@ -364,6 +371,8 @@ Resources:
                 callback_token: props.CallbackToken,
                 event_type: event.RequestType === 'Update' ? 'stack_update' : 'stack_create',
                 account_id: props.AccountId,
+                billing_role_arn: props.RoleArn,
+                action_role_arn: props.ActionRoleArn || undefined,
                 role_arn: props.RoleArn,
                 stack_id: props.StackId,
                 export_name: props.ExportName,
@@ -405,6 +414,7 @@ Resources:
       CallbackToken: !Ref CallbackToken
       AccountId: !Ref AWS::AccountId
       RoleArn: !GetAtt KCXReadOnlyRole.Arn
+      ActionRoleArn: !Ref ActionRoleArn
       StackId: !Ref AWS::StackId
       ConnectionName: !Ref ConnectionName
       ExportName: !Ref ExportName

@@ -117,6 +117,7 @@ Resources:
   BillingExportStack:
     Type: AWS::CloudFormation::Stack
     Condition: CreateBillingExport
+    DependsOn: ActionRoleStack
     Properties:
       TemplateURL: !Ref BillingTemplateUrl
       Parameters:
@@ -126,6 +127,10 @@ Resources:
         FileEventCallbackUrl: !Ref FileEventCallbackUrl
         CallbackToken: !Ref CallbackToken
         KcxPrincipalArn: !Ref KcxPrincipalArn
+        ActionRoleArn: !If
+          - CreateActionRole
+          - !GetAtt ActionRoleStack.Outputs.ActionRoleArn
+          - ''
         ExportPrefix: !Ref ExportPrefix
         ExportName: !Ref ExportName
 

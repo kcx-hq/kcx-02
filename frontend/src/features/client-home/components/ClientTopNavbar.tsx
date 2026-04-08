@@ -9,6 +9,7 @@ import { Bell, ChevronDown, LifeBuoy, LogOut, Megaphone, User, UserCircle2 } fro
 
 const NAV_ITEMS = [
   { label: "Billing", href: "/client/billing", matches: ["/client/billing", "/client/billing/uploads", "/client/billing/connect-cloud", "/client/billing/connect-cloud/aws", "/client/billing/connect-cloud/aws/automatic", "/client/billing/connect-cloud/aws/manual", "/client/billing/connect-cloud/aws/manual/success"] },
+  { label: "Actions", href: "/client/actions", matches: ["/client/actions"] },
   { label: "Support", href: "/client/support/tickets", matches: ["/client/support", "/client/support/tickets", "/client/support/schedule-call", "/client/support/live-chat"] },
   { label: "Users", href: "/client/users", matches: ["/client/users"] },
 ] as const
