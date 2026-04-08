@@ -11,24 +11,24 @@ class FactRecommendations extends Model<
   InferAttributes<FactRecommendations>,
   InferCreationAttributes<FactRecommendations>
 > {
-  declare id: CreationOptional<string>;
+  declare id: CreationOptional<string | number>;
   declare tenantId: string;
   declare awsAccountId: string;
   declare awsRegionCode: string;
   declare category: string;
   declare recommendationType: string;
-  declare serviceKey: CreationOptional<string | null>;
-  declare subAccountKey: CreationOptional<string | null>;
-  declare regionKey: CreationOptional<string | null>;
+  declare serviceKey: CreationOptional<string | number | null>;
+  declare subAccountKey: CreationOptional<string | number | null>;
+  declare regionKey: CreationOptional<string | number | null>;
   declare resourceId: string;
   declare resourceArn: CreationOptional<string | null>;
   declare resourceName: CreationOptional<string | null>;
   declare currentResourceType: CreationOptional<string | null>;
   declare recommendedResourceType: CreationOptional<string | null>;
-  declare currentMonthlyCost: CreationOptional<string>;
-  declare estimatedMonthlySavings: CreationOptional<string>;
-  declare projectedMonthlyCost: CreationOptional<string>;
-  declare performanceRiskScore: CreationOptional<string | null>;
+  declare currentMonthlyCost: CreationOptional<string | number>;
+  declare estimatedMonthlySavings: CreationOptional<string | number>;
+  declare projectedMonthlyCost: CreationOptional<string | number>;
+  declare performanceRiskScore: CreationOptional<string | number | null>;
   declare performanceRiskLevel: CreationOptional<string | null>;
   declare sourceSystem: CreationOptional<string>;
   declare status: CreationOptional<string>;

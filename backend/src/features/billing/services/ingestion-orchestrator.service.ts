@@ -7,6 +7,7 @@ import { NotFoundError } from "../../../errors/http-errors.js";
 import { RawBillingFile } from "../../../models/index.js";
 import { logger } from "../../../utils/logger.js";
 import { mapFactCostLineItem } from "../mappers/raw_focus_to_dimensions.mapper.js";
+import { syncAwsRightsizingRecommendationsAfterIngestion } from "../../dashboard/optimization/recommendation-sync/sync.service.js";
 import { processAwsExportParquetRun } from "./aws-export-parquet.processor.js";
 import {
   createIngestionDimensionCache,
@@ -738,6 +739,29 @@ async function processIngestionRun(ingestionRunId) {
         billingSourceId: rawFile.billingSourceId,
         uploadedBy: rawFile.uploadedBy,
       });
+
+      const tenantIdForSync = typeof rawFile.tenantId === "string" ? rawFile.tenantId.trim() : "";
+      const billingSourceIdForSync =
+        typeof rawFile.billingSourceId === "string" || typeof rawFile.billingSourceId === "number"
+          ? String(rawFile.billingSourceId)
+          : "";
+
+      if (tenantIdForSync && billingSourceIdForSync) {
+        try {
+          await syncAwsRightsizingRecommendationsAfterIngestion({
+            tenantId: tenantIdForSync,
+            billingSourceId: billingSourceIdForSync,
+            ingestionRunId: String(run.id),
+          });
+        } catch (syncError) {
+          logger.warn("Optimization recommendation sync failed after ingestion", {
+            ingestionRunId: run.id,
+            tenantId: rawFile.tenantId ?? null,
+            billingSourceId: rawFile.billingSourceId ?? null,
+            reason: toErrorMessage(syncError),
+          });
+        }
+      }
     }
 
     const topReasons = summarizeTopFailureReasons(failureReasonCounts);
