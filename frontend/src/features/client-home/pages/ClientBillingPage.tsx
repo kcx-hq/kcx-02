@@ -398,7 +398,7 @@ export function ClientBillingPage() {
 
   function onSubmitAutomaticSetup() {
     setAutoTouched(true)
-    setAutoError(null)
+    setupError(null)
     if (!validateAutoConnectionName(autoConnectionName)) return
 
     // Open a tab immediately from the user click to avoid popup blockers.
@@ -428,9 +428,9 @@ export function ClientBillingPage() {
           setupTab.close()
         }
         if (error instanceof ApiError) {
-          setAutoError(error.message || "Failed to create connection")
+          setupError(error.message || "Failed to create connection")
         } else {
-          setAutoError("Failed to create connection")
+          setupError("Failed to create connection")
         }
       } finally {
         setAutoSubmitting(false)
@@ -1108,5 +1108,9 @@ export function ClientBillingPage() {
       />
     </>
   )
+}
+
+function setAutoTouched(arg0: boolean) {
+  throw new Error("Function not implemented.")
 }
 

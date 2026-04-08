@@ -17,6 +17,8 @@ export type BillingUploadsListRow = {
   client: {
     id: string
     name: string
+    userName: string | null
+    companyName: string | null
   }
   source: {
     type: string

@@ -1,6 +1,6 @@
 import type { BillingUploadNormalizedStatus } from "@/modules/billing-uploads/admin-billing-uploads.api"
 
-export type BillingSourceTypeFilter = "" | "manual_upload" | "s3" | "aws_data_exports_cur2"
+export type BillingSourceTypeFilter = "" | "manual_upload" | "s3" | "aws_data_exports_cur2" | "aws_data_exports_manual"
 
 type BillingUploadsFiltersProps = {
   searchInput: string
@@ -34,8 +34,8 @@ export function BillingUploadsFilters({
         <input
           value={searchInput}
           onChange={(event) => onSearchInputChange(event.target.value)}
-          className="mt-1.5 h-10 w-full rounded-xl border border-[color:rgba(15,23,42,0.12)] bg-white px-3 text-sm outline-none ring-[color:rgba(47,125,106,0.35)] focus:ring-2"
-          placeholder="Run ID, file name, client, uploader"
+          className="mt-1.5 h-10 w-full rounded-xl border border-[color:rgba(15,23,42,0.12)] bg-white px-3 text-sm text-[color:rgba(15,23,42,0.88)] placeholder:text-[color:rgba(15,23,42,0.48)] outline-none ring-[color:rgba(15,23,42,0.14)] focus:border-[color:rgba(15,23,42,0.24)] focus:ring-2"
+          placeholder="Search by Sr. No., client, source, file, status"
         />
       </label>
 
@@ -63,31 +63,33 @@ export function BillingUploadsFilters({
           className="mt-1.5 h-10 w-full rounded-xl border border-[color:rgba(15,23,42,0.12)] bg-white px-3 text-sm outline-none ring-[color:rgba(47,125,106,0.35)] focus:ring-2"
         >
           <option value="">All</option>
-          <option value="manual_upload">Local Upload</option>
-          <option value="s3">S3 Upload</option>
-          <option value="aws_data_exports_cur2">Cloud Connected</option>
+          <option value="manual_upload">Local</option>
+          <option value="s3">S3 Bucket</option>
+          <option value="aws_data_exports_cur2">Cloud-Auto</option>
+          <option value="aws_data_exports_manual">Cloud-Manual</option>
         </select>
       </label>
 
-      <label>
-        <div className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">Date From</div>
-        <input
-          type="date"
-          value={dateFrom}
-          onChange={(event) => onDateFromChange(event.target.value)}
-          className="mt-1.5 h-10 w-full rounded-xl border border-[color:rgba(15,23,42,0.12)] bg-white px-3 text-sm outline-none ring-[color:rgba(47,125,106,0.35)] focus:ring-2"
-        />
-      </label>
-
-      <label>
-        <div className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">Date To</div>
-        <input
-          type="date"
-          value={dateTo}
-          onChange={(event) => onDateToChange(event.target.value)}
-          className="mt-1.5 h-10 w-full rounded-xl border border-[color:rgba(15,23,42,0.12)] bg-white px-3 text-sm outline-none ring-[color:rgba(47,125,106,0.35)] focus:ring-2"
-        />
-      </label>
+      <div className="xl:col-span-2">
+        <div className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">Date Range</div>
+        <div className="mt-1.5 grid grid-cols-[1fr_auto_1fr] items-center gap-2">
+          <input
+            type="date"
+            value={dateFrom}
+            onChange={(event) => onDateFromChange(event.target.value)}
+            className="h-10 w-full min-w-0 rounded-xl border border-[color:rgba(15,23,42,0.12)] bg-white px-3 text-sm outline-none ring-[color:rgba(47,125,106,0.35)] focus:ring-2"
+            aria-label="Date range start"
+          />
+          <span className="text-xs text-[color:rgba(15,23,42,0.45)]">to</span>
+          <input
+            type="date"
+            value={dateTo}
+            onChange={(event) => onDateToChange(event.target.value)}
+            className="h-10 w-full min-w-0 rounded-xl border border-[color:rgba(15,23,42,0.12)] bg-white px-3 text-sm outline-none ring-[color:rgba(47,125,106,0.35)] focus:ring-2"
+            aria-label="Date range end"
+          />
+        </div>
+      </div>
     </div>
   )
 }

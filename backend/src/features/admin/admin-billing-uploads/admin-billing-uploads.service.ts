@@ -14,7 +14,8 @@ import type {
 type ListQueryRow = {
   run_id: number;
   tenant_id: string;
-  tenant_name: string;
+  tenant_name: string | null;
+  uploaded_by_name: string | null;
   source_type: string;
   setup_mode: string;
   is_temporary: boolean;
@@ -264,11 +265,19 @@ export const buildSourceLabel = (
   const sourceTypeNormalized = String(sourceType ?? "").trim().toLowerCase();
   const setupModeNormalized = String(setupMode ?? "").trim().toLowerCase();
 
-  if (setupModeNormalized === "cloud_connected") return "Cloud Connected";
-  if (sourceTypeNormalized === "manual_upload" || sourceTypeNormalized === "manual" || sourceTypeNormalized === "local") {
-    return "Local Upload";
+  if (
+    sourceTypeNormalized === "aws_data_exports_manual"
+    || (sourceTypeNormalized === "aws_data_exports_cur2" && setupModeNormalized === "manual")
+  ) {
+    return "Cloud-Manual";
   }
-  if (sourceTypeNormalized === "s3" || setupModeNormalized === "temporary" || isTemporary) return "S3 Upload";
+  if (setupModeNormalized === "cloud_connected" || sourceTypeNormalized === "aws_data_exports_cur2") {
+    return "Cloud-Auto";
+  }
+  if (sourceTypeNormalized === "manual_upload" || sourceTypeNormalized === "manual" || sourceTypeNormalized === "local") {
+    return "Local";
+  }
+  if (sourceTypeNormalized === "s3" || setupModeNormalized === "temporary" || isTemporary) return "S3 Bucket";
 
   const readable = sourceTypeNormalized.replace(/[_-]+/g, " ").trim();
   if (!readable) return "Unknown Source";
@@ -293,12 +302,18 @@ const toIntOrNull = (value: string | number | null): number | null => {
 
 export const mapListRow = (row: ListQueryRow) => {
   const normalizedStatus = normalizeStatus(row.run_status);
+  const companyName = typeof row.tenant_name === "string" && row.tenant_name.trim().length > 0 ? row.tenant_name.trim() : null;
+  const userName =
+    typeof row.uploaded_by_name === "string" && row.uploaded_by_name.trim().length > 0 ? row.uploaded_by_name.trim() : null;
+  const fallbackClientName = userName ?? companyName ?? "Unknown";
 
   return {
     runId: Number(row.run_id),
     client: {
       id: String(row.tenant_id),
-      name: String(row.tenant_name ?? "Unknown"),
+      name: fallbackClientName,
+      userName,
+      companyName,
     },
     source: {
       type: String(row.source_type),
@@ -349,10 +364,27 @@ const buildListWhere = (query: AdminBillingUploadsListQueryParsed) => {
 
   if (query.search) {
     clauses.push(`(
-      CAST(bir.id AS TEXT) ILIKE :searchPattern
-      OR COALESCE(rbf.original_file_name, '') ILIKE :searchPattern
+      COALESCE(rbf.original_file_name, '') ILIKE :searchPattern
       OR COALESCE(t.name, '') ILIKE :searchPattern
-      OR COALESCE(u.full_name, '') ILIKE :searchPattern
+      OR COALESCE(bs.source_type, '') ILIKE :searchPattern
+      OR COALESCE(bs.source_name, '') ILIKE :searchPattern
+      OR COALESCE(bs.setup_mode, '') ILIKE :searchPattern
+      OR COALESCE(bir.status, '') ILIKE :searchPattern
+      OR (
+        CASE
+          WHEN LOWER(COALESCE(bs.source_type, '')) = 'aws_data_exports_manual'
+            OR (LOWER(COALESCE(bs.source_type, '')) = 'aws_data_exports_cur2' AND LOWER(COALESCE(bs.setup_mode, '')) = 'manual')
+            THEN 'cloud-manual'
+          WHEN LOWER(COALESCE(bs.setup_mode, '')) = 'cloud_connected'
+            OR LOWER(COALESCE(bs.source_type, '')) = 'aws_data_exports_cur2'
+            THEN 'cloud-auto'
+          WHEN LOWER(COALESCE(bs.source_type, '')) IN ('manual_upload', 'manual', 'local') THEN 'local'
+          WHEN LOWER(COALESCE(bs.source_type, '')) = 's3'
+            OR LOWER(COALESCE(bs.setup_mode, '')) = 'temporary'
+            OR bs.is_temporary THEN 's3 bucket'
+          ELSE REGEXP_REPLACE(LOWER(COALESCE(bs.source_type, '')), '[_-]+', ' ', 'g')
+        END
+      ) ILIKE :searchPattern
     )`);
     replacements.searchPattern = `%${query.search}%`;
   }
@@ -421,7 +453,8 @@ export async function getAdminBillingUploads(
       SELECT
         bir.id AS run_id,
         bs.tenant_id,
-        COALESCE(t.name, 'Unknown') AS tenant_name,
+        NULLIF(TRIM(t.name), '') AS tenant_name,
+        NULLIF(TRIM(u.full_name), '') AS uploaded_by_name,
         bs.source_type,
         bs.setup_mode,
         bs.is_temporary,
