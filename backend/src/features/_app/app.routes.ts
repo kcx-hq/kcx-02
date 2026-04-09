@@ -12,6 +12,7 @@ import scheduleDemoRoutes from "../schedule-demo/schedule-demo.routes.js";
 import billingRoutes from "../billing/billing.routes.js";
 import dashboardRoutes from "../dashboard/dashboard.routes.js";
 import awsExportFileEventRoutes from "../cloud-connections/aws/exports/aws-export-file-event.routes.js";
+import anomalyRoutes from "../dashboard/anomaly-alerts/anomaly.routes.js";
 const router = Router();
 
 router.use(scheduleDemoRoutes);
@@ -27,6 +28,7 @@ router.use(adminDemoRequestsRoutes);
 router.use(adminBillingUploadsRoutes);
 router.use(adminCloudConnectionsRoutes);
 router.use(awsExportFileEventRoutes);
+router.use(anomalyRoutes);
 
 export default router;
 

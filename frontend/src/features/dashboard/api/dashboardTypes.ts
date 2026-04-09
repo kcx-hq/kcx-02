@@ -198,6 +198,35 @@ export type OverviewRecommendationsResponse = {
   pagination: PaginationMeta;
 };
 
+export type AnomalyAlertsFiltersQuery = {
+  anomalyType?: string;
+  severity?: string;
+  status?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  service?: string;
+  region?: string;
+  subAccount?: string;
+};
+
+export type AnomalyAlertRecord = {
+  id: string;
+  usage_date: string;
+  detected_at: string;
+  anomaly_type: string;
+  anomaly_scope: string | null;
+  expected_cost: number | string | null;
+  actual_cost: number | string | null;
+  delta_cost: number | string | null;
+  delta_percent: number | string | null;
+  severity: string;
+  status: string;
+  root_cause_hint: string | null;
+  service_name: string | null;
+  region_name: string | null;
+  sub_account_name: string | null;
+};
+
 export type OverviewFiltersResponse = {
   billingPeriod: {
     min: string | null;

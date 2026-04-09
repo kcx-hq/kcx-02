@@ -3190,8 +3190,48 @@
     font-size: 0.8rem;
   }
 
-  .overview-breakdown-donut {
-    min-height: 220px;
+.overview-breakdown-donut {
+  min-height: 220px;
+}
+}
+
+.anomalies-alerts-page {
+  --anomalies-gap: 12px;
+}
+
+.dashboard-page-container > .dashboard-page.anomalies-alerts-page {
+  gap: var(--anomalies-gap);
+}
+
+.anomalies-alerts-banner {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid rgba(72, 112, 136, 0.18);
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgba(18, 78, 93, 0.08), rgba(255, 255, 255, 0.95));
+}
+
+.anomalies-alerts-banner__title {
+  margin: 0;
+  font-size: 18px;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+  color: #16313c;
+}
+
+.anomalies-alerts-banner__subtitle {
+  margin: 5px 0 0;
+  color: #5b737d;
+  font-size: 12px;
+}
+
+@media (max-width: 720px) {
+  .anomalies-alerts-banner {
+    flex-direction: column;
+    align-items: stretch;
   }
 }
 

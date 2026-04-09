@@ -2,7 +2,6 @@ import { Router } from "express";
 import { requireAuth } from "../../middlewares/auth.middleware.js";
 import { asyncHandler } from "../../utils/async-handler.js";
 import { handleGetAllocationDashboard } from "./allocation/allocation.controller.js";
-import { handleGetAnomaliesAlertsDashboard } from "./anomalies-alerts/anomalies-alerts.controller.js";
 import {
   handleCreateBudget,
   handleGetBudgetDashboard,
@@ -56,7 +55,6 @@ router.post(
   "/dashboard/optimization/recommendations/sync",
   asyncHandler(handleSyncOptimizationRecommendations),
 );
-router.get("/dashboard/anomalies-alerts", asyncHandler(handleGetAnomaliesAlertsDashboard));
 router.get("/dashboard/budget", asyncHandler(handleGetBudgetDashboard));
 router.post("/dashboard/budget", asyncHandler(handleCreateBudget));
 router.patch("/dashboard/budget/:budgetId", asyncHandler(handleUpdateBudget));

@@ -1,5 +1,7 @@
 import { apiGet, apiPatch, apiPost } from "@/lib/api";
 import type {
+  AnomalyAlertRecord,
+  AnomalyAlertsFiltersQuery,
   BudgetDashboardResponse,
   BudgetUpsertPayload,
   BudgetActualForecastPoint,
@@ -79,6 +81,26 @@ function withCostExplorerFilters(
   return query.length > 0 ? `${path}?${query}` : path;
 }
 
+function withAnomaliesAlertsFilters(
+  path: string,
+  scope: DashboardResolvedScope,
+  filters?: AnomalyAlertsFiltersQuery,
+): string {
+  const params = new URLSearchParams(buildDashboardQueryParams(scope));
+
+  if (filters?.anomalyType) params.set("anomaly_type", filters.anomalyType);
+  if (filters?.severity) params.set("severity", filters.severity);
+  if (filters?.status) params.set("status", filters.status);
+  if (filters?.dateFrom) params.set("date_from", filters.dateFrom);
+  if (filters?.dateTo) params.set("date_to", filters.dateTo);
+  if (filters?.service) params.set("service", filters.service);
+  if (filters?.region) params.set("region", filters.region);
+  if (filters?.subAccount) params.set("sub_account", filters.subAccount);
+
+  const query = params.toString();
+  return query.length > 0 ? `${path}?${query}` : path;
+}
+
 export const dashboardApi = {
   getScope(scopeInput: DashboardScopeInput) {
     return apiGet<DashboardResolvedScope>(withDashboardQuery("/dashboard/scope", scopeInput));
@@ -144,8 +166,8 @@ export const dashboardApi = {
     return apiGet<DashboardSectionData>(withDashboardQuery("/dashboard/optimization", scope));
   },
 
-  getAnomaliesAlerts(scope: DashboardResolvedScope) {
-    return apiGet<DashboardSectionData>(withDashboardQuery("/dashboard/anomalies-alerts", scope));
+  getAnomaliesAlerts(scope: DashboardResolvedScope, filters?: AnomalyAlertsFiltersQuery) {
+    return apiGet<AnomalyAlertRecord[]>(withAnomaliesAlertsFilters("/dashboard/anomalies-alerts", scope, filters));
   },
 
   getBudget(scope: DashboardResolvedScope) {
@@ -177,6 +199,8 @@ export const dashboardApi = {
 
 export type {
   BudgetActualForecastPoint,
+  AnomalyAlertRecord,
+  AnomalyAlertsFiltersQuery,
   BudgetDashboardResponse,
   BudgetItem,
   BudgetStatus,
