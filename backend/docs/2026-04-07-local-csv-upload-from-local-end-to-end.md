@@ -433,7 +433,7 @@ Note:
 - retry in history UI simply reopens upload dialog; it does not automatically re-submit prior file.
 
 ---
-
+commit check
 ## 14. End-to-end sequence summary (short)
 
 1. User selects local provider + file and submits.
