@@ -98,6 +98,7 @@ const env = {
   awsCallbackUrl: optionalEnv(process.env.AWS_CALLBACK_URL),
   awsFileEventCallbackUrl:
     optionalEnv(process.env.AWS_FILE_EVENT_CALLBACK_URL) ?? optionalEnv(process.env.AWS_CALLBACK_URL),
+  awsCloudTrailTemplateUrl: optionalEnv(process.env.AWS_CLOUDTRAIL_TEMPLATE_URL),
   awsValidationAccessKeyId:
     optionalEnv(process.env.AWS_VALIDATION_ACCESS_KEY_ID) ?? optionalEnv(process.env.AWS_ACCESS_KEY_ID),
   awsValidationSecretAccessKey:

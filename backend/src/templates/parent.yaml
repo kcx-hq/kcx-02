@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: KCX parent stack for billing export + action permissions modules
+Description: KCX parent stack for billing export + cloudtrail + action permissions modules
 
 Parameters:
   ExternalId:
@@ -47,6 +47,21 @@ Parameters:
     AllowedValues: ['true', 'false']
     Default: 'true'
 
+  EnableCloudTrail:
+    Type: String
+    AllowedValues: ['true', 'false']
+    Default: 'true'
+
+  CloudTrailPrefix:
+    Type: String
+    Default: kcx/cloudtrail
+    Description: Prefix where CloudTrail logs will be delivered
+
+  CloudTrailName:
+    Type: String
+    Default: KCX-Trail
+    Description: Name of the CloudTrail trail
+
   EnableActionRole:
     Type: String
     AllowedValues: ['true', 'false']
@@ -74,6 +89,10 @@ Parameters:
     Type: String
     Description: S3 URL of billing-export.yaml
 
+  CloudTrailTemplateUrl:
+    Type: String
+    Description: S3 URL of cloudtrail.yaml
+
   ActionRoleTemplateUrl:
     Type: String
     Description: S3 URL of action-role.yaml
@@ -84,6 +103,7 @@ Parameters:
 
 Conditions:
   CreateBillingExport: !Equals [!Ref EnableBillingExport, 'true']
+  CreateCloudTrail: !Equals [!Ref EnableCloudTrail, 'true']
   CreateActionRole: !Equals [!Ref EnableActionRole, 'true']
   CreateEC2Module: !And
     - !Equals [!Ref EnableActionRole, 'true']
@@ -134,6 +154,26 @@ Resources:
         ExportPrefix: !Ref ExportPrefix
         ExportName: !Ref ExportName
 
+  CloudTrailStack:
+    Type: AWS::CloudFormation::Stack
+    Condition: CreateCloudTrail
+    DependsOn: ActionRoleStack
+    Properties:
+      TemplateURL: !Ref CloudTrailTemplateUrl
+      Parameters:
+        ExternalId: !Ref ExternalId
+        ConnectionName: !Ref ConnectionName
+        FileEventCallbackUrl: !Ref FileEventCallbackUrl
+        CallbackToken: !Ref CallbackToken
+        KcxPrincipalArn: !Ref KcxPrincipalArn
+        CloudTrailPrefix: !Ref CloudTrailPrefix
+        CloudTrailName: !Ref CloudTrailName
+        CallbackUrl: !Ref CallbackUrl
+        BillingRoleArn: !If
+          - CreateBillingExport
+          - !GetAtt BillingExportStack.Outputs.RoleArn
+          - ''
+
 Outputs:
   ActionRoleArn:
     Condition: CreateActionRole
@@ -159,6 +199,21 @@ Outputs:
     Condition: CreateBillingExport
     Description: Billing export ARN
     Value: !GetAtt BillingExportStack.Outputs.ExportArn
+
+  CloudTrailBucket:
+    Condition: CreateCloudTrail
+    Description: CloudTrail bucket
+    Value: !GetAtt CloudTrailStack.Outputs.CloudTrailBucket
+
+  CloudTrailPrefix:
+    Condition: CreateCloudTrail
+    Description: CloudTrail prefix
+    Value: !GetAtt CloudTrailStack.Outputs.CloudTrailPrefix
+
+  CloudTrailName:
+    Condition: CreateCloudTrail
+    Description: CloudTrail trail name
+    Value: !GetAtt CloudTrailStack.Outputs.CloudTrailName
 
   AccountId:
     Description: AWS account ID where stack was created
