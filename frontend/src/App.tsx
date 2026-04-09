@@ -35,12 +35,14 @@ const CLIENT_WORKSPACE_ROUTES = new Set([
   "/client/billing/uploads",
   "/client/billing/connections",
   "/client/billing/connections/add",
+  "/client/billing/connections/add/aws",
   "/client/billing/connections/aws",
   "/client/billing/connections/aws/automatic",
   "/client/billing/connections/aws/manual",
   "/client/billing/connections/aws/manual/success",
   "/client/billing/connect-cloud",
   "/client/billing/connect-cloud/add",
+  "/client/billing/connect-cloud/add/aws",
   "/client/billing/connect-cloud/aws",
   "/client/billing/connect-cloud/azure",
   "/client/billing/connect-cloud/gcp",
@@ -172,11 +174,13 @@ export function App() {
       route === "/client/billing/uploads" ||
       route === "/client/billing/connections" ||
       route === "/client/billing/connections/add" ||
+      route === "/client/billing/connections/add/aws" ||
       route === "/client/billing/connections/aws" ||
       route === "/client/billing/connections/aws/automatic" ||
       route === "/client/billing/connections/aws/manual" ||
       route === "/client/billing/connect-cloud" ||
       route === "/client/billing/connect-cloud/add" ||
+      route === "/client/billing/connect-cloud/add/aws" ||
       route === "/client/billing/connect-cloud/aws" ||
       route === "/client/billing/connect-cloud/azure" ||
       route === "/client/billing/connect-cloud/gcp" ||
