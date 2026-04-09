@@ -1,23 +1,45 @@
 import { FactRecommendations, sequelize } from "../../../../models/index.js";
+import { Op } from "sequelize";
 import type { EnrichedRightsizingRecommendation } from "./types.js";
 
 export async function replaceOpenRightsizingRecommendationsForTenant({
   tenantId,
   sourceSystem,
+  cloudConnectionId,
+  billingSourceId,
+  awsAccountIds,
   records,
 }: {
   tenantId: string;
   sourceSystem: string;
+  cloudConnectionId?: string | null;
+  billingSourceId?: string | number | null;
+  awsAccountIds?: string[];
   records: EnrichedRightsizingRecommendation[];
 }): Promise<number> {
   const now = new Date();
   return sequelize.transaction(async (transaction) => {
+    const normalizedAccountIds = Array.isArray(awsAccountIds)
+      ? Array.from(
+          new Set(
+            awsAccountIds
+              .map((item) => String(item).trim())
+              .filter((item) => item.length > 0),
+          ),
+        )
+      : [];
+
     await FactRecommendations.destroy({
       where: {
         tenantId,
         sourceSystem,
         category: "RIGHTSIZING",
         status: "OPEN",
+        ...(cloudConnectionId ? { cloudConnectionId } : {}),
+        ...(billingSourceId !== null && typeof billingSourceId !== "undefined"
+          ? { billingSourceId: String(billingSourceId) }
+          : {}),
+        ...(normalizedAccountIds.length > 0 ? { awsAccountId: { [Op.in]: normalizedAccountIds } } : {}),
       },
       transaction,
     });
@@ -29,6 +51,8 @@ export async function replaceOpenRightsizingRecommendationsForTenant({
     await FactRecommendations.bulkCreate(
       records.map((item) => ({
         tenantId: item.tenantId,
+        cloudConnectionId: item.cloudConnectionId,
+        billingSourceId: item.billingSourceId,
         awsAccountId: item.awsAccountId,
         awsRegionCode: item.awsRegionCode,
         category: item.category,

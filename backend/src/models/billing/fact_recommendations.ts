@@ -13,6 +13,8 @@ class FactRecommendations extends Model<
 > {
   declare id: CreationOptional<string | number>;
   declare tenantId: string;
+  declare cloudConnectionId: CreationOptional<string | null>;
+  declare billingSourceId: CreationOptional<string | number | null>;
   declare awsAccountId: string;
   declare awsRegionCode: string;
   declare category: string;
@@ -48,6 +50,8 @@ const createFactRecommendationsModel = (sequelize: Sequelize): typeof FactRecomm
     {
       id: { type: DataTypes.BIGINT, allowNull: false, autoIncrement: true, primaryKey: true },
       tenantId: { type: DataTypes.UUID, allowNull: false, field: "tenant_id" },
+      cloudConnectionId: { type: DataTypes.UUID, allowNull: true, field: "cloud_connection_id" },
+      billingSourceId: { type: DataTypes.BIGINT, allowNull: true, field: "billing_source_id" },
       awsAccountId: { type: DataTypes.STRING(50), allowNull: false, field: "aws_account_id" },
       awsRegionCode: { type: DataTypes.STRING(50), allowNull: false, field: "aws_region_code" },
       category: { type: DataTypes.STRING(50), allowNull: false },

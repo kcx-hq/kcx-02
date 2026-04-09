@@ -2,7 +2,8 @@ export type OptimizationSyncTrigger =
   | "MANUAL_API"
   | "INGESTION_COMPLETED"
   | "SCHEDULED_JOB"
-  | "DASHBOARD_OPEN";
+  | "DASHBOARD_OPEN"
+  | "RECOMMENDATIONS_OPEN";
 
 export type AwsComputeOptimizerEc2RecommendationInput = {
   accountId: string;
@@ -50,6 +51,8 @@ export type NormalizedRightsizingRecommendation = {
 };
 
 export type EnrichedRightsizingRecommendation = NormalizedRightsizingRecommendation & {
+  cloudConnectionId: string;
+  billingSourceId: string | number | null;
   serviceKey: number | null;
   subAccountKey: number | null;
   regionKey: number | null;

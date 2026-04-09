@@ -3,6 +3,10 @@ import {
   dashboardApi,
   type CostExplorerFiltersQuery,
   type DashboardResolvedScope,
+  type OptimizationRecommendationDetail,
+  type OptimizationRecommendationFiltersQuery,
+  type OptimizationRecommendationsResponse,
+  type OptimizationRightsizingOverview,
   type OverviewAnomaliesResponse,
   type OverviewFiltersQuery,
   type OverviewRecommendationsResponse,
@@ -86,6 +90,33 @@ export function useOptimizationQuery() {
     queryKey: ["dashboard", "optimization", scope],
     queryFn: () => dashboardApi.getOptimization(assertScope(scope)),
     enabled: Boolean(scope),
+  });
+}
+
+export function useOptimizationRightsizingOverviewQuery() {
+  const { scope } = useDashboardScope();
+  return useQuery<OptimizationRightsizingOverview, Error>({
+    queryKey: ["dashboard", "optimization", "rightsizing", "overview", scope],
+    queryFn: () => dashboardApi.getOptimizationRightsizingOverview(assertScope(scope)),
+    enabled: Boolean(scope),
+  });
+}
+
+export function useOptimizationRightsizingRecommendationsQuery(filters?: OptimizationRecommendationFiltersQuery) {
+  const { scope } = useDashboardScope();
+  return useQuery<OptimizationRecommendationsResponse, Error>({
+    queryKey: ["dashboard", "optimization", "rightsizing", "recommendations", scope, filters],
+    queryFn: () => dashboardApi.getOptimizationRightsizingRecommendations(assertScope(scope), filters),
+    enabled: Boolean(scope),
+  });
+}
+
+export function useOptimizationRightsizingRecommendationDetailQuery(recommendationId: string | null) {
+  const { scope } = useDashboardScope();
+  return useQuery<OptimizationRecommendationDetail, Error>({
+    queryKey: ["dashboard", "optimization", "rightsizing", "recommendation-detail", scope, recommendationId],
+    queryFn: () => dashboardApi.getOptimizationRightsizingRecommendationDetail(assertScope(scope), String(recommendationId)),
+    enabled: Boolean(scope && recommendationId),
   });
 }
 

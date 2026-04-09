@@ -11,7 +11,7 @@ import {
 
 const router = Router();
 
-router.use(requireAuth);
+router.use("/api/aws/ec2", requireAuth);
 
 router.get("/api/aws/ec2/instances", asyncHandler(handleListEc2Instances));
 router.post("/api/aws/ec2/start", asyncHandler(handleStartEc2Instance));

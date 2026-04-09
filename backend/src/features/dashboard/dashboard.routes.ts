@@ -12,7 +12,11 @@ import {
 import { handleGetDashboardScope, handleGetDashboardTestTotalSpend } from "./dashboard.controller.js";
 import { handleGetCostExplorerDashboard } from "./cost-explorer/cost-explorer.controller.js";
 import {
+  handleDebugSyncOptimizationRecommendations,
   handleGetOptimizationDashboard,
+  handleGetRightsizingOverview,
+  handleGetRightsizingRecommendationDetail,
+  handleGetRightsizingRecommendations,
   handleSyncOptimizationRecommendations,
 } from "./optimization/optimization.controller.js";
 import {
@@ -52,9 +56,25 @@ router.get("/dashboard/cost-explorer", asyncHandler(handleGetCostExplorerDashboa
 router.get("/dashboard/resources", asyncHandler(handleGetResourcesDashboard));
 router.get("/dashboard/allocation", asyncHandler(handleGetAllocationDashboard));
 router.get("/dashboard/optimization", asyncHandler(handleGetOptimizationDashboard));
+router.get(
+  "/dashboard/optimization/rightsizing/overview",
+  asyncHandler(handleGetRightsizingOverview),
+);
+router.get(
+  "/dashboard/optimization/rightsizing/recommendations",
+  asyncHandler(handleGetRightsizingRecommendations),
+);
+router.get(
+  "/dashboard/optimization/rightsizing/recommendations/:recommendationId",
+  asyncHandler(handleGetRightsizingRecommendationDetail),
+);
 router.post(
   "/dashboard/optimization/recommendations/sync",
   asyncHandler(handleSyncOptimizationRecommendations),
+);
+router.get(
+  "/dashboard/optimization/recommendations/debug-sync",
+  asyncHandler(handleDebugSyncOptimizationRecommendations),
 );
 router.get("/dashboard/anomalies-alerts", asyncHandler(handleGetAnomaliesAlertsDashboard));
 router.get("/dashboard/budget", asyncHandler(handleGetBudgetDashboard));

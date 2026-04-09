@@ -3,6 +3,7 @@ import adminClientsRoutes from "../admin/admin-clients/admin-clients.routes.js";
 import adminDemoRequestsRoutes from "../admin/admin-demo-requests/admin-demo-requests.routes.js";
 import adminBillingUploadsRoutes from "../admin/admin-billing-uploads/admin-billing-uploads.routes.js";
 import adminCloudConnectionsRoutes from "../admin/admin-cloud-connections/admin-cloud-connections.routes.js";
+import adminAnnouncementsRoutes from "../admin/admin-announcements/admin-announcements.routes.js";
 import adminAuthRoutes from "../admin/admin-auth/admin-auth.routes.js";
 import authRoutes from "../auth/auth.routes.js";
 import awsAutoCloudConnectionsRoutes from "../cloud-connections/aws/auto-connection/cloud-connections.routes.js";
@@ -12,6 +13,7 @@ import scheduleDemoRoutes from "../schedule-demo/schedule-demo.routes.js";
 import billingRoutes from "../billing/billing.routes.js";
 import dashboardRoutes from "../dashboard/dashboard.routes.js";
 import awsExportFileEventRoutes from "../cloud-connections/aws/exports/aws-export-file-event.routes.js";
+import clientAnnouncementsRoutes from "../client-announcements/client-announcements.routes.js";
 const router = Router();
 
 router.use(scheduleDemoRoutes);
@@ -26,6 +28,8 @@ router.use(adminClientsRoutes);
 router.use(adminDemoRequestsRoutes);
 router.use(adminBillingUploadsRoutes);
 router.use(adminCloudConnectionsRoutes);
+router.use(adminAnnouncementsRoutes);
+router.use(clientAnnouncementsRoutes);
 router.use(awsExportFileEventRoutes);
 
 export default router;

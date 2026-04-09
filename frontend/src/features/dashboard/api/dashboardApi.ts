@@ -16,6 +16,10 @@ import type {
   DashboardResolvedScope,
   DashboardScopeInput,
   DashboardSectionData,
+  OptimizationRightsizingOverview,
+  OptimizationRecommendationFiltersQuery,
+  OptimizationRecommendationsResponse,
+  OptimizationRecommendationDetail,
 } from "./dashboardTypes";
 import { buildDashboardQueryParams } from "../utils/buildDashboardQueryParams";
 
@@ -74,6 +78,41 @@ function withCostExplorerFilters(
   } else if (filters?.compareKey === null) {
     params.delete("compareKey");
   }
+
+  const query = params.toString();
+  return query.length > 0 ? `${path}?${query}` : path;
+}
+
+function withOptimizationFilters(
+  path: string,
+  scope: DashboardResolvedScope,
+  filters?: OptimizationRecommendationFiltersQuery,
+): string {
+  const params = new URLSearchParams(buildDashboardQueryParams(scope));
+  // Avoid inheriting unrelated scope filters (like serviceKey from other dashboard pages)
+  // that can silently hide optimization recommendations.
+  params.delete("providerId");
+  params.delete("billingAccountKey");
+  params.delete("subAccountKey");
+  params.delete("serviceKey");
+  params.delete("regionKey");
+
+  const appendArray = (key: string, values?: (string | number)[]) => {
+    if (!Array.isArray(values) || values.length === 0) {
+      return;
+    }
+    params.set(key, values.join(","));
+  };
+
+  appendArray("status", filters?.status);
+  appendArray("effort", filters?.effort);
+  appendArray("risk", filters?.risk);
+  appendArray("account", filters?.account);
+  appendArray("region", filters?.region);
+  appendArray("serviceKey", filters?.serviceKey);
+
+  if (typeof filters?.page === "number") params.set("page", String(filters.page));
+  if (typeof filters?.pageSize === "number") params.set("pageSize", String(filters.pageSize));
 
   const query = params.toString();
   return query.length > 0 ? `${path}?${query}` : path;
@@ -144,6 +183,24 @@ export const dashboardApi = {
     return apiGet<DashboardSectionData>(withDashboardQuery("/dashboard/optimization", scope));
   },
 
+  getOptimizationRightsizingOverview(scope: DashboardResolvedScope) {
+    return apiGet<OptimizationRightsizingOverview>(
+      withDashboardQuery("/dashboard/optimization/rightsizing/overview", scope),
+    );
+  },
+
+  getOptimizationRightsizingRecommendations(scope: DashboardResolvedScope, filters?: OptimizationRecommendationFiltersQuery) {
+    return apiGet<OptimizationRecommendationsResponse>(
+      withOptimizationFilters("/dashboard/optimization/rightsizing/recommendations", scope, filters),
+    );
+  },
+
+  getOptimizationRightsizingRecommendationDetail(scope: DashboardResolvedScope, recommendationId: string) {
+    return apiGet<OptimizationRecommendationDetail>(
+      withDashboardQuery(`/dashboard/optimization/rightsizing/recommendations/${recommendationId}`, scope),
+    );
+  },
+
   getAnomaliesAlerts(scope: DashboardResolvedScope) {
     return apiGet<DashboardSectionData>(withDashboardQuery("/dashboard/anomalies-alerts", scope));
   },
@@ -203,4 +260,8 @@ export type {
   DashboardResolvedScope,
   DashboardScopeInput,
   DashboardSectionData,
+  OptimizationRightsizingOverview,
+  OptimizationRecommendationFiltersQuery,
+  OptimizationRecommendationsResponse,
+  OptimizationRecommendationDetail,
 } from "./dashboardTypes";

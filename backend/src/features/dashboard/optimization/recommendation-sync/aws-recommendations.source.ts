@@ -91,11 +91,11 @@ export async function fetchAwsEc2RightsizingRecommendationsFromComputeOptimizer(
   reason: string;
   recommendations: AwsComputeOptimizerEc2RecommendationInput[];
 }> {
-  const roleArn = String(connection.actionRoleArn ?? connection.billingRoleArn ?? "").trim();
+  const roleArn = String(connection.billingRoleArn ?? "").trim();
   if (!roleArn) {
     return {
       skipped: true,
-      reason: "Cloud connection action/billing role ARN is missing",
+      reason: "Cloud connection billing role ARN is missing",
       recommendations: [],
     };
   }
@@ -131,6 +131,9 @@ export async function fetchAwsEc2RightsizingRecommendationsFromComputeOptimizer(
     computeOptimizerSdk.GetEC2InstanceRecommendationsCommand as
       | (new (args: Record<string, unknown>) => unknown)
       | undefined;
+  const GetEnrollmentStatusCommand = computeOptimizerSdk.GetEnrollmentStatusCommand as
+    | (new (args: Record<string, unknown>) => unknown)
+    | undefined;
 
   if (!ComputeOptimizerClient || !GetEC2InstanceRecommendationsCommand) {
     return {
@@ -147,6 +150,31 @@ export async function fetchAwsEc2RightsizingRecommendationsFromComputeOptimizer(
     region,
     credentials,
   });
+
+  if (GetEnrollmentStatusCommand) {
+    try {
+      const enrollmentResponse = (await client.send(new GetEnrollmentStatusCommand({}))) as {
+        status?: unknown;
+      };
+      const enrollmentStatus = String(enrollmentResponse?.status ?? "")
+        .trim()
+        .toLowerCase();
+      if (enrollmentStatus && enrollmentStatus !== "active") {
+        return {
+          skipped: true,
+          reason: `Compute Optimizer enrollment status is ${enrollmentStatus} (region ${region}). Activate Compute Optimizer for this AWS account/region.`,
+          recommendations: [],
+        };
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return {
+        skipped: true,
+        reason: `Unable to check Compute Optimizer enrollment: ${message}`,
+        recommendations: [],
+      };
+    }
+  }
 
   const allRecommendations: AwsComputeOptimizerEc2RecommendationInput[] = [];
   let nextToken: string | undefined;
@@ -206,7 +234,34 @@ export async function fetchAwsEc2RightsizingRecommendationsFromComputeOptimizer(
       ...(nextToken ? { nextToken } : {}),
     });
 
-    const response = await client.send(command);
+    let response: { instanceRecommendations?: unknown[]; nextToken?: string };
+    try {
+      response = await client.send(command);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const normalized = message.toLowerCase();
+      if (
+        normalized.includes("not registered for recommendation") ||
+        normalized.includes("not enrolled") ||
+        normalized.includes("getec2instancerecommendations")
+      ) {
+        return {
+          skipped: true,
+          reason: `AWS account is not enrolled/registered for Compute Optimizer recommendations (region ${region}).`,
+          recommendations: [],
+        };
+      }
+
+      if (normalized.includes("accessdenied") || normalized.includes("not authorized")) {
+        return {
+          skipped: true,
+          reason: `Permission denied while fetching Compute Optimizer recommendations: ${message}`,
+          recommendations: [],
+        };
+      }
+
+      throw error;
+    }
     const instanceRecommendations = Array.isArray(response.instanceRecommendations)
       ? response.instanceRecommendations
       : [];

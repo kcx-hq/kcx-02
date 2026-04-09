@@ -93,8 +93,16 @@ Resources:
                 Action:
                   - sts:GetCallerIdentity
                   - ec2:DescribeRegions
+                  - ec2:DescribeInstances
+                  - ec2:DescribeVolumes
+                  - ec2:DescribeAddresses
+                  - ec2:DescribeSnapshots
+                  - elasticloadbalancing:DescribeLoadBalancers
+                  - cloudwatch:GetMetricData
+                  - cloudwatch:GetMetricStatistics
                   - compute-optimizer:GetEC2InstanceRecommendations
                   - compute-optimizer:GetEnrollmentStatus
+                  - compute-optimizer:UpdateEnrollmentStatus
                 Resource: "*"
 
               - Sid: ListExportBucket

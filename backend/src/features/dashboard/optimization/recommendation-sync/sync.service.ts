@@ -1,5 +1,5 @@
 import { QueryTypes } from "sequelize";
-import { sequelize } from "../../../../models/index.js";
+import { ClientCloudAccount, sequelize } from "../../../../models/index.js";
 import { logger } from "../../../../utils/logger.js";
 import { enrichRightsizingRecommendations } from "./enrichment.service.js";
 import { normalizeAwsEc2Recommendations } from "./normalization.service.js";
@@ -56,6 +56,44 @@ export async function syncAwsRightsizingRecommendations({
         connection: context.connection,
       });
 
+  const accountIdForTracking = String(context.connection.cloudAccountId ?? "").trim();
+  if (accountIdForTracking) {
+    const existing = await ClientCloudAccount.findOne({
+      where: {
+        tenantId,
+        providerId: context.providerId,
+        accountId: accountIdForTracking,
+      },
+    });
+
+    const trackingPatch = {
+      cloudConnectionId: context.connection.id,
+      onboardingStatus: "connected",
+      computeOptimizerEnabled: fetched.skipped ? false : true,
+      lastRecommendationSyncAt: new Date(),
+      lastSyncStatus: fetched.skipped ? "skipped" : "success",
+      lastSyncMessage: fetched.reason,
+      updatedAt: new Date(),
+    };
+
+    if (!existing) {
+      await ClientCloudAccount.create({
+        tenantId,
+        providerId: context.providerId,
+        cloudConnectionId: context.connection.id,
+        accountId: accountIdForTracking,
+        accountName: context.connection.connectionName ?? null,
+        onboardingStatus: "connected",
+        computeOptimizerEnabled: fetched.skipped ? false : true,
+        lastRecommendationSyncAt: new Date(),
+        lastSyncStatus: fetched.skipped ? "skipped" : "success",
+        lastSyncMessage: fetched.reason,
+      });
+    } else {
+      await existing.update(trackingPatch);
+    }
+  }
+
   if (fetched.recommendations.length === 0) {
     return {
       trigger,
@@ -76,11 +114,16 @@ export async function syncAwsRightsizingRecommendations({
   const enriched = await enrichRightsizingRecommendations({
     tenantId,
     providerId: context.providerId,
+    cloudConnectionId: context.connection.id,
+    billingSourceId: String(context.billingSource.id),
     normalizedRecords: normalized,
   });
   const insertedCount = await replaceOpenRightsizingRecommendationsForTenant({
     tenantId,
     sourceSystem: "AWS_COMPUTE_OPTIMIZER",
+    cloudConnectionId: context.connection.id,
+    billingSourceId: String(context.billingSource.id),
+    awsAccountIds: Array.from(new Set(normalized.map((record) => record.awsAccountId))),
     records: enriched,
   });
 
@@ -159,7 +202,10 @@ export async function syncAwsRightsizingRecommendationsOnDashboardOpen({
       FROM fact_recommendations fr
       WHERE fr.tenant_id = $1
         AND fr.source_system = 'AWS_COMPUTE_OPTIMIZER'
-        AND fr.category = 'RIGHTSIZING';
+        AND (
+          REGEXP_REPLACE(UPPER(COALESCE(fr.category, '')), '[^A-Z]', '', 'g') = 'RIGHTSIZING'
+          OR REGEXP_REPLACE(UPPER(COALESCE(fr.recommendation_type, '')), '[^A-Z]', '', 'g') = 'RIGHTSIZING'
+        );
     `,
     {
       bind: [tenantId],
@@ -184,5 +230,16 @@ export async function syncAwsRightsizingRecommendationsOnDashboardOpen({
   return syncAwsRightsizingRecommendations({
     tenantId,
     trigger: "DASHBOARD_OPEN",
+  });
+}
+
+export async function syncAwsRightsizingRecommendationsOnRecommendationsOpen({
+  tenantId,
+}: {
+  tenantId: string;
+}): Promise<OptimizationSyncResult> {
+  return syncAwsRightsizingRecommendations({
+    tenantId,
+    trigger: "RECOMMENDATIONS_OPEN",
   });
 }

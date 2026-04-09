@@ -10,6 +10,189 @@ type OptimizationSummaryRow = {
   implemented_this_month: number | string | null;
 };
 
+type RightsizingOverviewRow = {
+  total_savings: number | string | null;
+  open_recommendations: number | string | null;
+  quick_wins_count: number | string | null;
+  high_priority_count: number | string | null;
+  low_risk_count: number | string | null;
+  medium_risk_count: number | string | null;
+  high_risk_count: number | string | null;
+};
+
+type RecommendationListRow = {
+  id: number | string;
+  recommendation: string | null;
+  resource_id: string;
+  resource_name: string | null;
+  current_type: string | null;
+  recommended_type: string | null;
+  current_cost: number | string | null;
+  estimated_savings: number | string | null;
+  risk: string | null;
+  effort: string | null;
+  status: string;
+  aws_account_id: string;
+  aws_region_code: string;
+  service_name: string | null;
+  total_count: number | string | null;
+};
+
+type RecommendationDetailRow = {
+  id: number | string;
+  recommendation_type: string;
+  category: string;
+  resource_id: string;
+  resource_name: string | null;
+  resource_arn: string | null;
+  aws_account_id: string;
+  aws_region_code: string;
+  service_name: string | null;
+  current_resource_type: string | null;
+  recommended_resource_type: string | null;
+  current_monthly_cost: number | string | null;
+  estimated_monthly_savings: number | string | null;
+  projected_monthly_cost: number | string | null;
+  performance_risk_level: string | null;
+  performance_risk_score: number | string | null;
+  effort_level: string | null;
+  risk_level: string | null;
+  status: string;
+  recommendation_title: string | null;
+  recommendation_text: string | null;
+  source_system: string;
+  observation_start: string | null;
+  observation_end: string | null;
+  raw_payload_json: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type RightsizingOverviewResponse = {
+  category: "RIGHTSIZING";
+  totalPotentialSavings: number;
+  openRecommendationCount: number;
+  quickWinsCount: number;
+  highPriorityCount: number;
+  riskMix: {
+    low: number;
+    medium: number;
+    high: number;
+  };
+};
+
+export type OptimizationRecommendationFilters = {
+  status?: string[];
+  effort?: string[];
+  risk?: string[];
+  accountIds?: string[];
+  regions?: string[];
+  serviceKeys?: number[];
+  page: number;
+  pageSize: number;
+};
+
+export type OptimizationRecommendationListItem = {
+  id: string;
+  recommendation: string;
+  resource: string;
+  currentType: string | null;
+  recommendedType: string | null;
+  currentCost: number;
+  estimatedSavings: number;
+  risk: string | null;
+  effort: string | null;
+  status: string;
+  awsAccountId: string;
+  awsRegionCode: string;
+  serviceName: string | null;
+};
+
+export type OptimizationRecommendationsResponse = {
+  items: OptimizationRecommendationListItem[];
+  pagination: {
+    page: number;
+    pageSize: number;
+    total: number;
+    totalPages: number;
+  };
+};
+
+export type OptimizationRecommendationDetail = {
+  id: string;
+  recommendationType: string;
+  category: string;
+  resourceId: string;
+  resourceName: string | null;
+  resourceArn: string | null;
+  awsAccountId: string;
+  awsRegionCode: string;
+  serviceName: string | null;
+  currentResourceType: string | null;
+  recommendedResourceType: string | null;
+  currentMonthlyCost: number;
+  estimatedMonthlySavings: number;
+  projectedMonthlyCost: number;
+  performanceRiskLevel: string | null;
+  performanceRiskScore: number | null;
+  effortLevel: string | null;
+  riskLevel: string | null;
+  status: string;
+  recommendationTitle: string | null;
+  recommendationText: string | null;
+  sourceSystem: string;
+  observationStart: string | null;
+  observationEnd: string | null;
+  rawPayloadJson: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+type RecommendationDebugStatsRow = {
+  total_rows: number | string | null;
+  open_rows: number | string | null;
+  rightsizing_rows: number | string | null;
+  rows_with_cloud_connection: number | string | null;
+  rows_with_billing_source: number | string | null;
+  distinct_accounts: number | string | null;
+  latest_updated_at: string | null;
+};
+
+type RecommendationDebugSampleRow = {
+  id: number | string;
+  aws_account_id: string;
+  aws_region_code: string;
+  resource_id: string;
+  status: string;
+  estimated_monthly_savings: number | string | null;
+  cloud_connection_id: string | null;
+  billing_source_id: number | string | null;
+  updated_at: string;
+};
+
+export type OptimizationRecommendationDebugData = {
+  stats: {
+    totalRows: number;
+    openRows: number;
+    rightsizingRows: number;
+    rowsWithCloudConnection: number;
+    rowsWithBillingSource: number;
+    distinctAccounts: number;
+    latestUpdatedAt: string | null;
+  };
+  sampleRows: Array<{
+    id: string;
+    awsAccountId: string;
+    awsRegionCode: string;
+    resourceId: string;
+    status: string;
+    estimatedMonthlySavings: number;
+    cloudConnectionId: string | null;
+    billingSourceId: string | null;
+    updatedAt: string;
+  }>;
+};
+
 const toNumber = (value: number | string | null | undefined): number => {
   if (typeof value === "number") return Number.isFinite(value) ? value : 0;
   if (typeof value === "string") {
@@ -18,6 +201,16 @@ const toNumber = (value: number | string | null | undefined): number => {
   }
   return 0;
 };
+
+const toStringArray = (values?: string[]): string[] | null =>
+  Array.isArray(values) && values.length > 0 ? values.map((value) => value.toUpperCase()) : null;
+
+const RIGHTSIZING_PREDICATE_SQL = `
+  (
+    REGEXP_REPLACE(UPPER(COALESCE(fr.category, '')), '[^A-Z]', '', 'g') = 'RIGHTSIZING'
+    OR REGEXP_REPLACE(UPPER(COALESCE(fr.recommendation_type, '')), '[^A-Z]', '', 'g') = 'RIGHTSIZING'
+  )
+`;
 
 export async function getOptimizationDashboardData(tenantId: string): Promise<DashboardSectionResponse> {
   const rows = await sequelize.query<OptimizationSummaryRow>(
@@ -56,6 +249,250 @@ export async function getOptimizationDashboardData(tenantId: string): Promise<Da
   };
 }
 
+export async function getRightsizingOverviewData(tenantId: string): Promise<RightsizingOverviewResponse> {
+  const rows = await sequelize.query<RightsizingOverviewRow>(
+    `
+      SELECT
+        COALESCE(SUM(fr.estimated_monthly_savings) FILTER (WHERE UPPER(fr.status) = 'OPEN'), 0)::double precision AS total_savings,
+        COALESCE(COUNT(*) FILTER (WHERE UPPER(fr.status) = 'OPEN'), 0)::bigint AS open_recommendations,
+        COALESCE(COUNT(*) FILTER (
+          WHERE UPPER(fr.status) = 'OPEN'
+            AND (UPPER(COALESCE(fr.effort_level, 'LOW')) = 'LOW')
+            AND UPPER(COALESCE(fr.risk_level, 'LOW')) IN ('LOW', 'MEDIUM')
+        ), 0)::bigint AS quick_wins_count,
+        COALESCE(COUNT(*) FILTER (
+          WHERE UPPER(fr.status) = 'OPEN'
+            AND UPPER(COALESCE(fr.risk_level, 'LOW')) = 'HIGH'
+        ), 0)::bigint AS high_priority_count,
+        COALESCE(COUNT(*) FILTER (
+          WHERE UPPER(fr.status) = 'OPEN'
+            AND UPPER(COALESCE(fr.risk_level, 'LOW')) = 'LOW'
+        ), 0)::bigint AS low_risk_count,
+        COALESCE(COUNT(*) FILTER (
+          WHERE UPPER(fr.status) = 'OPEN'
+            AND UPPER(COALESCE(fr.risk_level, 'LOW')) = 'MEDIUM'
+        ), 0)::bigint AS medium_risk_count,
+        COALESCE(COUNT(*) FILTER (
+          WHERE UPPER(fr.status) = 'OPEN'
+            AND UPPER(COALESCE(fr.risk_level, 'LOW')) = 'HIGH'
+        ), 0)::bigint AS high_risk_count
+      FROM fact_recommendations fr
+      WHERE fr.tenant_id = $1
+        AND ${RIGHTSIZING_PREDICATE_SQL};
+    `,
+    {
+      bind: [tenantId],
+      type: QueryTypes.SELECT,
+    },
+  );
+
+  const first = rows[0];
+  return {
+    category: "RIGHTSIZING",
+    totalPotentialSavings: toNumber(first?.total_savings),
+    openRecommendationCount: toNumber(first?.open_recommendations),
+    quickWinsCount: toNumber(first?.quick_wins_count),
+    highPriorityCount: toNumber(first?.high_priority_count),
+    riskMix: {
+      low: toNumber(first?.low_risk_count),
+      medium: toNumber(first?.medium_risk_count),
+      high: toNumber(first?.high_risk_count),
+    },
+  };
+}
+
+export async function getRightsizingRecommendationsData({
+  tenantId,
+  filters,
+}: {
+  tenantId: string;
+  filters: OptimizationRecommendationFilters;
+}): Promise<OptimizationRecommendationsResponse> {
+  const conditions: string[] = [
+    "fr.tenant_id = $1",
+    RIGHTSIZING_PREDICATE_SQL,
+  ];
+  const bind: unknown[] = [tenantId];
+  let next = 2;
+
+  const pushTextArrayFilter = (column: string, values?: string[]) => {
+    const normalized = toStringArray(values);
+    if (!normalized) return;
+    bind.push(normalized);
+    conditions.push(`UPPER(${column}) = ANY($${next}::text[])`);
+    next += 1;
+  };
+
+  if (Array.isArray(filters.accountIds) && filters.accountIds.length > 0) {
+    bind.push(filters.accountIds);
+    conditions.push(`fr.aws_account_id = ANY($${next}::text[])`);
+    next += 1;
+  }
+
+  if (Array.isArray(filters.regions) && filters.regions.length > 0) {
+    bind.push(filters.regions.map((region) => region.toLowerCase()));
+    conditions.push(`LOWER(fr.aws_region_code) = ANY($${next}::text[])`);
+    next += 1;
+  }
+
+  if (Array.isArray(filters.serviceKeys) && filters.serviceKeys.length > 0) {
+    bind.push(filters.serviceKeys);
+    conditions.push(`fr.service_key = ANY($${next}::bigint[])`);
+    next += 1;
+  }
+
+  pushTextArrayFilter("fr.status", filters.status);
+  pushTextArrayFilter("fr.effort_level", filters.effort);
+  pushTextArrayFilter("fr.risk_level", filters.risk);
+
+  const offset = (filters.page - 1) * filters.pageSize;
+  bind.push(filters.pageSize);
+  const limitIdx = next;
+  bind.push(offset);
+  const offsetIdx = next + 1;
+
+  const whereClause = conditions.join("\n          AND ");
+
+  const rows = await sequelize.query<RecommendationListRow>(
+    `
+      SELECT
+        fr.id,
+        COALESCE(fr.recommendation_title, fr.recommendation_type) AS recommendation,
+        fr.resource_id,
+        fr.resource_name,
+        fr.current_resource_type AS current_type,
+        fr.recommended_resource_type AS recommended_type,
+        COALESCE(fr.current_monthly_cost, 0)::double precision AS current_cost,
+        COALESCE(fr.estimated_monthly_savings, 0)::double precision AS estimated_savings,
+        fr.risk_level AS risk,
+        fr.effort_level AS effort,
+        fr.status,
+        fr.aws_account_id,
+        fr.aws_region_code,
+        ds.service_name,
+        COUNT(*) OVER() AS total_count
+      FROM fact_recommendations fr
+      LEFT JOIN dim_service ds ON ds.id = fr.service_key
+      WHERE ${whereClause}
+      ORDER BY fr.estimated_monthly_savings DESC, fr.updated_at DESC
+      LIMIT $${limitIdx} OFFSET $${offsetIdx};
+    `,
+    {
+      bind,
+      type: QueryTypes.SELECT,
+    },
+  );
+
+  const total = toNumber(rows[0]?.total_count);
+  return {
+    items: rows.map((row) => ({
+      id: String(row.id),
+      recommendation: row.recommendation ?? "Rightsizing recommendation",
+      resource: row.resource_name ? `${row.resource_id} / ${row.resource_name}` : row.resource_id,
+      currentType: row.current_type,
+      recommendedType: row.recommended_type,
+      currentCost: toNumber(row.current_cost),
+      estimatedSavings: toNumber(row.estimated_savings),
+      risk: row.risk,
+      effort: row.effort,
+      status: row.status,
+      awsAccountId: row.aws_account_id,
+      awsRegionCode: row.aws_region_code,
+      serviceName: row.service_name,
+    })),
+    pagination: {
+      page: filters.page,
+      pageSize: filters.pageSize,
+      total,
+      totalPages: total > 0 ? Math.ceil(total / filters.pageSize) : 0,
+    },
+  };
+}
+
+export async function getRightsizingRecommendationDetailData({
+  tenantId,
+  recommendationId,
+}: {
+  tenantId: string;
+  recommendationId: string;
+}): Promise<OptimizationRecommendationDetail | null> {
+  const rows = await sequelize.query<RecommendationDetailRow>(
+    `
+      SELECT
+        fr.id,
+        fr.recommendation_type,
+        fr.category,
+        fr.resource_id,
+        fr.resource_name,
+        fr.resource_arn,
+        fr.aws_account_id,
+        fr.aws_region_code,
+        ds.service_name,
+        fr.current_resource_type,
+        fr.recommended_resource_type,
+        fr.current_monthly_cost,
+        fr.estimated_monthly_savings,
+        fr.projected_monthly_cost,
+        fr.performance_risk_level,
+        fr.performance_risk_score,
+        fr.effort_level,
+        fr.risk_level,
+        fr.status,
+        fr.recommendation_title,
+        fr.recommendation_text,
+        fr.source_system,
+        fr.observation_start::text AS observation_start,
+        fr.observation_end::text AS observation_end,
+        fr.raw_payload_json,
+        fr.created_at::text AS created_at,
+        fr.updated_at::text AS updated_at
+      FROM fact_recommendations fr
+      LEFT JOIN dim_service ds ON ds.id = fr.service_key
+      WHERE fr.tenant_id = $1
+        AND fr.id = $2
+      LIMIT 1;
+    `,
+    {
+      bind: [tenantId, recommendationId],
+      type: QueryTypes.SELECT,
+    },
+  );
+
+  const row = rows[0];
+  if (!row) return null;
+
+  return {
+    id: String(row.id),
+    recommendationType: row.recommendation_type,
+    category: row.category,
+    resourceId: row.resource_id,
+    resourceName: row.resource_name,
+    resourceArn: row.resource_arn,
+    awsAccountId: row.aws_account_id,
+    awsRegionCode: row.aws_region_code,
+    serviceName: row.service_name,
+    currentResourceType: row.current_resource_type,
+    recommendedResourceType: row.recommended_resource_type,
+    currentMonthlyCost: toNumber(row.current_monthly_cost),
+    estimatedMonthlySavings: toNumber(row.estimated_monthly_savings),
+    projectedMonthlyCost: toNumber(row.projected_monthly_cost),
+    performanceRiskLevel: row.performance_risk_level,
+    performanceRiskScore:
+      row.performance_risk_score === null ? null : toNumber(row.performance_risk_score),
+    effortLevel: row.effort_level,
+    riskLevel: row.risk_level,
+    status: row.status,
+    recommendationTitle: row.recommendation_title,
+    recommendationText: row.recommendation_text,
+    sourceSystem: row.source_system,
+    observationStart: row.observation_start,
+    observationEnd: row.observation_end,
+    rawPayloadJson: row.raw_payload_json,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
 export async function triggerOptimizationRecommendationSync({
   tenantId,
   billingSourceId,
@@ -74,4 +511,78 @@ export async function triggerOptimizationRecommendationSync({
     cloudConnectionId,
     recommendations,
   });
+}
+
+export async function getOptimizationRecommendationDebugData(
+  tenantId: string,
+): Promise<OptimizationRecommendationDebugData> {
+  const statsRows = await sequelize.query<RecommendationDebugStatsRow>(
+    `
+      SELECT
+        COUNT(*)::bigint AS total_rows,
+        COUNT(*) FILTER (WHERE UPPER(fr.status) = 'OPEN')::bigint AS open_rows,
+        COUNT(*) FILTER (WHERE ${RIGHTSIZING_PREDICATE_SQL})::bigint AS rightsizing_rows,
+        COUNT(*) FILTER (WHERE fr.cloud_connection_id IS NOT NULL)::bigint AS rows_with_cloud_connection,
+        COUNT(*) FILTER (WHERE fr.billing_source_id IS NOT NULL)::bigint AS rows_with_billing_source,
+        COUNT(DISTINCT fr.aws_account_id)::bigint AS distinct_accounts,
+        MAX(fr.updated_at)::text AS latest_updated_at
+      FROM fact_recommendations fr
+      WHERE fr.tenant_id = $1;
+    `,
+    {
+      bind: [tenantId],
+      type: QueryTypes.SELECT,
+    },
+  );
+
+  const sampleRows = await sequelize.query<RecommendationDebugSampleRow>(
+    `
+      SELECT
+        fr.id,
+        fr.aws_account_id,
+        fr.aws_region_code,
+        fr.resource_id,
+        fr.status,
+        fr.estimated_monthly_savings,
+        fr.cloud_connection_id,
+        fr.billing_source_id,
+        fr.updated_at::text AS updated_at
+      FROM fact_recommendations fr
+      WHERE fr.tenant_id = $1
+        AND ${RIGHTSIZING_PREDICATE_SQL}
+      ORDER BY fr.updated_at DESC
+      LIMIT 10;
+    `,
+    {
+      bind: [tenantId],
+      type: QueryTypes.SELECT,
+    },
+  );
+
+  const stats = statsRows[0];
+  return {
+    stats: {
+      totalRows: toNumber(stats?.total_rows),
+      openRows: toNumber(stats?.open_rows),
+      rightsizingRows: toNumber(stats?.rightsizing_rows),
+      rowsWithCloudConnection: toNumber(stats?.rows_with_cloud_connection),
+      rowsWithBillingSource: toNumber(stats?.rows_with_billing_source),
+      distinctAccounts: toNumber(stats?.distinct_accounts),
+      latestUpdatedAt: stats?.latest_updated_at ?? null,
+    },
+    sampleRows: sampleRows.map((row) => ({
+      id: String(row.id),
+      awsAccountId: row.aws_account_id,
+      awsRegionCode: row.aws_region_code,
+      resourceId: row.resource_id,
+      status: row.status,
+      estimatedMonthlySavings: toNumber(row.estimated_monthly_savings),
+      cloudConnectionId: row.cloud_connection_id ?? null,
+      billingSourceId:
+        row.billing_source_id === null || typeof row.billing_source_id === "undefined"
+          ? null
+          : String(row.billing_source_id),
+      updatedAt: row.updated_at,
+    })),
+  };
 }
