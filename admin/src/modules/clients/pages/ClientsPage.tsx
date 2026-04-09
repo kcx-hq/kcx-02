@@ -100,12 +100,12 @@ export function ClientsPage() {
                         {item.firstName} {item.lastName}
                       </td>
                       <td className="px-4 py-3 text-[color:rgba(15,23,42,0.78)]">{item.email}</td>
-                      <td className="px-4 py-3 text-[color:rgba(15,23,42,0.78)]">{item.companyName ?? "â€”"}</td>
-                      <td className="px-4 py-3 text-[color:rgba(15,23,42,0.78)]">{item.heardAboutUs ?? "â€”"}</td>
+                      <td className="px-4 py-3 text-[color:rgba(15,23,42,0.78)]">{item.companyName ?? "-"}</td>
+                      <td className="px-4 py-3 text-[color:rgba(15,23,42,0.78)]">{item.heardAboutUs ?? "-"}</td>
                       <td className="px-4 py-3">
                         <Badge variant={statusVariant(item.status)}>{item.status}</Badge>
                       </td>
-                      <td className="px-4 py-3 text-[color:rgba(15,23,42,0.72)]">{item.source}</td>
+                      <td className="px-4 py-3 text-[color:rgba(15,23,42,0.72)]">{item.source ?? "-"}</td>
                       <td className="px-4 py-3 text-[color:rgba(15,23,42,0.72)]">{formatDateTime(item.updatedAt)}</td>
                     </tr>
                   ))
