@@ -10,7 +10,7 @@ import {
 class FactAnomalies extends Model<InferAttributes<FactAnomalies>, InferCreationAttributes<FactAnomalies>> {
   declare id: CreationOptional<string>;
   declare tenantId: CreationOptional<string | null>;
-  declare cloudConnectionId: string;
+  declare cloudConnectionId: CreationOptional<string | null>;
   declare detectedAt: Date;
   declare usageDate: string;
   declare anomalyScope: CreationOptional<string | null>;
@@ -28,7 +28,7 @@ class FactAnomalies extends Model<InferAttributes<FactAnomalies>, InferCreationA
   declare sourceGranularity: CreationOptional<string | null>;
   declare sourceTable: CreationOptional<string | null>;
   declare subAccountKey: CreationOptional<string | null>;
-  declare billingSourceId: CreationOptional<string | null>;
+  declare billingSourceId: string;
   declare explanationJson: CreationOptional<Record<string, unknown> | null>;
   declare metadataJson: CreationOptional<Record<string, unknown> | null>;
   declare firstSeenAt: CreationOptional<Date | null>;
@@ -47,7 +47,7 @@ const createFactAnomaliesModel = (sequelize: Sequelize): typeof FactAnomalies =>
     {
       id: { type: DataTypes.UUID, allowNull: false, primaryKey: true, defaultValue: sequelize.literal("gen_random_uuid()") },
       tenantId: { type: DataTypes.UUID, allowNull: true, field: "tenant_id" },
-      cloudConnectionId: { type: DataTypes.UUID, allowNull: false, field: "cloud_connection_id" },
+      cloudConnectionId: { type: DataTypes.UUID, allowNull: true, field: "cloud_connection_id" },
       detectedAt: { type: DataTypes.DATE, allowNull: false, field: "detected_at" },
       usageDate: { type: DataTypes.DATEONLY, allowNull: false, field: "usage_date" },
       anomalyScope: { type: DataTypes.TEXT, allowNull: true, field: "anomaly_scope" },
@@ -65,7 +65,7 @@ const createFactAnomaliesModel = (sequelize: Sequelize): typeof FactAnomalies =>
       sourceGranularity: { type: DataTypes.STRING(20), allowNull: true, field: "source_granularity" },
       sourceTable: { type: DataTypes.STRING(100), allowNull: true, field: "source_table" },
       subAccountKey: { type: DataTypes.BIGINT, allowNull: true, field: "sub_account_key" },
-      billingSourceId: { type: DataTypes.BIGINT, allowNull: true, field: "billing_source_id" },
+      billingSourceId: { type: DataTypes.BIGINT, allowNull: false, field: "billing_source_id" },
       explanationJson: { type: DataTypes.JSONB, allowNull: true, field: "explanation_json" },
       metadataJson: { type: DataTypes.JSONB, allowNull: true, field: "metadata_json" },
       firstSeenAt: { type: DataTypes.DATE, allowNull: true, field: "first_seen_at" },

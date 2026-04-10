@@ -4,17 +4,17 @@ import { requireAuth } from "../../../middlewares/auth.middleware.js";
 import { asyncHandler } from "../../../utils/async-handler.js";
 import {
   handleGetAnomalies,
-  handleGetAnomalyById,
-  handleGetAnomalyDetectors,
-  handleRunAnomalyDetectors,
+  handleCreateAnomalyDetectionJob,
+  handleGetAnomalyDetectionJobStatus,
 } from "./anomaly.controller.js";
 
 const router = Router();
 
-router.use("/dashboard/anomalies-alerts", requireAuth);
-router.get("/dashboard/anomalies-alerts", asyncHandler(handleGetAnomalies));
-router.get("/dashboard/anomalies-alerts/detectors", asyncHandler(handleGetAnomalyDetectors));
-router.post("/dashboard/anomalies-alerts/run", asyncHandler(handleRunAnomalyDetectors));
-router.get("/dashboard/anomalies-alerts/:id", asyncHandler(handleGetAnomalyById));
+router.use("/anomaly-detection", requireAuth);
+router.use("/anomalies", requireAuth);
+
+router.post("/anomaly-detection/jobs", asyncHandler(handleCreateAnomalyDetectionJob));
+router.get("/anomaly-detection/jobs/:jobId", asyncHandler(handleGetAnomalyDetectionJobStatus));
+router.get("/anomalies", asyncHandler(handleGetAnomalies));
 
 export default router;

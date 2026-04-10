@@ -16,6 +16,7 @@ import createRawBillingFileModel from "./raw-billing-file.js";
 import createBillingSourceModel from "./billing-source.js";
 import createBillingIngestionRunModel from "./billing-ingestion-run.js";
 import createBillingIngestionRunFileModel from "./billing-ingestion-run-file.js";
+import createAnomalyDetectionRunModel from "./anomaly-detection-run.js";
 import createManualCloudConnectionModel from "./manual-cloud-connection.js";
 import createDimBillingAccountModel from "./billing/dim_billing_account.js";
 import createDimSubAccountModel from "./billing/dim_sub_account.js";
@@ -75,6 +76,7 @@ const RawBillingFile = createRawBillingFileModel(sequelize);
 const BillingSource = createBillingSourceModel(sequelize);
 const BillingIngestionRun = createBillingIngestionRunModel(sequelize);
 const BillingIngestionRunFile = createBillingIngestionRunFileModel(sequelize);
+const AnomalyDetectionRun = createAnomalyDetectionRunModel(sequelize);
 const ManualCloudConnection = createManualCloudConnectionModel(sequelize);
 const DimBillingAccount = createDimBillingAccountModel(sequelize);
 const DimSubAccount = createDimSubAccountModel(sequelize);
@@ -139,6 +141,8 @@ RawBillingFile.hasMany(BillingIngestionRun, { foreignKey: "rawBillingFileId" });
 BillingIngestionRun.belongsTo(RawBillingFile, { foreignKey: "rawBillingFileId" });
 BillingIngestionRun.hasMany(BillingIngestionRunFile, { foreignKey: "ingestionRunId" });
 BillingIngestionRunFile.belongsTo(BillingIngestionRun, { foreignKey: "ingestionRunId" });
+BillingIngestionRun.hasMany(AnomalyDetectionRun, { foreignKey: "ingestionRunId" });
+AnomalyDetectionRun.belongsTo(BillingIngestionRun, { foreignKey: "ingestionRunId" });
 RawBillingFile.hasMany(BillingIngestionRunFile, { foreignKey: "rawBillingFileId" });
 BillingIngestionRunFile.belongsTo(RawBillingFile, { foreignKey: "rawBillingFileId" });
 Tenant.hasMany(ManualCloudConnection, { foreignKey: "tenantId" });
@@ -250,6 +254,14 @@ BillingSource.hasMany(FactAnomalies, { foreignKey: "billingSourceId" });
 FactAnomalies.belongsTo(BillingSource, { foreignKey: "billingSourceId" });
 FactAnomalies.hasMany(AnomalyContributor, { foreignKey: "anomalyId" });
 AnomalyContributor.belongsTo(FactAnomalies, { foreignKey: "anomalyId" });
+Tenant.hasMany(AnomalyDetectionRun, { foreignKey: "tenantId" });
+AnomalyDetectionRun.belongsTo(Tenant, { foreignKey: "tenantId" });
+BillingSource.hasMany(AnomalyDetectionRun, { foreignKey: "billingSourceId" });
+AnomalyDetectionRun.belongsTo(BillingSource, { foreignKey: "billingSourceId" });
+CloudConnectionV2.hasMany(AnomalyDetectionRun, { foreignKey: "cloudConnectionId" });
+AnomalyDetectionRun.belongsTo(CloudConnectionV2, { foreignKey: "cloudConnectionId" });
+User.hasMany(AnomalyDetectionRun, { foreignKey: "createdBy" });
+AnomalyDetectionRun.belongsTo(User, { foreignKey: "createdBy" });
 
 Tenant.hasMany(CloudtrailSource, { foreignKey: "tenantId" });
 CloudtrailSource.belongsTo(Tenant, { foreignKey: "tenantId" });
@@ -346,6 +358,7 @@ export {
   BillingSource,
   BillingIngestionRun,
   BillingIngestionRunFile,
+  AnomalyDetectionRun,
   ManualCloudConnection,
   DimBillingAccount,
   DimSubAccount,
