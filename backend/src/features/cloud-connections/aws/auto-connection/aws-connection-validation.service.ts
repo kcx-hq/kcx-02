@@ -14,38 +14,39 @@ type AwsValidationResult = {
   errorMessage: string | null;
 };
 
+type AwsValidationConfigInput = {
+  connectionId: string;
+  billingRoleArn: string;
+  externalId: string;
+  expectedAccountId: string;
+  exportBucket?: string | null;
+  exportPrefix?: string | null;
+  region?: string | null;
+  exportRegion?: string | null;
+};
+
 const buildRoleSessionName = (connectionId: string): string => {
   const normalizedId = connectionId.replace(/[^a-zA-Z0-9]/g, "").slice(0, 40);
   return `kcx-validate-${normalizedId}`;
 };
 
-export async function validateAwsConnection(connectionId: string): Promise<AwsValidationResult> {
-  const connection = await CloudConnectionV2.findByPk(connectionId);
-  if (!connection) {
-    throw new Error("Cloud connection not found");
-  }
-
-  const billingRoleArn = connection.billingRoleArn?.trim();
-  const externalId = connection.externalId?.trim();
-  const expectedAccountId = connection.cloudAccountId?.trim();
-  const exportBucket = connection.exportBucket?.trim();
-  const exportPrefix = connection.exportPrefix?.trim();
-  const region = connection.region?.trim() || "us-east-1";
+export async function validateAwsConnectionConfig(
+  input: AwsValidationConfigInput,
+): Promise<AwsValidationResult> {
+  const billingRoleArn = input.billingRoleArn.trim();
+  const externalId = input.externalId.trim();
+  const expectedAccountId = input.expectedAccountId.trim();
+  const exportBucket = input.exportBucket?.trim();
+  const exportPrefix = input.exportPrefix?.trim();
+  const region = input.region?.trim() || "us-east-1";
   const validatedAt = new Date();
 
   if (!billingRoleArn || !externalId || !expectedAccountId) {
-    const errorMessage = "Missing billing role ARN, external ID, or cloud account ID for validation";
-    await connection.update({
-      status: "failed",
-      lastValidatedAt: validatedAt,
-      errorMessage,
-    });
-
     return {
-      connectionId: connection.id,
+      connectionId: input.connectionId,
       status: "failed",
       lastValidatedAt: validatedAt,
-      errorMessage,
+      errorMessage: "Missing billing role ARN, external ID, or cloud account ID for validation",
     };
   }
 
@@ -53,26 +54,18 @@ export async function validateAwsConnection(connectionId: string): Promise<AwsVa
   const hasStaticSecretKey = Boolean(env.awsSecretAccessKey);
 
   if (hasStaticAccessKey !== hasStaticSecretKey) {
-    const errorMessage =
-      "Incomplete AWS credentials. Set both AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY.";
-    await connection.update({
-      status: "failed",
-      lastValidatedAt: validatedAt,
-      errorMessage,
-    });
-
     return {
-      connectionId: connection.id,
+      connectionId: input.connectionId,
       status: "failed",
       lastValidatedAt: validatedAt,
-      errorMessage,
+      errorMessage: "Incomplete AWS credentials. Set both AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY.",
     };
   }
 
   const stsClient = new STSClient({
     region,
     ...(hasStaticAccessKey && hasStaticSecretKey
-        ? {
+      ? {
           credentials: {
             accessKeyId: env.awsAccessKeyId as string,
             secretAccessKey: env.awsSecretAccessKey as string,
@@ -87,7 +80,7 @@ export async function validateAwsConnection(connectionId: string): Promise<AwsVa
       new AssumeRoleCommand({
         RoleArn: billingRoleArn,
         ExternalId: externalId,
-        RoleSessionName: buildRoleSessionName(connection.id),
+        RoleSessionName: buildRoleSessionName(input.connectionId),
       }),
     );
 
@@ -107,18 +100,11 @@ export async function validateAwsConnection(connectionId: string): Promise<AwsVa
     const actualAccountId = callerIdentity.Account?.trim();
 
     if (!actualAccountId || actualAccountId !== expectedAccountId) {
-      const errorMessage = `Account mismatch after AssumeRole. Expected ${expectedAccountId}, got ${actualAccountId ?? "unknown"}`;
-      await connection.update({
-        status: "failed",
-        lastValidatedAt: validatedAt,
-        errorMessage,
-      });
-
       return {
-        connectionId: connection.id,
+        connectionId: input.connectionId,
         status: "failed",
         lastValidatedAt: validatedAt,
-        errorMessage,
+        errorMessage: `Account mismatch after AssumeRole. Expected ${expectedAccountId}, got ${actualAccountId ?? "unknown"}`,
       };
     }
 
@@ -128,7 +114,7 @@ export async function validateAwsConnection(connectionId: string): Promise<AwsVa
 
       if (exportBucket && exportPrefix) {
         const s3Client = new S3Client({
-          region: connection.exportRegion?.trim() || region,
+          region: input.exportRegion?.trim() || region,
           credentials: tempCredentials,
         });
         await s3Client.send(
@@ -140,28 +126,16 @@ export async function validateAwsConnection(connectionId: string): Promise<AwsVa
         );
       }
 
-      await connection.update({
-        status: "active",
-        lastValidatedAt: validatedAt,
-        errorMessage: null,
-      });
-
       return {
-        connectionId: connection.id,
+        connectionId: input.connectionId,
         status: "active",
         lastValidatedAt: validatedAt,
         errorMessage: null,
       };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Failed DescribeRegions validation check";
-      await connection.update({
-        status: "active_with_warnings",
-        lastValidatedAt: validatedAt,
-        errorMessage,
-      });
-
       return {
-        connectionId: connection.id,
+        connectionId: input.connectionId,
         status: "active_with_warnings",
         lastValidatedAt: validatedAt,
         errorMessage,
@@ -173,17 +147,37 @@ export async function validateAwsConnection(connectionId: string): Promise<AwsVa
     const errorMessage = isProviderChainError
       ? "Could not load AWS credentials in backend. Configure AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY for the KCX AWS principal account, then retry validation."
       : rawErrorMessage;
-    await connection.update({
-      status: "failed",
-      lastValidatedAt: validatedAt,
-      errorMessage,
-    });
 
     return {
-      connectionId: connection.id,
+      connectionId: input.connectionId,
       status: "failed",
       lastValidatedAt: validatedAt,
       errorMessage,
     };
   }
+}
+
+export async function validateAwsConnection(connectionId: string): Promise<AwsValidationResult> {
+  const connection = await CloudConnectionV2.findByPk(connectionId);
+  if (!connection) {
+    throw new Error("Cloud connection not found");
+  }
+  const validationResult = await validateAwsConnectionConfig({
+    connectionId: connection.id,
+    billingRoleArn: connection.billingRoleArn?.trim() ?? "",
+    externalId: connection.externalId?.trim() ?? "",
+    expectedAccountId: connection.cloudAccountId?.trim() ?? "",
+    exportBucket: connection.exportBucket?.trim(),
+    exportPrefix: connection.exportPrefix?.trim(),
+    region: connection.region?.trim() || "us-east-1",
+    exportRegion: connection.exportRegion?.trim() || connection.region?.trim() || "us-east-1",
+  });
+
+  await connection.update({
+    status: validationResult.status,
+    lastValidatedAt: validationResult.lastValidatedAt,
+    errorMessage: validationResult.errorMessage,
+  });
+
+  return validationResult;
 }

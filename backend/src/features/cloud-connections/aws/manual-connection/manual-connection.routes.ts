@@ -4,6 +4,7 @@ import { requireAuth } from "../../../../middlewares/auth.middleware.js";
 import { asyncHandler } from "../../../../utils/async-handler.js";
 import {
   handleBrowseManualBucket,
+  handleCompleteManualSetup,
   handleCreateManualConnection,
 } from "./manual-connection.controller.js";
 
@@ -18,6 +19,11 @@ router.post(
   "/api/aws/manual/browse-bucket",
   requireAuth,
   asyncHandler(handleBrowseManualBucket),
+);
+router.post(
+  "/api/aws/manual/complete-setup",
+  requireAuth,
+  asyncHandler(handleCompleteManualSetup),
 );
 
 export default router;

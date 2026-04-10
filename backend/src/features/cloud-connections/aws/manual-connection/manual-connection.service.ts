@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 
 import type {
   BrowseManualBucketInput,
+  CompleteManualSetupInput,
   CreateManualConnectionInput,
 } from "./manual-connection.schema.js";
 import {
@@ -12,6 +13,8 @@ import {
 } from "./aws-assume-role.util.js";
 import {
   createManualConnectionRecord,
+  findManualConnectionByTenantAndName,
+  upsertManualConnectionCompletion,
 } from "./manual-connection.repository.js";
 import {
   assertCloudAccountIsUnique,
@@ -21,6 +24,7 @@ import {
 import { UniqueConstraintError } from "sequelize";
 import { HTTP_STATUS } from "../../../../constants/http-status.js";
 import { DuplicateCloudConnectionError } from "../../../../errors/http-errors.js";
+import { validateAwsConnectionConfig } from "../auto-connection/aws-connection-validation.service.js";
 
 export type ManualConnectionUserContext = {
   userId: string;
@@ -64,6 +68,24 @@ export type BrowseManualBucketResult = {
     path: string;
   }>;
 };
+
+type CompleteManualSetupSuccess = {
+  success: true;
+  connectionId: string;
+  status: string;
+  validationStatus: string;
+  isComplete: true;
+};
+
+type CompleteManualSetupFailure = {
+  success: false;
+  errorCode: string;
+  message: string;
+  statusCode: number;
+  details?: Record<string, unknown>;
+};
+
+export type CompleteManualSetupResult = CompleteManualSetupSuccess | CompleteManualSetupFailure;
 
 const buildRoleSessionName = () => {
   const suffix = crypto.randomBytes(4).toString("hex");
@@ -128,7 +150,7 @@ export async function createManualConnection(
       createdBy: userContext.userId,
       connectionName: payload.connectionName,
       awsAccountId: assumedIdentity.accountId,
-      roleArn: payload.roleArn,
+      billingRoleArn: payload.roleArn,
       externalId: payload.externalId,
       bucketName: payload.bucketName,
       prefix: payload.prefix,
@@ -215,4 +237,223 @@ export async function browseManualConnectionBucket(
     prefix: browseResult.prefix,
     items: browseResult.items,
   };
+}
+
+export async function completeManualConnectionSetup(
+  payload: CompleteManualSetupInput,
+  userContext: ManualConnectionUserContext,
+): Promise<CompleteManualSetupResult> {
+  try {
+    const providerId = await resolveAwsProviderId();
+    const existing = await findManualConnectionByTenantAndName(
+      userContext.tenantId,
+      payload.connectionName,
+    );
+
+    await assertCloudAccountIsUnique({
+      providerId,
+      cloudAccountId: payload.awsAccountId,
+      ...(existing
+        ? {
+            excludeDetailRecordType: "manual_cloud_connection",
+            excludeDetailRecordId: existing.id,
+          }
+        : {}),
+    });
+
+    const preValidation = await validateAwsConnectionConfig({
+      connectionId: existing?.id ?? crypto.randomUUID(),
+      billingRoleArn: payload.billingRoleArn,
+      externalId: payload.externalId,
+      expectedAccountId: payload.awsAccountId,
+      exportBucket: payload.exportBucketName,
+      exportPrefix: payload.exportPrefix,
+      region: payload.awsRegion,
+      exportRegion: payload.awsRegion,
+    });
+
+    if (preValidation.status === "failed") {
+      return {
+        success: false,
+        errorCode: "AWS_VALIDATION_FAILED",
+        message: preValidation.errorMessage ?? "AWS validation failed.",
+        statusCode: HTTP_STATUS.BAD_REQUEST,
+      };
+    }
+
+    let cloudTrailValidationStatus: "active" | "active_with_warnings" | "failed" = "active";
+    let cloudTrailValidationError: string | null = null;
+
+    if (payload.enableCloudTrail && payload.cloudtrailBucketName) {
+      const cloudTrailValidation = await validateAwsConnectionConfig({
+        connectionId: existing?.id ?? crypto.randomUUID(),
+        billingRoleArn: payload.billingRoleArn,
+        externalId: payload.externalId,
+        expectedAccountId: payload.awsAccountId,
+        exportBucket: payload.cloudtrailBucketName,
+        exportPrefix: payload.cloudtrailPrefix,
+        region: payload.awsRegion,
+        exportRegion: payload.awsRegion,
+      });
+
+      cloudTrailValidationStatus = cloudTrailValidation.status;
+      cloudTrailValidationError = cloudTrailValidation.errorMessage;
+
+      if (cloudTrailValidation.status === "failed") {
+        return {
+          success: false,
+          errorCode: "AWS_CLOUDTRAIL_VALIDATION_FAILED",
+          message: cloudTrailValidation.errorMessage ?? "AWS CloudTrail validation failed.",
+          statusCode: HTTP_STATUS.BAD_REQUEST,
+        };
+      }
+    }
+
+    const now = new Date();
+    const cloudtrailEnabled = payload.enableCloudTrail;
+    const combinedValidationError = preValidation.errorMessage ?? cloudTrailValidationError;
+    const normalizedPayload = {
+      setupValues: {
+        externalId: payload.externalId,
+        connectionName: payload.connectionName,
+        kcxPrincipalArn: payload.kcxPrincipalArn,
+        fileEventCallbackUrl: payload.fileEventCallbackUrl,
+        callbackToken: payload.callbackToken,
+        awsAccountId: payload.awsAccountId,
+        awsRegion: payload.awsRegion,
+        enableCloudTrail: payload.enableCloudTrail,
+        enableActionRole: payload.enableActionRole,
+        enableEc2Module: payload.enableEc2Module,
+        useTagScopedAccess: payload.useTagScopedAccess,
+      },
+      billing: {
+        billingRoleName: payload.billingRoleName,
+        billingRoleArn: payload.billingRoleArn,
+        exportBucketName: payload.exportBucketName,
+        exportPrefix: payload.exportPrefix,
+        exportName: payload.exportName ?? null,
+        exportArn: payload.exportArn ?? null,
+      },
+      actionRole: payload.enableActionRole
+        ? {
+            enabled: true,
+            actionRoleName: payload.actionRoleName ?? null,
+            actionRoleArn: payload.actionRoleArn ?? null,
+            ec2ModuleEnabled: payload.enableEc2Module,
+            useTagScopedAccess: payload.useTagScopedAccess,
+          }
+        : {
+            enabled: false,
+          },
+      billingFileEventAutomation: {
+        lambdaArn: payload.billingFileEventLambdaArn,
+        eventbridgeRuleName: payload.billingEventbridgeRuleName,
+      },
+      cloudtrail: cloudtrailEnabled
+        ? {
+            enabled: true,
+            bucketName: payload.cloudtrailBucketName ?? null,
+            prefix: payload.cloudtrailPrefix ?? null,
+            trailName: payload.cloudtrailTrailName ?? null,
+            lambdaArn: payload.cloudtrailLambdaArn ?? null,
+            eventbridgeRuleName: payload.cloudtrailEventbridgeRuleName ?? null,
+          }
+        : {
+            enabled: false,
+          },
+      ...(payload.setupPayloadJson ? { clientSnapshot: payload.setupPayloadJson } : {}),
+      completedAt: now.toISOString(),
+      completedBy: userContext.userId,
+      setupStep: payload.setupStep ?? 6,
+    } satisfies Record<string, unknown>;
+
+    const record = await upsertManualConnectionCompletion({
+      tenantId: userContext.tenantId,
+      userId: userContext.userId,
+      connectionName: payload.connectionName,
+      awsAccountId: payload.awsAccountId,
+      awsRegion: payload.awsRegion,
+      externalId: payload.externalId,
+      kcxPrincipalArn: payload.kcxPrincipalArn,
+      fileEventCallbackUrl: payload.fileEventCallbackUrl,
+      callbackToken: payload.callbackToken,
+      billingRoleName: payload.billingRoleName,
+      billingRoleArn: payload.billingRoleArn,
+      exportBucketName: payload.exportBucketName,
+      exportPrefix: payload.exportPrefix,
+      exportName: payload.exportName ?? null,
+      exportArn: payload.exportArn ?? null,
+      actionRoleEnabled: payload.enableActionRole,
+      actionRoleName: payload.actionRoleName ?? null,
+      actionRoleArn: payload.actionRoleArn ?? null,
+      ec2ModuleEnabled: payload.enableEc2Module,
+      useTagScopedAccess: payload.useTagScopedAccess,
+      billingFileEventLambdaArn: payload.billingFileEventLambdaArn,
+      billingEventbridgeRuleName: payload.billingEventbridgeRuleName,
+      billingFileEventStatus: payload.billingFileEventStatus ?? "validated",
+      billingFileEventValidatedAt: payload.billingFileEventValidatedAt
+        ? new Date(payload.billingFileEventValidatedAt)
+        : now,
+      cloudtrailEnabled,
+      cloudtrailBucketName: payload.cloudtrailBucketName ?? null,
+      cloudtrailPrefix: payload.cloudtrailPrefix ?? null,
+      cloudtrailTrailName: payload.cloudtrailTrailName ?? null,
+      cloudtrailLambdaArn: payload.cloudtrailLambdaArn ?? null,
+      cloudtrailEventbridgeRuleName: payload.cloudtrailEventbridgeRuleName ?? null,
+      cloudtrailStatus: cloudtrailEnabled ? payload.cloudtrailStatus ?? "validated" : "disabled",
+      cloudtrailValidatedAt: cloudtrailEnabled
+        ? (payload.cloudtrailValidatedAt ? new Date(payload.cloudtrailValidatedAt) : now)
+        : null,
+      setupStep: payload.setupStep ?? 6,
+      setupPayloadJson: normalizedPayload,
+      status: "completed",
+      validationStatus: "success",
+      assumeRoleSuccess: true,
+      lastValidatedAt: now,
+      errorMessage: combinedValidationError,
+    });
+
+    await syncManualCloudIntegration(record, {
+      providerId,
+      statusMessage: "Pending First Ingest",
+      lastCheckedAt: now,
+    });
+
+    return {
+      success: true,
+      connectionId: record.id,
+      status: String(record.status),
+      validationStatus: String(record.validationStatus),
+      isComplete: true,
+    };
+  } catch (error) {
+    if (error instanceof ManualConnectionAwsError) {
+      return {
+        success: false,
+        errorCode: error.errorCode,
+        message: error.message,
+        statusCode: error.statusCode,
+      };
+    }
+
+    if (error instanceof DuplicateCloudConnectionError) {
+      return {
+        success: false,
+        errorCode: DUPLICATE_ERROR_CODE,
+        message: DUPLICATE_ERROR_MESSAGE,
+        statusCode: HTTP_STATUS.CONFLICT,
+        details: {
+          provider: "aws",
+          awsAccountId: payload.awsAccountId,
+        },
+      };
+    }
+
+    return {
+      success: false,
+      errorCode: "MANUAL_SETUP_COMPLETE_FAILED",
+      message: "Unable to persist manual setup completion.",
+      statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR,
+    };
+  }
 }

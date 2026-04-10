@@ -183,6 +183,16 @@ export async function resolveBucketRegion(params: {
     const regionFromError = extractBucketRegionFromError(error);
     if (regionFromError) return regionFromError;
 
+    const errorName =
+      error && typeof error === "object" && "name" in error && typeof error.name === "string"
+        ? error.name
+        : "";
+    if (errorName === "AccessDenied") {
+      // Some customer policies intentionally omit s3:GetBucketLocation.
+      // Fall back to configured/default region and let ListObjectsV2 verify access.
+      return normalizeBucketRegion(params.defaultRegion);
+    }
+
     throw new ManualConnectionAwsError(
       "BUCKET_REGION_RESOLUTION_FAILED",
       `Unable to resolve bucket region. ${sanitizeAwsError(error)}`,

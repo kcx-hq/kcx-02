@@ -44,6 +44,47 @@ export type AwsManualBrowseBucketResponse = {
   items: AwsManualBrowseBucketItem[]
 }
 
+export type AwsManualCompleteSetupPayload = {
+  connectionName: string
+  awsAccountId: string
+  awsRegion: string
+  externalId: string
+  kcxPrincipalArn: string
+  fileEventCallbackUrl: string
+  callbackToken: string
+  billingRoleName: string
+  billingRoleArn: string
+  exportBucketName: string
+  exportPrefix: string
+  exportName?: string
+  exportArn?: string
+  enableActionRole: boolean
+  actionRoleName?: string
+  actionRoleArn?: string
+  enableEc2Module: boolean
+  useTagScopedAccess: boolean
+  billingFileEventLambdaArn: string
+  billingEventbridgeRuleName: string
+  billingFileEventStatus?: string
+  enableCloudTrail: boolean
+  cloudtrailBucketName?: string
+  cloudtrailPrefix?: string
+  cloudtrailTrailName?: string
+  cloudtrailLambdaArn?: string
+  cloudtrailEventbridgeRuleName?: string
+  cloudtrailStatus?: string
+  setupStep?: number
+  setupPayloadJson?: Record<string, unknown>
+}
+
+export type AwsManualCompleteSetupResponse = {
+  success: boolean
+  connectionId: string
+  status: string
+  validationStatus: string
+  isComplete: boolean
+}
+
 export async function testAwsManualConnection(
   payload: AwsManualTestConnectionPayload
 ): Promise<AwsManualTestConnectionResponse> {
@@ -68,4 +109,17 @@ export async function browseAwsManualBucket(
     hasExternalId: Boolean(payload.externalId),
   })
   return apiPost<AwsManualBrowseBucketResponse>("/api/aws/manual/browse-bucket", payload)
+}
+
+export async function completeAwsManualSetup(
+  payload: AwsManualCompleteSetupPayload
+): Promise<AwsManualCompleteSetupResponse> {
+  console.info("[AWS Manual Complete] submitting payload", {
+    connectionName: payload.connectionName,
+    awsAccountId: payload.awsAccountId,
+    awsRegion: payload.awsRegion,
+    enableCloudTrail: payload.enableCloudTrail,
+    enableActionRole: payload.enableActionRole,
+  })
+  return apiPost<AwsManualCompleteSetupResponse>("/api/aws/manual/complete-setup", payload)
 }
