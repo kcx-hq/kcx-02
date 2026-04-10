@@ -406,33 +406,53 @@ export type OverviewRecommendationsResponse = {
   pagination: PaginationMeta;
 };
 
-export type AnomalyAlertsFiltersQuery = {
-  anomalyType?: string;
-  severity?: string;
-  status?: string;
-  dateFrom?: string;
-  dateTo?: string;
-  service?: string;
-  region?: string;
-  subAccount?: string;
+export type AnomaliesFiltersQuery = {
+  billing_source_id?: number;
+  status?: "open" | "resolved" | "ignored";
+  severity?: "low" | "medium" | "high";
+  anomaly_type?: string;
+  date_from?: string;
+  date_to?: string;
+  limit?: number;
+  offset?: number;
 };
 
-export type AnomalyAlertRecord = {
+export type AnomalyRecord = {
   id: string;
+  tenant_id: string | null;
+  billing_source_id: number | null;
+  billing_source_name: string | null;
+  cloud_connection_id: string | null;
   usage_date: string;
   detected_at: string;
-  anomaly_type: string;
+  anomaly_type: string | null;
   anomaly_scope: string | null;
+  baseline_type: string | null;
+  source_granularity: string | null;
+  source_table: string | null;
   expected_cost: number | string | null;
   actual_cost: number | string | null;
   delta_cost: number | string | null;
   delta_percent: number | string | null;
-  severity: string;
-  status: string;
+  severity: "low" | "medium" | "high";
+  status: "open" | "resolved" | "ignored";
   root_cause_hint: string | null;
-  service_name: string | null;
-  region_name: string | null;
-  sub_account_name: string | null;
+  explanation_json: Record<string, unknown> | null;
+  metadata_json: Record<string, unknown> | null;
+  first_seen_at: string | null;
+  last_seen_at: string | null;
+  resolved_at: string | null;
+  ignored_reason: string | null;
+  created_at: string;
+};
+
+export type AnomaliesListResponse = {
+  items: AnomalyRecord[];
+  pagination: {
+    limit: number;
+    offset: number;
+    total: number;
+  };
 };
 
 export type OverviewFiltersResponse = {

@@ -2,6 +2,8 @@ import { Op } from "sequelize";
 
 import { BadRequestError, InternalServerError } from "../../../errors/http-errors.js";
 import { BillingIngestionRun, BillingIngestionRunFile, BillingSource, RawBillingFile, User } from "../../../models/index.js";
+import { logger } from "../../../utils/logger.js";
+import { createAndStartAnomalyDetectionRunFromIngestion } from "../../dashboard/anomaly-alerts/anomaly-ingestion-trigger.service.js";
 
 type CreateIngestionRunParams = {
   billingSourceId: string | number;
@@ -253,7 +255,25 @@ export async function updateIngestionRunStatus(runId: string | number, patch: Up
       return null;
     }
 
-    return getIngestionRunById(runId);
+    const updatedRun = await getIngestionRunById(runId);
+
+    const nextStatus = typeof patch.status === "string" ? patch.status : null;
+    const isSuccessfulCompletionStatus = nextStatus === "completed" || nextStatus === "completed_with_warnings";
+
+    if (updatedRun && isSuccessfulCompletionStatus) {
+      try {
+        await createAndStartAnomalyDetectionRunFromIngestion({
+          ingestionRunId: String(updatedRun.id),
+        });
+      } catch (error) {
+        logger.error("Failed to enqueue anomaly detection run after ingestion completion", {
+          ingestionRunId: String(updatedRun.id),
+          reason: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
+    return updatedRun;
   } catch (error) {
     throw new InternalServerError("Failed to update billing ingestion run", {
       reason: error instanceof Error ? error.message : String(error),

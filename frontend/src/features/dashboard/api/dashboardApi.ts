@@ -1,7 +1,7 @@
 import { apiGet, apiPatch, apiPost } from "@/lib/api";
 import type {
-  AnomalyAlertRecord,
-  AnomalyAlertsFiltersQuery,
+  AnomaliesFiltersQuery,
+  AnomaliesListResponse,
   BudgetDashboardResponse,
   BudgetUpsertPayload,
   BudgetActualForecastPoint,
@@ -126,6 +126,22 @@ function withOptimizationFilters(
   return query.length > 0 ? `${path}?${query}` : path;
 }
 
+function withAnomaliesFilters(path: string, filters?: AnomaliesFiltersQuery): string {
+  const params = new URLSearchParams();
+
+  if (typeof filters?.billing_source_id === "number") params.set("billing_source_id", String(filters.billing_source_id));
+  if (filters?.status) params.set("status", filters.status);
+  if (filters?.severity) params.set("severity", filters.severity);
+  if (filters?.anomaly_type) params.set("anomaly_type", filters.anomaly_type);
+  if (filters?.date_from) params.set("date_from", filters.date_from);
+  if (filters?.date_to) params.set("date_to", filters.date_to);
+  if (typeof filters?.limit === "number") params.set("limit", String(filters.limit));
+  if (typeof filters?.offset === "number") params.set("offset", String(filters.offset));
+
+  const query = params.toString();
+  return query.length > 0 ? `${path}?${query}` : path;
+}
+
 function withAnomaliesAlertsFilters(
   path: string,
   scope: DashboardResolvedScope,
@@ -135,12 +151,11 @@ function withAnomaliesAlertsFilters(
 
   if (filters?.anomalyType) params.set("anomaly_type", filters.anomalyType);
   if (filters?.severity) params.set("severity", filters.severity);
-  if (filters?.status) params.set("status", filters.status);
-  if (filters?.dateFrom) params.set("date_from", filters.dateFrom);
-  if (filters?.dateTo) params.set("date_to", filters.dateTo);
-  if (filters?.service) params.set("service", filters.service);
-  if (filters?.region) params.set("region", filters.region);
-  if (filters?.subAccount) params.set("sub_account", filters.subAccount);
+  if (filters?.anomaly_type) params.set("anomaly_type", filters.anomaly_type);
+  if (filters?.date_from) params.set("date_from", filters.date_from);
+  if (filters?.date_to) params.set("date_to", filters.date_to);
+  if (typeof filters?.limit === "number") params.set("limit", String(filters.limit));
+  if (typeof filters?.offset === "number") params.set("offset", String(filters.offset));
 
   const query = params.toString();
   return query.length > 0 ? `${path}?${query}` : path;
@@ -247,24 +262,6 @@ export const dashboardApi = {
     );
   },
 
-  getOptimizationCommitmentOverview(scope: DashboardResolvedScope) {
-    return apiGet<OptimizationCommitmentOverview>(
-      withDashboardQuery("/dashboard/optimization/commitment/overview", scope),
-    );
-  },
-
-  getOptimizationCommitmentRecommendations(scope: DashboardResolvedScope, filters?: OptimizationRecommendationFiltersQuery) {
-    return apiGet<OptimizationCommitmentRecommendationsResponse>(
-      withOptimizationFilters("/dashboard/optimization/commitment/recommendations", scope, filters),
-    );
-  },
-
-  getOptimizationCommitmentRecommendationDetail(scope: DashboardResolvedScope, recommendationId: string) {
-    return apiGet<OptimizationCommitmentRecommendationDetail>(
-      withDashboardQuery(`/dashboard/optimization/commitment/recommendations/${recommendationId}`, scope),
-    );
-  },
-
   getAnomaliesAlerts(scope: DashboardResolvedScope, filters?: AnomalyAlertsFiltersQuery) {
     return apiGet<AnomalyAlertRecord[]>(withAnomaliesAlertsFilters("/dashboard/anomalies-alerts", scope, filters));
   },
@@ -298,8 +295,9 @@ export const dashboardApi = {
 
 export type {
   BudgetActualForecastPoint,
-  AnomalyAlertRecord,
-  AnomalyAlertsFiltersQuery,
+  AnomalyRecord,
+  AnomaliesFiltersQuery,
+  AnomaliesListResponse,
   BudgetDashboardResponse,
   BudgetItem,
   BudgetStatus,

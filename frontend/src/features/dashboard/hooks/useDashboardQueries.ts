@@ -1,8 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import {
   dashboardApi,
-  type AnomalyAlertRecord,
-  type AnomalyAlertsFiltersQuery,
+  type AnomaliesFiltersQuery,
+  type AnomaliesListResponse,
   type CostExplorerFiltersQuery,
   type DashboardResolvedScope,
   type OptimizationIdleOverview,
@@ -188,6 +188,10 @@ export function useAnomaliesAlertsQuery(filters?: AnomalyAlertsFiltersQuery) {
     queryKey: ["dashboard", "anomalies-alerts", scope, filters],
     queryFn: () => dashboardApi.getAnomaliesAlerts(assertScope(scope), filters),
     enabled: Boolean(scope),
+export function useAnomaliesQuery(filters?: AnomaliesFiltersQuery) {
+  return useQuery<AnomaliesListResponse, Error>({
+    queryKey: ["dashboard", "anomalies", filters],
+    queryFn: () => dashboardApi.getAnomalies(filters),
   });
 }
 
