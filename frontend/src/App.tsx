@@ -36,6 +36,7 @@ import { HomePage } from "@/pages/HomePage"
 const CLIENT_WORKSPACE_ROUTES = new Set([
   "/client/overview",
   "/client/billing",
+  "/client/billing/import-s3",
   "/client/billing/uploads",
   "/client/billing/connections",
   "/client/billing/connections/add",
@@ -213,6 +214,7 @@ export function App() {
         </ClientLayout>
       ) : null}
       {route === "/client/billing" ||
+      route === "/client/billing/import-s3" ||
       NON_AWS_PROVIDER_ROUTE_REGEX.test(route) ? (
         <ClientLayout>
           <ClientBillingPage />

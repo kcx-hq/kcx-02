@@ -626,6 +626,12 @@ function ManualSetupWizard({ activeRoute }: { activeRoute: string }) {
         },
       },
       {
+        Sid: "ExportBucketGetLocation",
+        Effect: "Allow",
+        Action: "s3:GetBucketLocation",
+        Resource: `arn:aws:s3:::${form.exportBucket.trim()}`,
+      },
+      {
         Sid: "ExportBucketReadObjects",
         Effect: "Allow",
         Action: "s3:GetObject",

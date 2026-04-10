@@ -8,6 +8,7 @@ import { ManualBillingUploadDialog } from "@/features/client-home/components/Man
 import { AddCloudConnectionSection } from "@/features/client-home/components/billing/AddCloudConnectionSection"
 import { BillingHubSection } from "@/features/client-home/components/billing/BillingHubSection"
 import { BillingUploadsSection } from "@/features/client-home/components/billing/BillingUploadsSection"
+import { S3ImportConnectionsSection } from "@/features/client-home/components/billing/S3ImportConnectionsSection"
 import {
   ACTIVE_INGESTION_STORAGE_KEY,
   CLOUD_PROVIDER_LABELS,
@@ -36,6 +37,7 @@ export function ClientBillingPage() {
   const isBillingHubRoute = activeRoute === "/client/billing"
   const isBillingUploadsRoute =
     activeRoute === "/client/billing/uploads" || activeRoute === "/client/billing/upload-files"
+  const isS3ImportsRoute = activeRoute === "/client/billing/import-s3"
   const isAddCloudConnectionRoute =
     activeRoute === "/client/billing/connect-cloud/add/aws" ||
     activeRoute === "/client/billing/connections/add/aws" ||
@@ -114,7 +116,6 @@ export function ClientBillingPage() {
 
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false)
   const [localUploadDialogOpen, setLocalUploadDialogOpen] = useState(false)
-  const [s3UploadDialogOpen, setS3UploadDialogOpen] = useState(false)
   const [activeIngestionRunId, setActiveIngestionRunId] = useState<string | null>(() => {
     if (typeof window === "undefined") return null
     return window.localStorage.getItem(ACTIVE_INGESTION_STORAGE_KEY)
@@ -381,20 +382,13 @@ export function ClientBillingPage() {
           hideSourceTabs
         />
 
-        <ManualBillingUploadDialog
-          open={s3UploadDialogOpen}
-          onOpenChange={setS3UploadDialogOpen}
-          onIngestionQueued={handleIngestionQueued}
-          initialSource="s3"
-          hideSourceTabs
-        />
       </>
     )
   }
 
   return (
     <>
-      {!isBillingUploadsRoute ? (
+      {!isBillingUploadsRoute && !isS3ImportsRoute ? (
         <ClientPageHeader
           eyebrow="Billing Workspace"
           title={pageHeaderTitle}
@@ -420,12 +414,14 @@ export function ClientBillingPage() {
             onRetryUploadRecord={handleRetryUploadRecord}
             onOpenDashboard={handleOpenDashboard}
           />
+        ) : isS3ImportsRoute ? (
+          <S3ImportConnectionsSection />
         ) : (
           <div className="rounded-md border-[color:var(--border-light)] bg-white shadow-sm-custom">
             <div className="space-y-6 p-6">
               {isAddCloudConnectionRoute ? (
               <AddCloudConnectionSection
-                onOpenS3UploadModal={() => setS3UploadDialogOpen(true)}
+                onOpenS3UploadModal={() => navigateTo("/client/billing/import-s3")}
                 cloudConnectionsSearch={cloudConnectionsSearch}
                 onCloudConnectionsSearchChange={setCloudConnectionsSearch}
                 cloudOverviewRows={cloudOverviewRows}
@@ -465,14 +461,6 @@ export function ClientBillingPage() {
         open={uploadDialogOpen}
         onOpenChange={setUploadDialogOpen}
         onIngestionQueued={handleIngestionQueued}
-      />
-
-      <ManualBillingUploadDialog
-        open={s3UploadDialogOpen}
-        onOpenChange={setS3UploadDialogOpen}
-        onIngestionQueued={handleIngestionQueued}
-        initialSource="s3"
-        hideSourceTabs
       />
     </>
   )

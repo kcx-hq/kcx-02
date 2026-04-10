@@ -1,6 +1,12 @@
 import path from "node:path";
 
-import type { CreateS3UploadSessionInput, ImportS3UploadFilesInput, ListS3UploadSessionInput } from "./s3-upload.schema.js";
+import type {
+  CreateS3UploadConnectionInput,
+  CreateS3UploadConnectionSessionInput,
+  CreateS3UploadSessionInput,
+  ImportS3UploadFilesInput,
+  ListS3UploadSessionInput,
+} from "./s3-upload.schema.js";
 import {
   assumeRoleForUploadSession,
   getSourceS3ObjectStream,
@@ -11,7 +17,7 @@ import {
 } from "./s3-upload-aws.service.js";
 import { s3UploadSessionStore } from "./s3-upload-session.store.js";
 import { BadRequestError, InternalServerError } from "../../../errors/http-errors.js";
-import { BillingSource, CloudProvider } from "../../../models/index.js";
+import { BillingSource, CloudProvider, S3UploadConnection } from "../../../models/index.js";
 import {
   BILLING_SOURCE_SETUP_MODES,
   BILLING_SOURCE_TYPES,
@@ -66,6 +72,25 @@ type ImportSessionFilesResult = {
   ingestionRunIds: string[];
 };
 
+type S3UploadConnectionSummary = {
+  id: string;
+  bucket: string;
+  basePrefix: string;
+  roleArn: string;
+  externalId: string | null;
+  awsAccountId: string | null;
+  assumedArn: string | null;
+  resolvedRegion: string | null;
+  lastValidatedAt: Date;
+  createdAt: Date | null;
+  updatedAt: Date | null;
+};
+
+type CreatePersistentConnectionResult = {
+  connection: S3UploadConnectionSummary;
+  session: CreateSessionResult;
+};
+
 const TEMPORARY_SOURCE_TYPE: (typeof BILLING_SOURCE_TYPES)[number] = "s3";
 const TEMPORARY_SETUP_MODE: (typeof BILLING_SOURCE_SETUP_MODES)[number] = "temporary";
 const AWS_PROVIDER_CODE = "aws";
@@ -110,6 +135,76 @@ const normalizeRequestedPrefixForList = (basePrefix: string, requestedPrefix: st
   return normalizedRequestedPrefix;
 };
 
+const getErrorMessageWithReason = (error: unknown): string => {
+  if (!(error instanceof Error)) return String(error);
+
+  const baseMessage = error.message;
+  const errorWithDetails = error as Error & { details?: unknown };
+  const details = errorWithDetails.details;
+  const reason =
+    details && typeof details === "object" && "reason" in details
+      ? (details as { reason?: unknown }).reason
+      : undefined;
+
+  if (typeof reason === "string" && reason.trim().length > 0 && !baseMessage.includes(reason)) {
+    return `${baseMessage} (${reason})`;
+  }
+
+  return baseMessage;
+};
+
+const toConnectionSummary = (
+  record: InstanceType<typeof S3UploadConnection>,
+): S3UploadConnectionSummary => ({
+  id: String(record.id),
+  bucket: String(record.bucketName),
+  basePrefix: String(record.basePrefix ?? ""),
+  roleArn: String(record.roleArn),
+  externalId: record.externalId ? String(record.externalId) : null,
+  awsAccountId: record.awsAccountId ? String(record.awsAccountId) : null,
+  assumedArn: record.assumedArn ? String(record.assumedArn) : null,
+  resolvedRegion: record.resolvedRegion ? String(record.resolvedRegion) : null,
+  lastValidatedAt: record.lastValidatedAt ?? new Date(),
+  createdAt: record.createdAt ?? null,
+  updatedAt: record.updatedAt ?? null,
+});
+
+const createValidatedTemporarySession = async (input: {
+  roleArn: string;
+  externalId?: string | null;
+  bucket: string;
+  prefix: string;
+  user: UserContext;
+}): Promise<{
+  assumeRoleResult: Awaited<ReturnType<typeof assumeRoleForUploadSession>>;
+  validationResult: Awaited<ReturnType<typeof validateS3ScopeAccess>>;
+  session: ReturnType<typeof s3UploadSessionStore.create>;
+}> => {
+  const assumeRoleResult = await assumeRoleForUploadSession({
+    roleArn: input.roleArn,
+    externalId: input.externalId || undefined,
+  });
+
+  const validationResult = await validateS3ScopeAccess({
+    credentials: assumeRoleResult.credentials,
+    bucket: input.bucket,
+    prefix: input.prefix,
+  });
+
+  const session = s3UploadSessionStore.create({
+    tenantId: input.user.tenantId,
+    userId: input.user.userId,
+    roleArn: input.roleArn,
+    externalId: input.externalId || null,
+    bucket: input.bucket,
+    basePrefix: input.prefix,
+    resolvedRegion: validationResult.resolvedRegion,
+    credentials: assumeRoleResult.credentials,
+  });
+
+  return { assumeRoleResult, validationResult, session };
+};
+
 export async function createTemporaryS3UploadSession(
   input: CreateS3UploadSessionInput,
   user: UserContext,
@@ -131,15 +226,18 @@ export async function createTemporaryS3UploadSession(
   });
 
   try {
-    const assumeRoleResult = await assumeRoleForUploadSession({
+    const { assumeRoleResult, session } = await createValidatedTemporarySession({
       roleArn: normalizedRoleArn,
-      externalId: normalizedExternalId || undefined,
+      externalId: normalizedExternalId || null,
+      bucket: normalizedBucket,
+      prefix: normalizedPrefix,
+      user,
     });
 
     console.log("[S3-UPLOAD-DEBUG][SESSION_CREATE][STS_SUCCESS]", {
       tenantId: user.tenantId,
       userId: user.userId,
-      sessionId: null,
+      sessionId: session.sessionId,
       ingestionRunId: null,
       assumedRoleArn: assumeRoleResult.assumedArn,
       accountId: assumeRoleResult.accountId,
@@ -147,31 +245,14 @@ export async function createTemporaryS3UploadSession(
       key: normalizedPrefix || null,
     });
 
-    const validationResult = await validateS3ScopeAccess({
-      credentials: assumeRoleResult.credentials,
-      bucket: normalizedBucket,
-      prefix: normalizedPrefix,
-    });
-
     console.log("[S3-UPLOAD-DEBUG][SESSION_CREATE][S3_ACCESS_OK]", {
       tenantId: user.tenantId,
       userId: user.userId,
-      sessionId: null,
+      sessionId: session.sessionId,
       ingestionRunId: null,
       bucket: normalizedBucket,
       key: normalizedPrefix || null,
       prefix: normalizedPrefix,
-    });
-
-    const session = s3UploadSessionStore.create({
-      tenantId: user.tenantId,
-      userId: user.userId,
-      roleArn: normalizedRoleArn,
-      externalId: normalizedExternalId || null,
-      bucket: normalizedBucket,
-      basePrefix: normalizedPrefix,
-      resolvedRegion: validationResult.resolvedRegion,
-      credentials: assumeRoleResult.credentials,
     });
 
     return {
@@ -195,6 +276,139 @@ export async function createTemporaryS3UploadSession(
     });
     throw error;
   }
+}
+
+export async function createPersistentS3UploadConnection(
+  input: CreateS3UploadConnectionInput,
+  user: UserContext,
+): Promise<CreatePersistentConnectionResult> {
+  const normalizedPrefix = s3ScopeSecurity.normalizePrefix(input.prefix);
+  const normalizedBucket = String(input.bucket ?? "").trim();
+  const normalizedRoleArn = String(input.roleArn ?? "").trim();
+  const normalizedExternalId = String(input.externalId ?? "").trim();
+
+  const { assumeRoleResult, validationResult, session } = await createValidatedTemporarySession({
+    roleArn: normalizedRoleArn,
+    externalId: normalizedExternalId || null,
+    bucket: normalizedBucket,
+    prefix: normalizedPrefix,
+    user,
+  });
+
+  const now = new Date();
+  const [record] = await S3UploadConnection.findOrCreate({
+    where: {
+      tenantId: user.tenantId,
+      roleArn: normalizedRoleArn,
+      externalId: normalizedExternalId || null,
+      bucketName: normalizedBucket,
+      basePrefix: normalizedPrefix || null,
+    },
+    defaults: {
+      tenantId: user.tenantId,
+      createdBy: user.userId,
+      roleArn: normalizedRoleArn,
+      externalId: normalizedExternalId || null,
+      bucketName: normalizedBucket,
+      basePrefix: normalizedPrefix || null,
+      awsAccountId: assumeRoleResult.accountId,
+      assumedArn: assumeRoleResult.assumedArn,
+      resolvedRegion: validationResult.resolvedRegion,
+      lastValidatedAt: now,
+      status: "active",
+      createdAt: now,
+      updatedAt: now,
+    },
+  });
+
+  await record.update({
+    awsAccountId: assumeRoleResult.accountId,
+    assumedArn: assumeRoleResult.assumedArn,
+    resolvedRegion: validationResult.resolvedRegion,
+    lastValidatedAt: now,
+    status: "active",
+    updatedAt: now,
+  });
+
+  return {
+    connection: toConnectionSummary(record),
+    session: {
+      sessionId: session.sessionId,
+      bucket: session.bucket,
+      basePrefix: session.basePrefix,
+      expiresAt: session.expiresAt,
+      accountId: assumeRoleResult.accountId,
+      assumedArn: assumeRoleResult.assumedArn,
+    },
+  };
+}
+
+export async function listPersistentS3UploadConnections(user: UserContext): Promise<S3UploadConnectionSummary[]> {
+  const records = await S3UploadConnection.findAll({
+    where: {
+      tenantId: user.tenantId,
+      status: "active",
+    },
+    order: [["updatedAt", "DESC"]],
+  });
+
+  return records.map((record) => toConnectionSummary(record));
+}
+
+export async function createTemporaryS3UploadSessionFromConnection(
+  connectionId: string,
+  input: CreateS3UploadConnectionSessionInput,
+  user: UserContext,
+): Promise<CreateSessionResult> {
+  const normalizedConnectionId = String(connectionId ?? "").trim();
+  if (!normalizedConnectionId) {
+    throw new BadRequestError("connectionId is required");
+  }
+
+  const record = await S3UploadConnection.findOne({
+    where: {
+      id: normalizedConnectionId,
+      tenantId: user.tenantId,
+      status: "active",
+    },
+  });
+
+  if (!record) {
+    throw new BadRequestError("S3 connection not found");
+  }
+
+  const persistedBasePrefix = s3ScopeSecurity.normalizePrefix(String(record.basePrefix ?? ""));
+  const requestedPrefix = s3ScopeSecurity.normalizePrefix(input.prefix ?? "");
+  const sessionPrefix = requestedPrefix || persistedBasePrefix;
+
+  if (persistedBasePrefix && requestedPrefix && !s3ScopeSecurity.isKeyWithinScope(requestedPrefix, persistedBasePrefix)) {
+    throw new BadRequestError("Requested prefix is outside saved connection scope");
+  }
+
+  const { assumeRoleResult, validationResult, session } = await createValidatedTemporarySession({
+    roleArn: String(record.roleArn),
+    externalId: record.externalId ? String(record.externalId) : null,
+    bucket: String(record.bucketName),
+    prefix: sessionPrefix,
+    user,
+  });
+
+  await record.update({
+    awsAccountId: assumeRoleResult.accountId,
+    assumedArn: assumeRoleResult.assumedArn,
+    resolvedRegion: validationResult.resolvedRegion,
+    lastValidatedAt: new Date(),
+    updatedAt: new Date(),
+  });
+
+  return {
+    sessionId: session.sessionId,
+    bucket: session.bucket,
+    basePrefix: session.basePrefix,
+    expiresAt: session.expiresAt,
+    accountId: assumeRoleResult.accountId,
+    assumedArn: assumeRoleResult.assumedArn,
+  };
 }
 
 export async function listTemporaryS3UploadSessionScope(
@@ -405,11 +619,11 @@ export async function importFilesFromTemporaryS3UploadSession(
         sourceKey,
         destinationBucket: rawStorageBucket,
         destinationKey,
-        message: error instanceof Error ? error.message : String(error),
+        message: getErrorMessageWithReason(error),
       });
       failedKeys.push({
         key: sourceKey,
-        reason: error instanceof Error ? error.message : String(error),
+        reason: getErrorMessageWithReason(error),
       });
       continue;
     }
@@ -470,7 +684,7 @@ export async function importFilesFromTemporaryS3UploadSession(
 
       failedKeys.push({
         key: sourceKey,
-        reason: error instanceof Error ? error.message : String(error),
+        reason: getErrorMessageWithReason(error),
       });
       continue;
     }
@@ -529,7 +743,7 @@ export async function importFilesFromTemporaryS3UploadSession(
 
       failedKeys.push({
         key: sourceKey,
-        reason: error instanceof Error ? error.message : String(error),
+        reason: getErrorMessageWithReason(error),
       });
       continue;
     }

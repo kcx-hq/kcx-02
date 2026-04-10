@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react"
-import { Plus, Search } from "lucide-react"
+import { Cloud, Database, Hexagon, Orbit, Plus, Search } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -172,21 +172,37 @@ export function AddCloudConnectionSection({
                 }}
                 className="flex w-full items-center justify-between rounded-md border border-[color:var(--kcx-border-strong)] bg-[color:var(--highlight-green)] px-4 py-3 text-left transition-colors hover:bg-[#edf7f3]"
               >
-                <span className="font-medium text-text-primary">AWS</span>
+                <span className="inline-flex items-center gap-2 font-medium text-text-primary">
+                  <span className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-white/70 text-brand-primary">
+                    <Cloud className="h-4 w-4" />
+                  </span>
+                  AWS
+                </span>
                 <span className="text-xs font-semibold uppercase tracking-[0.08em] text-brand-primary">Active</span>
               </button>
 
-              {["Azure", "GCP", "Oracle"].map((provider) => (
+              {[
+                { name: "Azure", icon: Hexagon },
+                { name: "GCP", icon: Orbit },
+                { name: "Oracle", icon: Database },
+              ].map((provider) => {
+                const Icon = provider.icon
+                return (
                 <button
-                  key={provider}
+                  key={provider.name}
                   type="button"
                   disabled
                   className="flex w-full items-center justify-between rounded-md border border-[color:var(--border-light)] bg-[color:var(--bg-surface)] px-4 py-3 text-left opacity-70"
                 >
-                  <span className="font-medium text-text-primary">{provider}</span>
+                  <span className="inline-flex items-center gap-2 font-medium text-text-primary">
+                    <span className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-white text-text-muted">
+                      <Icon className="h-4 w-4" />
+                    </span>
+                    {provider.name}
+                  </span>
                   <span className="text-xs font-semibold uppercase tracking-[0.08em] text-text-muted">Coming soon</span>
                 </button>
-              ))}
+              )})}
             </div>
           </div>
         </DialogContent>

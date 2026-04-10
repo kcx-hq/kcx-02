@@ -18,6 +18,7 @@ const STATIC_ROUTES = [
   "/uploads-dashboard/anomalies-alerts",
   "/client/overview",
   "/client/billing",
+  "/client/billing/import-s3",
   "/client/billing/uploads",
   "/client/billing/connections",
   "/client/billing/connections/add",

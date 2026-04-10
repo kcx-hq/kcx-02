@@ -46,8 +46,44 @@ export type S3UploadImportResponse = {
   ingestionRunIds: string[]
 }
 
+export type S3UploadConnection = {
+  id: string
+  bucket: string
+  basePrefix: string
+  roleArn: string
+  externalId: string | null
+  awsAccountId: string | null
+  assumedArn: string | null
+  resolvedRegion: string | null
+  lastValidatedAt: string
+  createdAt: string | null
+  updatedAt: string | null
+}
+
+export type CreateS3UploadConnectionResponse = {
+  connection: S3UploadConnection
+  session: S3UploadSessionCreateResponse
+}
+
 export async function createS3UploadSession(payload: S3UploadSessionCreatePayload) {
   return apiPost<S3UploadSessionCreateResponse>("/billing/uploads/s3/session", payload)
+}
+
+export async function createPersistentS3UploadConnection(payload: S3UploadSessionCreatePayload) {
+  return apiPost<CreateS3UploadConnectionResponse>("/billing/uploads/s3/connections", payload)
+}
+
+export async function listPersistentS3UploadConnections() {
+  return apiGet<S3UploadConnection[]>("/billing/uploads/s3/connections")
+}
+
+export async function createS3UploadSessionFromConnection(params: {
+  connectionId: string
+  prefix?: string
+}) {
+  return apiPost<S3UploadSessionCreateResponse>(`/billing/uploads/s3/connections/${params.connectionId}/session`, {
+    prefix: params.prefix,
+  })
 }
 
 export async function listS3UploadSessionContents(params: {

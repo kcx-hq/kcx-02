@@ -137,6 +137,12 @@ Resources:
                       - !Sub ${ExportPrefix}/metadata/*
                       - !Sub ${ExportPrefix}/data/*
 
+              - Sid: GetExportBucketLocation
+                Effect: Allow
+                Action:
+                  - s3:GetBucketLocation
+                Resource: !GetAtt KCXExportBucket.Arn
+
               - Sid: ReadExportObjects
                 Effect: Allow
                 Action:

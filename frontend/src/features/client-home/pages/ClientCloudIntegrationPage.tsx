@@ -1,18 +1,17 @@
 import { useState, useMemo } from "react"
 
 import { AddCloudConnectionSection } from "@/features/client-home/components/billing/AddCloudConnectionSection"
-import { ManualBillingUploadDialog } from "@/features/client-home/components/ManualBillingUploadDialog"
 import { getCloudIntegrationDashboardScope } from "@/features/client-home/api/cloud-integrations.api"
 import { useTenantCloudIntegrations } from "@/features/client-home/hooks/useTenantCloudIntegrations"
 import { mapCloudIntegrationOverviewRow } from "@/features/client-home/components/billing/billingHelpers"
 import { ApiError } from "@/lib/api"
+import { navigateTo } from "@/lib/navigation"
 
 export function ClientCloudIntegrationPage() {
   const [cloudConnectionsSearch, setCloudConnectionsSearch] = useState("")
   const [dashboardActionLoading, setDashboardActionLoading] = useState(false)
   const [dashboardConnectionActionId, setDashboardConnectionActionId] = useState<string | null>(null)
   const [dashboardActionError, setDashboardActionError] = useState<string | null>(null)
-  const [s3UploadDialogOpen, setS3UploadDialogOpen] = useState(false)
 
   const {
     data: cloudIntegrationRows = [],
@@ -84,7 +83,7 @@ export function ClientCloudIntegrationPage() {
   return (
     <>
       <AddCloudConnectionSection
-        onOpenS3UploadModal={() => setS3UploadDialogOpen(true)}
+        onOpenS3UploadModal={() => navigateTo("/client/billing/import-s3")}
         cloudConnectionsSearch={cloudConnectionsSearch}
         onCloudConnectionsSearchChange={setCloudConnectionsSearch}
         cloudOverviewRows={cloudOverviewRows}
@@ -99,16 +98,6 @@ export function ClientCloudIntegrationPage() {
           void refetchCloudIntegrations()
         }}
         onOpenCloudConnectionDashboard={handleOpenCloudConnectionDashboard}
-      />
-
-      <ManualBillingUploadDialog
-        open={s3UploadDialogOpen}
-        onOpenChange={setS3UploadDialogOpen}
-        onIngestionQueued={() => {
-          // No-op: this page focuses on cloud integration management.
-        }}
-        initialSource="s3"
-        hideSourceTabs
       />
     </>
   )

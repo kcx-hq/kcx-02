@@ -83,6 +83,24 @@ const s3Client = new S3Client({
       : undefined,
 });
 
+const streamToBuffer = async (stream: Readable): Promise<Buffer> => {
+  const chunks: Buffer[] = [];
+  for await (const chunk of stream) {
+    if (Buffer.isBuffer(chunk)) {
+      chunks.push(chunk);
+      continue;
+    }
+
+    if (typeof chunk === "string") {
+      chunks.push(Buffer.from(chunk));
+      continue;
+    }
+
+    chunks.push(Buffer.from(chunk as Uint8Array));
+  }
+  return Buffer.concat(chunks);
+};
+
 const toKeySegment = (value: string): string => {
   const normalized = value.trim().toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
   return normalized.length > 0 ? normalized : "unknown";
@@ -164,16 +182,18 @@ export async function uploadStreamToS3({
   key,
   contentLength,
 }: UploadStreamToS3Params): Promise<void> {
+  const bufferedBody = await streamToBuffer(stream);
+
   try {
     await s3Client.send(
       new PutObjectCommand({
         Bucket: bucket,
         Key: key,
-        Body: stream,
+        Body: bufferedBody,
         ...(mimeType ? { ContentType: mimeType } : {}),
         ...(typeof contentLength === "number" && Number.isFinite(contentLength) && contentLength >= 0
           ? { ContentLength: Math.floor(contentLength) }
-          : {}),
+          : { ContentLength: bufferedBody.length }),
       }),
     );
   } catch (error) {

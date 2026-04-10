@@ -20,6 +20,7 @@ import createBillingIngestionRunModel from "./billing-ingestion-run.js";
 import createBillingIngestionRunFileModel from "./billing-ingestion-run-file.js";
 import createAnomalyDetectionRunModel from "./anomaly-detection-run.js";
 import createManualCloudConnectionModel from "./manual-cloud-connection.js";
+import createS3UploadConnectionModel from "./s3-upload-connection.js";
 import createDimBillingAccountModel from "./billing/dim_billing_account.js";
 import createDimSubAccountModel from "./billing/dim_sub_account.js";
 import createDimRegionModel from "./billing/dim_region.js";
@@ -82,6 +83,7 @@ const BillingIngestionRun = createBillingIngestionRunModel(sequelize);
 const BillingIngestionRunFile = createBillingIngestionRunFileModel(sequelize);
 const AnomalyDetectionRun = createAnomalyDetectionRunModel(sequelize);
 const ManualCloudConnection = createManualCloudConnectionModel(sequelize);
+const S3UploadConnection = createS3UploadConnectionModel(sequelize);
 const DimBillingAccount = createDimBillingAccountModel(sequelize);
 const DimSubAccount = createDimSubAccountModel(sequelize);
 const DimRegion = createDimRegionModel(sequelize);
@@ -159,6 +161,10 @@ Tenant.hasMany(ManualCloudConnection, { foreignKey: "tenantId" });
 ManualCloudConnection.belongsTo(Tenant, { foreignKey: "tenantId" });
 User.hasMany(ManualCloudConnection, { foreignKey: "createdBy" });
 ManualCloudConnection.belongsTo(User, { foreignKey: "createdBy" });
+Tenant.hasMany(S3UploadConnection, { foreignKey: "tenantId" });
+S3UploadConnection.belongsTo(Tenant, { foreignKey: "tenantId" });
+User.hasMany(S3UploadConnection, { foreignKey: "createdBy" });
+S3UploadConnection.belongsTo(User, { foreignKey: "createdBy" });
 Tenant.hasMany(DimBillingAccount, { foreignKey: "tenantId" });
 DimBillingAccount.belongsTo(Tenant, { foreignKey: "tenantId" });
 CloudProvider.hasMany(DimBillingAccount, { foreignKey: "providerId" });
@@ -378,6 +384,7 @@ export {
   BillingIngestionRunFile,
   AnomalyDetectionRun,
   ManualCloudConnection,
+  S3UploadConnection,
   DimBillingAccount,
   DimSubAccount,
   DimRegion,

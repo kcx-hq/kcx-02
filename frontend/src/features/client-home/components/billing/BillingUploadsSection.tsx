@@ -41,12 +41,12 @@ export function BillingUploadsSection({
   const latestFile = uploadHistoryRecords[0]?.fileName ?? "No uploads yet"
 
   return (
-    <div className="space-y-5">
-      <section className="rounded-xl border border-[color:var(--border-light)] bg-[linear-gradient(180deg,#ffffff_0%,#f7fbfa_100%)] p-5 shadow-sm-custom">
+    <section className="space-y-4">
+      <section className="rounded-xl border border-[color:var(--border-light)] bg-[linear-gradient(180deg,#ffffff_0%,#f7fbfa_100%)] p-5 shadow-sm-custom md:p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="space-y-2">
             <p className="kcx-eyebrow text-brand-primary">Billing Workspace</p>
-            <h1 className="text-2xl font-semibold tracking-tight text-text-primary">Upload Files</h1>
+            <h1 className="text-[2rem] font-semibold leading-tight text-text-primary">Upload Files</h1>
             <p className="max-w-3xl text-sm text-text-secondary">
               Upload CSV files from local storage or temporary S3 access, then launch dashboards from selected files.
             </p>
@@ -60,7 +60,7 @@ export function BillingUploadsSection({
               Status: {compactStatusLabel}
             </Badge>
             <Button className="h-10 rounded-md" onClick={onChooseSource}>
-              Choose Source
+              Upload File
             </Button>
           </div>
         </div>
@@ -116,6 +116,6 @@ export function BillingUploadsSection({
         onRetryUpload={onRetryUploadRecord}
         onOpenDashboard={onOpenDashboard}
       />
-    </div>
+    </section>
   )
 }
