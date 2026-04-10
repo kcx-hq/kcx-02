@@ -29,10 +29,14 @@ const mapToKey = (accountKey: number | null, regionKey: number | null): string =
 export async function enrichRightsizingRecommendations({
   tenantId,
   providerId,
+  cloudConnectionId,
+  billingSourceId,
   normalizedRecords,
 }: {
   tenantId: string;
   providerId: string;
+  cloudConnectionId: string;
+  billingSourceId?: string | number | null;
   normalizedRecords: NormalizedRightsizingRecommendation[];
 }): Promise<EnrichedRightsizingRecommendation[]> {
   if (normalizedRecords.length === 0) {
@@ -122,11 +126,20 @@ export async function enrichRightsizingRecommendations({
               AND acd.service_key = $2
               AND acd.sub_account_key = ANY($3::bigint[])
               AND acd.region_key = ANY($4::bigint[])
+              AND ($5::bigint IS NULL OR acd.billing_source_id = $5::bigint)
               AND acd.usage_date >= CURRENT_DATE - INTERVAL '30 days'
             GROUP BY acd.sub_account_key, acd.region_key;
           `,
           {
-            bind: [tenantId, serviceKey, subAccountKeys, regionKeys],
+            bind: [
+              tenantId,
+              serviceKey,
+              subAccountKeys,
+              regionKeys,
+              billingSourceId === null || typeof billingSourceId === "undefined"
+                ? null
+                : Number(billingSourceId),
+            ],
             type: QueryTypes.SELECT,
           },
         )
@@ -156,6 +169,8 @@ export async function enrichRightsizingRecommendations({
 
     return {
       ...record,
+      cloudConnectionId,
+      billingSourceId: billingSourceId ?? null,
       serviceKey,
       subAccountKey,
       regionKey,
@@ -164,4 +179,3 @@ export async function enrichRightsizingRecommendations({
     };
   });
 }
-

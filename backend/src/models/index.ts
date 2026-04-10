@@ -7,9 +7,11 @@ import createDemoRequestModel from "./demo-request.js";
 import createPasswordResetTokenModel from "./password-reset-token.js";
 import createSlotReservationModel from "./slot-reservation.js";
 import createAdminUserModel from "./admin-user.js";
+import createAnnouncementModel from "./announcement.js";
 import createCloudConnectionV2Model from "./cloud-connection-v2.js";
 import createCloudProviderModel from "./cloud-provider.js";
 import createCloudIntegrationModel from "./cloud-integration.js";
+import createClientCloudAccountModel from "./client-cloud-account.js";
 import createTenantModel from "./tenant.js";
 import createUserModel from "./user.js";
 import createRawBillingFileModel from "./raw-billing-file.js";
@@ -66,10 +68,12 @@ const DemoRequest = createDemoRequestModel(sequelize);
 const PasswordResetToken = createPasswordResetTokenModel(sequelize);
 const AuthSession = createAuthSessionModel(sequelize);
 const AdminUser = createAdminUserModel(sequelize);
+const Announcement = createAnnouncementModel(sequelize);
 const AdminAuthSession = createAdminAuthSessionModel(sequelize);
 const SlotReservation = createSlotReservationModel(sequelize);
 const CloudProvider = createCloudProviderModel(sequelize);
 const CloudIntegration = createCloudIntegrationModel(sequelize);
+const ClientCloudAccount = createClientCloudAccountModel(sequelize);
 const CloudConnectionV2 = createCloudConnectionV2Model(sequelize);
 const Tenant = createTenantModel(sequelize);
 const RawBillingFile = createRawBillingFileModel(sequelize);
@@ -127,6 +131,12 @@ CloudProvider.hasMany(CloudIntegration, { foreignKey: "providerId" });
 CloudIntegration.belongsTo(CloudProvider, { foreignKey: "providerId" });
 User.hasMany(CloudIntegration, { foreignKey: "createdBy" });
 CloudIntegration.belongsTo(User, { foreignKey: "createdBy" });
+Tenant.hasMany(ClientCloudAccount, { foreignKey: "tenantId" });
+ClientCloudAccount.belongsTo(Tenant, { foreignKey: "tenantId" });
+CloudProvider.hasMany(ClientCloudAccount, { foreignKey: "providerId" });
+ClientCloudAccount.belongsTo(CloudProvider, { foreignKey: "providerId" });
+CloudConnectionV2.hasMany(ClientCloudAccount, { foreignKey: "cloudConnectionId" });
+ClientCloudAccount.belongsTo(CloudConnectionV2, { foreignKey: "cloudConnectionId" });
 CloudProvider.hasMany(BillingSource, { foreignKey: "cloudProviderId" });
 BillingSource.belongsTo(CloudProvider, { foreignKey: "cloudProviderId" });
 BillingSource.hasMany(RawBillingFile, { foreignKey: "billingSourceId" });
@@ -335,6 +345,8 @@ BudgetAlerts.belongsTo(Budgets, { foreignKey: "budgetId" });
 
 AdminUser.hasMany(AdminAuthSession, { foreignKey: "adminUserId" });
 AdminAuthSession.belongsTo(AdminUser, { foreignKey: "adminUserId" });
+AdminUser.hasMany(Announcement, { foreignKey: "createdByAdminId" });
+Announcement.belongsTo(AdminUser, { foreignKey: "createdByAdminId" });
 
 Tenant.hasMany(User, { foreignKey: "tenantId" });
 User.belongsTo(Tenant, { foreignKey: "tenantId" });
@@ -349,9 +361,11 @@ export {
   PasswordResetToken,
   AuthSession,
   AdminUser,
+  Announcement,
   AdminAuthSession,
   CloudProvider,
   CloudIntegration,
+  ClientCloudAccount,
   CloudConnectionV2,
   Tenant,
   RawBillingFile,

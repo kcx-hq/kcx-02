@@ -107,6 +107,13 @@ Resources:
                   - sts:GetCallerIdentity
                   - ec2:DescribeRegions
                   - ec2:DescribeInstances
+                  - ec2:DescribeVolumes
+                  - ec2:DescribeAddresses
+                  - ec2:DescribeSnapshots
+                  - elasticloadbalancing:DescribeLoadBalancers
+                  - cloudwatch:GetMetricData
+                  - cloudwatch:GetMetricStatistics
+                  - ec2:DescribeInstances
                   - ec2:DescribeTags
                   - compute-optimizer:GetEC2InstanceRecommendations
                   - compute-optimizer:GetEnrollmentStatus
@@ -114,6 +121,7 @@ Resources:
                   - cloudwatch:GetMetricStatistics
                   - cloudwatch:ListMetrics
                   - tag:GetResources
+                  - compute-optimizer:UpdateEnrollmentStatus
                 Resource: "*"
 
               - Sid: ListExportBucket

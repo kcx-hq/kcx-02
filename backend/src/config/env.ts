@@ -122,6 +122,18 @@ const env = {
     optionalPositiveInteger(process.env.BILLING_INGESTION_STATUS_MIN_INTERVAL_MS) ?? 2000,
   billingS3UploadSessionTtlMinutes:
     optionalPositiveInteger(process.env.BILLING_S3_UPLOAD_SESSION_TTL_MINUTES) ?? 45,
+  optimizationIdleSchedulerEnabled:
+    optionalBoolean(process.env.OPTIMIZATION_IDLE_SCHEDULER_ENABLED) ?? true,
+  optimizationIdleSyncIntervalMs:
+    optionalPositiveInteger(process.env.OPTIMIZATION_IDLE_SYNC_INTERVAL_MS) ?? 180 * 60 * 1000,
+  optimizationIdleSchedulerStartupDelayMs:
+    optionalPositiveInteger(process.env.OPTIMIZATION_IDLE_SCHEDULER_STARTUP_DELAY_MS) ?? 30_000,
+  optimizationRightsizingSchedulerEnabled:
+    optionalBoolean(process.env.OPTIMIZATION_RIGHTSIZING_SCHEDULER_ENABLED) ?? true,
+  optimizationRightsizingSyncIntervalMs:
+    optionalPositiveInteger(process.env.OPTIMIZATION_RIGHTSIZING_SYNC_INTERVAL_MS) ?? 180 * 60 * 1000,
+  optimizationRightsizingSchedulerStartupDelayMs:
+    optionalPositiveInteger(process.env.OPTIMIZATION_RIGHTSIZING_SCHEDULER_STARTUP_DELAY_MS) ?? 30_000,
 };
 
 export default env;

@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes } from "react-router-dom"
 
 import { AdminShell } from "@/layout/AdminShell"
+import { AnnouncementsPage } from "@/modules/announcements/pages/AnnouncementsPage"
 import { BillingUploadsPage } from "@/modules/billing-uploads/pages/BillingUploadsPage"
 import { RequireAdminAuth } from "@/modules/auth/components/RequireAdminAuth"
 import { AdminLoginPage } from "@/modules/auth/pages/AdminLoginPage"
@@ -24,7 +25,7 @@ export function AppRoutes() {
           <Route path="/billing-uploads" element={<BillingUploadsPage />} />
           <Route path="/scheduled-meeting" element={<DemoRequestsPage />} />
           <Route path="/issue-management" element={<SectionPage title="Issue Management" />} />
-          <Route path="/announcement" element={<SectionPage title="Announcements" />} />
+          <Route path="/announcement" element={<AnnouncementsPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Route>

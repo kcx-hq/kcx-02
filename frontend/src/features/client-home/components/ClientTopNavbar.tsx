@@ -6,6 +6,7 @@ import { clearAuthSession } from "@/lib/auth"
 import { handleAppLinkClick, navigateTo, useCurrentRoute } from "@/lib/navigation"
 import { cn } from "@/lib/utils"
 import { Bell, ChevronDown, LifeBuoy, LogOut, Megaphone, User, UserCircle2 } from "lucide-react"
+import { useClientAnnouncements } from "@/features/client-home/hooks/useClientAnnouncements"
 
 const NAV_ITEMS = [
   { label: "Billing", href: "/client/billing", matches: ["/client/billing", "/client/billing/uploads", "/client/billing/connect-cloud", "/client/billing/connect-cloud/aws", "/client/billing/connect-cloud/aws/automatic", "/client/billing/connect-cloud/aws/manual", "/client/billing/connect-cloud/aws/manual/success"] },
@@ -46,18 +47,25 @@ export function ClientTopNavbar({
 }: ClientTopNavbarProps) {
   const route = useCurrentRoute()
   const [menuOpen, setMenuOpen] = useState(false)
+  const [announcementsOpen, setAnnouncementsOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
+  const announcementsRef = useRef<HTMLDivElement>(null)
+  const { data: announcements = [], isLoading: isAnnouncementsLoading, isError: announcementsError } = useClientAnnouncements(announcementsOpen)
 
   useEffect(() => {
     function onPointerDown(event: MouseEvent) {
       if (!menuRef.current?.contains(event.target as Node)) {
         setMenuOpen(false)
       }
+      if (!announcementsRef.current?.contains(event.target as Node)) {
+        setAnnouncementsOpen(false)
+      }
     }
 
     function onEscape(event: KeyboardEvent) {
       if (event.key === "Escape") {
         setMenuOpen(false)
+        setAnnouncementsOpen(false)
       }
     }
 
@@ -71,6 +79,7 @@ export function ClientTopNavbar({
 
   useEffect(() => {
     setMenuOpen(false)
+    setAnnouncementsOpen(false)
   }, [route])
 
   const roleLabel = toRoleLabel(userRole)
@@ -80,6 +89,13 @@ export function ClientTopNavbar({
   function handleLogout() {
     clearAuthSession()
     navigateTo("/login", { replace: true })
+  }
+
+  function formatAnnouncementTime(iso: string | null) {
+    if (!iso) return "Recently updated"
+    const date = new Date(iso)
+    if (Number.isNaN(date.getTime())) return "Recently updated"
+    return new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeStyle: "short" }).format(date)
   }
 
   return (
@@ -136,15 +152,70 @@ export function ClientTopNavbar({
             </Button>
             <HeaderIconTooltip label="KCX Help" />
           </div>
-          <div className="group relative hidden xl:block">
-            <Button
-              variant="ghost"
-              aria-label="Announcements"
-              className={navIconButtonClass}
-            >
-              <Megaphone className="h-3.5 w-3.5" />
-            </Button>
-            <HeaderIconTooltip label="Announcements" />
+          <div className="relative hidden xl:block" ref={announcementsRef}>
+            <div className="group relative">
+              <Button
+                variant="ghost"
+                aria-label="Announcements"
+                onClick={() => {
+                  setAnnouncementsOpen((open) => !open)
+                  setMenuOpen(false)
+                }}
+                className={cn(navIconButtonClass, announcementsOpen ? "bg-[rgba(158,191,178,0.2)] text-white" : "")}
+              >
+                <Megaphone className="h-3.5 w-3.5" />
+                {announcements.length > 0 ? (
+                  <span className="ml-1 inline-flex min-w-[1.1rem] items-center justify-center rounded-full bg-[rgba(124,198,170,0.22)] px-1.5 py-0.5 text-[10px] font-semibold leading-none text-[rgba(229,245,238,0.95)]">
+                    {announcements.length}
+                  </span>
+                ) : null}
+              </Button>
+              {!announcementsOpen ? <HeaderIconTooltip label="Announcements" /> : null}
+            </div>
+
+            {announcementsOpen ? (
+              <div className="absolute right-0 top-12 z-50 w-[360px] rounded-md border border-[rgba(163,189,179,0.38)] bg-[rgba(17,28,29,0.97)] p-3 shadow-[0_16px_36px_rgba(5,11,11,0.35)] backdrop-blur-md">
+                <div className="mb-2 flex items-center justify-between">
+                  <p className="text-sm font-semibold text-[rgba(242,248,246,0.94)]">Announcements</p>
+                  <span className="text-xs text-[rgba(201,220,212,0.78)]">{announcements.length} active</span>
+                </div>
+
+                {isAnnouncementsLoading ? (
+                  <div className="rounded-md border border-[rgba(163,189,179,0.22)] bg-[rgba(221,236,230,0.04)] p-3 text-sm text-[rgba(213,228,221,0.82)]">
+                    Loading announcements...
+                  </div>
+                ) : null}
+
+                {!isAnnouncementsLoading && announcementsError ? (
+                  <div className="rounded-md border border-[rgba(240,133,133,0.32)] bg-[rgba(255,132,132,0.09)] p-3 text-sm text-[rgba(255,220,220,0.94)]">
+                    Could not load announcements right now.
+                  </div>
+                ) : null}
+
+                {!isAnnouncementsLoading && !announcementsError && announcements.length === 0 ? (
+                  <div className="rounded-md border border-[rgba(163,189,179,0.22)] bg-[rgba(221,236,230,0.04)] p-3 text-sm text-[rgba(213,228,221,0.82)]">
+                    No active announcements.
+                  </div>
+                ) : null}
+
+                {!isAnnouncementsLoading && !announcementsError && announcements.length > 0 ? (
+                  <div className="max-h-[320px] space-y-2 overflow-auto pr-1">
+                    {announcements.map((announcement) => (
+                      <div
+                        key={announcement.id}
+                        className="rounded-md border border-[rgba(163,189,179,0.25)] bg-[rgba(221,236,230,0.06)] p-3"
+                      >
+                        <p className="text-sm font-semibold text-[rgba(242,248,246,0.94)]">{announcement.title}</p>
+                        <p className="mt-1 text-xs leading-5 text-[rgba(213,228,221,0.82)]">{announcement.body}</p>
+                        <p className="mt-2 text-[11px] text-[rgba(189,211,201,0.74)]">
+                          {formatAnnouncementTime(announcement.publishAt ?? announcement.updatedAt)}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
           </div>
           <div className="group relative">
             <Button
@@ -161,7 +232,10 @@ export function ClientTopNavbar({
             <div className="group relative">
               <Button
                 variant="ghost"
-                onClick={() => setMenuOpen((open) => !open)}
+                onClick={() => {
+                  setMenuOpen((open) => !open)
+                  setAnnouncementsOpen(false)
+                }}
                 aria-label="User Menu"
                 className={cn(
                   "h-10 rounded-md border border-[rgba(164,192,181,0.3)] bg-[rgba(13,24,28,0.46)] px-2 text-[rgba(228,240,235,0.9)] hover:bg-[rgba(158,191,178,0.16)] hover:text-white",

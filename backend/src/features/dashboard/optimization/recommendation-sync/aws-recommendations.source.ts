@@ -1,6 +1,9 @@
 import { BillingSource, CloudConnectionV2, CloudProvider } from "../../../../models/index.js";
 import { assumeRole } from "../../../cloud-connections/aws/infrastructure/aws-sts.service.js";
-import type { AwsComputeOptimizerEc2RecommendationInput } from "./types.js";
+import type {
+  AwsComputeOptimizerEc2RecommendationInput,
+  AwsIdleResourceRecommendationInput,
+} from "./types.js";
 
 type ResolveAwsSyncContextResult =
   | {
@@ -91,11 +94,11 @@ export async function fetchAwsEc2RightsizingRecommendationsFromComputeOptimizer(
   reason: string;
   recommendations: AwsComputeOptimizerEc2RecommendationInput[];
 }> {
-  const roleArn = String(connection.actionRoleArn ?? connection.billingRoleArn ?? "").trim();
+  const roleArn = String(connection.billingRoleArn ?? "").trim();
   if (!roleArn) {
     return {
       skipped: true,
-      reason: "Cloud connection action/billing role ARN is missing",
+      reason: "Cloud connection billing role ARN is missing",
       recommendations: [],
     };
   }
@@ -131,6 +134,9 @@ export async function fetchAwsEc2RightsizingRecommendationsFromComputeOptimizer(
     computeOptimizerSdk.GetEC2InstanceRecommendationsCommand as
       | (new (args: Record<string, unknown>) => unknown)
       | undefined;
+  const GetEnrollmentStatusCommand = computeOptimizerSdk.GetEnrollmentStatusCommand as
+    | (new (args: Record<string, unknown>) => unknown)
+    | undefined;
 
   if (!ComputeOptimizerClient || !GetEC2InstanceRecommendationsCommand) {
     return {
@@ -147,6 +153,31 @@ export async function fetchAwsEc2RightsizingRecommendationsFromComputeOptimizer(
     region,
     credentials,
   });
+
+  if (GetEnrollmentStatusCommand) {
+    try {
+      const enrollmentResponse = (await client.send(new GetEnrollmentStatusCommand({}))) as {
+        status?: unknown;
+      };
+      const enrollmentStatus = String(enrollmentResponse?.status ?? "")
+        .trim()
+        .toLowerCase();
+      if (enrollmentStatus && enrollmentStatus !== "active") {
+        return {
+          skipped: true,
+          reason: `Compute Optimizer enrollment status is ${enrollmentStatus} (region ${region}). Activate Compute Optimizer for this AWS account/region.`,
+          recommendations: [],
+        };
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return {
+        skipped: true,
+        reason: `Unable to check Compute Optimizer enrollment: ${message}`,
+        recommendations: [],
+      };
+    }
+  }
 
   const allRecommendations: AwsComputeOptimizerEc2RecommendationInput[] = [];
   let nextToken: string | undefined;
@@ -206,7 +237,34 @@ export async function fetchAwsEc2RightsizingRecommendationsFromComputeOptimizer(
       ...(nextToken ? { nextToken } : {}),
     });
 
-    const response = await client.send(command);
+    let response: { instanceRecommendations?: unknown[]; nextToken?: string };
+    try {
+      response = await client.send(command);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const normalized = message.toLowerCase();
+      if (
+        normalized.includes("not registered for recommendation") ||
+        normalized.includes("not enrolled") ||
+        normalized.includes("getec2instancerecommendations")
+      ) {
+        return {
+          skipped: true,
+          reason: `AWS account is not enrolled/registered for Compute Optimizer recommendations (region ${region}).`,
+          recommendations: [],
+        };
+      }
+
+      if (normalized.includes("accessdenied") || normalized.includes("not authorized")) {
+        return {
+          skipped: true,
+          reason: `Permission denied while fetching Compute Optimizer recommendations: ${message}`,
+          recommendations: [],
+        };
+      }
+
+      throw error;
+    }
     const instanceRecommendations = Array.isArray(response.instanceRecommendations)
       ? response.instanceRecommendations
       : [];
@@ -285,5 +343,494 @@ export async function fetchAwsEc2RightsizingRecommendationsFromComputeOptimizer(
     skipped: false,
     reason: allRecommendations.length > 0 ? "Fetched from AWS Compute Optimizer" : "No EC2 recommendations returned",
     recommendations: allRecommendations,
+  };
+}
+
+const IDLE_LOOKBACK_DAYS = 7;
+const SNAPSHOT_AGE_THRESHOLD_DAYS = 90;
+
+const toIso = (value: Date | null): string | null => (value ? value.toISOString() : null);
+
+const parseRoleRegion = (connection: InstanceType<typeof CloudConnectionV2>): string =>
+  String(connection.exportRegion ?? connection.region ?? "us-east-1").trim() || "us-east-1";
+
+const parseAccountIdFromRoleArn = (roleArn: string): string | null => {
+  const parts = String(roleArn ?? "").split(":");
+  if (parts.length < 5) return null;
+  const accountId = String(parts[4] ?? "").trim();
+  return accountId.length > 0 ? accountId : null;
+};
+
+const getDateDaysAgo = (daysAgo: number): Date => new Date(Date.now() - daysAgo * 24 * 60 * 60 * 1000);
+
+const normalizeLbDimension = (arn: string): string | null => {
+  const marker = "loadbalancer/";
+  const index = arn.indexOf(marker);
+  if (index === -1) return null;
+  const value = arn.slice(index + marker.length).trim();
+  return value.length > 0 ? value : null;
+};
+
+const toMetricStat = ({
+  namespace,
+  metricName,
+  lbDimension,
+  periodSeconds,
+}: {
+  namespace: string;
+  metricName: string;
+  lbDimension: string;
+  periodSeconds: number;
+}) => ({
+  Metric: {
+    Namespace: namespace,
+    MetricName: metricName,
+    Dimensions: [
+      {
+        Name: "LoadBalancer",
+        Value: lbDimension,
+      },
+    ],
+  },
+  Period: periodSeconds,
+  Stat: "Sum",
+});
+
+const sumMetricValues = (values: unknown): number => {
+  if (!Array.isArray(values)) return 0;
+  return values.reduce((acc, value) => {
+    if (typeof value === "number" && Number.isFinite(value)) return acc + value;
+    if (typeof value === "string") {
+      const parsed = Number(value);
+      return Number.isFinite(parsed) ? acc + parsed : acc;
+    }
+    return acc;
+  }, 0);
+};
+
+export async function fetchAwsIdleRecommendations({
+  connection,
+}: {
+  connection: InstanceType<typeof CloudConnectionV2>;
+}): Promise<{
+  skipped: boolean;
+  reason: string;
+  recommendations: AwsIdleResourceRecommendationInput[];
+}> {
+  const roleArn = String(connection.billingRoleArn ?? "").trim();
+  if (!roleArn) {
+    return {
+      skipped: true,
+      reason: "Cloud connection billing role ARN is missing",
+      recommendations: [],
+    };
+  }
+
+  let ec2Sdk: Record<string, unknown>;
+  let cloudwatchSdk: Record<string, unknown>;
+  let elbV2Sdk: Record<string, unknown>;
+  try {
+    ec2Sdk = (await import("@aws-sdk/client-ec2")) as Record<string, unknown>;
+  } catch {
+    return {
+      skipped: true,
+      reason: "Missing dependency @aws-sdk/client-ec2",
+      recommendations: [],
+    };
+  }
+  try {
+    cloudwatchSdk = (await import("@aws-sdk/client-cloudwatch")) as Record<string, unknown>;
+  } catch {
+    return {
+      skipped: true,
+      reason: "Missing dependency @aws-sdk/client-cloudwatch",
+      recommendations: [],
+    };
+  }
+  try {
+    elbV2Sdk = (await import("@aws-sdk/client-elastic-load-balancing-v2")) as Record<string, unknown>;
+  } catch {
+    return {
+      skipped: true,
+      reason: "Missing dependency @aws-sdk/client-elastic-load-balancing-v2",
+      recommendations: [],
+    };
+  }
+
+  const EC2Client = ec2Sdk.EC2Client as
+    | (new (args: {
+        region: string;
+        credentials: {
+          accessKeyId: string;
+          secretAccessKey: string;
+          sessionToken: string;
+        };
+      }) => {
+        send: (command: unknown) => Promise<Record<string, unknown>>;
+      })
+    | undefined;
+  const DescribeRegionsCommand = ec2Sdk.DescribeRegionsCommand as
+    | (new (args: Record<string, unknown>) => unknown)
+    | undefined;
+  const DescribeVolumesCommand = ec2Sdk.DescribeVolumesCommand as
+    | (new (args: Record<string, unknown>) => unknown)
+    | undefined;
+  const DescribeAddressesCommand = ec2Sdk.DescribeAddressesCommand as
+    | (new (args: Record<string, unknown>) => unknown)
+    | undefined;
+  const DescribeSnapshotsCommand = ec2Sdk.DescribeSnapshotsCommand as
+    | (new (args: Record<string, unknown>) => unknown)
+    | undefined;
+
+  const CloudWatchClient = cloudwatchSdk.CloudWatchClient as
+    | (new (args: {
+        region: string;
+        credentials: {
+          accessKeyId: string;
+          secretAccessKey: string;
+          sessionToken: string;
+        };
+      }) => {
+        send: (command: unknown) => Promise<Record<string, unknown>>;
+      })
+    | undefined;
+  const GetMetricDataCommand = cloudwatchSdk.GetMetricDataCommand as
+    | (new (args: Record<string, unknown>) => unknown)
+    | undefined;
+
+  const ElasticLoadBalancingV2Client = elbV2Sdk.ElasticLoadBalancingV2Client as
+    | (new (args: {
+        region: string;
+        credentials: {
+          accessKeyId: string;
+          secretAccessKey: string;
+          sessionToken: string;
+        };
+      }) => {
+        send: (command: unknown) => Promise<Record<string, unknown>>;
+      })
+    | undefined;
+  const DescribeLoadBalancersCommand = elbV2Sdk.DescribeLoadBalancersCommand as
+    | (new (args: Record<string, unknown>) => unknown)
+    | undefined;
+
+  if (
+    !EC2Client ||
+    !DescribeRegionsCommand ||
+    !DescribeVolumesCommand ||
+    !DescribeAddressesCommand ||
+    !DescribeSnapshotsCommand ||
+    !CloudWatchClient ||
+    !GetMetricDataCommand ||
+    !ElasticLoadBalancingV2Client ||
+    !DescribeLoadBalancersCommand
+  ) {
+    return {
+      skipped: true,
+      reason: "Idle recommendation SDK symbols not available",
+      recommendations: [],
+    };
+  }
+
+  const credentials = await assumeRole(roleArn, connection.externalId ?? null);
+  const accountId =
+    String(connection.cloudAccountId ?? "").trim() || parseAccountIdFromRoleArn(roleArn) || "";
+  const defaultRegion = parseRoleRegion(connection);
+  const regionDiscoveryClient = new EC2Client({
+    region: defaultRegion,
+    credentials,
+  });
+
+  let enabledRegions: string[] = [];
+  try {
+    const regionResponse = await regionDiscoveryClient.send(new DescribeRegionsCommand({ AllRegions: true }));
+    const rows = Array.isArray(regionResponse.Regions) ? regionResponse.Regions : [];
+    enabledRegions = rows
+      .map((row) => row as Record<string, unknown>)
+      .filter((row) => {
+        const optInStatus = String(row.OptInStatus ?? "")
+          .trim()
+          .toLowerCase();
+        return !optInStatus || optInStatus === "opt-in-not-required" || optInStatus === "opted-in";
+      })
+      .map((row) => String(row.RegionName ?? "").trim())
+      .filter((item) => item.length > 0);
+  } catch {
+    enabledRegions = [defaultRegion];
+  }
+
+  if (enabledRegions.length === 0) {
+    enabledRegions = [defaultRegion];
+  }
+
+  const recommendations: AwsIdleResourceRecommendationInput[] = [];
+  const observationStart = getDateDaysAgo(IDLE_LOOKBACK_DAYS);
+  const observationEnd = new Date();
+  const staleBefore = getDateDaysAgo(SNAPSHOT_AGE_THRESHOLD_DAYS);
+  const staleBeforeIsoDate = staleBefore.toISOString().slice(0, 10);
+
+  const fetchVolumesAndEipsAndSnapshots = async (region: string): Promise<void> => {
+    const ec2Client = new EC2Client({
+      region,
+      credentials,
+    });
+
+    let volumeToken: string | undefined;
+    do {
+      const response = await ec2Client.send(
+        new DescribeVolumesCommand({
+          MaxResults: 500,
+          ...(volumeToken ? { NextToken: volumeToken } : {}),
+        }),
+      );
+      const volumes = Array.isArray(response.Volumes) ? response.Volumes : [];
+      for (const row of volumes) {
+        const volume = row as Record<string, unknown>;
+        const volumeId = String(volume.VolumeId ?? "").trim();
+        if (!volumeId) continue;
+        const state = String(volume.State ?? "").trim().toLowerCase();
+        const attachments = Array.isArray(volume.Attachments) ? volume.Attachments : [];
+        if (state === "available" && attachments.length === 0) {
+          const volumeType = String(volume.VolumeType ?? "").trim() || null;
+          const size = typeof volume.Size === "number" ? volume.Size : null;
+          const text = size !== null
+            ? `Unattached EBS volume (${size} GiB) has no active attachments`
+            : "Unattached EBS volume has no active attachments";
+          recommendations.push({
+            accountId,
+            region,
+            recommendationType: "DELETE_EBS",
+            resourceId: volumeId,
+            resourceArn: null,
+            resourceName: volumeId,
+            resourceType: "EBS",
+            currentResourceType: volumeType,
+            idleReason: "NOT_ATTACHED",
+            idleObservationValue: text,
+            estimatedMonthlySavings: 0,
+            recommendationTitle: "Delete unused EBS volume",
+            recommendationText: `Volume ${volumeId} is available and not attached to an instance`,
+            effortLevel: "LOW",
+            riskLevel: "LOW",
+            observationStart,
+            observationEnd,
+            rawPayload: volume,
+          });
+        }
+      }
+      volumeToken =
+        typeof response.NextToken === "string" && response.NextToken.trim()
+          ? response.NextToken
+          : undefined;
+    } while (volumeToken);
+
+    const addressResponse = await ec2Client.send(new DescribeAddressesCommand({}));
+    const addresses = Array.isArray(addressResponse.Addresses) ? addressResponse.Addresses : [];
+    for (const row of addresses) {
+      const address = row as Record<string, unknown>;
+      const associationId = String(address.AssociationId ?? "").trim();
+      const instanceId = String(address.InstanceId ?? "").trim();
+      const networkInterfaceId = String(address.NetworkInterfaceId ?? "").trim();
+      if (!associationId && !instanceId && !networkInterfaceId) {
+        const allocationId = String(address.AllocationId ?? "").trim();
+        const publicIp = String(address.PublicIp ?? "").trim();
+        const resourceId = allocationId || publicIp;
+        if (!resourceId) continue;
+        recommendations.push({
+          accountId,
+          region,
+          recommendationType: "RELEASE_EIP",
+          resourceId,
+          resourceArn: null,
+          resourceName: publicIp || allocationId || null,
+          resourceType: "EIP",
+          currentResourceType: "VPC",
+          idleReason: "NO_ASSOCIATION",
+          idleObservationValue: "Elastic IP is not associated with an instance or network interface",
+          estimatedMonthlySavings: 0,
+          recommendationTitle: "Release unused Elastic IP",
+          recommendationText: `Elastic IP ${resourceId} appears unassociated`,
+          effortLevel: "LOW",
+          riskLevel: "LOW",
+          observationStart,
+          observationEnd,
+          rawPayload: address,
+        });
+      }
+    }
+
+    let snapshotToken: string | undefined;
+    do {
+      const response = await ec2Client.send(
+        new DescribeSnapshotsCommand({
+          OwnerIds: ["self"],
+          MaxResults: 1000,
+          ...(snapshotToken ? { NextToken: snapshotToken } : {}),
+        }),
+      );
+      const snapshots = Array.isArray(response.Snapshots) ? response.Snapshots : [];
+      for (const row of snapshots) {
+        const snapshot = row as Record<string, unknown>;
+        const snapshotId = String(snapshot.SnapshotId ?? "").trim();
+        if (!snapshotId) continue;
+        const startTimeRaw = snapshot.StartTime;
+        const startTime =
+          startTimeRaw instanceof Date
+            ? startTimeRaw
+            : startTimeRaw
+              ? new Date(String(startTimeRaw))
+              : null;
+        if (!startTime || Number.isNaN(startTime.getTime())) continue;
+        if (startTime > staleBefore) continue;
+        const volumeSize = typeof snapshot.VolumeSize === "number" ? snapshot.VolumeSize : null;
+        recommendations.push({
+          accountId,
+          region,
+          recommendationType: "DELETE_SNAPSHOT",
+          resourceId: snapshotId,
+          resourceArn: null,
+          resourceName: snapshotId,
+          resourceType: "SNAPSHOT",
+          currentResourceType: "EBS_SNAPSHOT",
+          idleReason: "AGE_GT_90D",
+          idleObservationValue: `Snapshot start time ${startTime.toISOString()} is older than ${staleBeforeIsoDate}`,
+          estimatedMonthlySavings: 0,
+          recommendationTitle: "Delete or archive old snapshot",
+          recommendationText:
+            volumeSize !== null
+              ? `Snapshot ${snapshotId} (${volumeSize} GiB) is older than ${SNAPSHOT_AGE_THRESHOLD_DAYS} days`
+              : `Snapshot ${snapshotId} is older than ${SNAPSHOT_AGE_THRESHOLD_DAYS} days`,
+          effortLevel: "LOW",
+          riskLevel: "MEDIUM",
+          observationStart: startTime,
+          observationEnd,
+          rawPayload: snapshot,
+        });
+      }
+      snapshotToken =
+        typeof response.NextToken === "string" && response.NextToken.trim()
+          ? response.NextToken
+          : undefined;
+    } while (snapshotToken);
+  };
+
+  const fetchIdleLoadBalancers = async (region: string): Promise<void> => {
+    const lbClient = new ElasticLoadBalancingV2Client({
+      region,
+      credentials,
+    });
+    const cloudwatchClient = new CloudWatchClient({
+      region,
+      credentials,
+    });
+
+    let lbToken: string | undefined;
+    do {
+      const response = await lbClient.send(
+        new DescribeLoadBalancersCommand({
+          PageSize: 400,
+          ...(lbToken ? { Marker: lbToken } : {}),
+        }),
+      );
+      const loadBalancers = Array.isArray(response.LoadBalancers) ? response.LoadBalancers : [];
+
+      for (const row of loadBalancers) {
+        const lb = row as Record<string, unknown>;
+        const lbArn = String(lb.LoadBalancerArn ?? "").trim();
+        if (!lbArn) continue;
+        const lbName = String(lb.LoadBalancerName ?? "").trim() || null;
+        const lbType = String(lb.Type ?? "").trim().toLowerCase();
+        const lbDimension = normalizeLbDimension(lbArn);
+        if (!lbDimension) continue;
+
+        const metricNamespace = lbType === "network" ? "AWS/NetworkELB" : "AWS/ApplicationELB";
+        const metricName = lbType === "network" ? "ProcessedBytes" : "RequestCount";
+        const metricId = `m${Math.abs(lbArn.split("").reduce((acc, c) => acc + c.charCodeAt(0), 0))}`;
+        const startTime = getDateDaysAgo(IDLE_LOOKBACK_DAYS);
+        const endTime = new Date();
+
+        const metricResponse = await cloudwatchClient.send(
+          new GetMetricDataCommand({
+            StartTime: startTime,
+            EndTime: endTime,
+            MetricDataQueries: [
+              {
+                Id: metricId,
+                MetricStat: toMetricStat({
+                  namespace: metricNamespace,
+                  metricName,
+                  lbDimension,
+                  periodSeconds: 24 * 60 * 60,
+                }),
+                ReturnData: true,
+              },
+            ],
+          }),
+        );
+
+        const resultRows = Array.isArray(metricResponse.MetricDataResults)
+          ? metricResponse.MetricDataResults
+          : [];
+        const firstResult = resultRows[0] as Record<string, unknown> | undefined;
+        const metricSum = sumMetricValues(firstResult?.Values);
+        if (metricSum <= 0) {
+          recommendations.push({
+            accountId,
+            region,
+            recommendationType: "REVIEW_IDLE_LB",
+            resourceId: lbArn,
+            resourceArn: lbArn,
+            resourceName: lbName,
+            resourceType: lbType === "network" ? "NLB" : "ALB",
+            currentResourceType: lbType || null,
+            idleReason: "NO_TRAFFIC_7D",
+            idleObservationValue: `${metricName} total is 0 for the last ${IDLE_LOOKBACK_DAYS} days`,
+            estimatedMonthlySavings: 0,
+            recommendationTitle: "Review idle load balancer",
+            recommendationText:
+              lbName
+                ? `Load balancer ${lbName} has no observed traffic in the last ${IDLE_LOOKBACK_DAYS} days`
+                : `Load balancer has no observed traffic in the last ${IDLE_LOOKBACK_DAYS} days`,
+            effortLevel: "MEDIUM",
+            riskLevel: "MEDIUM",
+            observationStart: startTime,
+            observationEnd: endTime,
+            rawPayload: {
+              loadBalancer: lb,
+              metricNamespace,
+              metricName,
+              metricSum,
+            },
+          });
+        }
+      }
+
+      lbToken =
+        typeof response.NextMarker === "string" && response.NextMarker.trim()
+          ? response.NextMarker
+          : undefined;
+    } while (lbToken);
+  };
+
+  for (const region of enabledRegions) {
+    try {
+      await fetchVolumesAndEipsAndSnapshots(region);
+      await fetchIdleLoadBalancers(region);
+    } catch {
+      continue;
+    }
+  }
+
+  return {
+    skipped: false,
+    reason:
+      recommendations.length > 0
+        ? "Fetched idle resource candidates from AWS APIs"
+        : "No idle candidates returned from AWS APIs",
+    recommendations: recommendations.map((item) => ({
+      ...item,
+      observationStart: toIso(item.observationStart ? new Date(item.observationStart) : observationStart),
+      observationEnd: toIso(item.observationEnd ? new Date(item.observationEnd) : observationEnd),
+    })),
   };
 }

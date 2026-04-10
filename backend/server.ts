@@ -1,6 +1,8 @@
 import { createServer, type Server } from "node:http";
 import app from "./app.js";
 import env from "./src/config/env.js";
+import { startIdleRecommendationScheduler } from "./src/features/dashboard/optimization/recommendation-sync/idle-scheduler.service.js";
+import { startRightsizingRecommendationScheduler } from "./src/features/dashboard/optimization/recommendation-sync/rightsizing-scheduler.service.js";
 import { sequelize } from "./src/models/index.js";
 import { logger } from "./src/utils/logger.js";
 
@@ -9,6 +11,8 @@ const SHUTDOWN_TIMEOUT_MS = 10_000;
 
 let server: Server | null = null;
 let isShuttingDown = false;
+let stopIdleScheduler: (() => void) | null = null;
+let stopRightsizingScheduler: (() => void) | null = null;
 
 const shutdown = (signal: string): void => {
   if (isShuttingDown) {
@@ -19,6 +23,14 @@ const shutdown = (signal: string): void => {
   logger.info("Shutdown initiated", { signal });
 
   if (!server) {
+    if (stopIdleScheduler) {
+      stopIdleScheduler();
+      stopIdleScheduler = null;
+    }
+    if (stopRightsizingScheduler) {
+      stopRightsizingScheduler();
+      stopRightsizingScheduler = null;
+    }
     process.exit(0);
     return;
   }
@@ -32,6 +44,14 @@ const shutdown = (signal: string): void => {
 
   server.close((error) => {
     clearTimeout(forceExitTimer);
+    if (stopIdleScheduler) {
+      stopIdleScheduler();
+      stopIdleScheduler = null;
+    }
+    if (stopRightsizingScheduler) {
+      stopRightsizingScheduler();
+      stopRightsizingScheduler = null;
+    }
 
     if (error) {
       logger.error("Error while shutting down server", {
@@ -58,6 +78,8 @@ const startServer = async (): Promise<void> => {
   }
 
   server = createServer(app);
+  stopIdleScheduler = startIdleRecommendationScheduler();
+  stopRightsizingScheduler = startRightsizingRecommendationScheduler();
 
   server.listen(PORT, () => {
     logger.info("Server running", {
