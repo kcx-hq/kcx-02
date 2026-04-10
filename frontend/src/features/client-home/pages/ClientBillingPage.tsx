@@ -3,26 +3,19 @@ import { useQueryClient } from "@tanstack/react-query"
 
 import type { TenantUploadHistoryRecord } from "@/features/client-home/api/upload-history.api"
 import { getCloudIntegrationDashboardScope } from "@/features/client-home/api/cloud-integrations.api"
-import { AwsAutomaticSetup } from "@/features/client-home/components/AwsAutomaticSetup"
-import { AwsManualSetup, AWS_MANUAL_EXPLORER_ROUTE_REGEX } from "@/features/client-home/components/AwsManualSetup"
-import { AwsManualSetupSuccess } from "@/features/client-home/components/AwsManualSetupSuccess"
 import { ClientPageHeader } from "@/features/client-home/components/ClientPageHeader"
 import { ManualBillingUploadDialog } from "@/features/client-home/components/ManualBillingUploadDialog"
 import { AddCloudConnectionSection } from "@/features/client-home/components/billing/AddCloudConnectionSection"
-import { AwsSetupConnectionSection } from "@/features/client-home/components/billing/AwsSetupConnectionSection"
 import { BillingHubSection } from "@/features/client-home/components/billing/BillingHubSection"
 import { BillingUploadsSection } from "@/features/client-home/components/billing/BillingUploadsSection"
 import {
   ACTIVE_INGESTION_STORAGE_KEY,
-  AWS_MANUAL_SUCCESS_ROUTE_REGEX,
-  AWS_SETUP_ROUTE_REGEX,
   CLOUD_PROVIDER_LABELS,
   CLOUD_PROVIDER_ROUTE_REGEX,
   CLOUD_SETUP_METHOD_ROUTE_REGEX,
   isCloudConnectionsRoute,
   mapCloudIntegrationOverviewRow,
   normalizeUploadStatusLabel,
-  type CloudConnection,
 } from "@/features/client-home/components/billing/billingHelpers"
 import { CloudProviderComingSoonSection } from "@/features/client-home/components/billing/CloudProviderComingSoonSection"
 import { IngestionDetailsDialog } from "@/features/client-home/components/billing/IngestionDetailsDialog"
@@ -35,20 +28,20 @@ import { useTenantCloudIntegrations } from "@/features/client-home/hooks/useTena
 import { useUploadHistorySelectionStore } from "@/features/client-home/stores/uploadHistorySelection.store"
 import { ApiError, apiGet } from "@/lib/api"
 import { handleAppLinkClick, navigateTo, useCurrentRoute } from "@/lib/navigation"
-import { Button } from "@/components/ui/button"
 
 export function ClientBillingPage() {
   const queryClient = useQueryClient()
   const route = useCurrentRoute()
   const activeRoute = route
   const isBillingHubRoute = activeRoute === "/client/billing"
-  const isBillingUploadsRoute = activeRoute === "/client/billing/uploads"
+  const isBillingUploadsRoute =
+    activeRoute === "/client/billing/uploads" || activeRoute === "/client/billing/upload-files"
   const isAddCloudConnectionRoute =
-    activeRoute === "/client/billing/connect-cloud/add/aws" || activeRoute === "/client/billing/connections/add/aws"
+    activeRoute === "/client/billing/connect-cloud/add/aws" ||
+    activeRoute === "/client/billing/connections/add/aws" ||
+    activeRoute === "/client/billing/cloud-integration"
   const isLegacyCloudConnectionsOverviewRoute =
     activeRoute === "/client/billing/connect-cloud" || activeRoute === "/client/billing/connections"
-  const isLegacyAwsSetupChoiceRoute =
-    activeRoute === "/client/billing/connect-cloud/aws" || activeRoute === "/client/billing/connections/aws"
   const shouldLoadCloudIntegrations = isBillingHubRoute || isAddCloudConnectionRoute
   const [cloudConnectionsSearch, setCloudConnectionsSearch] = useState("")
 
@@ -129,16 +122,6 @@ export function ClientBillingPage() {
   const [latestActiveIngestionLoaded, setLatestActiveIngestionLoaded] = useState(false)
   const [lastTerminalIngestionStatus, setLastTerminalIngestionStatus] = useState<IngestionStatusPayload | null>(null)
 
-  const setupConnectionId = useMemo(() => {
-    const match = AWS_SETUP_ROUTE_REGEX.exec(activeRoute)
-    if (!match) return null
-    return match[1]
-  }, [activeRoute])
-
-  const [setupConnection, setSetupConnection] = useState<CloudConnection | null>(null)
-  const [setupLoading, setSetupLoading] = useState(false)
-  const [setupError, setSetupError] = useState<string | null>(null)
-
   const { status: ingestionStatus } = useIngestionStatus({
     ingestionRunId: activeIngestionRunId,
     enabled: Boolean(activeIngestionRunId),
@@ -210,32 +193,10 @@ export function ClientBillingPage() {
     cloudIntegrationsError instanceof ApiError ? cloudIntegrationsError.message : "Unable to load cloud connections."
 
   useEffect(() => {
-    if (isLegacyCloudConnectionsOverviewRoute || isLegacyAwsSetupChoiceRoute) {
+    if (isLegacyCloudConnectionsOverviewRoute) {
       navigateTo("/client/billing/connect-cloud/add/aws")
     }
-  }, [isLegacyAwsSetupChoiceRoute, isLegacyCloudConnectionsOverviewRoute])
-
-  useEffect(() => {
-    if (!setupConnectionId) return
-    setSetupLoading(true)
-    setSetupError(null)
-
-    void (async () => {
-      try {
-        const connection = await apiGet<CloudConnection>(`/cloud-connections/${setupConnectionId}`)
-        setSetupConnection(connection)
-      } catch (error) {
-        if (error instanceof ApiError) {
-          setSetupError(error.message || "Failed to load connection")
-        } else {
-          setSetupError("Failed to load connection")
-        }
-        setSetupConnection(null)
-      } finally {
-        setSetupLoading(false)
-      }
-    })()
-  }, [setupConnectionId])
+  }, [isLegacyCloudConnectionsOverviewRoute])
 
   useEffect(() => {
     if (latestActiveIngestionLoaded || activeIngestionRunId) return
@@ -442,31 +403,28 @@ export function ClientBillingPage() {
       ) : null}
 
       <section aria-label="Billing workspace options">
-        <div className="rounded-md border-[color:var(--border-light)] bg-white shadow-sm-custom">
-          <div className="space-y-6 p-6">
-            {isBillingUploadsRoute ? (
-              <BillingUploadsSection
-                compactStatusLabel={compactStatusLabel}
-                uploadHistoryRecords={uploadHistoryRecords}
-                isUploadHistoryLoading={isUploadHistoryLoading}
-                isUploadHistoryError={isUploadHistoryError}
-                uploadHistoryErrorMessage={uploadHistoryErrorMessage}
-                dashboardActionError={dashboardActionError}
-                dashboardActionLoading={dashboardActionLoading}
-                onChooseSource={() => setUploadDialogOpen(true)}
-                onRetryUploadHistory={() => {
-                  void refetchUploadHistory()
-                }}
-                onViewUploadDetails={handleViewUploadDetails}
-                onRetryUploadRecord={handleRetryUploadRecord}
-                onOpenDashboard={handleOpenDashboard}
-              />
-            ) : null}
-
-            {isAddCloudConnectionRoute ? (
+        {isBillingUploadsRoute ? (
+          <BillingUploadsSection
+            compactStatusLabel={compactStatusLabel}
+            uploadHistoryRecords={uploadHistoryRecords}
+            isUploadHistoryLoading={isUploadHistoryLoading}
+            isUploadHistoryError={isUploadHistoryError}
+            uploadHistoryErrorMessage={uploadHistoryErrorMessage}
+            dashboardActionError={dashboardActionError}
+            dashboardActionLoading={dashboardActionLoading}
+            onChooseSource={() => setUploadDialogOpen(true)}
+            onRetryUploadHistory={() => {
+              void refetchUploadHistory()
+            }}
+            onViewUploadDetails={handleViewUploadDetails}
+            onRetryUploadRecord={handleRetryUploadRecord}
+            onOpenDashboard={handleOpenDashboard}
+          />
+        ) : (
+          <div className="rounded-md border-[color:var(--border-light)] bg-white shadow-sm-custom">
+            <div className="space-y-6 p-6">
+              {isAddCloudConnectionRoute ? (
               <AddCloudConnectionSection
-                onAutomaticSetup={() => navigateTo("/client/billing/connect-cloud/aws/automatic")}
-                onManualSetup={() => navigateTo("/client/billing/connect-cloud/aws/manual")}
                 onOpenS3UploadModal={() => setS3UploadDialogOpen(true)}
                 cloudConnectionsSearch={cloudConnectionsSearch}
                 onCloudConnectionsSearchChange={setCloudConnectionsSearch}
@@ -483,52 +441,14 @@ export function ClientBillingPage() {
                 }}
                 onOpenCloudConnectionDashboard={handleOpenCloudConnectionDashboard}
               />
-            ) : null}
+              ) : null}
 
-            {cloudProviderSlug && cloudProviderSlug !== "aws" && cloudProviderName ? (
-              <CloudProviderComingSoonSection cloudProviderName={cloudProviderName} />
-            ) : null}
-
-            {activeRoute === "/client/billing/connect-cloud/aws/automatic" ||
-            activeRoute === "/client/billing/connections/aws/automatic" ? (
-              <AwsAutomaticSetup activeRoute={activeRoute} />
-            ) : null}
-
-            {setupConnectionId ? (
-              <AwsSetupConnectionSection
-                setupLoading={setupLoading}
-                setupError={setupError}
-                setupConnection={setupConnection}
-                onLaunchAwsSetup={() => window.open("/integrations/aws", "_blank", "noopener,noreferrer")}
-                onBackToSetupChoice={() => navigateTo("/client/billing/connect-cloud/aws")}
-              />
-            ) : null}
-
-            {AWS_MANUAL_SUCCESS_ROUTE_REGEX.test(activeRoute) ? (
-              <>
-                <div className="space-y-2">
-                  <p className="kcx-eyebrow text-brand-primary">AWS Manual Setup</p>
-                  <h2 className="text-2xl font-semibold tracking-tight text-text-primary">Success</h2>
-                  <p className="text-sm text-text-secondary">Your manual AWS connection is complete.</p>
-                </div>
-                <AwsManualSetupSuccess />
-              </>
-            ) : null}
-
-            {activeRoute === "/client/billing/connect-cloud/aws/manual" ||
-            activeRoute === "/client/billing/connections/aws/manual" ||
-            AWS_MANUAL_EXPLORER_ROUTE_REGEX.test(activeRoute) ? (
-              <>
-                <div className="space-y-2">
-                  <p className="kcx-eyebrow text-brand-primary">AWS Manual Setup</p>
-                  <h2 className="text-2xl font-semibold tracking-tight text-text-primary">Manual Setup</h2>
-                  <p className="text-sm text-text-secondary">Connect your AWS billing data in one guided setup flow.</p>
-                </div>
-                <AwsManualSetup activeRoute={activeRoute} />
-              </>
-            ) : null}
+              {cloudProviderSlug && cloudProviderSlug !== "aws" && cloudProviderName ? (
+                <CloudProviderComingSoonSection cloudProviderName={cloudProviderName} />
+              ) : null}
+            </div>
           </div>
-        </div>
+        )}
       </section>
 
       <IngestionDetailsDialog

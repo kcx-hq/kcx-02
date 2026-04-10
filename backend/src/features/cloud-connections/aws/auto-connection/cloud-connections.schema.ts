@@ -75,10 +75,10 @@ export const awsConnectionCallbackSchema = z.union([
 ]);
 
 export const generateAwsCloudFormationSetupSchema = z.object({
-  stackName: z.string().trim().min(1, "stackName is required"),
-  externalId: z.string().trim().min(1, "externalId is required"),
-  connectionName: z.string().trim().min(1, "connectionName is required"),
-  region: z.string().trim().min(1, "region is required"),
+  stackName: z.string().trim().min(1, "stackName cannot be empty").optional(),
+  externalId: z.string().trim().min(1, "externalId cannot be empty").optional(),
+  connectionName: z.string().trim().min(1, "connectionName cannot be empty").optional(),
+  region: z.string().trim().min(1, "region cannot be empty").optional(),
   exportPrefix: z.string().trim().min(1, "exportPrefix cannot be empty").optional(),
   exportName: z.string().trim().min(1, "exportName cannot be empty").optional(),
   callbackUrl: z.string().trim().min(1, "callbackUrl cannot be empty").optional(),
@@ -95,35 +95,6 @@ export const generateAwsCloudFormationSetupSchema = z.object({
   resourceTagValue: z.string().trim().min(1, "resourceTagValue cannot be empty").optional(),
   accountType: z.enum(["payer", "member"]).optional(),
 }).superRefine((value, ctx) => {
-  const requiresCallbacks = value.enableBillingExport || value.enableCloudTrail;
-
-  if (requiresCallbacks) {
-    if (!value.callbackUrl) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["callbackUrl"],
-        message: "callbackUrl is required when billing export or cloudtrail is enabled",
-      });
-    }
-
-    if (!value.callbackToken) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["callbackToken"],
-        message: "callbackToken is required when billing export or cloudtrail is enabled",
-      });
-    }
-
-  }
-
-  if (!value.enableActionRole && value.enableEC2Module) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ["enableEC2Module"],
-      message: "enableEC2Module cannot be true when enableActionRole is false",
-    });
-  }
-
   if (value.useTagScopedAccess) {
     if (!value.resourceTagKey) {
       ctx.addIssue({

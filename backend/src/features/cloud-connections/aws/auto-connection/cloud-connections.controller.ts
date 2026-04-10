@@ -1021,20 +1021,20 @@ export async function handleGetAwsCloudFormationSetupUrl(req: Request, res: Resp
   }
 
   const stackName = normalizeOptional(postPayload?.stackName) ?? ensured.stackName ?? undefined;
-  const externalId = normalizeOptional(postPayload?.externalId) ?? ensured.externalId ?? undefined;
-  const callbackToken = normalizeOptional(postPayload?.callbackToken) ?? ensured.callbackToken ?? undefined;
-  const connectionName = normalizeOptional(postPayload?.connectionName) ?? connection.connectionName ?? undefined;
+  const externalId = ensured.externalId ?? undefined;
+  const callbackToken = ensured.callbackToken ?? undefined;
+  const connectionName = connection.connectionName ?? undefined;
   const region = normalizeOptional(postPayload?.region) ?? ensured.region ?? undefined;
 
-  const enableBillingExport = postPayload?.enableBillingExport ?? true;
+  const enableBillingExport = true;
   const enableCloudTrail = postPayload?.enableCloudTrail ?? false;
-  const enableActionRole = postPayload?.enableActionRole ?? true;
-  const enableEC2Module = enableActionRole ? (postPayload?.enableEC2Module ?? true) : false;
+  const enableEC2Module = postPayload?.enableEC2Module ?? true;
+  const enableActionRole = enableEC2Module ? true : (postPayload?.enableActionRole ?? false);
   const useTagScopedAccess = postPayload?.useTagScopedAccess ?? false;
 
   const exportPrefix = normalizeOptional(postPayload?.exportPrefix) ?? DEFAULT_AWS_EXPORT_PREFIX;
   const exportName = normalizeOptional(postPayload?.exportName) ?? buildDefaultAwsExportName(connection.id);
-  const callbackUrl = normalizeOptional(postPayload?.callbackUrl) ?? env.awsCallbackUrl ?? undefined;
+  const callbackUrl = env.awsCallbackUrl ?? undefined;
   const fileEventCallbackUrl =
     normalizeOptional(postPayload?.fileEventCallbackUrl) ?? env.awsFileEventCallbackUrl ?? undefined;
   const cloudTrailPrefix = normalizeOptional(postPayload?.cloudTrailPrefix) ?? DEFAULT_AWS_CLOUDTRAIL_PREFIX;

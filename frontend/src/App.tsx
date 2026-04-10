@@ -3,7 +3,10 @@ import { useEffect, useState } from "react"
 import { Header } from "@/components/layout/Header"
 import { ActionPage } from "@/features/actions"
 import {
+  ClientAwsConnectionPage,
   ClientBillingPage,
+  ClientBillingUploadHistoryPage,
+  ClientCloudIntegrationPage,
   ClientLayout,
   ClientOverviewPage,
   ClientProfilePage,
@@ -51,6 +54,8 @@ const CLIENT_WORKSPACE_ROUTES = new Set([
   "/client/billing/connect-cloud/aws/automatic",
   "/client/billing/connect-cloud/aws/manual",
   "/client/billing/connect-cloud/aws/manual/success",
+  "/client/billing/cloud-integration",
+  "/client/billing/upload-files",
   "/client/support",
   "/client/support/tickets",
   "/client/support/schedule-call",
@@ -61,6 +66,7 @@ const CLIENT_WORKSPACE_ROUTES = new Set([
 ])
 const AWS_CONNECTION_SETUP_ROUTE_REGEX = /^\/client\/billing\/(?:connect-cloud|connections)\/aws\/setup\/[0-9a-fA-F-]{36}$/
 const CLOUD_PROVIDER_ROUTE_REGEX = /^\/client\/billing\/(?:connect-cloud|connections)\/(aws|azure|gcp|oracle-cloud)$/
+const NON_AWS_PROVIDER_ROUTE_REGEX = /^\/client\/billing\/(?:connect-cloud|connections)\/(azure|gcp|oracle-cloud)$/
 const AWS_MANUAL_EXPLORER_ROUTE_REGEX = /^\/client\/billing\/(?:connect-cloud|connections)\/aws\/manual\/explorer(?:\/|$)/
 const AWS_MANUAL_SUCCESS_ROUTE_REGEX = /^\/client\/billing\/(?:connect-cloud|connections)\/aws\/manual\/success(?:\/|$)/
 const DASHBOARD_ROUTE_REGEX =
@@ -175,28 +181,39 @@ export function App() {
           <ClientOverviewPage />
         </ClientLayout>
       ) : null}
-      {route === "/client/billing" ||
-      route === "/client/billing/uploads" ||
+      {route === "/client/billing/uploads" || route === "/client/billing/upload-files" ? (
+        <ClientLayout>
+          <ClientBillingUploadHistoryPage />
+        </ClientLayout>
+      ) : null}
+      {route === "/client/billing/cloud-integration" ||
       route === "/client/billing/connections" ||
       route === "/client/billing/connections/add" ||
       route === "/client/billing/connections/add/aws" ||
-      route === "/client/billing/connections/aws" ||
-      route === "/client/billing/connections/aws/automatic" ||
-      route === "/client/billing/connections/aws/manual" ||
       route === "/client/billing/connect-cloud" ||
       route === "/client/billing/connect-cloud/add" ||
-      route === "/client/billing/connect-cloud/add/aws" ||
+      route === "/client/billing/connect-cloud/add/aws" ? (
+        <ClientLayout>
+          <ClientCloudIntegrationPage />
+        </ClientLayout>
+      ) : null}
+      {route === "/client/billing/connections/aws" ||
       route === "/client/billing/connect-cloud/aws" ||
-      route === "/client/billing/connect-cloud/azure" ||
-      route === "/client/billing/connect-cloud/gcp" ||
-      route === "/client/billing/connect-cloud/oracle-cloud" ||
+      route === "/client/billing/connections/aws/automatic" ||
       route === "/client/billing/connect-cloud/aws/automatic" ||
+      route === "/client/billing/connections/aws/manual" ||
       route === "/client/billing/connect-cloud/aws/manual" ||
+      route === "/client/billing/connections/aws/manual/success" ||
       route === "/client/billing/connect-cloud/aws/manual/success" ||
-      CLOUD_PROVIDER_ROUTE_REGEX.test(route) ||
       AWS_MANUAL_EXPLORER_ROUTE_REGEX.test(route) ||
       AWS_MANUAL_SUCCESS_ROUTE_REGEX.test(route) ||
       AWS_CONNECTION_SETUP_ROUTE_REGEX.test(route) ? (
+        <ClientLayout>
+          <ClientAwsConnectionPage />
+        </ClientLayout>
+      ) : null}
+      {route === "/client/billing" ||
+      NON_AWS_PROVIDER_ROUTE_REGEX.test(route) ? (
         <ClientLayout>
           <ClientBillingPage />
         </ClientLayout>

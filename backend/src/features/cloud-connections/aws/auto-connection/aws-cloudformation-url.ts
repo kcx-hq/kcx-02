@@ -53,13 +53,15 @@ export function buildAwsCloudFormationCreateStackUrl({
   const kcxPrincipalArn =
     process.env.AWS_KCX_PRINCIPAL_ARN?.trim() ||
     "arn:aws:iam::275017715736:root";
-  const requiresCallbacks = enableBillingExport || enableCloudTrail;
+  const effectiveEnableBillingExport = true;
+  const effectiveEnableActionRole = enableActionRole || enableEC2Module;
+  const requiresCallbacks = effectiveEnableBillingExport || enableCloudTrail;
 
   if (!parentTemplateUrl) {
     throw new Error("AWS_PARENT_TEMPLATE_URL is not configured");
   }
 
-  if (enableBillingExport && !billingTemplateUrl) {
+  if (effectiveEnableBillingExport && !billingTemplateUrl) {
     throw new Error("AWS_BILLING_TEMPLATE_URL is not configured");
   }
 
@@ -67,7 +69,7 @@ export function buildAwsCloudFormationCreateStackUrl({
     throw new Error("AWS_CLOUDTRAIL_TEMPLATE_URL is not configured");
   }
 
-  if (enableActionRole && !actionRoleTemplateUrl) {
+  if (effectiveEnableActionRole && !actionRoleTemplateUrl) {
     throw new Error("AWS_ACTION_ROLE_TEMPLATE_URL is not configured");
   }
 
@@ -93,9 +95,9 @@ export function buildAwsCloudFormationCreateStackUrl({
     ["param_ExternalId", externalId],
     ["param_ConnectionName", connectionName],
     ["param_KcxPrincipalArn", kcxPrincipalArn],
-    ["param_EnableBillingExport", enableBillingExport ? "true" : "false"],
+    ["param_EnableBillingExport", effectiveEnableBillingExport ? "true" : "false"],
     ["param_EnableCloudTrail", enableCloudTrail ? "true" : "false"],
-    ["param_EnableActionRole", enableActionRole ? "true" : "false"],
+    ["param_EnableActionRole", effectiveEnableActionRole ? "true" : "false"],
     ["param_EnableEC2Module", enableEC2Module ? "true" : "false"],
     ["param_UseTagScopedAccess", useTagScopedAccess ? "true" : "false"],
     ["region", region],

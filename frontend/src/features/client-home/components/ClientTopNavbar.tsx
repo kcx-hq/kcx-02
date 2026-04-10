@@ -1,19 +1,12 @@
 import { useEffect, useRef, useState } from "react"
 
 import { Button } from "@/components/ui/button"
-import kcxLogo from "@/assets/logos/kcx-logo.svg"
 import { clearAuthSession } from "@/lib/auth"
 import { handleAppLinkClick, navigateTo, useCurrentRoute } from "@/lib/navigation"
+import { getClientBreadcrumbLabel } from "@/features/client-home/components/client-navigation"
 import { cn } from "@/lib/utils"
-import { Bell, ChevronDown, LifeBuoy, LogOut, Megaphone, User, UserCircle2 } from "lucide-react"
+import { Bell, ChevronDown, LifeBuoy, LogOut, Menu, Megaphone, User, UserCircle2 } from "lucide-react"
 import { useClientAnnouncements } from "@/features/client-home/hooks/useClientAnnouncements"
-
-const NAV_ITEMS = [
-  { label: "Billing", href: "/client/billing", matches: ["/client/billing", "/client/billing/uploads", "/client/billing/connect-cloud", "/client/billing/connect-cloud/aws", "/client/billing/connect-cloud/aws/automatic", "/client/billing/connect-cloud/aws/manual", "/client/billing/connect-cloud/aws/manual/success"] },
-  { label: "Actions", href: "/client/actions", matches: ["/client/actions"] },
-  { label: "Support", href: "/client/support/tickets", matches: ["/client/support", "/client/support/tickets", "/client/support/schedule-call", "/client/support/live-chat"] },
-  { label: "Users", href: "/client/users", matches: ["/client/users"] },
-] as const
 
 function HeaderIconTooltip({ label }: { label: string }) {
   return (
@@ -28,6 +21,7 @@ type ClientTopNavbarProps = {
   userDisplayName: string
   userEmail: string
   userRole: string
+  onOpenSidebar?: () => void
 }
 
 function toRoleLabel(role: string) {
@@ -44,6 +38,7 @@ export function ClientTopNavbar({
   userDisplayName,
   userEmail,
   userRole,
+  onOpenSidebar,
 }: ClientTopNavbarProps) {
   const route = useCurrentRoute()
   const [menuOpen, setMenuOpen] = useState(false)
@@ -83,8 +78,9 @@ export function ClientTopNavbar({
   }, [route])
 
   const roleLabel = toRoleLabel(userRole)
+  const currentBreadcrumbLabel = getClientBreadcrumbLabel(route)
   const navIconButtonClass =
-    "h-9 rounded-md border border-[rgba(164,192,181,0.3)] bg-[rgba(13,24,28,0.46)] px-2 text-[rgba(228,240,235,0.9)] hover:bg-[rgba(158,191,178,0.16)] hover:text-white"
+    "h-9 rounded-md border border-[color:#d5e0dd] bg-[color:#f8fbfa] px-2 text-[color:#3f595f] hover:bg-[color:#eef4f2] hover:text-[color:#21343a]"
 
   function handleLogout() {
     clearAuthSession()
@@ -99,45 +95,26 @@ export function ClientTopNavbar({
   }
 
   return (
-    <header className="sticky top-0 z-40 border-b border-[rgba(132,165,157,0.2)] bg-[rgba(10,18,20,0.7)] text-text-on-dark backdrop-blur-md">
-      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(92deg,rgba(11,22,24,0.74)_0%,rgba(11,22,24,0.54)_52%,rgba(11,22,24,0.68)_100%)]" />
-      <div className="hero-aurora-right-glow-a pointer-events-none absolute inset-0 opacity-[0.14]" />
-      <div className="hero-aurora-right-glow-b pointer-events-none absolute inset-0 opacity-[0.1]" />
-      <div className="hero-aurora-right-glow-c pointer-events-none absolute inset-0 opacity-[0.08]" />
-      <div className="hero-aurora-prism pointer-events-none absolute inset-0 opacity-[0.06]" />
-      <div className="hero-aurora-noise pointer-events-none absolute inset-0 opacity-[0.08]" />
-      <div className="relative mx-auto flex h-16 w-full max-w-[1440px] items-center justify-between gap-4 px-6">
-        <div className="flex min-w-0 flex-1 items-center gap-8">
-          <a
-            href="/client/overview"
-            onClick={(event) => handleAppLinkClick(event, "/client/overview")}
-            className="flex min-w-0 items-center gap-3"
-          >
-            <img src={kcxLogo} alt="KCX" className="h-7 w-auto" />
-            <div className="h-5 w-px bg-[rgba(196,216,208,0.28)]" />
-            <p className="truncate text-sm font-medium text-[rgba(236,244,241,0.88)]">{orgName}</p>
-          </a>
-
-          <nav className="hidden h-16 items-stretch gap-6 lg:flex" aria-label="Client workspace">
-            {NAV_ITEMS.map((item) => {
-              const isActive = item.label === "Billing" ? route.startsWith("/client/billing") : item.matches.some((path) => path === route)
-              return (
-                <a
-                  key={item.href}
-                  href={item.href}
-                  onClick={(event) => handleAppLinkClick(event, item.href)}
-                  className={cn(
-                    "inline-flex h-full items-center border-b-2 border-transparent px-0 text-sm font-medium leading-none transition-colors",
-                    isActive
-                      ? "border-[rgba(132,205,180,0.82)] text-white"
-                      : "text-[rgba(218,232,226,0.78)] hover:text-white"
-                  )}
-                  aria-current={isActive ? "page" : undefined}
-                >
-                  {item.label}
-                </a>
-              )
-            })}
+    <header className="sticky top-0 z-40 border-b border-[color:#d7e3df] bg-[color:#f3f7f6] text-[color:#1f2e33] lg:ml-[228px] lg:w-[calc(100%-228px)]">
+      <div className="mx-auto flex h-16 w-full items-center justify-between gap-4 px-4 sm:px-[22px]">
+        <div className="flex min-w-0 flex-1 items-center gap-4">
+          {onOpenSidebar ? (
+            <Button
+              type="button"
+              variant="ghost"
+              aria-label="Open sidebar navigation"
+              className="h-9 rounded-md border border-[color:#d5e0dd] bg-[color:#f8fbfa] px-2 text-[color:#3f595f] hover:bg-[color:#eef4f2] hover:text-[color:#21343a] lg:hidden"
+              onClick={onOpenSidebar}
+            >
+              <Menu className="h-4 w-4" />
+            </Button>
+          ) : null}
+          <nav className="inline-flex min-w-0 items-center gap-2" aria-label="Breadcrumb">
+            <span className="truncate text-[16px] font-medium text-[color:#5f736b]">{orgName}</span>
+            <span className="text-[15px] font-normal text-[color:#8a9a94]" aria-hidden="true">
+              /
+            </span>
+            <span className="truncate text-[16px] font-semibold text-[color:#192630]">{currentBreadcrumbLabel}</span>
           </nav>
         </div>
 
@@ -238,14 +215,14 @@ export function ClientTopNavbar({
                 }}
                 aria-label="User Menu"
                 className={cn(
-                  "h-10 rounded-md border border-[rgba(164,192,181,0.3)] bg-[rgba(13,24,28,0.46)] px-2 text-[rgba(228,240,235,0.9)] hover:bg-[rgba(158,191,178,0.16)] hover:text-white",
-                  menuOpen ? "bg-[rgba(158,191,178,0.2)] text-white" : ""
+                  "h-10 rounded-md border border-[color:#d5e0dd] bg-[color:#f8fbfa] px-2 text-[color:#3f595f] hover:bg-[color:#eef4f2] hover:text-[color:#21343a]",
+                  menuOpen ? "bg-[color:#edf5f3] text-[color:#21343a]" : ""
                 )}
                 aria-haspopup="menu"
                 aria-expanded={menuOpen ? "true" : "false"}
               >
                 <span className="sr-only">Open user menu</span>
-                <span className="flex h-8 w-8 items-center justify-center rounded-md bg-[rgba(209,226,219,0.14)] text-sm font-semibold text-[rgba(231,242,238,0.94)]">
+                <span className="flex h-8 w-8 items-center justify-center rounded-md bg-[color:#e8f0ed] text-sm font-semibold text-[color:#2f4a50]">
                   <User className="h-4 w-4" />
                 </span>
                 <ChevronDown className="ml-1 h-4 w-4 opacity-80" />
