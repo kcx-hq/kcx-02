@@ -130,7 +130,7 @@ const env = {
   optimizationRightsizingSchedulerEnabled:
     optionalBoolean(process.env.OPTIMIZATION_RIGHTSIZING_SCHEDULER_ENABLED) ?? true,
   optimizationRightsizingSyncIntervalMs:
-    optionalPositiveInteger(process.env.OPTIMIZATION_RIGHTSIZING_SYNC_INTERVAL_MS) ?? 5 * 60 * 1000,
+    optionalPositiveInteger(process.env.OPTIMIZATION_RIGHTSIZING_SYNC_INTERVAL_MS) ?? 180 * 60 * 1000,
   optimizationRightsizingSchedulerStartupDelayMs:
     optionalPositiveInteger(process.env.OPTIMIZATION_RIGHTSIZING_SCHEDULER_STARTUP_DELAY_MS) ?? 30_000,
 };
