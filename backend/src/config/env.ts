@@ -134,6 +134,14 @@ const env = {
     optionalPositiveInteger(process.env.OPTIMIZATION_RIGHTSIZING_SYNC_INTERVAL_MS) ?? 180 * 60 * 1000,
   optimizationRightsizingSchedulerStartupDelayMs:
     optionalPositiveInteger(process.env.OPTIMIZATION_RIGHTSIZING_SCHEDULER_STARTUP_DELAY_MS) ?? 30_000,
+  optimizationCommitmentSchedulerEnabled:
+    optionalBoolean(process.env.OPTIMIZATION_COMMITMENT_SCHEDULER_ENABLED) ?? true,
+  optimizationCommitmentSyncIntervalMs:
+    optionalPositiveInteger(process.env.OPTIMIZATION_COMMITMENT_SYNC_INTERVAL_MS) ?? 360 * 60 * 1000,
+  optimizationCommitmentSchedulerStartupDelayMs:
+    optionalPositiveInteger(process.env.OPTIMIZATION_COMMITMENT_SCHEDULER_STARTUP_DELAY_MS) ?? 45_000,
+  optimizationCommitmentSyncFreshnessMinutes:
+    optionalPositiveInteger(process.env.OPTIMIZATION_COMMITMENT_SYNC_FRESHNESS_MINUTES) ?? 360,
 };
 
 export default env;

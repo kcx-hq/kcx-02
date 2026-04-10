@@ -1,11 +1,18 @@
 import { QueryTypes } from "sequelize";
+import env from "../../../config/env.js";
 import { sequelize } from "../../../models/index.js";
 import type { DashboardSectionResponse } from "../overview/overview.service.js";
 import {
+  syncAwsCommitmentRecommendations,
+  syncAwsCommitmentRecommendationsWithFreshness,
   syncAwsIdleRecommendations,
   syncAwsRightsizingRecommendations,
 } from "./recommendation-sync/sync.service.js";
-import type { AwsComputeOptimizerEc2RecommendationInput, OptimizationSyncResult } from "./recommendation-sync/types.js";
+import type {
+  AwsCommitmentRecommendationInput,
+  AwsComputeOptimizerEc2RecommendationInput,
+  OptimizationSyncResult,
+} from "./recommendation-sync/types.js";
 
 type OptimizationSummaryRow = {
   open_recommendations: number | string | null;
@@ -28,6 +35,14 @@ type IdleOverviewRow = {
   open_recommendations: number | string | null;
   high_impact_count: number | string | null;
   low_risk_count: number | string | null;
+};
+
+type CommitmentOverviewRow = {
+  total_savings: number | string | null;
+  open_recommendations: number | string | null;
+  hourly_commitment_total: number | string | null;
+  one_year_count: number | string | null;
+  three_year_count: number | string | null;
 };
 
 type RecommendationListRow = {
@@ -127,6 +142,50 @@ type IdleRecommendationDetailRow = {
   updated_at: string;
 };
 
+type CommitmentRecommendationListRow = {
+  id: number | string;
+  recommendation_type: string;
+  recommendation: string | null;
+  resource_name: string | null;
+  current_cost: number | string | null;
+  estimated_savings: number | string | null;
+  projected_cost: number | string | null;
+  recommended_hourly_commitment: number | string | null;
+  recommended_payment_option: string | null;
+  recommended_term: string | null;
+  commitment_plan_type: string | null;
+  status: string;
+  aws_account_id: string;
+  aws_region_code: string | null;
+  total_count: number | string | null;
+};
+
+type CommitmentRecommendationDetailRow = {
+  id: number | string;
+  recommendation_type: string;
+  category: string;
+  resource_id: string | null;
+  resource_name: string | null;
+  aws_account_id: string;
+  aws_region_code: string | null;
+  current_monthly_cost: number | string | null;
+  estimated_monthly_savings: number | string | null;
+  projected_monthly_cost: number | string | null;
+  recommended_hourly_commitment: number | string | null;
+  recommended_payment_option: string | null;
+  recommended_term: string | null;
+  commitment_plan_type: string | null;
+  status: string;
+  recommendation_title: string | null;
+  recommendation_text: string | null;
+  source_system: string;
+  observation_start: string | null;
+  observation_end: string | null;
+  raw_payload_json: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export type RightsizingOverviewResponse = {
   category: "RIGHTSIZING";
   totalPotentialSavings: number;
@@ -146,6 +205,15 @@ export type IdleOverviewResponse = {
   openRecommendationCount: number;
   highImpactCount: number;
   lowRiskCount: number;
+};
+
+export type CommitmentOverviewResponse = {
+  category: "COMMITMENT";
+  totalPotentialSavings: number;
+  openRecommendationCount: number;
+  recommendedHourlyCommitmentTotal: number;
+  oneYearCount: number;
+  threeYearCount: number;
 };
 
 export type OptimizationRecommendationFilters = {
@@ -273,6 +341,59 @@ export type IdleRecommendationDetail = {
   updatedAt: string;
 };
 
+export type CommitmentRecommendationListItem = {
+  id: string;
+  recommendationType: string;
+  recommendation: string;
+  resourceName: string | null;
+  currentMonthlyCost: number;
+  estimatedMonthlySavings: number;
+  projectedMonthlyCost: number;
+  recommendedHourlyCommitment: number;
+  recommendedPaymentOption: string | null;
+  recommendedTerm: string | null;
+  commitmentPlanType: string | null;
+  status: string;
+  awsAccountId: string;
+  awsRegionCode: string | null;
+};
+
+export type CommitmentRecommendationsResponse = {
+  items: CommitmentRecommendationListItem[];
+  pagination: {
+    page: number;
+    pageSize: number;
+    total: number;
+    totalPages: number;
+  };
+};
+
+export type CommitmentRecommendationDetail = {
+  id: string;
+  recommendationType: string;
+  category: string;
+  resourceId: string | null;
+  resourceName: string | null;
+  awsAccountId: string;
+  awsRegionCode: string | null;
+  currentMonthlyCost: number;
+  estimatedMonthlySavings: number;
+  projectedMonthlyCost: number;
+  recommendedHourlyCommitment: number;
+  recommendedPaymentOption: string | null;
+  recommendedTerm: string | null;
+  commitmentPlanType: string | null;
+  status: string;
+  recommendationTitle: string | null;
+  recommendationText: string | null;
+  sourceSystem: string;
+  observationStart: string | null;
+  observationEnd: string | null;
+  rawPayloadJson: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
 type RecommendationDebugStatsRow = {
   total_rows: number | string | null;
   open_rows: number | string | null;
@@ -340,6 +461,12 @@ const RIGHTSIZING_PREDICATE_SQL = `
 const IDLE_PREDICATE_SQL = `
   (
     REGEXP_REPLACE(UPPER(COALESCE(fr.category, '')), '[^A-Z]', '', 'g') = 'IDLE'
+  )
+`;
+
+const COMMITMENT_PREDICATE_SQL = `
+  (
+    REGEXP_REPLACE(UPPER(COALESCE(fr.category, '')), '[^A-Z]', '', 'g') = 'COMMITMENT'
   )
 `;
 
@@ -463,6 +590,42 @@ export async function getIdleOverviewData(tenantId: string): Promise<IdleOvervie
     openRecommendationCount: toNumber(first?.open_recommendations),
     highImpactCount: toNumber(first?.high_impact_count),
     lowRiskCount: toNumber(first?.low_risk_count),
+  };
+}
+
+export async function getCommitmentOverviewData(tenantId: string): Promise<CommitmentOverviewResponse> {
+  const rows = await sequelize.query<CommitmentOverviewRow>(
+    `
+      SELECT
+        COALESCE(SUM(fr.estimated_monthly_savings) FILTER (WHERE UPPER(fr.status) = 'OPEN'), 0)::double precision AS total_savings,
+        COALESCE(COUNT(*) FILTER (WHERE UPPER(fr.status) = 'OPEN'), 0)::bigint AS open_recommendations,
+        COALESCE(SUM(fr.recommended_hourly_commitment) FILTER (WHERE UPPER(fr.status) = 'OPEN'), 0)::double precision AS hourly_commitment_total,
+        COALESCE(COUNT(*) FILTER (
+          WHERE UPPER(fr.status) = 'OPEN'
+            AND UPPER(COALESCE(fr.recommended_term, '')) = 'ONE_YEAR'
+        ), 0)::bigint AS one_year_count,
+        COALESCE(COUNT(*) FILTER (
+          WHERE UPPER(fr.status) = 'OPEN'
+            AND UPPER(COALESCE(fr.recommended_term, '')) = 'THREE_YEARS'
+        ), 0)::bigint AS three_year_count
+      FROM fact_recommendations fr
+      WHERE fr.tenant_id = $1
+        AND ${COMMITMENT_PREDICATE_SQL};
+    `,
+    {
+      bind: [tenantId],
+      type: QueryTypes.SELECT,
+    },
+  );
+
+  const first = rows[0];
+  return {
+    category: "COMMITMENT",
+    totalPotentialSavings: toNumber(first?.total_savings),
+    openRecommendationCount: toNumber(first?.open_recommendations),
+    recommendedHourlyCommitmentTotal: toNumber(first?.hourly_commitment_total),
+    oneYearCount: toNumber(first?.one_year_count),
+    threeYearCount: toNumber(first?.three_year_count),
   };
 }
 
@@ -854,6 +1017,182 @@ export async function getIdleRecommendationDetailData({
   };
 }
 
+export async function getCommitmentRecommendationsData({
+  tenantId,
+  filters,
+}: {
+  tenantId: string;
+  filters: OptimizationRecommendationFilters;
+}): Promise<CommitmentRecommendationsResponse> {
+  const conditions: string[] = [
+    "fr.tenant_id = $1",
+    COMMITMENT_PREDICATE_SQL,
+  ];
+  const bind: unknown[] = [tenantId];
+  let next = 2;
+
+  const pushTextArrayFilter = (column: string, values?: string[]) => {
+    const normalized = toStringArray(values);
+    if (!normalized) return;
+    bind.push(normalized);
+    conditions.push(`UPPER(${column}) = ANY($${next}::text[])`);
+    next += 1;
+  };
+
+  if (Array.isArray(filters.accountIds) && filters.accountIds.length > 0) {
+    bind.push(filters.accountIds);
+    conditions.push(`fr.aws_account_id = ANY($${next}::text[])`);
+    next += 1;
+  }
+
+  if (Array.isArray(filters.regions) && filters.regions.length > 0) {
+    bind.push(filters.regions.map((region) => region.toLowerCase()));
+    conditions.push(`LOWER(COALESCE(fr.aws_region_code, '')) = ANY($${next}::text[])`);
+    next += 1;
+  }
+
+  pushTextArrayFilter("fr.status", filters.status);
+  pushTextArrayFilter("fr.effort_level", filters.effort);
+  pushTextArrayFilter("fr.risk_level", filters.risk);
+
+  const offset = (filters.page - 1) * filters.pageSize;
+  bind.push(filters.pageSize);
+  const limitIdx = next;
+  bind.push(offset);
+  const offsetIdx = next + 1;
+  const whereClause = conditions.join("\n          AND ");
+
+  const rows = await sequelize.query<CommitmentRecommendationListRow>(
+    `
+      SELECT
+        fr.id,
+        fr.recommendation_type,
+        COALESCE(fr.recommendation_title, fr.recommendation_type) AS recommendation,
+        fr.resource_name,
+        COALESCE(fr.current_monthly_cost, 0)::double precision AS current_cost,
+        COALESCE(fr.estimated_monthly_savings, 0)::double precision AS estimated_savings,
+        COALESCE(fr.projected_monthly_cost, 0)::double precision AS projected_cost,
+        COALESCE(fr.recommended_hourly_commitment, 0)::double precision AS recommended_hourly_commitment,
+        fr.recommended_payment_option,
+        fr.recommended_term,
+        fr.commitment_plan_type,
+        fr.status,
+        fr.aws_account_id,
+        fr.aws_region_code,
+        COUNT(*) OVER() AS total_count
+      FROM fact_recommendations fr
+      WHERE ${whereClause}
+      ORDER BY fr.estimated_monthly_savings DESC, fr.updated_at DESC
+      LIMIT $${limitIdx} OFFSET $${offsetIdx};
+    `,
+    {
+      bind,
+      type: QueryTypes.SELECT,
+    },
+  );
+
+  const total = toNumber(rows[0]?.total_count);
+  return {
+    items: rows.map((row) => ({
+      id: String(row.id),
+      recommendationType: row.recommendation_type,
+      recommendation: row.recommendation ?? "Commitment recommendation",
+      resourceName: row.resource_name,
+      currentMonthlyCost: toNumber(row.current_cost),
+      estimatedMonthlySavings: toNumber(row.estimated_savings),
+      projectedMonthlyCost: toNumber(row.projected_cost),
+      recommendedHourlyCommitment: toNumber(row.recommended_hourly_commitment),
+      recommendedPaymentOption: row.recommended_payment_option,
+      recommendedTerm: row.recommended_term,
+      commitmentPlanType: row.commitment_plan_type,
+      status: row.status,
+      awsAccountId: row.aws_account_id,
+      awsRegionCode: row.aws_region_code,
+    })),
+    pagination: {
+      page: filters.page,
+      pageSize: filters.pageSize,
+      total,
+      totalPages: total > 0 ? Math.ceil(total / filters.pageSize) : 0,
+    },
+  };
+}
+
+export async function getCommitmentRecommendationDetailData({
+  tenantId,
+  recommendationId,
+}: {
+  tenantId: string;
+  recommendationId: string;
+}): Promise<CommitmentRecommendationDetail | null> {
+  const rows = await sequelize.query<CommitmentRecommendationDetailRow>(
+    `
+      SELECT
+        fr.id,
+        fr.recommendation_type,
+        fr.category,
+        fr.resource_id,
+        fr.resource_name,
+        fr.aws_account_id,
+        fr.aws_region_code,
+        fr.current_monthly_cost,
+        fr.estimated_monthly_savings,
+        fr.projected_monthly_cost,
+        fr.recommended_hourly_commitment,
+        fr.recommended_payment_option,
+        fr.recommended_term,
+        fr.commitment_plan_type,
+        fr.status,
+        fr.recommendation_title,
+        fr.recommendation_text,
+        fr.source_system,
+        fr.observation_start::text AS observation_start,
+        fr.observation_end::text AS observation_end,
+        fr.raw_payload_json,
+        fr.created_at::text AS created_at,
+        fr.updated_at::text AS updated_at
+      FROM fact_recommendations fr
+      WHERE fr.tenant_id = $1
+        AND fr.id = $2
+        AND ${COMMITMENT_PREDICATE_SQL}
+      LIMIT 1;
+    `,
+    {
+      bind: [tenantId, recommendationId],
+      type: QueryTypes.SELECT,
+    },
+  );
+
+  const row = rows[0];
+  if (!row) return null;
+
+  return {
+    id: String(row.id),
+    recommendationType: row.recommendation_type,
+    category: row.category,
+    resourceId: row.resource_id,
+    resourceName: row.resource_name,
+    awsAccountId: row.aws_account_id,
+    awsRegionCode: row.aws_region_code,
+    currentMonthlyCost: toNumber(row.current_monthly_cost),
+    estimatedMonthlySavings: toNumber(row.estimated_monthly_savings),
+    projectedMonthlyCost: toNumber(row.projected_monthly_cost),
+    recommendedHourlyCommitment: toNumber(row.recommended_hourly_commitment),
+    recommendedPaymentOption: row.recommended_payment_option,
+    recommendedTerm: row.recommended_term,
+    commitmentPlanType: row.commitment_plan_type,
+    status: row.status,
+    recommendationTitle: row.recommendation_title,
+    recommendationText: row.recommendation_text,
+    sourceSystem: row.source_system,
+    observationStart: row.observation_start,
+    observationEnd: row.observation_end,
+    rawPayloadJson: row.raw_payload_json,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
 export async function triggerOptimizationRecommendationSync({
   tenantId,
   billingSourceId,
@@ -888,6 +1227,39 @@ export async function triggerIdleRecommendationSync({
     trigger: "MANUAL_API",
     billingSourceId,
     cloudConnectionId,
+  });
+}
+
+export async function triggerCommitmentRecommendationSync({
+  tenantId,
+  billingSourceId,
+  cloudConnectionId,
+  recommendations,
+  forceRefresh = false,
+}: {
+  tenantId: string;
+  billingSourceId?: string | null;
+  cloudConnectionId?: string | null;
+  recommendations?: AwsCommitmentRecommendationInput[];
+  forceRefresh?: boolean;
+}): Promise<OptimizationSyncResult> {
+  if (forceRefresh) {
+    return syncAwsCommitmentRecommendations({
+      tenantId,
+      trigger: "MANUAL_API",
+      billingSourceId,
+      cloudConnectionId,
+      recommendations,
+    });
+  }
+
+  return syncAwsCommitmentRecommendationsWithFreshness({
+    tenantId,
+    trigger: "MANUAL_API",
+    maxAgeMinutes: env.optimizationCommitmentSyncFreshnessMinutes,
+    billingSourceId,
+    cloudConnectionId,
+    recommendations,
   });
 }
 

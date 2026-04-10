@@ -36,7 +36,6 @@ import { useUploadHistorySelectionStore } from "@/features/client-home/stores/up
 import { dashboardApi } from "@/features/dashboard/api/dashboardApi"
 import { ApiError, apiGet } from "@/lib/api"
 import { handleAppLinkClick, navigateTo, useCurrentRoute } from "@/lib/navigation"
-import { Button } from "@/components/ui/button"
 
 export function ClientBillingPage() {
   const queryClient = useQueryClient()

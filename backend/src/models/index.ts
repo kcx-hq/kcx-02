@@ -275,6 +275,10 @@ CloudEvent.belongsTo(CloudProvider, { foreignKey: "providerId" });
 
 Tenant.hasMany(FactRecommendations, { foreignKey: "tenantId" });
 FactRecommendations.belongsTo(Tenant, { foreignKey: "tenantId" });
+CloudConnectionV2.hasMany(FactRecommendations, { foreignKey: "cloudConnectionId" });
+FactRecommendations.belongsTo(CloudConnectionV2, { foreignKey: "cloudConnectionId" });
+BillingSource.hasMany(FactRecommendations, { foreignKey: "billingSourceId" });
+FactRecommendations.belongsTo(BillingSource, { foreignKey: "billingSourceId" });
 DimService.hasMany(FactRecommendations, { foreignKey: "serviceKey" });
 FactRecommendations.belongsTo(DimService, { foreignKey: "serviceKey" });
 DimSubAccount.hasMany(FactRecommendations, { foreignKey: "subAccountKey" });

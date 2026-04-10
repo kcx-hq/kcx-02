@@ -6,8 +6,11 @@ import {
   type CostExplorerFiltersQuery,
   type DashboardResolvedScope,
   type OptimizationIdleOverview,
+  type OptimizationCommitmentOverview,
   type OptimizationIdleRecommendationDetail,
+  type OptimizationCommitmentRecommendationDetail,
   type OptimizationIdleRecommendationsResponse,
+  type OptimizationCommitmentRecommendationsResponse,
   type OptimizationRecommendationDetail,
   type OptimizationRecommendationFiltersQuery,
   type OptimizationRecommendationsResponse,
@@ -148,6 +151,33 @@ export function useOptimizationIdleRecommendationDetailQuery(recommendationId: s
   return useQuery<OptimizationIdleRecommendationDetail, Error>({
     queryKey: ["dashboard", "optimization", "idle", "recommendation", recommendationId, scope],
     queryFn: () => dashboardApi.getOptimizationIdleRecommendationDetail(assertScope(scope), recommendationId as string),
+    enabled: Boolean(scope) && Boolean(recommendationId),
+  });
+}
+
+export function useOptimizationCommitmentOverviewQuery() {
+  const { scope } = useDashboardScope();
+  return useQuery<OptimizationCommitmentOverview, Error>({
+    queryKey: ["dashboard", "optimization", "commitment", "overview", scope],
+    queryFn: () => dashboardApi.getOptimizationCommitmentOverview(assertScope(scope)),
+    enabled: Boolean(scope),
+  });
+}
+
+export function useOptimizationCommitmentRecommendationsQuery(filters?: OptimizationRecommendationFiltersQuery) {
+  const { scope } = useDashboardScope();
+  return useQuery<OptimizationCommitmentRecommendationsResponse, Error>({
+    queryKey: ["dashboard", "optimization", "commitment", "recommendations", scope, filters],
+    queryFn: () => dashboardApi.getOptimizationCommitmentRecommendations(assertScope(scope), filters),
+    enabled: Boolean(scope),
+  });
+}
+
+export function useOptimizationCommitmentRecommendationDetailQuery(recommendationId: string | null) {
+  const { scope } = useDashboardScope();
+  return useQuery<OptimizationCommitmentRecommendationDetail, Error>({
+    queryKey: ["dashboard", "optimization", "commitment", "recommendation", recommendationId, scope],
+    queryFn: () => dashboardApi.getOptimizationCommitmentRecommendationDetail(assertScope(scope), recommendationId as string),
     enabled: Boolean(scope) && Boolean(recommendationId),
   });
 }

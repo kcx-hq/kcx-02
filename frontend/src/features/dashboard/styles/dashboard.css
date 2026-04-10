@@ -5796,6 +5796,34 @@
   font-size: 0.78rem;
 }
 
+.optimization-commitment-section {
+  margin-top: 0;
+  padding: 0 6px 4px;
+}
+
+.optimization-commitment-kpis-inline-row {
+  display: flex;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: #aab8b4 transparent;
+}
+
+.optimization-commitment-kpis-inline-row .optimization-rightsizing-kpi-inline {
+  min-width: 220px;
+  flex: 1 0 220px;
+  padding: 16px 26px 18px;
+}
+
+.optimization-commitment-filters {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.optimization-commitment-table {
+  min-width: 1380px;
+}
+
 
 @media (max-width: 1200px) {
   .optimization-idle-kpis-inline-row {
@@ -5814,6 +5842,16 @@
     min-width: 180px;
     flex-basis: 180px;
     border-top: 0 !important;
+  }
+
+  .optimization-commitment-kpis-inline-row .optimization-rightsizing-kpi-inline {
+    min-width: 180px;
+    flex-basis: 180px;
+    border-top: 0 !important;
+  }
+
+  .optimization-commitment-filters {
+    grid-template-columns: 1fr;
   }
 
 }

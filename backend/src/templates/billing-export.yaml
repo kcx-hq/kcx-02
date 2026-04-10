@@ -113,15 +113,15 @@ Resources:
                   - elasticloadbalancing:DescribeLoadBalancers
                   - cloudwatch:GetMetricData
                   - cloudwatch:GetMetricStatistics
-                  - ec2:DescribeInstances
                   - ec2:DescribeTags
-                  - compute-optimizer:GetEC2InstanceRecommendations
-                  - compute-optimizer:GetEnrollmentStatus
-                  - cloudwatch:GetMetricData
-                  - cloudwatch:GetMetricStatistics
                   - cloudwatch:ListMetrics
                   - tag:GetResources
+                  - compute-optimizer:GetEC2InstanceRecommendations
+                  - compute-optimizer:GetEnrollmentStatus
                   - compute-optimizer:UpdateEnrollmentStatus
+                  - ce:StartSavingsPlansPurchaseRecommendationGeneration
+                  - ce:GetSavingsPlansPurchaseRecommendation
+                  - ce:GetSavingsPlanPurchaseRecommendationDetails
                 Resource: "*"
 
               - Sid: ListExportBucket
@@ -161,7 +161,7 @@ Resources:
 
               - !If
                 - HasCloudTrailBucket
-                - Sid: ReadCloudTrailObjects
+                - Sid: ReadCloudTrsailObjects
                   Effect: Allow
                   Action:
                     - s3:GetObject

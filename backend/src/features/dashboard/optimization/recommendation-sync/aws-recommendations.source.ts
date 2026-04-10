@@ -1,6 +1,8 @@
 import { BillingSource, CloudConnectionV2, CloudProvider } from "../../../../models/index.js";
 import { assumeRole } from "../../../cloud-connections/aws/infrastructure/aws-sts.service.js";
+import { logger } from "../../../../utils/logger.js";
 import type {
+  AwsCommitmentRecommendationInput,
   AwsComputeOptimizerEc2RecommendationInput,
   AwsIdleResourceRecommendationInput,
 } from "./types.js";
@@ -343,6 +345,302 @@ export async function fetchAwsEc2RightsizingRecommendationsFromComputeOptimizer(
     skipped: false,
     reason: allRecommendations.length > 0 ? "Fetched from AWS Compute Optimizer" : "No EC2 recommendations returned",
     recommendations: allRecommendations,
+  };
+}
+
+const toNumeric = (value: unknown): number | null => {
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  if (typeof value === "string") {
+    const parsed = Number(value.trim());
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+};
+
+const toStringOrNull = (value: unknown): string | null => {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+};
+
+export async function fetchAwsCommitmentRecommendationsFromCostExplorer({
+  connection,
+}: {
+  connection: InstanceType<typeof CloudConnectionV2>;
+}): Promise<{
+  skipped: boolean;
+  reason: string;
+  recommendations: AwsCommitmentRecommendationInput[];
+}> {
+  const roleArn = String(connection.billingRoleArn ?? "").trim();
+  if (!roleArn) {
+    logger.warn("Commitment fetch skipped: missing billing role ARN", {
+      cloudConnectionId: connection.id,
+      connectionName: connection.connectionName ?? null,
+    });
+    return {
+      skipped: true,
+      reason: "Cloud connection billing role ARN is missing",
+      recommendations: [],
+    };
+  }
+
+  let costExplorerSdk: Record<string, unknown>;
+  try {
+    const moduleName = "@aws-sdk/client-cost-explorer";
+    costExplorerSdk = (await import(moduleName)) as Record<string, unknown>;
+  } catch {
+    return {
+      skipped: true,
+      reason: "Missing dependency @aws-sdk/client-cost-explorer",
+      recommendations: [],
+    };
+  }
+
+  const CostExplorerClient = costExplorerSdk.CostExplorerClient as
+    | (new (args: {
+        region: string;
+        credentials: {
+          accessKeyId: string;
+          secretAccessKey: string;
+          sessionToken: string;
+        };
+      }) => { send: (command: unknown) => Promise<Record<string, unknown>> })
+    | undefined;
+  const StartSavingsPlansPurchaseRecommendationGenerationCommand =
+    costExplorerSdk.StartSavingsPlansPurchaseRecommendationGenerationCommand as
+      | (new (args: Record<string, unknown>) => unknown)
+      | undefined;
+  const GetSavingsPlansPurchaseRecommendationCommand =
+    costExplorerSdk.GetSavingsPlansPurchaseRecommendationCommand as
+      | (new (args: Record<string, unknown>) => unknown)
+      | undefined;
+  const GetSavingsPlanPurchaseRecommendationDetailsCommand =
+    costExplorerSdk.GetSavingsPlanPurchaseRecommendationDetailsCommand as
+      | (new (args: Record<string, unknown>) => unknown)
+      | undefined;
+
+  if (
+    !CostExplorerClient ||
+    !StartSavingsPlansPurchaseRecommendationGenerationCommand ||
+    !GetSavingsPlansPurchaseRecommendationCommand
+  ) {
+    return {
+      skipped: true,
+      reason: "Cost Explorer SDK symbols not available",
+      recommendations: [],
+    };
+  }
+
+  const credentials = await assumeRole(roleArn, connection.externalId ?? null);
+  const accountId =
+    String(connection.cloudAccountId ?? "").trim() || parseAccountIdFromRoleArn(roleArn) || "";
+  logger.info("Commitment fetch started", {
+    cloudConnectionId: connection.id,
+    connectionName: connection.connectionName ?? null,
+    accountId: accountId || null,
+  });
+
+  const client = new CostExplorerClient({
+    region: "us-east-1",
+    credentials,
+  });
+
+  try {
+    await client.send(new StartSavingsPlansPurchaseRecommendationGenerationCommand({}));
+    logger.info("Commitment fetch generation started successfully", {
+      cloudConnectionId: connection.id,
+      accountId: accountId || null,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    logger.warn("Commitment fetch generation call failed", {
+      cloudConnectionId: connection.id,
+      accountId: accountId || null,
+      message,
+    });
+    const normalized = message.toLowerCase();
+    if (normalized.includes("accessdenied") || normalized.includes("not authorized")) {
+      return {
+        skipped: true,
+        reason: `Permission denied while starting Savings Plans recommendation generation: ${message}`,
+        recommendations: [],
+      };
+    }
+    if (normalized.includes("cost explorer")) {
+      return {
+        skipped: true,
+        reason: `Cost Explorer is not enabled or data not ready yet. ${message}`,
+        recommendations: [],
+      };
+    }
+  }
+
+  const planTypes = ["COMPUTE_SP", "EC2_INSTANCE_SP"] as const;
+  const terms = ["ONE_YEAR", "THREE_YEARS"] as const;
+  const payments = ["NO_UPFRONT", "PARTIAL_UPFRONT", "ALL_UPFRONT"] as const;
+
+  const mapped: AwsCommitmentRecommendationInput[] = [];
+  const seen = new Set<string>();
+
+  for (const planType of planTypes) {
+    for (const term of terms) {
+      for (const payment of payments) {
+        let response: Record<string, unknown>;
+        try {
+          logger.info("Commitment fetch recommendation call", {
+            cloudConnectionId: connection.id,
+            accountId: accountId || null,
+            planType,
+            term,
+            payment,
+          });
+          response = await client.send(
+            new GetSavingsPlansPurchaseRecommendationCommand({
+              SavingsPlansType: planType,
+              TermInYears: term,
+              PaymentOption: payment,
+              LookbackPeriodInDays: "THIRTY_DAYS",
+            }),
+          );
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          logger.warn("Commitment fetch recommendation call failed", {
+            cloudConnectionId: connection.id,
+            accountId: accountId || null,
+            planType,
+            term,
+            payment,
+            message,
+          });
+          const normalized = message.toLowerCase();
+          if (
+            normalized.includes("accessdenied") ||
+            normalized.includes("not authorized") ||
+            normalized.includes("cost explorer")
+          ) {
+            continue;
+          }
+          continue;
+        }
+
+        const recommendation = response.SavingsPlansPurchaseRecommendation as Record<string, unknown> | undefined;
+        const details = Array.isArray(recommendation?.SavingsPlansPurchaseRecommendationDetails)
+          ? (recommendation?.SavingsPlansPurchaseRecommendationDetails as Array<Record<string, unknown>>)
+          : [];
+
+        for (const detail of details) {
+          const nestedDetails =
+            detail["SavingsPlansDetails"] && typeof detail["SavingsPlansDetails"] === "object"
+              ? (detail["SavingsPlansDetails"] as Record<string, unknown>)
+              : null;
+          const recommendationDetailId =
+            toStringOrNull(nestedDetails?.["SavingsPlansDetailsId"]) ??
+            toStringOrNull(detail["SavingsPlanDetailsId"]) ??
+            toStringOrNull(detail["RecommendationDetailId"]);
+          const dedupeKey = [planType, term, payment, recommendationDetailId ?? ""].join("|");
+          if (seen.has(dedupeKey)) continue;
+          seen.add(dedupeKey);
+
+          let detailPayload: Record<string, unknown> | null = null;
+          if (GetSavingsPlanPurchaseRecommendationDetailsCommand && recommendationDetailId) {
+            try {
+              detailPayload = await client.send(
+                new GetSavingsPlanPurchaseRecommendationDetailsCommand({
+                  RecommendationDetailId: recommendationDetailId,
+                  LookbackPeriodInDays: "THIRTY_DAYS",
+                  SavingsPlansType: planType,
+                  TermInYears: term,
+                  PaymentOption: payment,
+                }),
+              );
+            } catch {
+              detailPayload = null;
+              logger.warn("Commitment detail fetch failed for recommendation", {
+                cloudConnectionId: connection.id,
+                accountId: accountId || null,
+                planType,
+                term,
+                payment,
+                recommendationDetailId,
+              });
+            }
+          }
+
+          const currentMonthlyCost =
+            toNumeric(detail["CurrentAverageHourlyOnDemandSpend"]) !== null
+              ? (toNumeric(detail["CurrentAverageHourlyOnDemandSpend"]) ?? 0) * 24 * 30
+              : 0;
+          const recommendedHourlyCommitment =
+            toNumeric(detail["HourlyCommitmentToPurchase"]) ??
+            toNumeric(detail["HourlyCommitmentToPurchaseAmount"]) ??
+            0;
+          const projectedMonthlyCost =
+            recommendedHourlyCommitment > 0 ? recommendedHourlyCommitment * 24 * 30 : 0;
+          const estimatedMonthlySavings =
+            toNumeric(detail["EstimatedMonthlySavingsAmount"]) ??
+            Math.max(0, currentMonthlyCost - projectedMonthlyCost);
+
+          const resourceId = recommendationDetailId ?? `sp-${planType}-${term}-${payment}`;
+          mapped.push({
+            accountId,
+            region: null,
+            recommendationType: planType === "COMPUTE_SP" ? "BUY_COMPUTE_SP" : "BUY_EC2_INSTANCE_SP",
+            resourceId,
+            resourceName: planType === "COMPUTE_SP" ? "Compute Savings Plan" : "EC2 Instance Savings Plan",
+            currentResourceType: null,
+            recommendedResourceType: null,
+            currentMonthlyCost,
+            estimatedMonthlySavings,
+            projectedMonthlyCost,
+            recommendedHourlyCommitment,
+            recommendedPaymentOption: payment,
+            recommendedTerm: term,
+            commitmentPlanType: planType,
+            performanceRiskScore: null,
+            performanceRiskLevel: null,
+            recommendationTitle:
+              planType === "COMPUTE_SP" ? "Buy Compute Savings Plan" : "Buy EC2 Instance Savings Plan",
+            recommendationText:
+              `Purchase ${planType} (${term}, ${payment}) with hourly commitment ${recommendedHourlyCommitment.toFixed(
+                4,
+              )}`,
+            effortLevel: "LOW",
+            riskLevel: "MEDIUM",
+            observationStart: null,
+            observationEnd: null,
+            rawPayload: {
+              summaryResponse: response,
+              recommendationDetail: detail,
+              recommendationDetailPayload: detailPayload,
+            },
+          });
+        }
+      }
+    }
+  }
+
+  if (mapped.length === 0) {
+    logger.info("Commitment fetch completed with no recommendations", {
+      cloudConnectionId: connection.id,
+      accountId: accountId || null,
+    });
+    return {
+      skipped: false,
+      reason: "No Savings Plans purchase recommendations returned from Cost Explorer",
+      recommendations: [],
+    };
+  }
+
+  logger.info("Commitment fetch completed", {
+    cloudConnectionId: connection.id,
+    accountId: accountId || null,
+    recommendationCount: mapped.length,
+  });
+  return {
+    skipped: false,
+    reason: "Fetched commitment recommendations from AWS Cost Explorer",
+    recommendations: mapped,
   };
 }
 

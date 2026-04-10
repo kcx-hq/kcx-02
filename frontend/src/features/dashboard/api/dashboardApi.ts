@@ -19,8 +19,11 @@ import type {
   DashboardScopeInput,
   DashboardSectionData,
   OptimizationIdleOverview,
+  OptimizationCommitmentOverview,
   OptimizationIdleRecommendationsResponse,
+  OptimizationCommitmentRecommendationsResponse,
   OptimizationIdleRecommendationDetail,
+  OptimizationCommitmentRecommendationDetail,
   OptimizationRightsizingOverview,
   OptimizationRecommendationFiltersQuery,
   OptimizationRecommendationsResponse,
@@ -244,6 +247,24 @@ export const dashboardApi = {
     );
   },
 
+  getOptimizationCommitmentOverview(scope: DashboardResolvedScope) {
+    return apiGet<OptimizationCommitmentOverview>(
+      withDashboardQuery("/dashboard/optimization/commitment/overview", scope),
+    );
+  },
+
+  getOptimizationCommitmentRecommendations(scope: DashboardResolvedScope, filters?: OptimizationRecommendationFiltersQuery) {
+    return apiGet<OptimizationCommitmentRecommendationsResponse>(
+      withOptimizationFilters("/dashboard/optimization/commitment/recommendations", scope, filters),
+    );
+  },
+
+  getOptimizationCommitmentRecommendationDetail(scope: DashboardResolvedScope, recommendationId: string) {
+    return apiGet<OptimizationCommitmentRecommendationDetail>(
+      withDashboardQuery(`/dashboard/optimization/commitment/recommendations/${recommendationId}`, scope),
+    );
+  },
+
   getAnomaliesAlerts(scope: DashboardResolvedScope, filters?: AnomalyAlertsFiltersQuery) {
     return apiGet<AnomalyAlertRecord[]>(withAnomaliesAlertsFilters("/dashboard/anomalies-alerts", scope, filters));
   },
@@ -306,8 +327,11 @@ export type {
   DashboardScopeInput,
   DashboardSectionData,
   OptimizationIdleOverview,
+  OptimizationCommitmentOverview,
   OptimizationIdleRecommendationsResponse,
+  OptimizationCommitmentRecommendationsResponse,
   OptimizationIdleRecommendationDetail,
+  OptimizationCommitmentRecommendationDetail,
   OptimizationRightsizingOverview,
   OptimizationRecommendationFiltersQuery,
   OptimizationRecommendationsResponse,

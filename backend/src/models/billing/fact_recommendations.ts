@@ -16,13 +16,13 @@ class FactRecommendations extends Model<
   declare cloudConnectionId: CreationOptional<string | null>;
   declare billingSourceId: CreationOptional<string | number | null>;
   declare awsAccountId: string;
-  declare awsRegionCode: string;
+  declare awsRegionCode: CreationOptional<string | null>;
   declare category: string;
   declare recommendationType: string;
   declare serviceKey: CreationOptional<string | number | null>;
   declare subAccountKey: CreationOptional<string | number | null>;
   declare regionKey: CreationOptional<string | number | null>;
-  declare resourceId: string;
+  declare resourceId: CreationOptional<string | null>;
   declare resourceArn: CreationOptional<string | null>;
   declare resourceName: CreationOptional<string | null>;
   declare resourceType: CreationOptional<string | null>;
@@ -31,6 +31,10 @@ class FactRecommendations extends Model<
   declare currentMonthlyCost: CreationOptional<string | number>;
   declare estimatedMonthlySavings: CreationOptional<string | number>;
   declare projectedMonthlyCost: CreationOptional<string | number>;
+  declare recommendedHourlyCommitment: CreationOptional<string | number>;
+  declare recommendedPaymentOption: CreationOptional<string | null>;
+  declare recommendedTerm: CreationOptional<string | null>;
+  declare commitmentPlanType: CreationOptional<string | null>;
   declare performanceRiskScore: CreationOptional<string | number | null>;
   declare performanceRiskLevel: CreationOptional<string | null>;
   declare sourceSystem: CreationOptional<string>;
@@ -56,13 +60,13 @@ const createFactRecommendationsModel = (sequelize: Sequelize): typeof FactRecomm
       cloudConnectionId: { type: DataTypes.UUID, allowNull: true, field: "cloud_connection_id" },
       billingSourceId: { type: DataTypes.BIGINT, allowNull: true, field: "billing_source_id" },
       awsAccountId: { type: DataTypes.STRING(50), allowNull: false, field: "aws_account_id" },
-      awsRegionCode: { type: DataTypes.STRING(50), allowNull: false, field: "aws_region_code" },
+      awsRegionCode: { type: DataTypes.STRING(50), allowNull: true, field: "aws_region_code" },
       category: { type: DataTypes.STRING(50), allowNull: false },
       recommendationType: { type: DataTypes.STRING(100), allowNull: false, field: "recommendation_type" },
       serviceKey: { type: DataTypes.BIGINT, allowNull: true, field: "service_key" },
       subAccountKey: { type: DataTypes.BIGINT, allowNull: true, field: "sub_account_key" },
       regionKey: { type: DataTypes.BIGINT, allowNull: true, field: "region_key" },
-      resourceId: { type: DataTypes.STRING(255), allowNull: false, field: "resource_id" },
+      resourceId: { type: DataTypes.STRING(255), allowNull: true, field: "resource_id" },
       resourceArn: { type: DataTypes.TEXT, allowNull: true, field: "resource_arn" },
       resourceName: { type: DataTypes.STRING(255), allowNull: true, field: "resource_name" },
       resourceType: { type: DataTypes.STRING(100), allowNull: true, field: "resource_type" },
@@ -71,9 +75,13 @@ const createFactRecommendationsModel = (sequelize: Sequelize): typeof FactRecomm
       currentMonthlyCost: { type: DataTypes.DECIMAL(18, 4), allowNull: false, defaultValue: "0", field: "current_monthly_cost" },
       estimatedMonthlySavings: { type: DataTypes.DECIMAL(18, 4), allowNull: false, defaultValue: "0", field: "estimated_monthly_savings" },
       projectedMonthlyCost: { type: DataTypes.DECIMAL(18, 4), allowNull: false, defaultValue: "0", field: "projected_monthly_cost" },
+      recommendedHourlyCommitment: { type: DataTypes.DECIMAL(18, 6), allowNull: false, defaultValue: "0", field: "recommended_hourly_commitment" },
+      recommendedPaymentOption: { type: DataTypes.STRING(50), allowNull: true, field: "recommended_payment_option" },
+      recommendedTerm: { type: DataTypes.STRING(20), allowNull: true, field: "recommended_term" },
+      commitmentPlanType: { type: DataTypes.STRING(50), allowNull: true, field: "commitment_plan_type" },
       performanceRiskScore: { type: DataTypes.DECIMAL(10, 4), allowNull: true, field: "performance_risk_score" },
       performanceRiskLevel: { type: DataTypes.STRING(20), allowNull: true, field: "performance_risk_level" },
-      sourceSystem: { type: DataTypes.STRING(50), allowNull: false, defaultValue: "AWS_COMPUTE_OPTIMIZER", field: "source_system" },
+      sourceSystem: { type: DataTypes.STRING(50), allowNull: false, defaultValue: "AWS_SAVINGS_PLANS_API", field: "source_system" },
       status: { type: DataTypes.STRING(20), allowNull: false, defaultValue: "OPEN" },
       effortLevel: { type: DataTypes.STRING(20), allowNull: true, field: "effort_level" },
       riskLevel: { type: DataTypes.STRING(20), allowNull: true, field: "risk_level" },

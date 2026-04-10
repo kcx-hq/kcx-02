@@ -54,6 +54,36 @@ export type AwsIdleResourceRecommendationInput = {
   rawPayload?: unknown;
 };
 
+export type CommitmentPlanType = "COMPUTE_SP" | "EC2_INSTANCE_SP";
+export type CommitmentPaymentOption = "NO_UPFRONT" | "PARTIAL_UPFRONT" | "ALL_UPFRONT";
+export type CommitmentTerm = "ONE_YEAR" | "THREE_YEARS";
+
+export type AwsCommitmentRecommendationInput = {
+  accountId: string;
+  region?: string | null;
+  recommendationType: "BUY_COMPUTE_SP" | "BUY_EC2_INSTANCE_SP";
+  resourceId?: string | null;
+  resourceName?: string | null;
+  currentResourceType?: string | null;
+  recommendedResourceType?: string | null;
+  currentMonthlyCost?: number | string | null;
+  estimatedMonthlySavings?: number | string | null;
+  projectedMonthlyCost?: number | string | null;
+  recommendedHourlyCommitment?: number | string | null;
+  recommendedPaymentOption?: CommitmentPaymentOption | null;
+  recommendedTerm?: CommitmentTerm | null;
+  commitmentPlanType?: CommitmentPlanType | null;
+  performanceRiskScore?: number | string | null;
+  performanceRiskLevel?: "LOW" | "MEDIUM" | "HIGH" | null;
+  recommendationTitle?: string | null;
+  recommendationText?: string | null;
+  effortLevel?: "LOW" | "MEDIUM" | "HIGH" | null;
+  riskLevel?: "LOW" | "MEDIUM" | "HIGH" | null;
+  observationStart?: string | Date | null;
+  observationEnd?: string | Date | null;
+  rawPayload?: unknown;
+};
+
 export type NormalizedRightsizingRecommendation = {
   tenantId: string;
   awsAccountId: string;
@@ -125,6 +155,41 @@ export type EnrichedIdleRecommendation = NormalizedIdleRecommendation & {
   regionKey: number | null;
   currentMonthlyCost: number;
   projectedMonthlyCost: number;
+};
+
+export type EnrichedCommitmentRecommendation = {
+  tenantId: string;
+  cloudConnectionId: string;
+  billingSourceId: string | number | null;
+  awsAccountId: string;
+  awsRegionCode: string | null;
+  category: "COMMITMENT";
+  recommendationType: "BUY_COMPUTE_SP" | "BUY_EC2_INSTANCE_SP";
+  serviceKey: number | null;
+  subAccountKey: number | null;
+  regionKey: number | null;
+  resourceId: string | null;
+  resourceName: string | null;
+  currentResourceType: string | null;
+  recommendedResourceType: string | null;
+  currentMonthlyCost: number;
+  estimatedMonthlySavings: number;
+  projectedMonthlyCost: number;
+  recommendedHourlyCommitment: number;
+  recommendedPaymentOption: CommitmentPaymentOption | null;
+  recommendedTerm: CommitmentTerm | null;
+  commitmentPlanType: CommitmentPlanType | null;
+  performanceRiskScore: number | null;
+  performanceRiskLevel: "LOW" | "MEDIUM" | "HIGH" | null;
+  sourceSystem: "AWS_SAVINGS_PLANS_API";
+  status: "OPEN";
+  effortLevel: "LOW" | "MEDIUM" | "HIGH" | null;
+  riskLevel: "LOW" | "MEDIUM" | "HIGH" | null;
+  recommendationTitle: string | null;
+  recommendationText: string | null;
+  observationStart: Date | null;
+  observationEnd: Date | null;
+  rawPayloadJson: string | null;
 };
 
 export type OptimizationSyncResult = {
