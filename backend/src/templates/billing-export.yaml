@@ -44,6 +44,19 @@ Parameters:
     Default: KCX-CUR2-Export
     Description: Name of the AWS Data Export
 
+  CloudTrailBucketName:
+    Type: String
+    Default: ''
+    Description: Optional CloudTrail S3 bucket name to allow read access for log ingestion
+
+  CloudTrailPrefix:
+    Type: String
+    Default: kcx/cloudtrail
+    Description: Prefix in the CloudTrail bucket where logs are delivered
+
+Conditions:
+  HasCloudTrailBucket: !Not [!Equals [!Ref CloudTrailBucketName, '']]
+
 Resources:
   KCXExportBucket:
     Type: AWS::S3::Bucket
@@ -100,8 +113,14 @@ Resources:
                   - elasticloadbalancing:DescribeLoadBalancers
                   - cloudwatch:GetMetricData
                   - cloudwatch:GetMetricStatistics
+                  - ec2:DescribeInstances
+                  - ec2:DescribeTags
                   - compute-optimizer:GetEC2InstanceRecommendations
                   - compute-optimizer:GetEnrollmentStatus
+                  - cloudwatch:GetMetricData
+                  - cloudwatch:GetMetricStatistics
+                  - cloudwatch:ListMetrics
+                  - tag:GetResources
                   - compute-optimizer:UpdateEnrollmentStatus
                 Resource: "*"
 
@@ -124,493 +143,27 @@ Resources:
                   - s3:GetObject
                 Resource: !Sub ${KCXExportBucket.Arn}/${ExportPrefix}/*
 
-  ExportBucketPolicy:
-    Type: AWS::S3::BucketPolicy
-    Properties:
-      Bucket: !Ref KCXExportBucket
-      PolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Sid: AllowAWSDataExportsToWrite
-            Effect: Allow
-            Principal:
-              Service: bcm-data-exports.amazonaws.com
-            Action:
-              - s3:PutObject
-            Resource: !Sub ${KCXExportBucket.Arn}/*
-            Condition:
-              StringEquals:
-                aws:SourceAccount: !Ref AWS::AccountId
-              ArnLike:
-                aws:SourceArn: !Sub arn:aws:bcm-data-exports:${AWS::Region}:${AWS::AccountId}:export/*
+              - !If
+                - HasCloudTrailBucket
+                - Sid: ListCloudTrailBucket
+                  Effect: Allow
+                  Action:
+                    - s3:ListBucket
+                    - s3:GetBucketLocation
+                  Resource: !Sub arn:aws:s3:::${CloudTrailBucketName}
+                  Condition:
+                    StringLike:
+                      s3:prefix:
+                        - !Ref CloudTrailPrefix
+                        - !Sub ${CloudTrailPrefix}/*
+                        - !Sub ${CloudTrailPrefix}/AWSLogs/*
+                - !Ref AWS::NoValue
 
-          - Sid: AllowAWSDataExportsBucketChecks
-            Effect: Allow
-            Principal:
-              Service: bcm-data-exports.amazonaws.com
-            Action:
-              - s3:GetBucketPolicy
-              - s3:GetBucketLocation
-            Resource: !GetAtt KCXExportBucket.Arn
-            Condition:
-              StringEquals:
-                aws:SourceAccount: !Ref AWS::AccountId
-              ArnLike:
-                aws:SourceArn: !Sub arn:aws:bcm-data-exports:${AWS::Region}:${AWS::AccountId}:export/*
-
-  KCXCur2Export:
-    Type: AWS::BCMDataExports::Export
-    DependsOn:
-      - KCXExportBucket
-      - ExportBucketPolicy
-    Properties:
-      Export:
-        Name: !Ref ExportName
-        Description: KCX billing export in parquet for ingestion
-        DataQuery:
-          QueryStatement: |
-            SELECT
-              bill_billing_period_start_date AS billing_period_start_date,
-              bill_billing_period_end_date AS billing_period_end_date,
-              bill_payer_account_id AS billing_account_id,
-              bill_payer_account_name AS billing_account_name,
-              line_item_usage_account_id AS sub_account_id,
-              line_item_usage_account_name AS sub_account_name,
-              line_item_product_code AS service_name,
-              product_region_code AS region_id,
-              product_location AS region_name,
-              line_item_availability_zone AS availability_zone,
-              pricing_currency AS billing_currency,
-              line_item_usage_type AS usage_type,
-              line_item_operation AS operation,
-              line_item_line_item_type AS line_item_type,
-              line_item_resource_id AS resource_id,
-              line_item_unblended_cost AS billed_cost,
-              line_item_net_unblended_cost AS effective_cost,
-              pricing_public_on_demand_cost AS public_on_demand_cost,
-              line_item_usage_amount AS consumed_quantity,
-              line_item_usage_start_date AS usage_start_time,
-              line_item_usage_end_date AS usage_end_time,
-              pricing_term AS pricing_term,
-              pricing_purchase_option AS purchase_option,
-              pricing_unit AS pricing_unit,
-              product_sku AS sku_id,
-              pricing_rate_id AS sku_price_id,
-              pricing_rate_code AS pricing_rate_code,
-              tags AS tags_json,
-              discount_total_discount AS discount_amount,
-              line_item_tax_type AS tax_type,
-              reservation_reservation_a_r_n AS reservation_arn,
-              savings_plan_savings_plan_a_r_n AS savings_plan_arn,
-              savings_plan_offering_type AS savings_plan_type,
-              capacity_reservation_capacity_reservation_arn AS capacity_reservation_arn,
-              capacity_reservation_capacity_reservation_status AS capacity_reservation_status,
-              capacity_reservation_capacity_reservation_type AS capacity_reservation_type
-            FROM COST_AND_USAGE_REPORT
-          TableConfigurations:
-            COST_AND_USAGE_REPORT:
-              TIME_GRANULARITY: HOURLY
-              INCLUDE_RESOURCES: 'TRUE'
-              INCLUDE_CAPACITY_RESERVATION_DATA: 'TRUE'
-        DestinationConfigurations:
-          S3Destination:
-            S3Bucket: !Ref KCXExportBucket
-            S3Prefix: !Ref ExportPrefix
-            S3Region: !Ref AWS::Region
-            S3OutputConfigurations:
-              Compression: PARQUET
-              Format: PARQUET
-              OutputType: CUSTOM
-              Overwrite: CREATE_NEW_REPORT
-        RefreshCadence:
-          Frequency: SYNCHRONOUS
-      Tags:
-        - Key: managed-by
-          Value: kcx
-        - Key: connection-name
-          Value: !Ref ConnectionName
-
-  KCXCallbackLambdaRole:
-    Type: AWS::IAM::Role
-    Properties:
-      AssumeRolePolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: lambda.amazonaws.com
-            Action: sts:AssumeRole
-      ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
-
-  KCXCallbackFunction:
-    Type: AWS::Lambda::Function
-    Properties:
-      Runtime: nodejs18.x
-      Handler: index.handler
-      Role: !GetAtt KCXCallbackLambdaRole.Arn
-      Timeout: 60
-      Code:
-        ZipFile: |
-          const https = require('https');
-          const { URL } = require('url');
-
-          function sendCfnResponse(event, context, status, data, physicalResourceId, noEcho) {
-            return new Promise((resolve, reject) => {
-              const responseBody = JSON.stringify({
-                Status: status,
-                Reason: `See CloudWatch Log Stream: ${context.logStreamName}`,
-                PhysicalResourceId: physicalResourceId || context.logStreamName,
-                StackId: event.StackId,
-                RequestId: event.RequestId,
-                LogicalResourceId: event.LogicalResourceId,
-                NoEcho: !!noEcho,
-                Data: data || {}
-              });
-
-              const parsedUrl = new URL(event.ResponseURL);
-
-              const options = {
-                hostname: parsedUrl.hostname,
-                port: 443,
-                path: parsedUrl.pathname + parsedUrl.search,
-                method: 'PUT',
-                headers: {
-                  'content-type': '',
-                  'content-length': Buffer.byteLength(responseBody)
-                }
-              };
-
-              const req = https.request(options, (res) => {
-                res.on('data', () => {});
-                res.on('end', resolve);
-              });
-
-              req.on('error', reject);
-              req.write(responseBody);
-              req.end();
-            });
-          }
-
-          function postJson(urlString, payload) {
-            const parsed = new URL(urlString);
-            const body = JSON.stringify(payload);
-
-            const options = {
-              hostname: parsed.hostname,
-              port: parsed.port || 443,
-              path: parsed.pathname + (parsed.search || ''),
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Content-Length': Buffer.byteLength(body)
-              }
-            };
-
-            return new Promise((resolve, reject) => {
-              const req = https.request(options, (res) => {
-                let data = '';
-                res.on('data', chunk => data += chunk);
-                res.on('end', () => {
-                  if (res.statusCode >= 200 && res.statusCode < 300) {
-                    resolve({ statusCode: res.statusCode, body: data });
-                  } else {
-                    reject(new Error(`Callback failed: ${res.statusCode} ${data}`));
-                  }
-                });
-              });
-
-              req.on('error', reject);
-              req.write(body);
-              req.end();
-            });
-          }
-
-          exports.handler = async (event, context) => {
-            const props = event.ResourceProperties || {};
-            const physicalId = `kcx-callback-${props.AccountId || 'unknown'}-${props.ConnectionName || 'unknown'}`;
-
-            try {
-              const required = [
-                'CallbackUrl',
-                'CallbackToken',
-                'AccountId',
-                'RoleArn',
-                'StackId',
-                'ExportName',
-                'ExportBucket',
-                'ExportPrefix',
-                'ExportRegion',
-                'ExportArn',
-                'ConnectionName'
-              ];
-
-              for (const key of required) {
-                if (!props[key]) throw new Error(`Missing required callback property: ${key}`);
-              }
-
-              if (event.RequestType === 'Delete') {
-                try {
-                  await postJson(props.CallbackUrl, {
-                    callback_token: props.CallbackToken,
-                    event_type: 'stack_delete',
-                    account_id: props.AccountId,
-                    billing_role_arn: props.RoleArn,
-                    action_role_arn: props.ActionRoleArn || undefined,
-                    role_arn: props.RoleArn,
-                    stack_id: props.StackId,
-                    export_name: props.ExportName,
-                    export_bucket: props.ExportBucket,
-                    export_prefix: props.ExportPrefix,
-                    export_region: props.ExportRegion,
-                    export_arn: props.ExportArn,
-                    connection_name: props.ConnectionName,
-                    format: 'parquet',
-                    source_type: 'aws_data_exports_cur2',
-                    setup_mode: 'cloud_connected',
-                    schema_type: 'cur2_custom',
-                    cadence: 'hourly'
-                  });
-                } catch (deleteErr) {}
-
-                await sendCfnResponse(event, context, 'SUCCESS', { deleted: true }, physicalId);
-                return;
-              }
-
-              await postJson(props.CallbackUrl, {
-                callback_token: props.CallbackToken,
-                event_type: event.RequestType === 'Update' ? 'stack_update' : 'stack_create',
-                account_id: props.AccountId,
-                billing_role_arn: props.RoleArn,
-                action_role_arn: props.ActionRoleArn || undefined,
-                role_arn: props.RoleArn,
-                stack_id: props.StackId,
-                export_name: props.ExportName,
-                export_bucket: props.ExportBucket,
-                export_prefix: props.ExportPrefix,
-                export_region: props.ExportRegion,
-                export_arn: props.ExportArn,
-                connection_name: props.ConnectionName,
-                format: 'parquet',
-                source_type: 'aws_data_exports_cur2',
-                setup_mode: 'cloud_connected',
-                schema_type: 'cur2_custom',
-                cadence: 'hourly'
-              });
-
-              await sendCfnResponse(event, context, 'SUCCESS', { delivered: true }, physicalId);
-            } catch (err) {
-              await sendCfnResponse(
-                event,
-                context,
-                'FAILED',
-                { error: err.message || 'Unknown error' },
-                physicalId
-              );
-            }
-          };
-
-  KCXCallbackFunctionLogGroup:
-    Type: AWS::Logs::LogGroup
-    Properties:
-      LogGroupName: !Sub /aws/lambda/${KCXCallbackFunction}
-      RetentionInDays: 14
-
-  KCXNotifyPlatform:
-    Type: Custom::KCXNotify
-    Properties:
-      ServiceToken: !GetAtt KCXCallbackFunction.Arn
-      CallbackUrl: !Ref CallbackUrl
-      CallbackToken: !Ref CallbackToken
-      AccountId: !Ref AWS::AccountId
-      RoleArn: !GetAtt KCXReadOnlyRole.Arn
-      ActionRoleArn: !Ref ActionRoleArn
-      StackId: !Ref AWS::StackId
-      ConnectionName: !Ref ConnectionName
-      ExportName: !Ref ExportName
-      ExportBucket: !Ref KCXExportBucket
-      ExportPrefix: !Ref ExportPrefix
-      ExportRegion: !Ref AWS::Region
-      ExportArn: !GetAtt KCXCur2Export.ExportArn
-
-  KCXFileEventLambdaRole:
-    Type: AWS::IAM::Role
-    Properties:
-      AssumeRolePolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: lambda.amazonaws.com
-            Action: sts:AssumeRole
-      ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
-
-  KCXFileEventFunction:
-    Type: AWS::Lambda::Function
-    Properties:
-      Runtime: nodejs18.x
-      Handler: index.handler
-      Role: !GetAtt KCXFileEventLambdaRole.Arn
-      Timeout: 60
-      Environment:
-        Variables:
-          FILE_EVENT_CALLBACK_URL: !Ref FileEventCallbackUrl
-          CALLBACK_TOKEN: !Ref CallbackToken
-          ROLE_ARN: !GetAtt KCXReadOnlyRole.Arn
-          EXPORT_PREFIX: !Ref ExportPrefix
-          SOURCE_TYPE: aws_data_exports_cur2
-          SCHEMA_TYPE: cur2_custom
-          CADENCE: hourly
-      Code:
-        ZipFile: |
-          const https = require('https');
-          const { URL } = require('url');
-
-          function postJson(urlString, payload) {
-            const parsed = new URL(urlString);
-            const body = JSON.stringify(payload);
-
-            const options = {
-              hostname: parsed.hostname,
-              port: parsed.port || 443,
-              path: parsed.pathname + (parsed.search || ''),
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Content-Length': Buffer.byteLength(body)
-              }
-            };
-
-            return new Promise((resolve, reject) => {
-              const req = https.request(options, (res) => {
-                let data = '';
-                res.on('data', chunk => data += chunk);
-                res.on('end', () => {
-                  if (res.statusCode >= 200 && res.statusCode < 300) {
-                    resolve({ statusCode: res.statusCode, body: data });
-                  } else {
-                    reject(new Error(`File event callback failed: ${res.statusCode} ${data}`));
-                  }
-                });
-              });
-
-              req.on('error', reject);
-              req.write(body);
-              req.end();
-            });
-          }
-
-          exports.handler = async (event) => {
-            const callbackUrl = process.env.FILE_EVENT_CALLBACK_URL;
-            const callbackToken = process.env.CALLBACK_TOKEN;
-            const roleArn = process.env.ROLE_ARN;
-            const exportPrefix = process.env.EXPORT_PREFIX || '';
-            const sourceType = process.env.SOURCE_TYPE;
-            const schemaType = process.env.SCHEMA_TYPE;
-            const cadence = process.env.CADENCE;
-
-            if (!callbackUrl || !callbackToken || !roleArn) {
-              throw new Error('Missing required Lambda environment variables');
-            }
-
-            const bucket = event?.detail?.bucket?.name;
-            const rawKey = event?.detail?.object?.key;
-            const eventId = event?.id || null;
-
-            if (!bucket || !rawKey) {
-              throw new Error('Missing bucket name or object key in EventBridge event');
-            }
-
-            const objectKey = decodeURIComponent(String(rawKey).replace(/\+/g, ' '));
-
-            if (exportPrefix && !objectKey.startsWith(exportPrefix)) {
-              return;
-            }
-
-            const isManifest =
-              objectKey.includes('/metadata/') &&
-              objectKey.endsWith('Manifest.json');
-
-            if (!isManifest) {
-              return;
-            }
-
-            await postJson(callbackUrl, {
-              callback_token: callbackToken,
-              trigger_type: 'manifest_created',
-              event_id: eventId,
-              account_id: event.account,
-              region: event.region,
-              role_arn: roleArn,
-              bucket_name: bucket,
-              object_key: objectKey,
-              source_type: sourceType,
-              schema_type: schemaType,
-              cadence: cadence
-            });
-          };
-
-  KCXFileEventFunctionLogGroup:
-    Type: AWS::Logs::LogGroup
-    Properties:
-      LogGroupName: !Sub /aws/lambda/${KCXFileEventFunction}
-      RetentionInDays: 14
-
-  KCXExportObjectCreatedRule:
-    Type: AWS::Events::Rule
-    Properties:
-      Description: Route S3 object created events for KCX export prefix to Lambda
-      EventPattern:
-        source:
-          - aws.s3
-        detail-type:
-          - Object Created
-        detail:
-          bucket:
-            name:
-              - !Ref KCXExportBucket
-          object:
-            key:
-              - prefix: !Ref ExportPrefix
-      State: ENABLED
-      Targets:
-        - Arn: !GetAtt KCXFileEventFunction.Arn
-          Id: KCXFileEventFunctionTarget
-
-  KCXFileEventInvokePermission:
-    Type: AWS::Lambda::Permission
-    Properties:
-      Action: lambda:InvokeFunction
-      FunctionName: !Ref KCXFileEventFunction
-      Principal: events.amazonaws.com
-      SourceArn: !GetAtt KCXExportObjectCreatedRule.Arn
-
-Outputs:
-  RoleArn:
-    Description: ARN of the role KCX can assume
-    Value: !GetAtt KCXReadOnlyRole.Arn
-
-  AccountId:
-    Description: AWS account ID where stack was created
-    Value: !Ref AWS::AccountId
-
-  StackId:
-    Description: CloudFormation stack ID
-    Value: !Ref AWS::StackId
-
-  ExportName:
-    Description: Data Export name
-    Value: !Ref ExportName
-
-  ExportBucket:
-    Description: Export S3 bucket
-    Value: !Ref KCXExportBucket
-
-  ExportPrefix:
-    Description: Export S3 prefix
-    Value: !Ref ExportPrefix
-
-  ExportArn:
-    Description: ARN of AWS Data Export
-    Value: !GetAtt KCXCur2Export.ExportArn
+              - !If
+                - HasCloudTrailBucket
+                - Sid: ReadCloudTrailObjects
+                  Effect: Allow
+                  Action:
+                    - s3:GetObject
+                  Resource: !Sub arn:aws:s3:::${CloudTrailBucketName}/${CloudTrailPrefix}/*
+                - !Ref AWS::NoValue

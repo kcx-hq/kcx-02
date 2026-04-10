@@ -244,7 +244,7 @@ export function ActionPage() {
           {!integrationsLoading && !integrationsError && !hasAwsConnection ? (
             <div className="space-y-3">
               <p className="text-sm text-text-secondary">No AWS connection found yet. Connect an AWS account before running EC2 actions.</p>
-              <Button className="h-9 rounded-md" onClick={() => navigateTo("/client/billing/connect-cloud/add")}>
+              <Button className="h-9 rounded-md" onClick={() => navigateTo("/client/billing/connect-cloud/add/aws")}>
                 Connect AWS
               </Button>
             </div>

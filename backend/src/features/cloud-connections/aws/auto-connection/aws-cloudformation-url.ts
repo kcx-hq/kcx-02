@@ -1,14 +1,17 @@
-type AwsCloudFormationUrlInput = {
+export type AwsCloudFormationUrlInput = {
   stackName: string;
   externalId: string;
   connectionName: string;
   region: string;
-  fileEventCallbackUrl: string;
+  fileEventCallbackUrl?: string;
   exportPrefix?: string;
   exportName?: string;
   callbackUrl?: string;
   callbackToken?: string;
   enableBillingExport?: boolean;
+  enableCloudTrail?: boolean;
+  cloudTrailPrefix?: string;
+  cloudTrailName?: string;
   enableActionRole?: boolean;
   enableEC2Module?: boolean;
   useTagScopedAccess?: boolean;
@@ -29,6 +32,9 @@ export function buildAwsCloudFormationCreateStackUrl({
   callbackUrl,
   callbackToken,
   enableBillingExport = true,
+  enableCloudTrail = false,
+  cloudTrailPrefix,
+  cloudTrailName,
   enableActionRole = true,
   enableEC2Module = true,
   useTagScopedAccess = false,
@@ -40,12 +46,14 @@ export function buildAwsCloudFormationCreateStackUrl({
 
   const parentTemplateUrl = process.env.AWS_PARENT_TEMPLATE_URL?.trim();
   const billingTemplateUrl = process.env.AWS_BILLING_TEMPLATE_URL?.trim();
+  const cloudTrailTemplateUrl = process.env.AWS_CLOUDTRAIL_TEMPLATE_URL?.trim();
   const actionRoleTemplateUrl = process.env.AWS_ACTION_ROLE_TEMPLATE_URL?.trim();
   const ec2ModuleTemplateUrl = process.env.AWS_EC2_MODULE_TEMPLATE_URL?.trim();
-  const fileEventCallbackUrl = process.env.AWS_FILE_EVENT_CALLBACK_URL?.trim();
+  const fileEventCallbackUrl =  process.env.AWS_FILE_EVENT_CALLBACK_URL?.trim();
   const kcxPrincipalArn =
     process.env.AWS_KCX_PRINCIPAL_ARN?.trim() ||
     "arn:aws:iam::275017715736:root";
+  const requiresCallbacks = enableBillingExport || enableCloudTrail;
 
   if (!parentTemplateUrl) {
     throw new Error("AWS_PARENT_TEMPLATE_URL is not configured");
@@ -53,6 +61,10 @@ export function buildAwsCloudFormationCreateStackUrl({
 
   if (enableBillingExport && !billingTemplateUrl) {
     throw new Error("AWS_BILLING_TEMPLATE_URL is not configured");
+  }
+
+  if (enableCloudTrail && !cloudTrailTemplateUrl) {
+    throw new Error("AWS_CLOUDTRAIL_TEMPLATE_URL is not configured");
   }
 
   if (enableActionRole && !actionRoleTemplateUrl) {
@@ -63,16 +75,16 @@ export function buildAwsCloudFormationCreateStackUrl({
     throw new Error("AWS_EC2_MODULE_TEMPLATE_URL is not configured");
   }
 
-  if (enableBillingExport && !callbackUrl?.trim()) {
-    throw new Error("callbackUrl is required when billing export is enabled");
+  if (requiresCallbacks && !callbackUrl?.trim()) {
+    throw new Error("callbackUrl is required when billing export or cloudtrail is enabled");
   }
 
-  if (enableBillingExport && !callbackToken?.trim()) {
-    throw new Error("callbackToken is required when billing export is enabled");
+  if (requiresCallbacks && !callbackToken?.trim()) {
+    throw new Error("callbackToken is required when billing export or cloudtrail is enabled");
   }
 
-  if (enableBillingExport && !fileEventCallbackUrl) {
-    throw new Error("AWS_FILE_EVENT_CALLBACK_URL is not configured");
+  if (requiresCallbacks && !fileEventCallbackUrl) {
+    throw new Error("fileEventCallbackUrl is required when billing export or cloudtrail is enabled");
   }
 
   const queryItems: Array<[string, string]> = [
@@ -82,6 +94,7 @@ export function buildAwsCloudFormationCreateStackUrl({
     ["param_ConnectionName", connectionName],
     ["param_KcxPrincipalArn", kcxPrincipalArn],
     ["param_EnableBillingExport", enableBillingExport ? "true" : "false"],
+    ["param_EnableCloudTrail", enableCloudTrail ? "true" : "false"],
     ["param_EnableActionRole", enableActionRole ? "true" : "false"],
     ["param_EnableEC2Module", enableEC2Module ? "true" : "false"],
     ["param_UseTagScopedAccess", useTagScopedAccess ? "true" : "false"],
@@ -92,6 +105,10 @@ export function buildAwsCloudFormationCreateStackUrl({
     queryItems.push(["param_BillingTemplateUrl", billingTemplateUrl]);
   }
 
+  if (cloudTrailTemplateUrl) {
+    queryItems.push(["param_CloudTrailTemplateUrl", cloudTrailTemplateUrl]);
+  }
+
   if (actionRoleTemplateUrl) {
     queryItems.push(["param_ActionRoleTemplateUrl", actionRoleTemplateUrl]);
   }
@@ -100,15 +117,15 @@ export function buildAwsCloudFormationCreateStackUrl({
     queryItems.push(["param_Ec2ModuleTemplateUrl", ec2ModuleTemplateUrl]);
   }
 
-  if (enableBillingExport && callbackUrl?.trim()) {
+  if (requiresCallbacks && callbackUrl?.trim()) {
     queryItems.push(["param_CallbackUrl", callbackUrl.trim()]);
   }
 
-  if (enableBillingExport && callbackToken?.trim()) {
+  if (requiresCallbacks && callbackToken?.trim()) {
     queryItems.push(["param_CallbackToken", callbackToken.trim()]);
   }
 
-  if (enableBillingExport && fileEventCallbackUrl) {
+  if (requiresCallbacks && fileEventCallbackUrl) {
     queryItems.push(["param_FileEventCallbackUrl", fileEventCallbackUrl]);
   }
 
@@ -118,6 +135,14 @@ export function buildAwsCloudFormationCreateStackUrl({
 
   if (exportName?.trim()) {
     queryItems.push(["param_ExportName", exportName.trim()]);
+  }
+
+  if (cloudTrailPrefix?.trim()) {
+    queryItems.push(["param_CloudTrailPrefix", cloudTrailPrefix.trim()]);
+  }
+
+  if (cloudTrailName?.trim()) {
+    queryItems.push(["param_CloudTrailName", cloudTrailName.trim()]);
   }
 
   if (resourceTagKey?.trim()) {

@@ -16,6 +16,33 @@ export function formatDateTime(value: string | null): string {
   return new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeStyle: "short" }).format(date)
 }
 
+export function formatCompactDateTime(value: string | null): string {
+  if (!value) return "—"
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return "—"
+
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, "0")
+  const day = String(date.getDate()).padStart(2, "0")
+  const hours = String(date.getHours()).padStart(2, "0")
+  const minutes = String(date.getMinutes()).padStart(2, "0")
+
+  return `${year}-${month}-${day} ${hours}:${minutes}`
+}
+
+export function formatCloudAccountId(value: string | null): string {
+  if (!value) return "-"
+  const normalized = String(value).trim()
+  if (!normalized) return "-"
+
+  // AWS account IDs are typically 12 digits; render as 4-4-4 for better scanability.
+  if (/^\d{12}$/.test(normalized)) {
+    return `${normalized.slice(0, 4)}-${normalized.slice(4, 8)}-${normalized.slice(8, 12)}`
+  }
+
+  return normalized
+}
+
 export function formatValue(value: string | number | boolean | null | undefined): string {
   if (value === null || typeof value === "undefined" || value === "") return "-"
   return String(value)
@@ -71,4 +98,3 @@ export function getLastActivity(item: AdminCloudConnectionListItem): string | nu
     null
   )
 }
-

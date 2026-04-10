@@ -38,6 +38,8 @@ export type AdminBillingUploadsListRow = {
   client: {
     id: string;
     name: string;
+    userName: string | null;
+    companyName: string | null;
   };
   source: {
     type: string;

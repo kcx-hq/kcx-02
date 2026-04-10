@@ -2,7 +2,6 @@ import { Router } from "express";
 import { requireAuth } from "../../middlewares/auth.middleware.js";
 import { asyncHandler } from "../../utils/async-handler.js";
 import { handleGetAllocationDashboard } from "./allocation/allocation.controller.js";
-import { handleGetAnomaliesAlertsDashboard } from "./anomalies-alerts/anomalies-alerts.controller.js";
 import {
   handleCreateBudget,
   handleGetBudgetDashboard,
@@ -35,6 +34,7 @@ import {
   handleGetOverviewTopRegions,
   handleGetOverviewTopServices,
 } from "./overview/overview.controller.js";
+import { handleGetAnomalies as handleGetAnomaliesAlertsDashboard } from "./anomaly-alerts/anomaly.controller.js";
 import { handleGetReportDashboard } from "./report/report.controller.js";
 import { handleGetResourcesDashboard } from "./resources/resources.controller.js";
 

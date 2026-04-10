@@ -14,16 +14,17 @@ import billingRoutes from "../billing/billing.routes.js";
 import dashboardRoutes from "../dashboard/dashboard.routes.js";
 import awsExportFileEventRoutes from "../cloud-connections/aws/exports/aws-export-file-event.routes.js";
 import clientAnnouncementsRoutes from "../client-announcements/client-announcements.routes.js";
+import anomalyRoutes from "../dashboard/anomaly-alerts/anomaly.routes.js";
 const router = Router();
 
 router.use(scheduleDemoRoutes);
 router.use(authRoutes);
+router.use(adminAuthRoutes);
 router.use(awsAutoCloudConnectionsRoutes);
 router.use(awsManualConnectionRoutes);
 router.use(awsEc2Routes);
 router.use(billingRoutes);
 router.use(dashboardRoutes);
-router.use(adminAuthRoutes);
 router.use(adminClientsRoutes);
 router.use(adminDemoRequestsRoutes);
 router.use(adminBillingUploadsRoutes);
@@ -31,6 +32,7 @@ router.use(adminCloudConnectionsRoutes);
 router.use(adminAnnouncementsRoutes);
 router.use(clientAnnouncementsRoutes);
 router.use(awsExportFileEventRoutes);
+router.use(anomalyRoutes);
 
 export default router;
 

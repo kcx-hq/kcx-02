@@ -4,8 +4,12 @@ import { sendSuccess } from "../../../../utils/api-response.js";
 import { logger } from "../../../../utils/logger.js";
 import { parseWithSchema } from "../../../_shared/validation/zod-validate.js";
 import { ingestionOrchestrator } from "../../../billing/services/ingestion-orchestrator.service.js";
-import { queueExportFileFromEvent, queueExportManifestFromEvent } from "./aws-export-ingestion.service.js";
+import { registerCloudtrailObjectEvent } from "./aws-cloudtrail-file-event.service.js";
+import { processPendingCloudTrailFiles } from "./aws-cloudtrail-file-processing.service.js";
+import { queueExportManifestFromEvent } from "./aws-export-ingestion.service.js";
 import { awsExportFileEventCallbackSchema } from "./aws-export-file-event.schema.js";
+
+let isCloudTrailProcessingScheduledOrRunning = false;
 
 async function triggerQueuedIngestionRun(ingestionRunId: string): Promise<void> {
   try {
@@ -20,69 +24,200 @@ async function triggerQueuedIngestionRun(ingestionRunId: string): Promise<void> 
   }
 }
 
-export async function handleAwsExportFileArrived(req: Request, res: Response): Promise<void> {
-  logger.info("AWS export callback: step=validate_payload:start");
+function scheduleCloudTrailProcessing(): void {
+  if (isCloudTrailProcessingScheduledOrRunning) {
+    logger.info("CloudTrail processing already scheduled/running");
+    return;
+  }
+
+  isCloudTrailProcessingScheduledOrRunning = true;
+  logger.info("CloudTrail processing scheduled");
+
+  setImmediate(() => {
+    logger.info("CloudTrail processing start");
+    void processPendingCloudTrailFiles({ limit: 25 })
+      .then((summary) => {
+        logger.info("CloudTrail processing finish", {
+          pendingFound: summary.pendingFound,
+          processed: summary.processed,
+          failed: summary.failed,
+          skipped: summary.skipped,
+        });
+      })
+      .catch((error) => {
+        logger.error("CloudTrail processing failure", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      })
+      .finally(() => {
+        isCloudTrailProcessingScheduledOrRunning = false;
+      });
+  });
+}
+
+export async function handleAwsFileEventArrived(
+  req: Request,
+  res: Response
+): Promise<void> {
+  logger.info("AWS file callback: step=validate_payload:start");
+
   const payload = parseWithSchema(awsExportFileEventCallbackSchema, req.body);
-  logger.info("AWS export callback: step=validate_payload:done", {
+
+  logger.info("AWS file callback: step=validate_payload:done", {
     callback_token: payload.callback_token,
     trigger_type: payload.trigger_type,
+    source_type: payload.source_type,
   });
 
-  logger.info("AWS export callback: step=normalize_object_key:start");
   const normalizedObjectKey = String(payload.object_key ?? "").trim();
-  const isManifestObject = normalizedObjectKey.toLowerCase().endsWith("manifest.json");
-  logger.info("AWS export callback: step=normalize_object_key:done", {
+
+  const isCloudTrailEvent =
+    payload.trigger_type === "cloudtrail_object_created" &&
+    payload.source_type === "aws_cloudtrail";
+
+  const isBillingManifestEvent =
+    payload.trigger_type === "manifest_created" &&
+    payload.source_type === "aws_data_exports_cur2";
+
+  logger.info("AWS file callback: step=classify_event", {
     normalized_object_key: normalizedObjectKey,
-    is_manifest_object: isManifestObject,
+    is_cloudtrail_event: isCloudTrailEvent,
+    is_billing_manifest_event: isBillingManifestEvent,
   });
 
-  logger.info("AWS export file event received", {
+  logger.info("AWS file event received", {
     callback_token: payload.callback_token,
     trigger_type: payload.trigger_type,
-    account_id: payload.account_id,
-    region: payload.region,
-    role_arn: payload.role_arn,
+    source_type: payload.source_type,
+    schema_type: payload.schema_type,
+    account_id: "account_id" in payload ? payload.account_id : null,
+    region: "region" in payload ? payload.region : null,
+    role_arn: "role_arn" in payload ? payload.role_arn : null,
     bucket_name: payload.bucket_name,
     object_key: payload.object_key,
-    body: payload,
   });
 
-  logger.info("AWS export callback: step=queue_call:start", {
-    queue_path: "queueExportManifestFromEvent",
-  });
-  const result = await queueExportManifestFromEvent({
-    callbackToken: payload.callback_token,
-    accountId: payload.account_id,
-    region: payload.region,
-    roleArn: payload.role_arn,
-    bucketName: payload.bucket_name,
-    manifestKey: normalizedObjectKey,
-  });
-  logger.info("AWS export callback: step=queue_call:done", {
+  type AwsFileEventResult = {
+    queued: boolean;
+    skipped: boolean;
+    reason?: string;
+    ingestionRunId?: string;
+    cloudEventId?: string;
+    cloudtrailSourceId?: string;
+    eventKind: "billing_manifest" | "cloudtrail_object";
+  };
+
+  let result: AwsFileEventResult;
+
+  if (isCloudTrailEvent) {
+    logger.info("AWS file callback: step=queue_call:start", {
+      queue_path: "registerCloudtrailObjectEvent",
+    });
+
+    const cloudtrailResult = await registerCloudtrailObjectEvent({
+      callbackToken: payload.callback_token,
+      eventId: payload.event_id,
+      accountId: payload.account_id,
+      region: payload.region,
+      roleArn: payload.role_arn,
+      bucketName: payload.bucket_name,
+      objectKey: normalizedObjectKey,
+      sourceType: payload.source_type,
+      schemaType: payload.schema_type,
+      cadence: payload.cadence,
+      rawPayload: payload,
+    });
+
+    result = {
+      ...cloudtrailResult,
+      eventKind: "cloudtrail_object",
+    };
+  } else if (isBillingManifestEvent) {
+    logger.info("AWS file callback: step=queue_call:start", {
+      queue_path: "queueExportManifestFromEvent",
+    });
+
+    const billingResult = await queueExportManifestFromEvent({
+      callbackToken: payload.callback_token,
+      accountId: payload.account_id,
+      region: payload.region,
+      roleArn: payload.role_arn,
+      bucketName: payload.bucket_name,
+      manifestKey: normalizedObjectKey,
+    });
+
+    result = {
+      ...billingResult,
+      eventKind: "billing_manifest",
+    };
+  } else {
+    logger.warn("AWS file callback: unsupported payload", {
+      trigger_type: payload.trigger_type,
+      source_type: payload.source_type,
+      schema_type: payload.schema_type,
+      bucket_name: payload.bucket_name,
+      object_key: payload.object_key,
+    });
+
+    sendSuccess({
+      res,
+      req,
+      message: "AWS file event ignored",
+      data: {
+        queued: false,
+        skipped: true,
+        reason: "unsupported_event_type",
+      },
+    });
+    return;
+  }
+
+  logger.info("AWS file callback: step=queue_call:done", {
+    eventKind: result.eventKind,
     queued: result.queued,
     skipped: result.skipped,
     ingestionRunId: result.ingestionRunId ?? null,
+    cloudEventId: result.cloudEventId ?? null,
+    cloudtrailSourceId: result.cloudtrailSourceId ?? null,
     reason: result.reason ?? null,
   });
 
-  logger.info("AWS export callback: step=send_response:start");
   sendSuccess({
     res,
     req,
-    message: "AWS export file event received",
+    message: "AWS file event received",
     data: result,
   });
-  logger.info("AWS export callback: step=send_response:done");
 
-  if (result.queued && result.ingestionRunId) {
+  if (result.eventKind === "cloudtrail_object") {
+    logger.info("CloudTrail callback persisted", {
+      queued: result.queued,
+      cloudEventId: result.cloudEventId ?? null,
+      cloudtrailSourceId: result.cloudtrailSourceId ?? null,
+    });
+
+    if (result.queued) {
+      scheduleCloudTrailProcessing();
+    }
+  }
+
+  if (result.eventKind === "billing_manifest" && result.queued && result.ingestionRunId) {
     const ingestionRunId = result.ingestionRunId;
-    logger.info("AWS export callback: step=schedule_ingestion:start", { ingestionRunId });
+
+    logger.info("AWS file callback: step=schedule_ingestion:start", {
+      ingestionRunId,
+    });
+
     setImmediate(() => {
       void triggerQueuedIngestionRun(ingestionRunId);
     });
-    logger.info("AWS export callback: step=schedule_ingestion:done", { ingestionRunId });
+
+    logger.info("AWS file callback: step=schedule_ingestion:done", {
+      ingestionRunId,
+    });
   } else {
-    logger.info("AWS export callback: step=schedule_ingestion:skipped", {
+    logger.info("AWS file callback: step=schedule_ingestion:skipped", {
+      eventKind: result.eventKind,
       queued: result.queued,
       ingestionRunId: result.ingestionRunId ?? null,
     });

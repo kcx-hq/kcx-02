@@ -1,6 +1,14 @@
 import { Card, CardContent } from "@/shared/ui/card"
 
-function MetricCard({ title, value, note }: { title: string; value: number; note: string }) {
+function MetricCard({
+  title,
+  value,
+  note,
+}: {
+  title: string
+  value: number
+  note: string
+}) {
   return (
     <Card>
       <CardContent className="p-4">
@@ -14,21 +22,21 @@ function MetricCard({ title, value, note }: { title: string; value: number; note
 
 export function BillingUploadsSummaryCards({
   total,
-  processing,
+  warning,
   failed,
   completed,
 }: {
   total: number
-  processing: number
+  warning: number
   failed: number
   completed: number
 }) {
   return (
     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-      <MetricCard title="Total" value={total} note="Current page" />
-      <MetricCard title="Processing" value={processing} note="Current page" />
-      <MetricCard title="Failed" value={failed} note="Current page" />
-      <MetricCard title="Completed" value={completed} note="Current page" />
+      <MetricCard title="Total" value={total} note="All uploads" />
+      <MetricCard title="Completed" value={completed} note="Successfully processed" />
+      <MetricCard title="Warning" value={warning} note="Needs attention" />
+      <MetricCard title="Failed" value={failed} note="Failed runs" />
     </div>
   )
 }

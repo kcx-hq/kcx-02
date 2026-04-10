@@ -1,6 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import {
   dashboardApi,
+  type AnomalyAlertRecord,
+  type AnomalyAlertsFiltersQuery,
   type CostExplorerFiltersQuery,
   type DashboardResolvedScope,
   type OptimizationIdleOverview,
@@ -117,9 +119,9 @@ export function useOptimizationRightsizingRecommendationsQuery(filters?: Optimiz
 export function useOptimizationRightsizingRecommendationDetailQuery(recommendationId: string | null) {
   const { scope } = useDashboardScope();
   return useQuery<OptimizationRecommendationDetail, Error>({
-    queryKey: ["dashboard", "optimization", "rightsizing", "recommendation-detail", scope, recommendationId],
-    queryFn: () => dashboardApi.getOptimizationRightsizingRecommendationDetail(assertScope(scope), String(recommendationId)),
-    enabled: Boolean(scope && recommendationId),
+    queryKey: ["dashboard", "optimization", "rightsizing", "recommendation", recommendationId, scope],
+    queryFn: () => dashboardApi.getOptimizationRightsizingRecommendationDetail(assertScope(scope), recommendationId as string),
+    enabled: Boolean(scope) && Boolean(recommendationId),
   });
 }
 
@@ -144,17 +146,17 @@ export function useOptimizationIdleRecommendationsQuery(filters?: OptimizationRe
 export function useOptimizationIdleRecommendationDetailQuery(recommendationId: string | null) {
   const { scope } = useDashboardScope();
   return useQuery<OptimizationIdleRecommendationDetail, Error>({
-    queryKey: ["dashboard", "optimization", "idle", "recommendation-detail", scope, recommendationId],
-    queryFn: () => dashboardApi.getOptimizationIdleRecommendationDetail(assertScope(scope), String(recommendationId)),
-    enabled: Boolean(scope && recommendationId),
+    queryKey: ["dashboard", "optimization", "idle", "recommendation", recommendationId, scope],
+    queryFn: () => dashboardApi.getOptimizationIdleRecommendationDetail(assertScope(scope), recommendationId as string),
+    enabled: Boolean(scope) && Boolean(recommendationId),
   });
 }
 
-export function useAnomaliesAlertsQuery() {
+export function useAnomaliesAlertsQuery(filters?: AnomalyAlertsFiltersQuery) {
   const { scope } = useDashboardScope();
-  return useQuery({
-    queryKey: ["dashboard", "anomalies-alerts", scope],
-    queryFn: () => dashboardApi.getAnomaliesAlerts(assertScope(scope)),
+  return useQuery<AnomalyAlertRecord[], Error>({
+    queryKey: ["dashboard", "anomalies-alerts", scope, filters],
+    queryFn: () => dashboardApi.getAnomaliesAlerts(assertScope(scope), filters),
     enabled: Boolean(scope),
   });
 }

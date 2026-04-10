@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react"
+import { RefreshCw } from "lucide-react"
 
 import {
   fetchAdminBillingUploadByRunId,
@@ -7,9 +8,7 @@ import {
   type BillingUploadNormalizedStatus,
   type BillingUploadsListRow,
 } from "@/modules/billing-uploads/admin-billing-uploads.api"
-import {
-  BillingUploadDetailsDrawer,
-} from "@/modules/billing-uploads/components/BillingUploadDetailsDrawer"
+import { BillingUploadDetailsDrawer } from "@/modules/billing-uploads/components/BillingUploadDetailsDrawer"
 import {
   BillingUploadsFilters,
   type BillingSourceTypeFilter,
@@ -21,7 +20,8 @@ import { ApiError } from "@/lib/api"
 import { Button } from "@/shared/ui/button"
 import { Card, CardContent } from "@/shared/ui/card"
 
-const DEFAULT_LIMIT = 20
+const DEFAULT_LIMIT = 10
+const SERIAL_LOOKUP_REGEX = /^\d+$/
 
 export function BillingUploadsPage() {
   const token = useMemo(() => getAdminToken(), [])
@@ -30,7 +30,6 @@ export function BillingUploadsPage() {
   const [error, setError] = useState<string | null>(null)
   const [items, setItems] = useState<BillingUploadsListRow[]>([])
   const [page, setPage] = useState(1)
-  const [limit, setLimit] = useState(DEFAULT_LIMIT)
   const [total, setTotal] = useState(0)
   const [totalPages, setTotalPages] = useState(0)
 
@@ -46,6 +45,17 @@ export function BillingUploadsPage() {
   const [detailError, setDetailError] = useState<string | null>(null)
   const [detailData, setDetailData] = useState<BillingUploadDetailsResponse | null>(null)
 
+  const serialLookupValue = useMemo(() => {
+    const normalized = search.trim()
+    if (!SERIAL_LOOKUP_REGEX.test(normalized)) return null
+    const parsed = Number(normalized)
+    if (!Number.isSafeInteger(parsed) || parsed <= 0) return null
+    return parsed
+  }, [search])
+
+  const requestPage = serialLookupValue ? Math.floor((serialLookupValue - 1) / DEFAULT_LIMIT) + 1 : page
+  const isSerialLookup = serialLookupValue !== null
+
   useEffect(() => {
     const handle = window.setTimeout(() => {
       setSearch(searchInput.trim())
@@ -59,15 +69,25 @@ export function BillingUploadsPage() {
     setLoading(true)
     setError(null)
     fetchAdminBillingUploads(token, {
-      page,
-      limit,
-      search: search || undefined,
+      page: requestPage,
+      limit: DEFAULT_LIMIT,
+      search: isSerialLookup ? undefined : search || undefined,
       status: status || undefined,
       sourceType: sourceType || undefined,
       dateFrom: dateFrom || undefined,
       dateTo: dateTo || undefined,
     })
       .then((res) => {
+        if (serialLookupValue !== null) {
+          const serialIndexOnPage = (serialLookupValue - 1) % DEFAULT_LIMIT
+          const exactMatch = res.data[serialIndexOnPage]
+          const serialFilteredItems = exactMatch ? [exactMatch] : []
+          setItems(serialFilteredItems)
+          setTotal(serialFilteredItems.length)
+          setTotalPages(serialFilteredItems.length > 0 ? 1 : 0)
+          return
+        }
+
         setItems(res.data)
         setTotal(res.pagination.total)
         setTotalPages(res.pagination.totalPages)
@@ -79,7 +99,7 @@ export function BillingUploadsPage() {
   useEffect(() => {
     loadList()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token, page, limit, search, status, sourceType, dateFrom, dateTo])
+  }, [token, page, requestPage, search, isSerialLookup, status, sourceType, dateFrom, dateTo])
 
   const loadDetails = (runId: number) => {
     if (!token) return
@@ -102,23 +122,37 @@ export function BillingUploadsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedRunId, token])
 
-  const processingCount = items.filter((item) => item.status.normalized === "processing").length
+  const warningCount = items.filter((item) => item.status.normalized === "warning").length
   const failedCount = items.filter((item) => item.status.normalized === "failed").length
   const completedCount = items.filter((item) => item.status.normalized === "completed").length
 
   return (
     <>
       <div className="space-y-5">
-        <div>
-          <h1 className="text-xl font-semibold tracking-[-0.02em] text-[color:rgba(15,23,42,0.92)]">Billing Uploads</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Monitor billing file intake and ingestion run health across clients.
-          </p>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h1 className="text-xl font-semibold tracking-[-0.02em] text-[color:rgba(15,23,42,0.92)]">Billing Uploads</h1>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Monitor billing file intake and ingestion run health across clients.
+            </p>
+          </div>
+          <Button
+            type="button"
+            size="icon"
+            variant="outline"
+            className="h-9 w-9"
+            onClick={loadList}
+            disabled={loading}
+            aria-label="Refresh billing uploads"
+            title="Refresh"
+          >
+            <RefreshCw className="h-4 w-4" />
+          </Button>
         </div>
 
         <BillingUploadsSummaryCards
           total={items.length}
-          processing={processingCount}
+          warning={warningCount}
           failed={failedCount}
           completed={completedCount}
         />
@@ -159,32 +193,32 @@ export function BillingUploadsPage() {
               </div>
             ) : null}
 
-            <BillingUploadsTable loading={loading} items={items} onView={setSelectedRunId} />
+            <BillingUploadsTable
+              loading={loading}
+              items={items}
+              currentPage={isSerialLookup ? 1 : requestPage}
+              pageSize={DEFAULT_LIMIT}
+              serialStartIndex={serialLookupValue !== null ? serialLookupValue - 1 : undefined}
+              onView={setSelectedRunId}
+            />
 
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="text-sm text-[color:rgba(15,23,42,0.70)]">
-                Page {page} of {Math.max(totalPages, 1)} - {total} total
+                Page {isSerialLookup ? 1 : requestPage} of {Math.max(totalPages, 1)} - {total} total
               </div>
               <div className="flex items-center gap-2">
-                <select
-                  value={limit}
-                  onChange={(event) => {
-                    setLimit(Number(event.target.value))
-                    setPage(1)
-                  }}
-                  className="h-9 rounded-lg border border-[color:rgba(15,23,42,0.12)] bg-white px-2.5 text-sm outline-none ring-[color:rgba(47,125,106,0.35)] focus:ring-2"
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={isSerialLookup || requestPage <= 1 || loading}
+                  onClick={() => setPage((p) => p - 1)}
                 >
-                  <option value={20}>20 / page</option>
-                  <option value={50}>50 / page</option>
-                  <option value={100}>100 / page</option>
-                </select>
-                <Button size="sm" variant="outline" disabled={page <= 1 || loading} onClick={() => setPage((p) => p - 1)}>
                   Previous
                 </Button>
                 <Button
                   size="sm"
                   variant="secondary"
-                  disabled={loading || totalPages === 0 || page >= totalPages}
+                  disabled={isSerialLookup || loading || totalPages === 0 || requestPage >= totalPages}
                   onClick={() => setPage((p) => p + 1)}
                 >
                   Next

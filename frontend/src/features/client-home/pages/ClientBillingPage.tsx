@@ -45,12 +45,12 @@ export function ClientBillingPage() {
   const isBillingHubRoute = activeRoute === "/client/billing"
   const isBillingUploadsRoute = activeRoute === "/client/billing/uploads"
   const isAddCloudConnectionRoute =
-    activeRoute === "/client/billing/connect-cloud/add" || activeRoute === "/client/billing/connections/add"
+    activeRoute === "/client/billing/connect-cloud/add/aws" || activeRoute === "/client/billing/connections/add/aws"
   const isLegacyCloudConnectionsOverviewRoute =
     activeRoute === "/client/billing/connect-cloud" || activeRoute === "/client/billing/connections"
   const isLegacyAwsSetupChoiceRoute =
     activeRoute === "/client/billing/connect-cloud/aws" || activeRoute === "/client/billing/connections/aws"
-  const shouldLoadCloudIntegrations = isBillingHubRoute
+  const shouldLoadCloudIntegrations = isBillingHubRoute || isAddCloudConnectionRoute
   const [cloudConnectionsSearch, setCloudConnectionsSearch] = useState("")
 
   const cloudProviderSlug = useMemo(() => {
@@ -212,7 +212,7 @@ export function ClientBillingPage() {
 
   useEffect(() => {
     if (isLegacyCloudConnectionsOverviewRoute || isLegacyAwsSetupChoiceRoute) {
-      navigateTo("/client/billing/connect-cloud/add")
+      navigateTo("/client/billing/connect-cloud/add/aws")
     }
   }, [isLegacyAwsSetupChoiceRoute, isLegacyCloudConnectionsOverviewRoute])
 
@@ -413,28 +413,12 @@ export function ClientBillingPage() {
             <p className="text-sm font-medium text-text-muted">Billing / Ingestion</p>
             <h1 className="text-2xl font-semibold tracking-tight text-text-primary">Billing</h1>
           </div>
-          <Button className="h-10 rounded-md" onClick={() => navigateTo("/client/billing/connect-cloud/add")}>
-            + Add Connection
-          </Button>
+        
         </section>
         <BillingHubSection
-          cloudConnectionsSearch={cloudConnectionsSearch}
-          onCloudConnectionsSearchChange={setCloudConnectionsSearch}
-          cloudOverviewRows={cloudOverviewRows}
-          filteredCloudOverviewRows={filteredCloudOverviewRows}
-          isCloudIntegrationsLoading={isCloudIntegrationsLoading}
-          isCloudIntegrationsError={isCloudIntegrationsError}
-          cloudIntegrationsErrorMessage={cloudIntegrationsErrorMessage}
-          dashboardActionError={dashboardActionError}
-          dashboardActionLoading={dashboardActionLoading}
-          dashboardConnectionActionId={dashboardConnectionActionId}
-          onRetryCloudIntegrations={() => {
-            void refetchCloudIntegrations()
-          }}
-          onOpenCloudConnectionDashboard={handleOpenCloudConnectionDashboard}
           onOpenLocalUploadModal={() => setLocalUploadDialogOpen(true)}
-          onOpenS3UploadModal={() => setS3UploadDialogOpen(true)}
           onOpenUploadHistory={() => navigateTo("/client/billing/uploads")}
+          onOpenConnectCloud={() => navigateTo("/client/billing/connect-cloud/add/aws")}
         />
 
         <ManualBillingUploadDialog
@@ -492,6 +476,21 @@ export function ClientBillingPage() {
               <AddCloudConnectionSection
                 onAutomaticSetup={() => navigateTo("/client/billing/connect-cloud/aws/automatic")}
                 onManualSetup={() => navigateTo("/client/billing/connect-cloud/aws/manual")}
+                onOpenS3UploadModal={() => setS3UploadDialogOpen(true)}
+                cloudConnectionsSearch={cloudConnectionsSearch}
+                onCloudConnectionsSearchChange={setCloudConnectionsSearch}
+                cloudOverviewRows={cloudOverviewRows}
+                filteredCloudOverviewRows={filteredCloudOverviewRows}
+                isCloudIntegrationsLoading={isCloudIntegrationsLoading}
+                isCloudIntegrationsError={isCloudIntegrationsError}
+                cloudIntegrationsErrorMessage={cloudIntegrationsErrorMessage}
+                dashboardActionError={dashboardActionError}
+                dashboardActionLoading={dashboardActionLoading}
+                dashboardConnectionActionId={dashboardConnectionActionId}
+                onRetryCloudIntegrations={() => {
+                  void refetchCloudIntegrations()
+                }}
+                onOpenCloudConnectionDashboard={handleOpenCloudConnectionDashboard}
               />
             ) : null}
 
@@ -555,6 +554,14 @@ export function ClientBillingPage() {
         open={uploadDialogOpen}
         onOpenChange={setUploadDialogOpen}
         onIngestionQueued={handleIngestionQueued}
+      />
+
+      <ManualBillingUploadDialog
+        open={s3UploadDialogOpen}
+        onOpenChange={setS3UploadDialogOpen}
+        onIngestionQueued={handleIngestionQueued}
+        initialSource="s3"
+        hideSourceTabs
       />
     </>
   )
