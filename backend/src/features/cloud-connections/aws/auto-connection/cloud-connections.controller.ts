@@ -507,7 +507,8 @@ async function acceptAwsCloudTrailCallback(input: {
       {
         cloudAccountId: payload.account_id.trim(),
         stackId: payload.stack_id.trim(),
-        ...(normalizedRoleArn ? { actionRoleArn: normalizedRoleArn } : {}),
+        // CloudTrail callback role_arn represents the billing/read role, not the EC2 action role.
+        ...(normalizedRoleArn ? { billingRoleArn: normalizedRoleArn } : {}),
         status: nextStatus,
         connectedAt: nextStatus === "active" ? connection.connectedAt ?? now : connection.connectedAt,
         errorMessage: null,
