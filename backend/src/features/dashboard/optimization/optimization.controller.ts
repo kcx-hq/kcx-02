@@ -5,6 +5,9 @@ import { logger } from "../../../utils/logger.js";
 import { sendSuccess } from "../../../utils/api-response.js";
 import { resolveDashboardTenantId } from "../shared/dashboard-request-builder.js";
 import {
+  getCommitmentOverviewData,
+  getCommitmentRecommendationDetailData,
+  getCommitmentRecommendationsData,
   getIdleOverviewData,
   getIdleRecommendationDetailData,
   getIdleRecommendationsData,
@@ -13,6 +16,7 @@ import {
   getRightsizingOverviewData,
   getRightsizingRecommendationDetailData,
   getRightsizingRecommendationsData,
+  triggerCommitmentRecommendationSync,
   triggerIdleRecommendationSync,
   triggerOptimizationRecommendationSync,
 } from "./optimization.service.js";
@@ -21,12 +25,22 @@ import {
   syncAwsRightsizingRecommendationsOnDashboardOpen,
   syncAwsRightsizingRecommendationsOnRecommendationsOpen,
 } from "./recommendation-sync/sync.service.js";
-import type { AwsComputeOptimizerEc2RecommendationInput } from "./recommendation-sync/types.js";
+import type {
+  AwsCommitmentRecommendationInput,
+  AwsComputeOptimizerEc2RecommendationInput,
+} from "./recommendation-sync/types.js";
 
 type SyncRequestBody = {
   billingSourceId?: string;
   cloudConnectionId?: string;
   recommendations?: AwsComputeOptimizerEc2RecommendationInput[];
+};
+
+type CommitmentSyncRequestBody = {
+  billingSourceId?: string;
+  cloudConnectionId?: string;
+  recommendations?: AwsCommitmentRecommendationInput[];
+  forceRefresh?: boolean;
 };
 
 type DebugSyncQuery = {
@@ -129,6 +143,38 @@ export async function handleSyncIdleRecommendations(req: Request, res: Response)
     req,
     statusCode: HTTP_STATUS.OK,
     message: "Idle recommendations sync completed",
+    data: syncResult,
+  });
+}
+
+export async function handleSyncCommitmentRecommendations(req: Request, res: Response): Promise<void> {
+  const tenantId = resolveDashboardTenantId(req);
+  const body = (req.body ?? {}) as CommitmentSyncRequestBody;
+  const billingSourceId = typeof body.billingSourceId === "string" ? body.billingSourceId.trim() : undefined;
+  const cloudConnectionId = typeof body.cloudConnectionId === "string" ? body.cloudConnectionId.trim() : undefined;
+  const forceRefresh = body.forceRefresh === true;
+
+  if (!billingSourceId && !cloudConnectionId) {
+    throw new BadRequestError("billingSourceId or cloudConnectionId is required");
+  }
+
+  if (typeof body.recommendations !== "undefined" && !Array.isArray(body.recommendations)) {
+    throw new BadRequestError("recommendations must be an array when provided");
+  }
+
+  const syncResult = await triggerCommitmentRecommendationSync({
+    tenantId,
+    billingSourceId: billingSourceId || undefined,
+    cloudConnectionId: cloudConnectionId || undefined,
+    recommendations: Array.isArray(body.recommendations) ? body.recommendations : undefined,
+    forceRefresh,
+  });
+
+  sendSuccess({
+    res,
+    req,
+    statusCode: HTTP_STATUS.OK,
+    message: "Commitment recommendations sync completed",
     data: syncResult,
   });
 }
@@ -299,6 +345,68 @@ export async function handleGetIdleRecommendationDetail(req: Request, res: Respo
     req,
     statusCode: HTTP_STATUS.OK,
     message: "Idle recommendation detail fetched successfully",
+    data,
+  });
+}
+
+export async function handleGetCommitmentOverview(req: Request, res: Response): Promise<void> {
+  const tenantId = resolveDashboardTenantId(req);
+  const data = await getCommitmentOverviewData(tenantId);
+
+  sendSuccess({
+    res,
+    req,
+    statusCode: HTTP_STATUS.OK,
+    message: "Commitment overview fetched successfully",
+    data,
+  });
+}
+
+export async function handleGetCommitmentRecommendations(req: Request, res: Response): Promise<void> {
+  const tenantId = resolveDashboardTenantId(req);
+  const data = await getCommitmentRecommendationsData({
+    tenantId,
+    filters: {
+      status: parseCsvParam(req.query.status),
+      effort: parseCsvParam(req.query.effort),
+      risk: parseCsvParam(req.query.risk),
+      accountIds: parseCsvParam(req.query.account),
+      regions: parseCsvParam(req.query.region),
+      serviceKeys: parseIntListParam(req.query.serviceKey),
+      page: parseIntParam(req.query.page, 1),
+      pageSize: parseIntParam(req.query.pageSize, 20),
+    },
+  });
+
+  sendSuccess({
+    res,
+    req,
+    statusCode: HTTP_STATUS.OK,
+    message: "Commitment recommendations fetched successfully",
+    data,
+  });
+}
+
+export async function handleGetCommitmentRecommendationDetail(req: Request, res: Response): Promise<void> {
+  const tenantId = resolveDashboardTenantId(req);
+  const recommendationId = String(req.params.recommendationId ?? "").trim();
+  if (!recommendationId) {
+    throw new BadRequestError("recommendationId is required");
+  }
+
+  const data = await getCommitmentRecommendationDetailData({
+    tenantId,
+    recommendationId,
+  });
+  if (!data) {
+    throw new NotFoundError("Commitment recommendation not found");
+  }
+
+  sendSuccess({
+    res,
+    req,
+    statusCode: HTTP_STATUS.OK,
+    message: "Commitment recommendation detail fetched successfully",
     data,
   });
 }

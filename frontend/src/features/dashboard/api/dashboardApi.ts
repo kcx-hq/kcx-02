@@ -19,8 +19,11 @@ import type {
   DashboardScopeInput,
   DashboardSectionData,
   OptimizationIdleOverview,
+  OptimizationCommitmentOverview,
   OptimizationIdleRecommendationsResponse,
+  OptimizationCommitmentRecommendationsResponse,
   OptimizationIdleRecommendationDetail,
+  OptimizationCommitmentRecommendationDetail,
   OptimizationRightsizingOverview,
   OptimizationRecommendationFiltersQuery,
   OptimizationRecommendationsResponse,
@@ -259,10 +262,6 @@ export const dashboardApi = {
     );
   },
 
-  getAnomalies(filters?: AnomaliesFiltersQuery) {
-    return apiGet<AnomaliesListResponse>(withAnomaliesFilters("/anomalies", filters));
-  },
-
   getAnomaliesAlerts(scope: DashboardResolvedScope, filters?: AnomalyAlertsFiltersQuery) {
     return apiGet<AnomalyAlertRecord[]>(withAnomaliesAlertsFilters("/dashboard/anomalies-alerts", scope, filters));
   },
@@ -326,8 +325,11 @@ export type {
   DashboardScopeInput,
   DashboardSectionData,
   OptimizationIdleOverview,
+  OptimizationCommitmentOverview,
   OptimizationIdleRecommendationsResponse,
+  OptimizationCommitmentRecommendationsResponse,
   OptimizationIdleRecommendationDetail,
+  OptimizationCommitmentRecommendationDetail,
   OptimizationRightsizingOverview,
   OptimizationRecommendationFiltersQuery,
   OptimizationRecommendationsResponse,

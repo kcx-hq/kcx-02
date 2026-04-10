@@ -67,6 +67,15 @@ export type OptimizationIdleOverview = {
   lowRiskCount: number;
 };
 
+export type OptimizationCommitmentOverview = {
+  category: "COMMITMENT";
+  totalPotentialSavings: number;
+  openRecommendationCount: number;
+  recommendedHourlyCommitmentTotal: number;
+  oneYearCount: number;
+  threeYearCount: number;
+};
+
 export type OptimizationRecommendationItem = {
   id: string;
   recommendation: string;
@@ -170,6 +179,59 @@ export type OptimizationIdleRecommendationDetail = {
   projectedMonthlyCost: number;
   effortLevel: string | null;
   riskLevel: string | null;
+  status: string;
+  recommendationTitle: string | null;
+  recommendationText: string | null;
+  sourceSystem: string;
+  observationStart: string | null;
+  observationEnd: string | null;
+  rawPayloadJson: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type OptimizationCommitmentRecommendationItem = {
+  id: string;
+  recommendationType: string;
+  recommendation: string;
+  resourceName: string | null;
+  currentMonthlyCost: number;
+  estimatedMonthlySavings: number;
+  projectedMonthlyCost: number;
+  recommendedHourlyCommitment: number;
+  recommendedPaymentOption: string | null;
+  recommendedTerm: string | null;
+  commitmentPlanType: string | null;
+  status: string;
+  awsAccountId: string;
+  awsRegionCode: string | null;
+};
+
+export type OptimizationCommitmentRecommendationsResponse = {
+  items: OptimizationCommitmentRecommendationItem[];
+  pagination: {
+    page: number;
+    pageSize: number;
+    total: number;
+    totalPages: number;
+  };
+};
+
+export type OptimizationCommitmentRecommendationDetail = {
+  id: string;
+  recommendationType: string;
+  category: string;
+  resourceId: string | null;
+  resourceName: string | null;
+  awsAccountId: string;
+  awsRegionCode: string | null;
+  currentMonthlyCost: number;
+  estimatedMonthlySavings: number;
+  projectedMonthlyCost: number;
+  recommendedHourlyCommitment: number;
+  recommendedPaymentOption: string | null;
+  recommendedTerm: string | null;
+  commitmentPlanType: string | null;
   status: string;
   recommendationTitle: string | null;
   recommendationText: string | null;
