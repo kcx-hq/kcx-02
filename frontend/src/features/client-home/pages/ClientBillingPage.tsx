@@ -33,7 +33,6 @@ import {
 } from "@/features/client-home/hooks/useTenantUploadHistory"
 import { useTenantCloudIntegrations } from "@/features/client-home/hooks/useTenantCloudIntegrations"
 import { useUploadHistorySelectionStore } from "@/features/client-home/stores/uploadHistorySelection.store"
-import { dashboardApi } from "@/features/dashboard/api/dashboardApi"
 import { ApiError, apiGet } from "@/lib/api"
 import { handleAppLinkClick, navigateTo, useCurrentRoute } from "@/lib/navigation"
 import { Button } from "@/components/ui/button"
@@ -328,7 +327,7 @@ export function ClientBillingPage() {
   }
 
   function openDashboardWithQuery(search: URLSearchParams) {
-    const nextUrl = `/dashboard/overview?${search.toString()}`
+    const nextUrl = `/uploads-dashboard/overview?${search.toString()}`
     window.history.pushState({}, "", nextUrl)
     window.dispatchEvent(new PopStateEvent("popstate"))
   }
@@ -347,10 +346,6 @@ export function ClientBillingPage() {
 
     void (async () => {
       try {
-        await dashboardApi.getScope({
-          rawBillingFileIds: validRawBillingFileIds,
-        })
-
         const query = new URLSearchParams({
           rawBillingFileIds: validRawBillingFileIds.join(","),
         })
@@ -383,10 +378,6 @@ export function ClientBillingPage() {
           setDashboardActionError("No ingested files found for this cloud connection yet.")
           return
         }
-
-        await dashboardApi.getScope({
-          rawBillingFileIds: validRawBillingFileIds,
-        })
 
         const query = new URLSearchParams({
           rawBillingFileIds: validRawBillingFileIds.join(","),

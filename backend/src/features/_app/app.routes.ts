@@ -12,6 +12,7 @@ import awsManualConnectionRoutes from "../cloud-connections/aws/manual-connectio
 import scheduleDemoRoutes from "../schedule-demo/schedule-demo.routes.js";
 import billingRoutes from "../billing/billing.routes.js";
 import dashboardRoutes from "../dashboard/dashboard.routes.js";
+import uploadDashboardRoutes from "../upload-dashboard/upload-dashboard.routes.js";
 import awsExportFileEventRoutes from "../cloud-connections/aws/exports/aws-export-file-event.routes.js";
 import clientAnnouncementsRoutes from "../client-announcements/client-announcements.routes.js";
 import anomalyRoutes from "../dashboard/anomaly-alerts/anomaly.routes.js";
@@ -25,6 +26,7 @@ router.use(awsManualConnectionRoutes);
 router.use(awsEc2Routes);
 router.use(billingRoutes);
 router.use(dashboardRoutes);
+router.use(uploadDashboardRoutes);
 router.use(adminClientsRoutes);
 router.use(adminDemoRequestsRoutes);
 router.use(adminBillingUploadsRoutes);

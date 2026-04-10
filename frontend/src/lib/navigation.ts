@@ -12,6 +12,10 @@ const STATIC_ROUTES = [
   "/dashboard/anomalies-alerts",
   "/dashboard/budget",
   "/dashboard/report",
+  "/uploads-dashboard",
+  "/uploads-dashboard/overview",
+  "/uploads-dashboard/cost-explorer",
+  "/uploads-dashboard/anomalies-alerts",
   "/client/overview",
   "/client/billing",
   "/client/billing/uploads",
@@ -82,6 +86,7 @@ const LEGACY_ROUTE_REDIRECTS: Record<string, StaticRoute> = {
   "/dashboard/cost-analysis": "/dashboard/cost-explorer",
   "/dashboard/cost-driver": "/dashboard/allocation",
   "/dashboard/data-quality": "/dashboard/anomalies-alerts",
+  "/manual-dashboard": "/uploads-dashboard/overview",
   "/client/billing/manual-setup": "/client/billing/connect-cloud/aws/manual",
 }
 const VALID_PATH_SET = new Set<string>([...STATIC_ROUTES, ...Object.keys(LEGACY_ROUTE_REDIRECTS)])

@@ -11,6 +11,7 @@ import {
   ClientUsersPage,
 } from "@/features/client-home"
 import { DashboardRoutes } from "@/features/dashboard"
+import { ManualDashboardRoutes } from "@/features/manual-dashboard"
 import {
   AwsIntegrationPage,
   BlogDetailPage,
@@ -64,6 +65,8 @@ const AWS_MANUAL_EXPLORER_ROUTE_REGEX = /^\/client\/billing\/(?:connect-cloud|co
 const AWS_MANUAL_SUCCESS_ROUTE_REGEX = /^\/client\/billing\/(?:connect-cloud|connections)\/aws\/manual\/success(?:\/|$)/
 const DASHBOARD_ROUTE_REGEX =
   /^\/dashboard(?:\/(?:overview|cost-explorer|resources|allocation|optimization|anomalies-alerts|budget|report))?$/
+const MANUAL_DASHBOARD_ROUTE_REGEX =
+  /^\/uploads-dashboard(?:\/(?:overview|cost-explorer|anomalies-alerts))?$/
 
 function isClientWorkspaceRoute(route: string) {
   return (
@@ -89,7 +92,8 @@ export function App() {
     !CLOUD_PROVIDER_ROUTE_REGEX.test(route) &&
     !AWS_MANUAL_EXPLORER_ROUTE_REGEX.test(route) &&
     !AWS_MANUAL_SUCCESS_ROUTE_REGEX.test(route) &&
-    !DASHBOARD_ROUTE_REGEX.test(route)
+    !DASHBOARD_ROUTE_REGEX.test(route) &&
+    !MANUAL_DASHBOARD_ROUTE_REGEX.test(route)
 
   useEffect(() => {
     if (!storedAuthenticated) {
@@ -165,6 +169,7 @@ export function App() {
       {blogSlug ? <BlogDetailPage slug={blogSlug} /> : null}
       {route === "/resources/documentation" ? <DocumentationPage /> : null}
       {DASHBOARD_ROUTE_REGEX.test(route) ? <DashboardRoutes /> : null}
+      {MANUAL_DASHBOARD_ROUTE_REGEX.test(route) ? <ManualDashboardRoutes /> : null}
       {route === "/client/overview" ? (
         <ClientLayout>
           <ClientOverviewPage />
