@@ -37,7 +37,6 @@ export function OptimizationRightsizingSection() {
   const [status, setStatus] = useState<string>("all");
   const [effort, setEffort] = useState<string>("all");
   const [risk, setRisk] = useState<string>("all");
-  const [account, setAccount] = useState<string>("all");
   const [region, setRegion] = useState<string>("all");
   const [page, setPage] = useState<number>(1);
   const [selectedRecommendationId, setSelectedRecommendationId] = useState<string | null>(null);
@@ -47,7 +46,6 @@ export function OptimizationRightsizingSection() {
     status: status !== "all" ? [status] : undefined,
     effort: effort !== "all" ? [effort] : undefined,
     risk: risk !== "all" ? [risk] : undefined,
-    account: account !== "all" ? [account] : undefined,
     region: region !== "all" ? [region] : undefined,
     page,
     pageSize: PAGE_SIZE,
@@ -61,13 +59,11 @@ export function OptimizationRightsizingSection() {
     const statusSet = new Set<string>();
     const effortSet = new Set<string>();
     const riskSet = new Set<string>();
-    const accountSet = new Set<string>();
     const regionSet = new Set<string>();
     recommendationItems.forEach((item) => {
       if (item.status) statusSet.add(item.status);
       if (item.effort) effortSet.add(item.effort);
       if (item.risk) riskSet.add(item.risk);
-      if (item.awsAccountId) accountSet.add(item.awsAccountId);
       if (item.awsRegionCode) regionSet.add(item.awsRegionCode);
     });
 
@@ -75,7 +71,6 @@ export function OptimizationRightsizingSection() {
       status: Array.from(statusSet).sort(),
       effort: Array.from(effortSet).sort(),
       risk: Array.from(riskSet).sort(),
-      account: Array.from(accountSet).sort(),
       region: Array.from(regionSet).sort(),
     };
   }, [recommendationItems]);
@@ -166,21 +161,6 @@ export function OptimizationRightsizingSection() {
               {filterOptions.risk.map((option) => (
                 <option key={option} value={option}>
                   {toTitleCase(option)}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="optimization-rightsizing-filter-field">
-            <p className="optimization-rightsizing-filter-label">Account</p>
-            <select
-              className="optimization-rightsizing-filter-control"
-              value={account}
-              onChange={(event) => onFilterChange(setAccount, event.target.value)}
-            >
-              <option value="all">All accounts</option>
-              {filterOptions.account.map((option) => (
-                <option key={option} value={option}>
-                  {option}
                 </option>
               ))}
             </select>

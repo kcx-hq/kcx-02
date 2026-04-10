@@ -25,6 +25,7 @@ class FactRecommendations extends Model<
   declare resourceId: string;
   declare resourceArn: CreationOptional<string | null>;
   declare resourceName: CreationOptional<string | null>;
+  declare resourceType: CreationOptional<string | null>;
   declare currentResourceType: CreationOptional<string | null>;
   declare recommendedResourceType: CreationOptional<string | null>;
   declare currentMonthlyCost: CreationOptional<string | number>;
@@ -38,6 +39,8 @@ class FactRecommendations extends Model<
   declare riskLevel: CreationOptional<string | null>;
   declare recommendationTitle: CreationOptional<string | null>;
   declare recommendationText: CreationOptional<string | null>;
+  declare idleReason: CreationOptional<string | null>;
+  declare idleObservationValue: CreationOptional<string | null>;
   declare observationStart: CreationOptional<Date | null>;
   declare observationEnd: CreationOptional<Date | null>;
   declare rawPayloadJson: CreationOptional<string | null>;
@@ -62,6 +65,7 @@ const createFactRecommendationsModel = (sequelize: Sequelize): typeof FactRecomm
       resourceId: { type: DataTypes.STRING(255), allowNull: false, field: "resource_id" },
       resourceArn: { type: DataTypes.TEXT, allowNull: true, field: "resource_arn" },
       resourceName: { type: DataTypes.STRING(255), allowNull: true, field: "resource_name" },
+      resourceType: { type: DataTypes.STRING(100), allowNull: true, field: "resource_type" },
       currentResourceType: { type: DataTypes.STRING(100), allowNull: true, field: "current_resource_type" },
       recommendedResourceType: { type: DataTypes.STRING(100), allowNull: true, field: "recommended_resource_type" },
       currentMonthlyCost: { type: DataTypes.DECIMAL(18, 4), allowNull: false, defaultValue: "0", field: "current_monthly_cost" },
@@ -75,6 +79,8 @@ const createFactRecommendationsModel = (sequelize: Sequelize): typeof FactRecomm
       riskLevel: { type: DataTypes.STRING(20), allowNull: true, field: "risk_level" },
       recommendationTitle: { type: DataTypes.STRING(255), allowNull: true, field: "recommendation_title" },
       recommendationText: { type: DataTypes.TEXT, allowNull: true, field: "recommendation_text" },
+      idleReason: { type: DataTypes.STRING(255), allowNull: true, field: "idle_reason" },
+      idleObservationValue: { type: DataTypes.STRING(255), allowNull: true, field: "idle_observation_value" },
       observationStart: { type: DataTypes.DATE, allowNull: true, field: "observation_start" },
       observationEnd: { type: DataTypes.DATE, allowNull: true, field: "observation_end" },
       rawPayloadJson: { type: DataTypes.TEXT, allowNull: true, field: "raw_payload_json" },

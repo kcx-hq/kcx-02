@@ -16,6 +16,9 @@ import type {
   DashboardResolvedScope,
   DashboardScopeInput,
   DashboardSectionData,
+  OptimizationIdleOverview,
+  OptimizationIdleRecommendationsResponse,
+  OptimizationIdleRecommendationDetail,
   OptimizationRightsizingOverview,
   OptimizationRecommendationFiltersQuery,
   OptimizationRecommendationsResponse,
@@ -201,6 +204,24 @@ export const dashboardApi = {
     );
   },
 
+  getOptimizationIdleOverview(scope: DashboardResolvedScope) {
+    return apiGet<OptimizationIdleOverview>(
+      withDashboardQuery("/dashboard/optimization/idle/overview", scope),
+    );
+  },
+
+  getOptimizationIdleRecommendations(scope: DashboardResolvedScope, filters?: OptimizationRecommendationFiltersQuery) {
+    return apiGet<OptimizationIdleRecommendationsResponse>(
+      withOptimizationFilters("/dashboard/optimization/idle/recommendations", scope, filters),
+    );
+  },
+
+  getOptimizationIdleRecommendationDetail(scope: DashboardResolvedScope, recommendationId: string) {
+    return apiGet<OptimizationIdleRecommendationDetail>(
+      withDashboardQuery(`/dashboard/optimization/idle/recommendations/${recommendationId}`, scope),
+    );
+  },
+
   getAnomaliesAlerts(scope: DashboardResolvedScope) {
     return apiGet<DashboardSectionData>(withDashboardQuery("/dashboard/anomalies-alerts", scope));
   },
@@ -260,6 +281,9 @@ export type {
   DashboardResolvedScope,
   DashboardScopeInput,
   DashboardSectionData,
+  OptimizationIdleOverview,
+  OptimizationIdleRecommendationsResponse,
+  OptimizationIdleRecommendationDetail,
   OptimizationRightsizingOverview,
   OptimizationRecommendationFiltersQuery,
   OptimizationRecommendationsResponse,

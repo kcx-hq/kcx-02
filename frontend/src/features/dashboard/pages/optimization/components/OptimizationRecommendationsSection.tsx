@@ -1,5 +1,6 @@
 import type { OptimizationInsightKey } from "../optimization.constants";
 import { OptimizationCategoryPlaceholderSection } from "./OptimizationCategoryPlaceholderSection";
+import { OptimizationIdleResourcesSection } from "./OptimizationIdleResourcesSection";
 import { OptimizationRightsizingSection } from "./OptimizationRightsizingSection";
 
 type OptimizationRecommendationsSectionProps = {
@@ -12,7 +13,7 @@ export function OptimizationRecommendationsSection({ activeRecommendationTab }: 
       return <OptimizationRightsizingSection />;
     }
     if (activeRecommendationTab === "idle-resources") {
-      return <OptimizationCategoryPlaceholderSection categoryLabel="Idle Resources" />;
+      return <OptimizationIdleResourcesSection />;
     }
     if (activeRecommendationTab === "commitments") {
       return <OptimizationCategoryPlaceholderSection categoryLabel="Commitments" />;

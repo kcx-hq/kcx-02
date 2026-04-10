@@ -13,10 +13,14 @@ import { handleGetDashboardScope, handleGetDashboardTestTotalSpend } from "./das
 import { handleGetCostExplorerDashboard } from "./cost-explorer/cost-explorer.controller.js";
 import {
   handleDebugSyncOptimizationRecommendations,
+  handleGetIdleOverview,
+  handleGetIdleRecommendationDetail,
+  handleGetIdleRecommendations,
   handleGetOptimizationDashboard,
   handleGetRightsizingOverview,
   handleGetRightsizingRecommendationDetail,
   handleGetRightsizingRecommendations,
+  handleSyncIdleRecommendations,
   handleSyncOptimizationRecommendations,
 } from "./optimization/optimization.controller.js";
 import {
@@ -68,9 +72,25 @@ router.get(
   "/dashboard/optimization/rightsizing/recommendations/:recommendationId",
   asyncHandler(handleGetRightsizingRecommendationDetail),
 );
+router.get(
+  "/dashboard/optimization/idle/overview",
+  asyncHandler(handleGetIdleOverview),
+);
+router.get(
+  "/dashboard/optimization/idle/recommendations",
+  asyncHandler(handleGetIdleRecommendations),
+);
+router.get(
+  "/dashboard/optimization/idle/recommendations/:recommendationId",
+  asyncHandler(handleGetIdleRecommendationDetail),
+);
 router.post(
   "/dashboard/optimization/recommendations/sync",
   asyncHandler(handleSyncOptimizationRecommendations),
+);
+router.post(
+  "/dashboard/optimization/idle/sync",
+  asyncHandler(handleSyncIdleRecommendations),
 );
 router.get(
   "/dashboard/optimization/recommendations/debug-sync",

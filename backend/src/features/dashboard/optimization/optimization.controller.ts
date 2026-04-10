@@ -5,14 +5,20 @@ import { logger } from "../../../utils/logger.js";
 import { sendSuccess } from "../../../utils/api-response.js";
 import { resolveDashboardTenantId } from "../shared/dashboard-request-builder.js";
 import {
+  getIdleOverviewData,
+  getIdleRecommendationDetailData,
+  getIdleRecommendationsData,
   getOptimizationRecommendationDebugData,
   getOptimizationDashboardData,
   getRightsizingOverviewData,
   getRightsizingRecommendationDetailData,
   getRightsizingRecommendationsData,
+  triggerIdleRecommendationSync,
   triggerOptimizationRecommendationSync,
 } from "./optimization.service.js";
 import {
+  syncAwsIdleRecommendationsOnRecommendationsOpen,
+  syncAwsRightsizingRecommendationsOnDashboardOpen,
   syncAwsRightsizingRecommendationsOnRecommendationsOpen,
 } from "./recommendation-sync/sync.service.js";
 import type { AwsComputeOptimizerEc2RecommendationInput } from "./recommendation-sync/types.js";
@@ -53,7 +59,7 @@ export async function handleGetOptimizationDashboard(req: Request, res: Response
   const tenantId = resolveDashboardTenantId(req);
 
   try {
-    await syncAwsRightsizingRecommendationsOnRecommendationsOpen({ tenantId });
+    await syncAwsRightsizingRecommendationsOnDashboardOpen({ tenantId });
   } catch (error) {
     logger.warn("Optimization sync-on-optimization-click failed", {
       tenantId,
@@ -98,6 +104,31 @@ export async function handleSyncOptimizationRecommendations(req: Request, res: R
     req,
     statusCode: HTTP_STATUS.OK,
     message: "Optimization recommendations sync completed",
+    data: syncResult,
+  });
+}
+
+export async function handleSyncIdleRecommendations(req: Request, res: Response): Promise<void> {
+  const tenantId = resolveDashboardTenantId(req);
+  const body = (req.body ?? {}) as SyncRequestBody;
+  const billingSourceId = typeof body.billingSourceId === "string" ? body.billingSourceId.trim() : undefined;
+  const cloudConnectionId = typeof body.cloudConnectionId === "string" ? body.cloudConnectionId.trim() : undefined;
+
+  if (!billingSourceId && !cloudConnectionId) {
+    throw new BadRequestError("billingSourceId or cloudConnectionId is required");
+  }
+
+  const syncResult = await triggerIdleRecommendationSync({
+    tenantId,
+    billingSourceId: billingSourceId || undefined,
+    cloudConnectionId: cloudConnectionId || undefined,
+  });
+
+  sendSuccess({
+    res,
+    req,
+    statusCode: HTTP_STATUS.OK,
+    message: "Idle recommendations sync completed",
     data: syncResult,
   });
 }
@@ -148,16 +179,6 @@ export async function handleGetRightsizingOverview(req: Request, res: Response):
 
 export async function handleGetRightsizingRecommendations(req: Request, res: Response): Promise<void> {
   const tenantId = resolveDashboardTenantId(req);
-
-  try {
-    await syncAwsRightsizingRecommendationsOnRecommendationsOpen({ tenantId });
-  } catch (error) {
-    logger.warn("Optimization sync-on-recommendations-open failed", {
-      tenantId,
-      reason: error instanceof Error ? error.message : String(error),
-    });
-  }
-
   const data = await getRightsizingRecommendationsData({
     tenantId,
     filters: {
@@ -170,6 +191,13 @@ export async function handleGetRightsizingRecommendations(req: Request, res: Res
       page: parseIntParam(req.query.page, 1),
       pageSize: parseIntParam(req.query.pageSize, 20),
     },
+  });
+
+  void syncAwsRightsizingRecommendationsOnRecommendationsOpen({ tenantId }).catch((error) => {
+    logger.warn("Optimization sync-on-recommendations-open failed", {
+      tenantId,
+      reason: error instanceof Error ? error.message : String(error),
+    });
   });
 
   sendSuccess({
@@ -201,6 +229,76 @@ export async function handleGetRightsizingRecommendationDetail(req: Request, res
     req,
     statusCode: HTTP_STATUS.OK,
     message: "Rightsizing recommendation detail fetched successfully",
+    data,
+  });
+}
+
+export async function handleGetIdleOverview(req: Request, res: Response): Promise<void> {
+  const tenantId = resolveDashboardTenantId(req);
+  const data = await getIdleOverviewData(tenantId);
+
+  sendSuccess({
+    res,
+    req,
+    statusCode: HTTP_STATUS.OK,
+    message: "Idle overview fetched successfully",
+    data,
+  });
+}
+
+export async function handleGetIdleRecommendations(req: Request, res: Response): Promise<void> {
+  const tenantId = resolveDashboardTenantId(req);
+
+  const data = await getIdleRecommendationsData({
+    tenantId,
+    filters: {
+      status: parseCsvParam(req.query.status),
+      effort: parseCsvParam(req.query.effort),
+      risk: parseCsvParam(req.query.risk),
+      accountIds: parseCsvParam(req.query.account),
+      regions: parseCsvParam(req.query.region),
+      serviceKeys: parseIntListParam(req.query.serviceKey),
+      page: parseIntParam(req.query.page, 1),
+      pageSize: parseIntParam(req.query.pageSize, 20),
+    },
+  });
+
+  void syncAwsIdleRecommendationsOnRecommendationsOpen({ tenantId }).catch((error) => {
+    logger.warn("Idle sync-on-recommendations-open failed", {
+      tenantId,
+      reason: error instanceof Error ? error.message : String(error),
+    });
+  });
+
+  sendSuccess({
+    res,
+    req,
+    statusCode: HTTP_STATUS.OK,
+    message: "Idle recommendations fetched successfully",
+    data,
+  });
+}
+
+export async function handleGetIdleRecommendationDetail(req: Request, res: Response): Promise<void> {
+  const tenantId = resolveDashboardTenantId(req);
+  const recommendationId = String(req.params.recommendationId ?? "").trim();
+  if (!recommendationId) {
+    throw new BadRequestError("recommendationId is required");
+  }
+
+  const data = await getIdleRecommendationDetailData({
+    tenantId,
+    recommendationId,
+  });
+  if (!data) {
+    throw new NotFoundError("Idle recommendation not found");
+  }
+
+  sendSuccess({
+    res,
+    req,
+    statusCode: HTTP_STATUS.OK,
+    message: "Idle recommendation detail fetched successfully",
     data,
   });
 }

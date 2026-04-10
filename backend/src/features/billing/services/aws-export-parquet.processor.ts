@@ -22,7 +22,10 @@ import {
   validateHeaders,
 } from "./schema-validator.service.js";
 import { upsertCostAggregationsForRun } from "./cost-aggregation.service.js";
-import { syncAwsRightsizingRecommendationsAfterIngestion } from "../../dashboard/optimization/recommendation-sync/sync.service.js";
+import {
+  syncAwsIdleRecommendationsAfterIngestion,
+  syncAwsRightsizingRecommendationsAfterIngestion,
+} from "../../dashboard/optimization/recommendation-sync/sync.service.js";
 
 const STAGE_MESSAGE = {
   validating_schema: "Validating manifest and parquet schema",
@@ -559,6 +562,21 @@ export async function processAwsExportParquetRun({ run }) {
           tenantId: source.tenantId ?? null,
           billingSourceId: source.id ?? null,
           reason: toErrorMessage(syncError),
+        });
+      }
+
+      try {
+        await syncAwsIdleRecommendationsAfterIngestion({
+          tenantId: String(source.tenantId),
+          billingSourceId: String(source.id),
+          ingestionRunId: runId,
+        });
+      } catch (idleSyncError) {
+        logger.warn("Idle recommendation sync failed after AWS parquet ingestion", {
+          ingestionRunId: runId,
+          tenantId: source.tenantId ?? null,
+          billingSourceId: source.id ?? null,
+          reason: toErrorMessage(idleSyncError),
         });
       }
     }

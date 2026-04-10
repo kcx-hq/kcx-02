@@ -3,6 +3,9 @@ import {
   dashboardApi,
   type CostExplorerFiltersQuery,
   type DashboardResolvedScope,
+  type OptimizationIdleOverview,
+  type OptimizationIdleRecommendationDetail,
+  type OptimizationIdleRecommendationsResponse,
   type OptimizationRecommendationDetail,
   type OptimizationRecommendationFiltersQuery,
   type OptimizationRecommendationsResponse,
@@ -116,6 +119,33 @@ export function useOptimizationRightsizingRecommendationDetailQuery(recommendati
   return useQuery<OptimizationRecommendationDetail, Error>({
     queryKey: ["dashboard", "optimization", "rightsizing", "recommendation-detail", scope, recommendationId],
     queryFn: () => dashboardApi.getOptimizationRightsizingRecommendationDetail(assertScope(scope), String(recommendationId)),
+    enabled: Boolean(scope && recommendationId),
+  });
+}
+
+export function useOptimizationIdleOverviewQuery() {
+  const { scope } = useDashboardScope();
+  return useQuery<OptimizationIdleOverview, Error>({
+    queryKey: ["dashboard", "optimization", "idle", "overview", scope],
+    queryFn: () => dashboardApi.getOptimizationIdleOverview(assertScope(scope)),
+    enabled: Boolean(scope),
+  });
+}
+
+export function useOptimizationIdleRecommendationsQuery(filters?: OptimizationRecommendationFiltersQuery) {
+  const { scope } = useDashboardScope();
+  return useQuery<OptimizationIdleRecommendationsResponse, Error>({
+    queryKey: ["dashboard", "optimization", "idle", "recommendations", scope, filters],
+    queryFn: () => dashboardApi.getOptimizationIdleRecommendations(assertScope(scope), filters),
+    enabled: Boolean(scope),
+  });
+}
+
+export function useOptimizationIdleRecommendationDetailQuery(recommendationId: string | null) {
+  const { scope } = useDashboardScope();
+  return useQuery<OptimizationIdleRecommendationDetail, Error>({
+    queryKey: ["dashboard", "optimization", "idle", "recommendation-detail", scope, recommendationId],
+    queryFn: () => dashboardApi.getOptimizationIdleRecommendationDetail(assertScope(scope), String(recommendationId)),
     enabled: Boolean(scope && recommendationId),
   });
 }
