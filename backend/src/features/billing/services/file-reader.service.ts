@@ -355,6 +355,22 @@ async function* readParquetRowChunksFromBuffer(buffer, chunkSize = 1000) {
   try {
     const reader = await openParquetReader(buffer);
     try {
+      const schemaFields = Object.values(reader?.schema?.fields ?? {});
+      const hasInt96Columns = schemaFields.some(
+        (field) => String(field?.primitiveType ?? "").toUpperCase() === "INT96",
+      );
+
+      // Keep timestamp decoding consistent with parseParquetRowsFromBuffer().
+      // parquetjs-lite can mis-decode INT96 timestamps (common in AWS exports),
+      // so route chunked reads through parquet-wasm-backed parsing when INT96 exists.
+      if (hasInt96Columns) {
+        const rows = await parseParquetRowsFromBuffer(buffer);
+        for (let index = 0; index < rows.length; index += resolvedChunkSize) {
+          yield rows.slice(index, index + resolvedChunkSize);
+        }
+        return;
+      }
+
       const cursor = reader.getCursor();
       let chunk = [];
 
