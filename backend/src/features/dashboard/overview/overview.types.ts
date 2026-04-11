@@ -2,6 +2,7 @@ export type SortOrder = "asc" | "desc";
 
 export type OverviewFilters = {
   tenantId: string;
+  billingSourceIds?: number[];
   billingPeriodStart: string;
   billingPeriodEnd: string;
   accountKeys?: number[];

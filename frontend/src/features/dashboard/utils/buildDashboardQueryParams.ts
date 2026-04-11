@@ -3,6 +3,7 @@ import type { DashboardResolvedScope, DashboardScopeInput } from "../api/dashboa
 const DASHBOARD_QUERY_KEYS: Array<keyof DashboardScopeInput> = [
   "tenantId",
   "rawBillingFileId",
+  "billingSourceId",
   "from",
   "to",
   "providerId",
@@ -59,6 +60,14 @@ export function buildDashboardQueryParams(
     return params.toString();
   }
 
+  const billingSourceIds =
+    "scopeType" in scopeOrInput && scopeOrInput.scopeType === "global"
+      ? (scopeOrInput.billingSourceIds ?? undefined)
+      : input.billingSourceIds;
+  if (Array.isArray(billingSourceIds) && billingSourceIds.length > 0) {
+    params.set("billingSourceIds", billingSourceIds.join(","));
+  }
+
   DASHBOARD_QUERY_KEYS.forEach((key) => {
     const value = input[key];
     if (typeof value === "undefined" || value === null || value === "") {
@@ -79,11 +88,18 @@ export function parseDashboardScopeInputFromSearch(search: string): DashboardSco
     .flatMap((entry) => entry.split(","))
     .map((entry) => parseOptionalInteger(entry))
     .filter((entry): entry is number => typeof entry === "number");
+  const billingSourceIdsParamValues = params.getAll("billingSourceIds");
+  const billingSourceIds = billingSourceIdsParamValues
+    .flatMap((entry) => entry.split(","))
+    .map((entry) => parseOptionalInteger(entry))
+    .filter((entry): entry is number => typeof entry === "number");
 
   return {
     tenantId: params.get("tenantId") ?? undefined,
     rawBillingFileId: parseOptionalInteger(params.get("rawBillingFileId")),
     rawBillingFileIds: rawBillingFileIds.length > 0 ? [...new Set(rawBillingFileIds)] : undefined,
+    billingSourceId: parseOptionalInteger(params.get("billingSourceId")),
+    billingSourceIds: billingSourceIds.length > 0 ? [...new Set(billingSourceIds)] : undefined,
     from: from ?? undefined,
     to: to ?? undefined,
     providerId: parseOptionalInteger(params.get("providerId")),

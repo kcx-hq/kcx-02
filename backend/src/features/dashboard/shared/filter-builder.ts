@@ -39,6 +39,10 @@ export function buildDashboardFilter(scope: DashboardScope): DashboardFilterResu
       pushCondition("fcli.provider_id", scope.providerId);
     }
 
+    if (Array.isArray(scope.billingSourceIds) && scope.billingSourceIds.length > 0) {
+      pushAnyArrayCondition("fcli.billing_source_id", scope.billingSourceIds);
+    }
+
     if (typeof scope.billingAccountKey === "number") {
       pushCondition("fcli.billing_account_key", scope.billingAccountKey);
     }

@@ -39,9 +39,14 @@ export type CloudIntegrationListItem = {
 export type CloudIntegrationDashboardScope = {
   cloud_integration_id: string
   display_name: string
+  tenant_id: string
   cloud_account_id: string | null
   detail_record_id: string
   detail_record_type: string
+  billing_source_ids: number[]
+  billing_sources_count: number
+  usage_from: string | null
+  usage_to: string | null
   raw_billing_file_ids: number[]
   ingested_files_count: number
 }

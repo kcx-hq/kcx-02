@@ -1,6 +1,6 @@
 import type { Request, Response } from "express";
 import crypto from "node:crypto";
-import { Op, type Transaction } from "sequelize";
+import { Op, QueryTypes, type Transaction } from "sequelize";
 
 import env from "../../../../config/env.js";
 import { HTTP_STATUS } from "../../../../constants/http-status.js";
@@ -944,14 +944,45 @@ export async function handleGetCloudIntegrationDashboardScope(req: Request, res:
     attributes: ["id"],
   });
 
-  const billingSourceIds = billingSources.map((source) => String(source.id));
+  const billingSourceIds = billingSources
+    .map((source) => Number(source.id))
+    .filter((billingSourceId) => Number.isInteger(billingSourceId));
+  const billingSourceIdsAsText = billingSourceIds.map((billingSourceId) => String(billingSourceId));
+
+  type UsageRangeRow = {
+    usage_from: string | null;
+    usage_to: string | null;
+  };
+
+  let usageFrom: string | null = null;
+  let usageTo: string | null = null;
+  if (billingSourceIds.length > 0) {
+    const usageRangeRows = await sequelize.query<UsageRangeRow>(
+      `
+        SELECT
+          MIN(dd.full_date) AS usage_from,
+          MAX(dd.full_date) AS usage_to
+        FROM fact_cost_line_items fcli
+        JOIN dim_date dd ON dd.id = fcli.usage_date_key
+        WHERE fcli.tenant_id = $1
+          AND fcli.billing_source_id = ANY($2::bigint[]);
+      `,
+      {
+        bind: [tenantId, billingSourceIds],
+        type: QueryTypes.SELECT,
+      },
+    );
+
+    usageFrom = usageRangeRows[0]?.usage_from ?? null;
+    usageTo = usageRangeRows[0]?.usage_to ?? null;
+  }
 
   let rawBillingFileIds: number[] = [];
-  if (billingSourceIds.length > 0) {
+  if (billingSourceIdsAsText.length > 0) {
     const completedIngestionRuns = await BillingIngestionRun.findAll({
       where: {
         billingSourceId: {
-          [Op.in]: billingSourceIds,
+          [Op.in]: billingSourceIdsAsText,
         },
         status: {
           [Op.in]: ["completed", "completed_with_warnings"],
@@ -995,9 +1026,14 @@ export async function handleGetCloudIntegrationDashboardScope(req: Request, res:
     data: {
       cloud_integration_id: integration.id,
       display_name: integration.displayName,
+      tenant_id: integration.tenantId,
       cloud_account_id: integration.cloudAccountId,
       detail_record_id: integration.detailRecordId,
       detail_record_type: integration.detailRecordType,
+      billing_source_ids: billingSourceIds,
+      billing_sources_count: billingSourceIds.length,
+      usage_from: usageFrom,
+      usage_to: usageTo,
       raw_billing_file_ids: rawBillingFileIds,
       ingested_files_count: rawBillingFileIds.length,
     },

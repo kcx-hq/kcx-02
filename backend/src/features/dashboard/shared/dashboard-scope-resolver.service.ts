@@ -38,6 +38,12 @@ export class DashboardScopeResolver {
       from: input.from as string,
       to: input.to as string,
       providerId: input.providerId,
+      billingSourceIds:
+        Array.isArray(input.billingSourceIds) && input.billingSourceIds.length > 0
+          ? input.billingSourceIds
+          : typeof input.billingSourceId === "number"
+            ? [input.billingSourceId]
+            : undefined,
       billingAccountKey: input.billingAccountKey,
       subAccountKey: input.subAccountKey,
       serviceKey: input.serviceKey,

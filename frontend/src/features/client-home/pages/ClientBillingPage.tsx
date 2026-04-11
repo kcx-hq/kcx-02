@@ -340,15 +340,23 @@ export function ClientBillingPage() {
     void (async () => {
       try {
         const scope = await getCloudIntegrationDashboardScope(integrationId)
-        const validRawBillingFileIds = [...new Set(scope.raw_billing_file_ids.filter((id) => Number.isInteger(id)))]
+        const validBillingSourceIds = [...new Set(scope.billing_source_ids.filter((id) => Number.isInteger(id)))]
 
-        if (validRawBillingFileIds.length === 0) {
-          setDashboardActionError("No ingested files found for this cloud connection yet.")
+        if (validBillingSourceIds.length === 0) {
+          setDashboardActionError("No billing source found for this cloud connection yet.")
+          return
+        }
+
+        if (!scope.usage_from || !scope.usage_to) {
+          setDashboardActionError("No ingested cost data found for this cloud connection yet.")
           return
         }
 
         const query = new URLSearchParams({
-          rawBillingFileIds: validRawBillingFileIds.join(","),
+          tenantId: scope.tenant_id,
+          billingSourceIds: validBillingSourceIds.join(","),
+          from: scope.usage_from,
+          to: scope.usage_to,
         })
         openMainDashboardWithQuery(query)
       } catch (error) {

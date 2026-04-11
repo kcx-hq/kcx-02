@@ -210,6 +210,9 @@ const buildCostWhereClause = (
   if (Array.isArray(filters.accountKeys) && filters.accountKeys.length > 0) {
     pushAnyArray(`${alias}.sub_account_key`, filters.accountKeys);
   }
+  if (Array.isArray(filters.billingSourceIds) && filters.billingSourceIds.length > 0) {
+    pushAnyArray(`${alias}.billing_source_id`, filters.billingSourceIds);
+  }
   if (Array.isArray(filters.serviceKeys) && filters.serviceKeys.length > 0) {
     pushAnyArray(`${alias}.service_key`, filters.serviceKeys);
   }
@@ -256,6 +259,9 @@ const buildAnomalyWhereClause = (
 
   if (Array.isArray(filters.serviceKeys) && filters.serviceKeys.length > 0) {
     pushAnyArray(`${alias}.service_key`, filters.serviceKeys);
+  }
+  if (Array.isArray(filters.billingSourceIds) && filters.billingSourceIds.length > 0) {
+    pushAnyArray(`${alias}.billing_source_id`, filters.billingSourceIds);
   }
   if (Array.isArray(filters.regionKeys) && filters.regionKeys.length > 0) {
     pushAnyArray(`${alias}.region_key`, filters.regionKeys);
@@ -440,16 +446,24 @@ export class OverviewRepository {
   }
 
   async getActiveRecommendationsCount(filters: OverviewFilters): Promise<number> {
+    const bindValues: unknown[] = [filters.tenantId, "OPEN", filters.billingPeriodStart, filters.billingPeriodEnd];
+    let billingSourceCondition = "";
+    if (Array.isArray(filters.billingSourceIds) && filters.billingSourceIds.length > 0) {
+      bindValues.push(filters.billingSourceIds);
+      billingSourceCondition = `AND fr.billing_source_id = ANY($${bindValues.length}::bigint[])`;
+    }
+
     const rows = await sequelize.query<CountRow>(
       `
         SELECT COALESCE(COUNT(*), 0)::bigint AS total
         FROM fact_recommendations fr
         WHERE fr.tenant_id = $1
           AND UPPER(fr.status) = $2
-          AND fr.created_at::date BETWEEN $3 AND $4;
+          AND fr.created_at::date BETWEEN $3 AND $4
+          ${billingSourceCondition};
       `,
       {
-        bind: [filters.tenantId, "OPEN", filters.billingPeriodStart, filters.billingPeriodEnd],
+        bind: bindValues,
         type: QueryTypes.SELECT,
       },
     );
@@ -458,6 +472,11 @@ export class OverviewRepository {
 
   async getRecommendationsEstimatedSavingsTotal(filters: OverviewFilters): Promise<number> {
     const bindValues: unknown[] = [filters.tenantId, filters.billingPeriodStart, filters.billingPeriodEnd];
+    let billingSourceCondition = "";
+    if (Array.isArray(filters.billingSourceIds) && filters.billingSourceIds.length > 0) {
+      bindValues.push(filters.billingSourceIds);
+      billingSourceCondition = `AND fr.billing_source_id = ANY($${bindValues.length}::bigint[])`;
+    }
     let statusCondition = "";
     if (Array.isArray(filters.status) && filters.status.length > 0) {
       bindValues.push(filters.status.map((status) => status.toUpperCase()));
@@ -470,6 +489,7 @@ export class OverviewRepository {
         FROM fact_recommendations fr
         WHERE fr.tenant_id = $1
           AND fr.created_at::date BETWEEN $2 AND $3
+          ${billingSourceCondition}
           ${statusCondition};
       `,
       { bind: bindValues, type: QueryTypes.SELECT },
@@ -705,6 +725,11 @@ export class OverviewRepository {
     const offset = (filters.page - 1) * filters.pageSize;
 
     const bindValues: unknown[] = [filters.tenantId, filters.billingPeriodStart, filters.billingPeriodEnd];
+    let billingSourceCondition = "";
+    if (Array.isArray(filters.billingSourceIds) && filters.billingSourceIds.length > 0) {
+      bindValues.push(filters.billingSourceIds);
+      billingSourceCondition = `AND fr.billing_source_id = ANY($${bindValues.length}::bigint[])`;
+    }
     let statusCondition = "";
     if (Array.isArray(filters.status) && filters.status.length > 0) {
       bindValues.push(filters.status.map((status) => status.toUpperCase()));
@@ -728,6 +753,7 @@ export class OverviewRepository {
         LEFT JOIN dim_service ds ON ds.id = fr.service_key
         WHERE fr.tenant_id = $1
           AND fr.created_at::date BETWEEN $2 AND $3
+          ${billingSourceCondition}
           ${statusCondition}
         ORDER BY ${sortBy} ${sortOrder}
         LIMIT $${bindValues.length - 1} OFFSET $${bindValues.length};

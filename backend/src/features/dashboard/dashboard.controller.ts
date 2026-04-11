@@ -54,12 +54,14 @@ export async function handleGetDashboardScope(req: Request, res: Response): Prom
     req,
     statusCode: HTTP_STATUS.OK,
     message: "Dashboard scope resolved",
-    data: {
-      ...scope,
-      providerId: scope.providerId ?? null,
-      billingAccountKey: scope.billingAccountKey ?? null,
-      subAccountKey: scope.subAccountKey ?? null,
-      serviceKey: scope.serviceKey ?? null,
+      data: {
+        ...scope,
+        providerId: scope.providerId ?? null,
+        billingSourceIds:
+          Array.isArray(scope.billingSourceIds) && scope.billingSourceIds.length > 0 ? scope.billingSourceIds : null,
+        billingAccountKey: scope.billingAccountKey ?? null,
+        subAccountKey: scope.subAccountKey ?? null,
+        serviceKey: scope.serviceKey ?? null,
       regionKey: scope.regionKey ?? null,
       title: "All Cloud Costs",
     },
