@@ -288,8 +288,14 @@ export function ClientBillingPage() {
     })()
   }
 
-  function openDashboardWithQuery(search: URLSearchParams) {
+  function openUploadsDashboardWithQuery(search: URLSearchParams) {
     const nextUrl = `/uploads-dashboard/overview?${search.toString()}`
+    window.history.pushState({}, "", nextUrl)
+    window.dispatchEvent(new PopStateEvent("popstate"))
+  }
+
+  function openMainDashboardWithQuery(search: URLSearchParams) {
+    const nextUrl = `/dashboard/overview?${search.toString()}`
     window.history.pushState({}, "", nextUrl)
     window.dispatchEvent(new PopStateEvent("popstate"))
   }
@@ -311,7 +317,7 @@ export function ClientBillingPage() {
         const query = new URLSearchParams({
           rawBillingFileIds: validRawBillingFileIds.join(","),
         })
-        openDashboardWithQuery(query)
+        openUploadsDashboardWithQuery(query)
       } catch (error) {
         if (error instanceof ApiError) {
           setDashboardActionError(error.message || "Unable to resolve upload scope for dashboard.")
@@ -344,7 +350,7 @@ export function ClientBillingPage() {
         const query = new URLSearchParams({
           rawBillingFileIds: validRawBillingFileIds.join(","),
         })
-        openDashboardWithQuery(query)
+        openMainDashboardWithQuery(query)
       } catch (error) {
         if (error instanceof ApiError) {
           setDashboardActionError(error.message || "Unable to open dashboard for this cloud connection.")

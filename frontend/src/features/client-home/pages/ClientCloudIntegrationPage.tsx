@@ -41,7 +41,7 @@ export function ClientCloudIntegrationPage() {
     cloudIntegrationsError instanceof ApiError ? cloudIntegrationsError.message : "Unable to load cloud connections."
 
   function openDashboardWithQuery(search: URLSearchParams) {
-    const nextUrl = `/uploads-dashboard/overview?${search.toString()}`
+    const nextUrl = `/dashboard/overview?${search.toString()}`
     window.history.pushState({}, "", nextUrl)
     window.dispatchEvent(new PopStateEvent("popstate"))
   }
