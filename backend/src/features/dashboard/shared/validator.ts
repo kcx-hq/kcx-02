@@ -24,6 +24,9 @@ export function validateDashboardRequest(input: DashboardRequest): void {
   const hasRawBillingFileId = typeof input.rawBillingFileId === "number";
   const hasRawBillingFileIds = Array.isArray(input.rawBillingFileIds) && input.rawBillingFileIds.length > 0;
   const hasUploadScope = hasRawBillingFileIds || hasRawBillingFileId;
+  const hasBillingSourceId = typeof input.billingSourceId === "number";
+  const hasBillingSourceIds = Array.isArray(input.billingSourceIds) && input.billingSourceIds.length > 0;
+  const hasBillingSourceScope = hasBillingSourceId || hasBillingSourceIds;
   const hasFrom = typeof input.from === "string";
   const hasTo = typeof input.to === "string";
   const hasDateRange = hasFrom && hasTo;
@@ -39,6 +42,14 @@ export function validateDashboardRequest(input: DashboardRequest): void {
 
   if (hasRawBillingFileIds && !input.rawBillingFileIds?.every((id) => Number.isInteger(id))) {
     throw new BadRequestError("rawBillingFileIds must contain valid integers");
+  }
+
+  if (hasBillingSourceIds && !input.billingSourceIds?.every((id) => Number.isInteger(id))) {
+    throw new BadRequestError("billingSourceIds must contain valid integers");
+  }
+
+  if (hasUploadScope && hasBillingSourceScope) {
+    throw new BadRequestError("Provide upload scope or billing source scope, not both");
   }
 
   if (hasDateRange) {

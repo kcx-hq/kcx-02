@@ -2,6 +2,8 @@ export type DashboardScopeInput = {
   tenantId?: string;
   rawBillingFileId?: number;
   rawBillingFileIds?: number[];
+  billingSourceId?: number;
+  billingSourceIds?: number[];
   from?: string;
   to?: string;
   providerId?: number;
@@ -27,6 +29,7 @@ export type DashboardResolvedScope =
       from: string;
       to: string;
       providerId: number | null;
+      billingSourceIds: number[] | null;
       billingAccountKey: number | null;
       subAccountKey: number | null;
       serviceKey: number | null;
