@@ -1,0 +1,28 @@
+@startuml
+title PU_01 Submit Inquiry - Activity
+
+start
+:Public User opens Submit Inquiry;
+:Enter contact email and heardAboutUs;
+:Include Use Case: Select Slot;
+
+if (Slot reserved successfully?) then (Yes)
+  :Submit inquiry;
+  :Create DemoRequest in PENDING state;
+  :Provision user account if needed (temporary password);
+  :Send inquiry acknowledgement email;
+  if (Admin review outcome?) then (Approved)
+    :Confirm booking;
+    :Mark slot used;
+    stop
+  else (Rejected)
+    :Reject request;
+    :Release slot;
+    stop
+  endif
+else (No)
+  :Show slot selection failure;
+  stop
+endif
+
+@enduml

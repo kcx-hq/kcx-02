@@ -1,0 +1,18 @@
+sequenceDiagram
+    actor PublicUser
+    participant SlotReservation
+    participant DemoRequest
+    participant AdminUser
+
+    PublicUser->>SlotReservation: reserve(calcomReservationId: String)
+    SlotReservation-->>PublicUser: Reservation confirmed
+    PublicUser->>DemoRequest: submit(contactEmail: String, heardAboutUs: String)
+    Note over DemoRequest: System may create/find User with temporary password\nand sends inquiry acknowledgement email
+    DemoRequest-->>PublicUser: Inquiry submitted (status: PENDING)
+    alt Approved by admin
+        AdminUser->>DemoRequest: confirmBooking(calcomBookingId: String, meetingUrl: String)
+        DemoRequest->>SlotReservation: markUsed()
+    else Rejected by admin
+        AdminUser->>DemoRequest: reject(reason: String)
+        DemoRequest->>SlotReservation: release()
+    end

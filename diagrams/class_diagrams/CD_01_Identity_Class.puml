@@ -1,0 +1,73 @@
+@startuml
+title CD_01 Identity Class Diagram
+
+skinparam classAttributeIconSize 0
+skinparam packageStyle rectangle
+
+package "Identity" {
+  class Tenant {
+    +id: UUID
+    +name: String
+    +slug: String
+    +status: String
+    --
+    +activate()
+    +deactivate(reason: String)
+  }
+
+  class User {
+    +id: UUID
+    +tenantId: UUID
+    +fullName: String
+    +email: String
+    +role: String
+    +status: String
+    --
+    +authenticate(password: String): Boolean
+    +deactivate()
+  }
+
+  class AdminUser {
+    +id: Integer
+    +email: String
+    +role: String
+    +status: String
+    --
+    +authenticate(password: String): Boolean
+    +block()
+  }
+
+  class ClientSession {
+    +id: Integer
+    +expiresAt: DateTime
+    +revokedAt: DateTime?
+    --
+    +revoke()
+    +isActive(now: DateTime): Boolean
+  }
+
+  class AdminSession {
+    +id: Integer
+    +expiresAt: DateTime
+    +revokedAt: DateTime?
+    --
+    +revoke()
+    +isActive(now: DateTime): Boolean
+  }
+
+  class PasswordResetRequest {
+    +id: Integer
+    +expiresAt: DateTime
+    +usedAt: DateTime?
+    --
+    +markUsed(usedAt: DateTime)
+    +isExpired(now: DateTime): Boolean
+  }
+
+  Tenant "1" -- "0..*" User
+  User "1" -- "0..*" ClientSession
+  AdminUser "1" -- "0..*" AdminSession
+  User "1" -- "0..*" PasswordResetRequest
+}
+
+@enduml

@@ -1,0 +1,35 @@
+@startuml
+title CD_04 Public Flow Class Diagram
+
+skinparam classAttributeIconSize 0
+skinparam packageStyle rectangle
+
+package "Public Flow" {
+  class SlotReservation {
+    +id: Integer
+    +slotStart: DateTime
+    +slotEnd: DateTime
+    +reservationExpiresAt: DateTime
+    +status: String
+    --
+    +reserve(calcomReservationId: String)
+    +release()
+    +markUsed()
+  }
+
+  class DemoRequest {
+    +id: Integer
+    +status: String
+    +heardAboutUs: String?
+    +slotStart: DateTime?
+    +slotEnd: DateTime?
+    --
+    +submit(contactEmail: String, heardAboutUs: String)
+    +confirmBooking(calcomBookingId: String, meetingUrl: String)
+    +reject(reason: String)
+  }
+
+  DemoRequest "1" *-- "0..1" SlotReservation
+}
+
+@enduml
