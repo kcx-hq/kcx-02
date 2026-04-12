@@ -1,0 +1,15 @@
+@startuml
+title CU_01 Sign In - Activity
+start
+:ClientUser enters credentials;
+:Submit sign-in request;
+if (Credentials valid?) then (Yes)
+  :Create authenticated session;
+  :Redirect to client portal home;
+  stop
+else (No)
+  :Show invalid credentials error;
+  :Prompt retry;
+  stop
+endif
+@enduml

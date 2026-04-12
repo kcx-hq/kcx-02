@@ -1,0 +1,13 @@
+@startuml
+title CA_03 Suspend User - Activity
+start
+:ClientAdmin selects user account;
+if (Suspension confirmed?) then (Yes)
+  :Deactivate user account;
+  :Show user suspended;
+  stop
+else (No)
+  :Cancel suspension action;
+  stop
+endif
+@enduml

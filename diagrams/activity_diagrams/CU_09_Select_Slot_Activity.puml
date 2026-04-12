@@ -1,0 +1,14 @@
+@startuml
+title CU_09 Select Slot - Activity
+start
+:ClientUser views available slots;
+:Choose preferred slot;
+if (Slot reservation successful?) then (Yes)
+  :Keep slot reserved;
+  stop
+else (No)
+  :Release temporary slot hold;
+  :Choose another slot;
+  stop
+endif
+@enduml

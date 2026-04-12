@@ -1,0 +1,13 @@
+@startuml
+title CU_04 View Dashboard - Activity
+start
+:ClientUser navigates to dashboard;
+if (Session active?) then (Yes)
+  :Load dashboard widgets and metrics;
+  :Display dashboard;
+  stop
+else (No)
+  :Redirect to sign in;
+  stop
+endif
+@enduml

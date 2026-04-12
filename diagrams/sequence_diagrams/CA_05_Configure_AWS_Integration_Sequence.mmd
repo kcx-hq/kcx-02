@@ -1,0 +1,14 @@
+%% Use Case: Configure AWS Integration
+sequenceDiagram
+    actor ClientAdmin
+    participant CloudConnection
+    participant CloudIntegration
+
+    ClientAdmin->>CloudConnection: validateAccess(): Boolean
+    alt Connection valid
+        ClientAdmin->>CloudConnection: activate()
+        ClientAdmin->>CloudIntegration: refreshHealth()
+    else Connection invalid
+        ClientAdmin->>CloudConnection: suspend(reason: String)
+        ClientAdmin->>CloudIntegration: flagDuplicateAccount(accountId: String)
+    end

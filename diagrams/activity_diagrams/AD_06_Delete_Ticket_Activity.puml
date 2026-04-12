@@ -1,0 +1,16 @@
+@startuml
+title AD_06 Delete Ticket - Activity
+
+' Limitation: explicit delete operation is not available in class_diagrams; close is used as supported equivalent.
+start
+:Admin selects ticket to remove from active queue;
+if (Ticket eligible for removal?) then (Yes)
+  :Close ticket;
+  :Hide from active ticket list;
+  stop
+else (No)
+  :Keep ticket open;
+  stop
+endif
+
+@enduml

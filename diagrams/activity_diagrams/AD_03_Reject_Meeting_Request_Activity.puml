@@ -1,0 +1,16 @@
+@startuml
+title AD_03 Reject Meeting Request - Activity
+
+start
+:Admin reviews meeting request;
+if (Request must be rejected?) then (Yes)
+  :Enter rejection reason;
+  :Reject meeting request;
+  :Notify client of rejection;
+  stop
+else (No)
+  :Return request for approval path;
+  stop
+endif
+
+@enduml

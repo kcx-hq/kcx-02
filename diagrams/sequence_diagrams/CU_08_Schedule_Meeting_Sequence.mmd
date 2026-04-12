@@ -1,0 +1,11 @@
+%% Use Case: Schedule Meeting
+%% Includes: Select Slot
+sequenceDiagram
+    actor ClientUser
+    participant SlotReservation
+    participant SupportMeeting
+
+    ClientUser->>SlotReservation: reserve(calcomReservationId: String)
+    SlotReservation-->>ClientUser: slot reserved
+    ClientUser->>SupportMeeting: request(requestedBy: UUID, slotStart: DateTime, slotEnd: DateTime, agenda: String, meetingType: String, timeZone: String)
+    SupportMeeting-->>ClientUser: meeting requested

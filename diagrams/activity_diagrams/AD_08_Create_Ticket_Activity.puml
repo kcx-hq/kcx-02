@@ -1,0 +1,17 @@
+@startuml
+title AD_08 Create Ticket - Activity
+
+start
+:Admin enters ticket details;
+if (Required fields complete?) then (Yes)
+  :Create support ticket;
+  :Generate ticket code;
+  :Show created ticket;
+  stop
+else (No)
+  :Show validation errors;
+  :Correct input details;
+  stop
+endif
+
+@enduml

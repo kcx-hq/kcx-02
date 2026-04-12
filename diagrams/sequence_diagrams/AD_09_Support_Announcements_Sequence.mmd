@@ -1,0 +1,15 @@
+%% Use Case: Support Announcements
+sequenceDiagram
+    actor Admin
+    participant Announcement
+
+    alt Publish announcement
+        Admin->>Announcement: publish()
+        Announcement-->>Admin: published
+    else Archive announcement
+        Admin->>Announcement: archive()
+        Announcement-->>Admin: archived
+    else Unpublish announcement
+        Admin->>Announcement: unpublish()
+        Announcement-->>Admin: moved to draft
+    end

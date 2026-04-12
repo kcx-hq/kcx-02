@@ -1,0 +1,7 @@
+%% Use Case: Logout
+sequenceDiagram
+    actor ClientUser
+    participant ClientSession
+
+    ClientUser->>ClientSession: revoke()
+    ClientSession-->>ClientUser: session revoked

@@ -1,0 +1,7 @@
+%% Use Case: Suspend User
+sequenceDiagram
+    actor ClientAdmin
+    participant User
+
+    ClientAdmin->>User: deactivate()
+    User-->>ClientAdmin: user suspended

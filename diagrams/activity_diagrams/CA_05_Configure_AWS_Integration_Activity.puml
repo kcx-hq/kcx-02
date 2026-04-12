@@ -1,0 +1,15 @@
+@startuml
+title CA_05 Configure AWS Integration - Activity
+start
+:ClientAdmin opens AWS integration settings;
+:Validate cloud connection access;
+if (Access valid?) then (Yes)
+  :Activate connection;
+  :Refresh integration health;
+  stop
+else (No)
+  :Suspend connection;
+  :Flag duplicate/invalid account issue;
+  stop
+endif
+@enduml

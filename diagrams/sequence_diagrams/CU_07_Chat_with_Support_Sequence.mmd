@@ -1,0 +1,9 @@
+%% Use Case: Chat with Support
+sequenceDiagram
+    actor ClientUser
+    participant SupportTicket
+    participant TicketMessage
+
+    ClientUser->>SupportTicket: addMessage(senderId: UUID, text: String): TicketMessage
+    SupportTicket->>TicketMessage: post(senderId: UUID, text: String)
+    TicketMessage-->>ClientUser: message posted

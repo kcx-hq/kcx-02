@@ -1,0 +1,18 @@
+@startuml
+title AD_01 Chat with Client - Activity
+
+start
+:Admin opens support ticket thread;
+:Admin writes response message;
+:Add message to ticket;
+:Post ticket message;
+if (Message posted successfully?) then (Yes)
+  :Show updated conversation;
+  stop
+else (No)
+  :Show posting error;
+  :Retry message posting;
+  stop
+endif
+
+@enduml

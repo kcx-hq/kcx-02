@@ -1,0 +1,17 @@
+@startuml
+title AD_10 Manage Cloud Connection - Activity
+
+start
+:Admin opens cloud connection settings;
+:Validate cloud access;
+if (Connection valid?) then (Yes)
+  :Activate cloud connection;
+  :Refresh integration health;
+  stop
+else (No)
+  :Capture failure reason;
+  :Suspend connection;
+  stop
+endif
+
+@enduml

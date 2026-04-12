@@ -1,0 +1,7 @@
+%% Use Case: Update Ticket Status
+sequenceDiagram
+    actor Admin
+    participant SupportTicket
+
+    Admin->>SupportTicket: advanceWorkflow(stage: String, progress: String)
+    SupportTicket-->>Admin: workflow updated
