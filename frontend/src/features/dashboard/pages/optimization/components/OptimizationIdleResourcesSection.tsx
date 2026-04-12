@@ -1,9 +1,12 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { dashboardApi } from "../../../api/dashboardApi";
 import {
   useOptimizationIdleOverviewQuery,
   useOptimizationIdleRecommendationDetailQuery,
   useOptimizationIdleRecommendationsQuery,
 } from "../../../hooks/useDashboardQueries";
+import { useDashboardScope } from "../../../hooks/useDashboardScope";
 import { compactCurrencyFormatter } from "../optimization.constants";
 
 const PAGE_SIZE = 10;
@@ -26,13 +29,28 @@ function formatRecommendationType(value: string): string {
   return toTitleCase(value);
 }
 
+function toUpper(value: string | null): string {
+  return value ? value.toUpperCase() : "";
+}
+
+type ActionBanner = {
+  variant: "info" | "success" | "error";
+  text: string;
+};
+
 export function OptimizationIdleResourcesSection() {
+  const queryClient = useQueryClient();
+  const { scope } = useDashboardScope();
   const [status, setStatus] = useState<string>("all");
   const [region, setRegion] = useState<string>("all");
   const [type, setType] = useState<string>("all");
   const [reason, setReason] = useState<string>("all");
   const [page, setPage] = useState<number>(1);
   const [selectedRecommendationId, setSelectedRecommendationId] = useState<string | null>(null);
+  const [lockedRecommendationIds, setLockedRecommendationIds] = useState<Record<string, true>>({});
+  const [ignoringRecommendationId, setIgnoringRecommendationId] = useState<string | null>(null);
+  const [actionBanner, setActionBanner] = useState<ActionBanner | null>(null);
+  const localApplyingCount = Object.keys(lockedRecommendationIds).length;
 
   const overviewQuery = useOptimizationIdleOverviewQuery();
   const recommendationsQuery = useOptimizationIdleRecommendationsQuery({
@@ -40,6 +58,9 @@ export function OptimizationIdleResourcesSection() {
     region: region !== "all" ? [region] : undefined,
     page,
     pageSize: PAGE_SIZE,
+  }, {
+    autoRefetchWhileInProgress: true,
+    autoRefetchWhileLocalPending: localApplyingCount > 0,
   });
   const detailQuery = useOptimizationIdleRecommendationDetailQuery(selectedRecommendationId);
 
@@ -74,6 +95,49 @@ export function OptimizationIdleResourcesSection() {
 
   const hasPrev = Boolean(pagination && pagination.page > 1);
   const hasNext = Boolean(pagination && pagination.page < pagination.totalPages);
+  const inProgressCount = recommendationItems.filter(
+    (item) => toUpper(item.status) === "IN_PROGRESS",
+  ).length;
+
+  useEffect(() => {
+    if (Object.keys(lockedRecommendationIds).length === 0) return;
+
+    setLockedRecommendationIds((current) => {
+      let changed = false;
+      const next = { ...current };
+
+      for (const recommendationId of Object.keys(current)) {
+        const matching = recommendationItems.find((item) => item.id === recommendationId);
+        const statusText = toUpper(matching?.status ?? null);
+
+        if (statusText === "IN_PROGRESS" || statusText === "APPLIED" || statusText === "FAILED") {
+          delete next[recommendationId];
+          changed = true;
+        }
+      }
+
+      return changed ? next : current;
+    });
+  }, [recommendationItems, lockedRecommendationIds]);
+
+  useEffect(() => {
+    if (!actionBanner || actionBanner.variant !== "info") return;
+
+    if (inProgressCount === 0 && localApplyingCount === 0 && !recommendationsQuery.isFetching) {
+      setActionBanner({
+        variant: "success",
+        text: "Idle action completed successfully.",
+      });
+    }
+  }, [actionBanner, inProgressCount, localApplyingCount, recommendationsQuery.isFetching]);
+
+  useEffect(() => {
+    if (!actionBanner || actionBanner.variant !== "success") return;
+    const timer = setTimeout(() => {
+      setActionBanner(null);
+    }, 3500);
+    return () => clearTimeout(timer);
+  }, [actionBanner]);
 
   const onFilterChange = (setter: (value: string) => void, value: string) => {
     setter(value);
@@ -81,11 +145,146 @@ export function OptimizationIdleResourcesSection() {
     setSelectedRecommendationId(null);
   };
 
+  const executeMutation = useMutation({
+    mutationFn: async (recommendationId: string) => {
+      if (!scope) throw new Error("Dashboard scope is not resolved yet");
+      return dashboardApi.executeOptimizationIdleRecommendation(scope, recommendationId);
+    },
+    onMutate: (recommendationId) => {
+      setLockedRecommendationIds((current) => ({ ...current, [recommendationId]: true }));
+      setActionBanner({
+        variant: "info",
+        text: "Idle action queued. Applying in background...",
+      });
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: ["dashboard", "optimization", "idle"],
+      });
+    },
+    onError: (error, recommendationId) => {
+      const message = error instanceof Error ? error.message : "Failed to queue idle action";
+      setActionBanner({
+        variant: "error",
+        text: `Action failed: ${message}`,
+      });
+      setLockedRecommendationIds((current) => {
+        if (!current[recommendationId]) return current;
+        const next = { ...current };
+        delete next[recommendationId];
+        return next;
+      });
+    },
+  });
+
+  const ignoreMutation = useMutation({
+    mutationFn: async (recommendationId: string) => {
+      if (!scope) throw new Error("Dashboard scope is not resolved yet");
+      return dashboardApi.ignoreOptimizationIdleRecommendation(scope, recommendationId);
+    },
+    onMutate: (recommendationId) => {
+      setIgnoringRecommendationId(recommendationId);
+      setActionBanner({
+        variant: "info",
+        text: "Ignoring recommendation...",
+      });
+    },
+    onSuccess: (_data, recommendationId) => {
+      setActionBanner({
+        variant: "success",
+        text: "Recommendation ignored successfully.",
+      });
+      queryClient.setQueryData(
+        ["dashboard", "optimization", "idle", "recommendations", scope, {
+          status: status !== "all" ? [status] : undefined,
+          region: region !== "all" ? [region] : undefined,
+          page,
+          pageSize: PAGE_SIZE,
+        }],
+        (existing: { items?: Array<{ id: string; status: string }> } | undefined) => {
+          if (!existing?.items) return existing;
+          return {
+            ...existing,
+            items: existing.items.map((item) =>
+              item.id === recommendationId ? { ...item, status: "IGNORED" } : item,
+            ),
+          };
+        },
+      );
+      void queryClient.invalidateQueries({
+        queryKey: ["dashboard", "optimization", "idle"],
+      });
+    },
+    onError: (error) => {
+      const message = error instanceof Error ? error.message : "Failed to ignore recommendation";
+      setActionBanner({
+        variant: "error",
+        text: `Action failed: ${message}`,
+      });
+    },
+    onSettled: () => {
+      setIgnoringRecommendationId(null);
+    },
+  });
+
+  const getIdleActionLabel = (recommendationType: string): string => {
+    const normalized = toUpper(recommendationType);
+    if (normalized === "DELETE_EBS") return "Delete EBS";
+    if (normalized === "RELEASE_EIP") return "Release EIP";
+    if (normalized === "DELETE_SNAPSHOT") return "Delete Snapshot";
+    return "Apply";
+  };
+
+  const isIdleActionableType = (recommendationType: string): boolean => {
+    const normalized = toUpper(recommendationType);
+    return (
+      normalized === "DELETE_EBS" ||
+      normalized === "RELEASE_EIP" ||
+      normalized === "DELETE_SNAPSHOT"
+    );
+  };
+
+  const isApplyDisabled = (item: (typeof recommendationItems)[number]): boolean => {
+    const statusText = toUpper(item.status);
+    if (statusText === "NO_ACTION_NEEDED" || statusText === "IN_PROGRESS" || statusText === "APPLIED") {
+      return true;
+    }
+    if (statusText === "IGNORED") {
+      return true;
+    }
+    if (!isIdleActionableType(item.recommendationType)) {
+      return true;
+    }
+    return Boolean(lockedRecommendationIds[item.id]) || ignoreMutation.isPending;
+  };
+
+  const isIgnoreDisabled = (item: (typeof recommendationItems)[number]): boolean => {
+    const statusText = toUpper(item.status);
+    if (statusText === "IN_PROGRESS" || statusText === "APPLIED" || statusText === "IGNORED") {
+      return true;
+    }
+    return executeMutation.isPending || ignoreMutation.isPending;
+  };
+
   return (
     <section className="optimization-rightsizing-shell optimization-idle-section">
       {overviewQuery.isLoading ? <p className="dashboard-note">Loading idle overview...</p> : null}
       {overviewQuery.isError ? <p className="dashboard-note">Failed to load idle overview: {overviewQuery.error.message}</p> : null}
       <section className="optimization-rightsizing-panel">
+        {actionBanner ? (
+          <div className={`optimization-action-banner optimization-action-banner--${actionBanner.variant}`}>
+            <span className="optimization-action-banner__dot" aria-hidden="true" />
+            <p>{actionBanner.text}</p>
+          </div>
+        ) : null}
+        {(inProgressCount > 0 || localApplyingCount > 0) ? (
+          <p className="dashboard-note">
+            Applying {Math.max(inProgressCount, localApplyingCount)} recommendation(s) in background. Updates refresh automatically.
+          </p>
+        ) : null}
+        {recommendationsQuery.isFetching && !recommendationsQuery.isLoading ? (
+          <p className="dashboard-note">Refreshing recommendation status...</p>
+        ) : null}
         <section className="optimization-rightsizing-kpis-bar optimization-idle-kpis-inline-row">
           <article className="optimization-rightsizing-kpi-inline">
             <p className="optimization-rightsizing-kpi__label">Potential Savings / Month</p>
@@ -233,13 +432,34 @@ export function OptimizationIdleResourcesSection() {
                       <span className="optimization-idle-tag optimization-idle-tag--status">{toTitleCase(item.status)}</span>
                     </td>
                     <td>
-                      <button
-                        type="button"
-                        className="optimization-rightsizing-view-btn"
-                        onClick={() => setSelectedRecommendationId(item.id)}
-                      >
-                        View
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          className="optimization-rightsizing-view-btn"
+                          disabled={isApplyDisabled(item)}
+                          title={!isIdleActionableType(item.recommendationType) ? "This recommendation requires manual review." : undefined}
+                          onClick={() => executeMutation.mutate(item.id)}
+                        >
+                          {toUpper(item.status) === "IN_PROGRESS" || Boolean(lockedRecommendationIds[item.id])
+                            ? "Applying..."
+                            : getIdleActionLabel(item.recommendationType)}
+                        </button>
+                        <button
+                          type="button"
+                          className="optimization-rightsizing-view-btn"
+                          disabled={isIgnoreDisabled(item)}
+                          onClick={() => ignoreMutation.mutate(item.id)}
+                        >
+                          {ignoringRecommendationId === item.id ? "Ignoring..." : "Ignore"}
+                        </button>
+                        <button
+                          type="button"
+                          className="optimization-rightsizing-view-btn"
+                          onClick={() => setSelectedRecommendationId(item.id)}
+                        >
+                          View
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))

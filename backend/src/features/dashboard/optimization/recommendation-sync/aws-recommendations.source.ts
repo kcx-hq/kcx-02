@@ -242,6 +242,7 @@ export async function fetchAwsEc2RightsizingRecommendationsFromComputeOptimizer(
     let response: { instanceRecommendations?: unknown[]; nextToken?: string };
     try {
       response = await client.send(command);
+      console.dir(response, { depth: null, maxArrayLength: null });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       const normalized = message.toLowerCase();

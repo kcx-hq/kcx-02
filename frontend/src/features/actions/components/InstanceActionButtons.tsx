@@ -1,9 +1,9 @@
 import { Button } from "@/components/ui/button"
-import type { Ec2ActionType, Ec2InstanceState } from "@/features/actions/types"
+import type { Ec2ExtendedActionType, Ec2ActionType, Ec2InstanceState } from "@/features/actions/types"
 
 type InstanceActionButtonsProps = {
   instanceState: Ec2InstanceState | null
-  pendingAction: Ec2ActionType | null
+  pendingAction: Ec2ExtendedActionType | null
   onAction: (action: Ec2ActionType) => void
 }
 

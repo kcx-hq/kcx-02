@@ -5614,6 +5614,12 @@
   border-color: #cfddf6;
 }
 
+.optimization-rightsizing-pill.is-status-IGNORED {
+  background: #f2f4f7;
+  color: #5a6470;
+  border-color: #d8dde4;
+}
+
 .optimization-rightsizing-empty {
   padding: 26px 12px !important;
   text-align: center;
@@ -5829,6 +5835,59 @@
 
 .optimization-idle-filters .optimization-rightsizing-filter-control {
   font-size: 1.1rem;
+}
+
+.optimization-action-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border-radius: 10px;
+  border: 1px solid #d1dde8;
+  background: #f6f8fb;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+}
+
+.optimization-action-banner p {
+  margin: 0;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #2f4755;
+}
+
+.optimization-action-banner__dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  background: #5b7b92;
+  flex: 0 0 9px;
+}
+
+.optimization-action-banner--info {
+  border-color: #c8d9ec;
+  background: #f0f6fc;
+}
+
+.optimization-action-banner--info .optimization-action-banner__dot {
+  background: #2f72b7;
+}
+
+.optimization-action-banner--success {
+  border-color: #c4e3d4;
+  background: #eef9f3;
+}
+
+.optimization-action-banner--success .optimization-action-banner__dot {
+  background: #1f8f5f;
+}
+
+.optimization-action-banner--error {
+  border-color: #efcfd2;
+  background: #fdf3f3;
+}
+
+.optimization-action-banner--error .optimization-action-banner__dot {
+  background: #b5424a;
 }
 
 .optimization-idle-table {

@@ -110,12 +110,25 @@ export function useOptimizationRightsizingOverviewQuery() {
   });
 }
 
-export function useOptimizationRightsizingRecommendationsQuery(filters?: OptimizationRecommendationFiltersQuery) {
+export function useOptimizationRightsizingRecommendationsQuery(
+  filters?: OptimizationRecommendationFiltersQuery,
+  options?: {
+    autoRefetchWhileInProgress?: boolean;
+  },
+) {
   const { scope } = useDashboardScope();
   return useQuery<OptimizationRecommendationsResponse, Error>({
     queryKey: ["dashboard", "optimization", "rightsizing", "recommendations", scope, filters],
     queryFn: () => dashboardApi.getOptimizationRightsizingRecommendations(assertScope(scope), filters),
     enabled: Boolean(scope),
+    refetchInterval: (query) => {
+      if (!options?.autoRefetchWhileInProgress) return false;
+      const rows = query.state.data?.items ?? [];
+      const hasInProgress = rows.some(
+        (item) => String(item.status ?? "").trim().toUpperCase() === "IN_PROGRESS",
+      );
+      return hasInProgress ? 5000 : false;
+    },
   });
 }
 
@@ -137,12 +150,26 @@ export function useOptimizationIdleOverviewQuery() {
   });
 }
 
-export function useOptimizationIdleRecommendationsQuery(filters?: OptimizationRecommendationFiltersQuery) {
+export function useOptimizationIdleRecommendationsQuery(
+  filters?: OptimizationRecommendationFiltersQuery,
+  options?: {
+    autoRefetchWhileInProgress?: boolean;
+    autoRefetchWhileLocalPending?: boolean;
+  },
+) {
   const { scope } = useDashboardScope();
   return useQuery<OptimizationIdleRecommendationsResponse, Error>({
     queryKey: ["dashboard", "optimization", "idle", "recommendations", scope, filters],
     queryFn: () => dashboardApi.getOptimizationIdleRecommendations(assertScope(scope), filters),
     enabled: Boolean(scope),
+    refetchInterval: (query) => {
+      if (!options?.autoRefetchWhileInProgress && !options?.autoRefetchWhileLocalPending) return false;
+      const rows = query.state.data?.items ?? [];
+      const hasInProgress = rows.some(
+        (item) => String(item.status ?? "").trim().toUpperCase() === "IN_PROGRESS",
+      );
+      return hasInProgress || options?.autoRefetchWhileLocalPending ? 5000 : false;
+    },
   });
 }
 

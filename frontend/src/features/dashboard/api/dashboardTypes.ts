@@ -95,6 +95,65 @@ export type OptimizationRecommendationItem = {
   serviceName: string | null;
 };
 
+export type RightsizingActionExecuteResponse = {
+  actionId: string;
+  recommendationId: string;
+  status: "QUEUED" | "RUNNING" | "SUCCEEDED" | "FAILED";
+};
+
+export type RightsizingActionStatusResponse = {
+  actionId: string;
+  recommendationId: string;
+  status: "QUEUED" | "RUNNING" | "SUCCEEDED" | "FAILED";
+  requestedByUserId: string | null;
+  requestedAt: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+  instanceId: string | null;
+  fromInstanceType: string | null;
+  toInstanceType: string | null;
+  cloudConnectionId: string | null;
+  awsAccountId: string | null;
+  awsRegionCode: string | null;
+  dryRun: boolean;
+  errorCode: string | null;
+  errorMessage: string | null;
+  details: unknown;
+  awsRequestIds: unknown;
+};
+
+export type IdleActionExecuteResponse = {
+  actionId: string;
+  recommendationId: string;
+  status: "QUEUED" | "RUNNING" | "SUCCEEDED" | "FAILED";
+};
+
+export type IdleActionStatusResponse = {
+  actionId: string;
+  recommendationId: string;
+  status: "QUEUED" | "RUNNING" | "SUCCEEDED" | "FAILED";
+  requestedByUserId: string | null;
+  requestedAt: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+  dryRun: boolean;
+  errorCode: string | null;
+  errorMessage: string | null;
+  details: unknown;
+  awsRequestIds: unknown;
+  resourceId: string | null;
+  resourceType: string | null;
+  recommendationType: string | null;
+  cloudConnectionId: string | null;
+  awsAccountId: string | null;
+  awsRegionCode: string | null;
+};
+
+export type RecommendationIgnoreResponse = {
+  recommendationId: string;
+  status: "IGNORED";
+};
+
 export type OptimizationIdleRecommendationItem = {
   id: string;
   recommendationType: string;

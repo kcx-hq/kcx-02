@@ -28,6 +28,11 @@ import type {
   OptimizationRecommendationFiltersQuery,
   OptimizationRecommendationsResponse,
   OptimizationRecommendationDetail,
+  IdleActionExecuteResponse,
+  IdleActionStatusResponse,
+  RecommendationIgnoreResponse,
+  RightsizingActionExecuteResponse,
+  RightsizingActionStatusResponse,
 } from "./dashboardTypes";
 import { buildDashboardQueryParams } from "../utils/buildDashboardQueryParams";
 
@@ -244,6 +249,30 @@ export const dashboardApi = {
     );
   },
 
+  executeOptimizationRightsizingRecommendation(
+    scope: DashboardResolvedScope,
+    recommendationId: string,
+    payload?: { dryRun?: boolean; idempotencyKey?: string },
+  ) {
+    return apiPost<RightsizingActionExecuteResponse>(
+      withDashboardQuery(`/dashboard/optimization/rightsizing/recommendations/${recommendationId}/execute`, scope),
+      payload ?? {},
+    );
+  },
+
+  getOptimizationRightsizingActionStatus(scope: DashboardResolvedScope, actionId: string) {
+    return apiGet<RightsizingActionStatusResponse>(
+      withDashboardQuery(`/dashboard/optimization/rightsizing/actions/${actionId}`, scope),
+    );
+  },
+
+  ignoreOptimizationRightsizingRecommendation(scope: DashboardResolvedScope, recommendationId: string) {
+    return apiPost<RecommendationIgnoreResponse>(
+      withDashboardQuery(`/dashboard/optimization/rightsizing/recommendations/${recommendationId}/ignore`, scope),
+      {},
+    );
+  },
+
   getOptimizationIdleOverview(scope: DashboardResolvedScope) {
     return apiGet<OptimizationIdleOverview>(
       withDashboardQuery("/dashboard/optimization/idle/overview", scope),
@@ -259,6 +288,30 @@ export const dashboardApi = {
   getOptimizationIdleRecommendationDetail(scope: DashboardResolvedScope, recommendationId: string) {
     return apiGet<OptimizationIdleRecommendationDetail>(
       withDashboardQuery(`/dashboard/optimization/idle/recommendations/${recommendationId}`, scope),
+    );
+  },
+
+  executeOptimizationIdleRecommendation(
+    scope: DashboardResolvedScope,
+    recommendationId: string,
+    payload?: { dryRun?: boolean; idempotencyKey?: string },
+  ) {
+    return apiPost<IdleActionExecuteResponse>(
+      withDashboardQuery(`/dashboard/optimization/idle/recommendations/${recommendationId}/execute`, scope),
+      payload ?? {},
+    );
+  },
+
+  getOptimizationIdleActionStatus(scope: DashboardResolvedScope, actionId: string) {
+    return apiGet<IdleActionStatusResponse>(
+      withDashboardQuery(`/dashboard/optimization/idle/actions/${actionId}`, scope),
+    );
+  },
+
+  ignoreOptimizationIdleRecommendation(scope: DashboardResolvedScope, recommendationId: string) {
+    return apiPost<RecommendationIgnoreResponse>(
+      withDashboardQuery(`/dashboard/optimization/idle/recommendations/${recommendationId}/ignore`, scope),
+      {},
     );
   },
 
@@ -334,4 +387,9 @@ export type {
   OptimizationRecommendationFiltersQuery,
   OptimizationRecommendationsResponse,
   OptimizationRecommendationDetail,
+  IdleActionExecuteResponse,
+  IdleActionStatusResponse,
+  RecommendationIgnoreResponse,
+  RightsizingActionExecuteResponse,
+  RightsizingActionStatusResponse,
 } from "./dashboardTypes";
