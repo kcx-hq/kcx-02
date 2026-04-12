@@ -23,14 +23,14 @@ export function SidebarSubmenu({ items, activeHref, visible, onNavigate }: Sideb
         {items.map((item) => {
           const isActive = activeHref === item.href
           return (
-            <li key={item.href}>
+            <li key={item.href} className="relative">
               <a
                 href={item.href}
                 onClick={(event) => handleAppLinkClick(event, item.href, onNavigate)}
                 className={cn(
-                  "block min-h-[30px] rounded-none px-[6px] py-[6px] text-[0.75rem] font-medium leading-none tracking-[0.01em] transition-colors",
+                  "relative block min-h-[30px] rounded-none px-[6px] py-[6px] text-[0.75rem] font-medium leading-none tracking-[0.01em] transition-colors",
                   isActive
-                    ? "text-[rgba(247,251,251,0.96)]"
+                    ? "font-semibold text-[rgba(247,251,251,0.98)] before:absolute before:left-[-12px] before:top-1 before:h-[calc(100%-8px)] before:w-[2px] before:bg-[rgba(64,178,155,0.9)] before:content-['']"
                     : "text-[rgba(196,217,208,0.82)] hover:text-[rgba(237,247,242,0.96)]"
                 )}
                 aria-current={isActive ? "page" : undefined}

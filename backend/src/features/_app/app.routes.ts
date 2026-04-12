@@ -15,6 +15,7 @@ import dashboardRoutes from "../dashboard/dashboard.routes.js";
 import uploadDashboardRoutes from "../upload-dashboard/upload-dashboard.routes.js";
 import awsExportFileEventRoutes from "../cloud-connections/aws/exports/aws-export-file-event.routes.js";
 import clientAnnouncementsRoutes from "../client-announcements/client-announcements.routes.js";
+import supportTicketsRoutes from "../support-tickets/support-tickets.routes.js";
 import anomalyRoutes from "../dashboard/anomaly-alerts/anomaly.routes.js";
 const router = Router();
 
@@ -33,6 +34,7 @@ router.use(adminBillingUploadsRoutes);
 router.use(adminCloudConnectionsRoutes);
 router.use(adminAnnouncementsRoutes);
 router.use(clientAnnouncementsRoutes);
+router.use(supportTicketsRoutes);
 router.use(awsExportFileEventRoutes);
 router.use(anomalyRoutes);
 

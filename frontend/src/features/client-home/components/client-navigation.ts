@@ -86,6 +86,16 @@ export const CLIENT_BREADCRUMB_ROOT = "Client Home"
 export function getClientBreadcrumbLabel(route: string) {
   if (route === "/client/overview") return "Overview"
   if (route === "/client/profile") return "Profile"
+  if (route === "/client/billing") return "Billing / Ingestion"
+  if (routeMatches(route, ["/client/support", "/client/support/tickets", "/client/support/ticket-management"])) {
+    return "Support / Ticket Management"
+  }
+  if (routeMatches(route, ["/client/support/schedule-call", "/client/support/meetings"])) {
+    return "Support / Meeting"
+  }
+  if (routeMatches(route, ["/client/support/live-chat"])) {
+    return "Support / Live Chat"
+  }
 
   for (const item of CLIENT_SIDEBAR_MENU) {
     const submenuMatch = item.submenu?.find((submenu) => routeMatches(route, submenu.activeMatches))

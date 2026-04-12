@@ -7,10 +7,12 @@ import {
   ClientBillingPage,
   ClientBillingUploadHistoryPage,
   ClientCloudIntegrationPage,
+  ClientLiveChatPage,
   ClientLayout,
+  ClientMeetingsPage,
   ClientOverviewPage,
   ClientProfilePage,
-  ClientSupportPage,
+  ClientTicketsPage,
   ClientUsersPage,
 } from "@/features/client-home"
 import { DashboardRoutes } from "@/features/dashboard"
@@ -59,6 +61,8 @@ const CLIENT_WORKSPACE_ROUTES = new Set([
   "/client/billing/upload-files",
   "/client/support",
   "/client/support/tickets",
+  "/client/support/ticket-management",
+  "/client/support/meetings",
   "/client/support/schedule-call",
   "/client/support/live-chat",
   "/client/users",
@@ -220,9 +224,21 @@ export function App() {
           <ClientBillingPage />
         </ClientLayout>
       ) : null}
-      {route === "/client/support" || route === "/client/support/tickets" || route === "/client/support/schedule-call" || route === "/client/support/live-chat" ? (
+      {route === "/client/support" ||
+      route === "/client/support/tickets" ||
+      route === "/client/support/ticket-management" ||
+      route === "/client/support/meetings" ||
+      route === "/client/support/schedule-call" ||
+      route === "/client/support/live-chat"
+      ? (
         <ClientLayout>
-          <ClientSupportPage />
+          {route === "/client/support/live-chat" ? (
+            <ClientLiveChatPage />
+          ) : route === "/client/support/schedule-call" || route === "/client/support/meetings" ? (
+            <ClientMeetingsPage />
+          ) : (
+            <ClientTicketsPage />
+          )}
         </ClientLayout>
       ) : null}
       {route === "/client/users" ? (

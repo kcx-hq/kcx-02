@@ -363,7 +363,6 @@ export function ClientBillingPage() {
       <>
         <section aria-label="Billing header" className="flex flex-wrap items-start justify-between gap-3">
           <div className="space-y-1">
-            <p className="text-sm font-medium text-text-muted">Billing / Ingestion</p>
             <h1 className="text-2xl font-semibold tracking-tight text-text-primary">Billing</h1>
           </div>
         

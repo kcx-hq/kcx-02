@@ -8,6 +8,8 @@ import { cn } from "@/lib/utils"
 import { Bell, ChevronDown, LifeBuoy, LogOut, Menu, Megaphone, User, UserCircle2 } from "lucide-react"
 import { useClientAnnouncements } from "@/features/client-home/hooks/useClientAnnouncements"
 
+const ANNOUNCEMENTS_SEEN_KEY = "kcx_client_seen_announcement_at"
+
 function HeaderIconTooltip({ label }: { label: string }) {
   return (
     <span className="pointer-events-none absolute left-1/2 top-[calc(100%+0.65rem)] z-50 -translate-x-1/2 whitespace-nowrap rounded-md border border-[rgba(162,188,178,0.38)] bg-[rgba(18,30,31,0.98)] px-2.5 py-1.5 text-xs font-medium text-[rgba(232,243,238,0.95)] opacity-0 shadow-[0_10px_26px_rgba(7,15,15,0.34)] transition duration-150 group-hover:opacity-100 group-focus-within:opacity-100">
@@ -43,9 +45,15 @@ export function ClientTopNavbar({
   const route = useCurrentRoute()
   const [menuOpen, setMenuOpen] = useState(false)
   const [announcementsOpen, setAnnouncementsOpen] = useState(false)
+  const [seenAnnouncementAt, setSeenAnnouncementAt] = useState<number>(() => {
+    if (typeof window === "undefined") return 0
+    const raw = window.localStorage.getItem(ANNOUNCEMENTS_SEEN_KEY)
+    const parsed = raw ? Number(raw) : 0
+    return Number.isFinite(parsed) ? parsed : 0
+  })
   const menuRef = useRef<HTMLDivElement>(null)
   const announcementsRef = useRef<HTMLDivElement>(null)
-  const { data: announcements = [], isLoading: isAnnouncementsLoading, isError: announcementsError } = useClientAnnouncements(announcementsOpen)
+  const { data: announcements = [], isLoading: isAnnouncementsLoading, isError: announcementsError } = useClientAnnouncements(true)
 
   useEffect(() => {
     function onPointerDown(event: MouseEvent) {
@@ -80,7 +88,29 @@ export function ClientTopNavbar({
   const roleLabel = toRoleLabel(userRole)
   const currentBreadcrumbLabel = getClientBreadcrumbLabel(route)
   const navIconButtonClass =
-    "h-9 rounded-md border border-[color:#d5e0dd] bg-[color:#f8fbfa] px-2 text-[color:#3f595f] hover:bg-[color:#eef4f2] hover:text-[color:#21343a]"
+    "relative h-10 rounded-md border border-[rgba(170,188,181,0.58)] bg-[color:#f6faf9] px-3 text-[color:#3a555d] transition duration-200 hover:border-[rgba(123,159,148,0.66)] hover:bg-[color:#eef6f3] hover:text-[color:#20363d]"
+
+  function toAnnouncementTimestamp(iso: string | null | undefined) {
+    if (!iso) return 0
+    const value = Date.parse(iso)
+    return Number.isNaN(value) ? 0 : value
+  }
+
+  const unreadAnnouncementsCount = announcements.reduce((count, announcement) => {
+    const announcementTimestamp = toAnnouncementTimestamp(announcement.publishAt ?? announcement.updatedAt)
+    return announcementTimestamp > seenAnnouncementAt ? count + 1 : count
+  }, 0)
+
+  function markAnnouncementsSeen() {
+    const latestAnnouncementAt = announcements.reduce((latest, announcement) => {
+      const announcementTimestamp = toAnnouncementTimestamp(announcement.publishAt ?? announcement.updatedAt)
+      return Math.max(latest, announcementTimestamp)
+    }, 0)
+
+    const nextSeenTimestamp = Math.max(latestAnnouncementAt, Date.now())
+    setSeenAnnouncementAt(nextSeenTimestamp)
+    window.localStorage.setItem(ANNOUNCEMENTS_SEEN_KEY, String(nextSeenTimestamp))
+  }
 
   function handleLogout() {
     clearAuthSession()
@@ -95,7 +125,7 @@ export function ClientTopNavbar({
   }
 
   return (
-    <header className="sticky top-0 z-40 border-b border-[color:#d7e3df] bg-[color:#f3f7f6] text-[color:#1f2e33] lg:ml-[228px] lg:w-[calc(100%-228px)]">
+    <header className="sticky top-0 z-40 border-b border-[rgba(177,196,188,0.42)] bg-[linear-gradient(180deg,#fefefe_0%,#f5faf8_100%)] text-[color:#1f2e33] shadow-[0_8px_26px_rgba(16,37,35,0.08)] backdrop-blur-[2px] lg:ml-[228px] lg:w-[calc(100%-228px)]">
       <div className="mx-auto flex h-16 w-full items-center justify-between gap-4 px-4 sm:px-[22px]">
         <div className="flex min-w-0 flex-1 items-center gap-4">
           {onOpenSidebar ? (
@@ -110,10 +140,6 @@ export function ClientTopNavbar({
             </Button>
           ) : null}
           <nav className="inline-flex min-w-0 items-center gap-2" aria-label="Breadcrumb">
-            <span className="truncate text-[16px] font-medium text-[color:#5f736b]">{orgName}</span>
-            <span className="text-[15px] font-normal text-[color:#8a9a94]" aria-hidden="true">
-              /
-            </span>
             <span className="truncate text-[16px] font-semibold text-[color:#192630]">{currentBreadcrumbLabel}</span>
           </nav>
         </div>
@@ -135,15 +161,26 @@ export function ClientTopNavbar({
                 variant="ghost"
                 aria-label="Announcements"
                 onClick={() => {
-                  setAnnouncementsOpen((open) => !open)
+                  setAnnouncementsOpen((open) => {
+                    const next = !open
+                    if (next) {
+                      markAnnouncementsSeen()
+                    }
+                    return next
+                  })
                   setMenuOpen(false)
                 }}
-                className={cn(navIconButtonClass, announcementsOpen ? "bg-[rgba(158,191,178,0.2)] text-white" : "")}
+                className={cn(
+                  navIconButtonClass,
+                  announcementsOpen
+                    ? "border-[rgba(104,150,134,0.7)] bg-[color:#e5f1ec] text-[color:#163039]"
+                    : ""
+                )}
               >
                 <Megaphone className="h-3.5 w-3.5" />
-                {announcements.length > 0 ? (
-                  <span className="ml-1 inline-flex min-w-[1.1rem] items-center justify-center rounded-full bg-[rgba(124,198,170,0.22)] px-1.5 py-0.5 text-[10px] font-semibold leading-none text-[rgba(229,245,238,0.95)]">
-                    {announcements.length}
+                {unreadAnnouncementsCount > 0 ? (
+                  <span className="ml-1 inline-flex min-w-[1.2rem] items-center justify-center rounded-full border border-[rgba(170,68,68,0.5)] bg-[linear-gradient(180deg,#ff9388_0%,#e66f64_100%)] px-1.5 py-0.5 text-[10px] font-semibold leading-none text-[rgba(255,247,246,0.96)] shadow-[0_4px_10px_rgba(192,67,55,0.35)]">
+                    {unreadAnnouncementsCount}
                   </span>
                 ) : null}
               </Button>
@@ -200,7 +237,6 @@ export function ClientTopNavbar({
               aria-label="Notifications"
               className={navIconButtonClass}
             >
-              <span className="sr-only">Notifications</span>
               <Bell className="h-4 w-4" />
             </Button>
             <HeaderIconTooltip label="Notifications" />
@@ -215,14 +251,16 @@ export function ClientTopNavbar({
                 }}
                 aria-label="User Menu"
                 className={cn(
-                  "h-10 rounded-md border border-[color:#d5e0dd] bg-[color:#f8fbfa] px-2 text-[color:#3f595f] hover:bg-[color:#eef4f2] hover:text-[color:#21343a]",
-                  menuOpen ? "bg-[color:#edf5f3] text-[color:#21343a]" : ""
+                  "h-10 rounded-lg border border-[rgba(170,188,181,0.58)] bg-[color:#f6faf9] px-2 text-[color:#3a555d] transition duration-200 hover:border-[rgba(123,159,148,0.66)] hover:bg-[color:#eef6f3] hover:text-[color:#20363d]",
+                  menuOpen
+                    ? "border-[rgba(104,150,134,0.7)] bg-[color:#e5f1ec] text-[color:#163039]"
+                    : ""
                 )}
                 aria-haspopup="menu"
                 aria-expanded={menuOpen ? "true" : "false"}
               >
                 <span className="sr-only">Open user menu</span>
-                <span className="flex h-8 w-8 items-center justify-center rounded-md bg-[color:#e8f0ed] text-sm font-semibold text-[color:#2f4a50]">
+                <span className="flex h-7 w-7 items-center justify-center rounded-md bg-[color:#e6eeeb] text-sm font-semibold text-[color:#2f4a50]">
                   <User className="h-4 w-4" />
                 </span>
                 <ChevronDown className="ml-1 h-4 w-4 opacity-80" />

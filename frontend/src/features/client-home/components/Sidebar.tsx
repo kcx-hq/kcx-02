@@ -37,15 +37,15 @@ export function Sidebar({ route, orgName, onNavigate }: SidebarProps) {
       className="h-full w-full bg-transparent px-[9px] py-2"
       aria-label="Client sidebar navigation"
     >
-      <div className="min-h-[50px] rounded-[9px] border border-[rgba(255,255,255,0.16)] bg-[rgba(23,38,52,0.88)] px-2 py-[5px]">
+      <div className="px-1 py-1">
         <a
           href="/client/overview"
           onClick={(event) => handleAppLinkClick(event, "/client/overview", onNavigate)}
-          className="flex min-h-10 items-center gap-[10px]"
+          className="flex min-h-10 items-center gap-3 px-1.5"
           aria-label="Client home"
         >
-          <img src={kcxLogo} alt="KCX" className="h-[26px] w-auto object-contain" />
-          <span className="truncate text-[0.72rem] font-bold uppercase tracking-[0.09em] text-[var(--dashboard-sidebar-text,#edf4f8)]">
+          <img src={kcxLogo} alt="KCX" className="h-7 w-auto shrink-0 object-contain opacity-95" />
+          <span className="min-w-0 flex-1 truncate text-[0.86rem] font-bold uppercase tracking-[0.08em] text-[var(--dashboard-sidebar-text,#edf4f8)]">
             {orgName}
           </span>
         </a>
@@ -57,7 +57,7 @@ export function Sidebar({ route, orgName, onNavigate }: SidebarProps) {
         <ul className="space-y-[2px]">
           {CLIENT_SIDEBAR_MENU.map((item) => {
             const state = activeState.get(item.id)
-            const isExpanded = hoveredItemId === item.id || Boolean(state?.activeSubmenuHref)
+            const isExpanded = hoveredItemId === item.id || Boolean(state?.active) || Boolean(state?.activeSubmenuHref)
 
             return (
               <SidebarMenuItem

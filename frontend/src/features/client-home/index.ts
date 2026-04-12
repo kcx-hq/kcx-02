@@ -5,6 +5,7 @@ export { ClientCloudIntegrationPage } from "@/features/client-home/pages/ClientC
 export { ClientAwsConnectionPage } from "@/features/client-home/pages/ClientAwsConnectionPage"
 export { ClientBillingUploadHistoryPage } from "@/features/client-home/pages/ClientBillingUploadHistoryPage"
 export { ClientTicketsPage } from "@/features/client-home/pages/ClientTicketsPage"
-export { ClientSupportPage } from "@/features/client-home/pages/ClientSupportPage"
+export { ClientMeetingsPage } from "@/features/client-home/pages/ClientMeetingsPage"
+export { ClientLiveChatPage } from "@/features/client-home/pages/ClientLiveChatPage"
 export { ClientUsersPage } from "@/features/client-home/pages/ClientUsersPage"
 export { ClientProfilePage } from "@/features/client-home/pages/ClientProfilePage"

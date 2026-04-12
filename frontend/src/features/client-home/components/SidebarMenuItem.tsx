@@ -36,13 +36,13 @@ export function SidebarMenuItem({
           onHoverEnd()
         }
       }}
-      className="rounded-lg"
+      className="rounded-none"
     >
       <a
         href={item.href}
         onClick={(event) => handleAppLinkClick(event, item.href, onNavigate)}
         className={cn(
-          "group relative flex min-h-[34px] items-center justify-between gap-[10px] rounded-none border-0 px-[10px] py-0 pl-[15px] text-[0.8rem] font-medium leading-none tracking-[0.01em] transition-colors",
+          "group relative flex min-h-[36px] items-center justify-between gap-[10px] rounded-none border-0 px-[10px] py-0 pl-[15px] text-[0.8rem] font-medium leading-none tracking-[0.01em] transition-colors",
           isActive
             ? "text-[rgba(247,251,251,0.98)] font-semibold before:absolute before:left-0 before:top-1 before:h-[calc(100%-8px)] before:w-[3px] before:bg-[rgba(64,178,155,0.95)] before:content-['']"
             : "text-[rgba(207,222,232,0.95)] hover:text-[rgba(237,244,248,1)]"

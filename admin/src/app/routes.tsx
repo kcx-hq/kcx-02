@@ -9,6 +9,7 @@ import { ClientsPage } from "@/modules/clients/pages/ClientsPage"
 import { CloudConnectionsPage } from "@/modules/cloud-connections/pages/CloudConnectionsPage"
 import { DashboardPage } from "@/modules/dashboard/pages/DashboardPage"
 import { DemoRequestsPage } from "@/modules/demo-requests/pages/DemoRequestsPage"
+import { IssueManagementPage } from "@/modules/issue-management/pages/IssueManagementPage"
 import { SectionPage } from "@/modules/sections/pages/SectionPage"
 
 export function AppRoutes() {
@@ -24,7 +25,7 @@ export function AppRoutes() {
           <Route path="/user" element={<SectionPage title="Users & Roles" />} />
           <Route path="/billing-uploads" element={<BillingUploadsPage />} />
           <Route path="/scheduled-meeting" element={<DemoRequestsPage />} />
-          <Route path="/issue-management" element={<SectionPage title="Issue Management" />} />
+          <Route path="/issue-management" element={<IssueManagementPage />} />
           <Route path="/announcement" element={<AnnouncementsPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
