@@ -41,7 +41,7 @@ export function ClientLayout({ children, orgName = "Your Organization" }: Client
   }, [mobileSidebarOpen])
 
   return (
-    <div className="min-h-screen bg-[linear-gradient(180deg,#eef5f2_0%,#e7f1ed_100%)] text-text-primary [font-family:'IBM_Plex_Sans',sans-serif]">
+    <div className="min-h-screen bg-[#eef2f1] text-text-primary [font-family:'IBM_Plex_Sans',sans-serif]">
       <TopHeader
         orgName={organizationName}
         userDisplayName={userDisplayName}
@@ -56,8 +56,8 @@ export function ClientLayout({ children, orgName = "Your Organization" }: Client
         </div>
       </aside>
 
-      <div className="relative min-h-[calc(100vh-4rem)] w-full bg-[linear-gradient(180deg,#edf4f1_0%,#eaf2ef_35%,#e6efeb_100%)] lg:ml-[228px] lg:w-[calc(100%-228px)]">
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(60%_40%_at_90%_0%,rgba(102,172,147,0.12),rgba(102,172,147,0)_70%)]" />
+      <div className="relative min-h-[calc(100vh-4rem)] w-full bg-[#eef2f1] lg:ml-[228px] lg:w-[calc(100%-228px)]">
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(58%_36%_at_88%_0%,rgba(99,127,140,0.08),rgba(99,127,140,0)_70%)]" />
         <main className="relative min-w-0 px-4 py-5 sm:px-[22px] sm:py-[18px]">
           <div className="mx-auto w-full max-w-[1440px]">
             <div className="space-y-6">{children}</div>

@@ -23,6 +23,7 @@ import createManualCloudConnectionModel from "./manual-cloud-connection.js";
 import createS3UploadConnectionModel from "./s3-upload-connection.js";
 import createSupportTicketModel from "./support-ticket.js";
 import createSupportTicketMessageModel from "./support-ticket-message.js";
+import createSupportMeetingModel from "./support-meeting.js";
 import createDimBillingAccountModel from "./billing/dim_billing_account.js";
 import createDimSubAccountModel from "./billing/dim_sub_account.js";
 import createDimRegionModel from "./billing/dim_region.js";
@@ -88,6 +89,7 @@ const ManualCloudConnection = createManualCloudConnectionModel(sequelize);
 const S3UploadConnection = createS3UploadConnectionModel(sequelize);
 const SupportTicket = createSupportTicketModel(sequelize);
 const SupportTicketMessage = createSupportTicketMessageModel(sequelize);
+const SupportMeeting = createSupportMeetingModel(sequelize);
 const DimBillingAccount = createDimBillingAccountModel(sequelize);
 const DimSubAccount = createDimSubAccountModel(sequelize);
 const DimRegion = createDimRegionModel(sequelize);
@@ -177,6 +179,10 @@ SupportTicket.hasMany(SupportTicketMessage, { foreignKey: "ticketId" });
 SupportTicketMessage.belongsTo(SupportTicket, { foreignKey: "ticketId" });
 User.hasMany(SupportTicketMessage, { foreignKey: "senderUserId" });
 SupportTicketMessage.belongsTo(User, { foreignKey: "senderUserId" });
+Tenant.hasMany(SupportMeeting, { foreignKey: "tenantId" });
+SupportMeeting.belongsTo(Tenant, { foreignKey: "tenantId" });
+User.hasMany(SupportMeeting, { foreignKey: "requestedBy" });
+SupportMeeting.belongsTo(User, { foreignKey: "requestedBy" });
 Tenant.hasMany(DimBillingAccount, { foreignKey: "tenantId" });
 DimBillingAccount.belongsTo(Tenant, { foreignKey: "tenantId" });
 CloudProvider.hasMany(DimBillingAccount, { foreignKey: "providerId" });
@@ -399,6 +405,7 @@ export {
   S3UploadConnection,
   SupportTicket,
   SupportTicketMessage,
+  SupportMeeting,
   DimBillingAccount,
   DimSubAccount,
   DimRegion,

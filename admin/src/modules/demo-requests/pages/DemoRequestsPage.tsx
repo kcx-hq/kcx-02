@@ -3,9 +3,13 @@ import { useEffect, useMemo, useState } from "react"
 import { ApiError } from "@/lib/api"
 import { getAdminToken } from "@/modules/auth/admin-session"
 import {
+  approveAdminSupportMeeting,
   confirmAdminDemoRequest,
   fetchAdminDemoRequests,
+  fetchAdminSupportMeetings,
   rejectAdminDemoRequest,
+  rejectAdminSupportMeeting,
+  type AdminSupportMeetingSummary,
   type AdminDemoRequestSummary,
 } from "@/modules/demo-requests/admin-demo-requests.api"
 import { Badge } from "@/shared/ui/badge"
@@ -32,8 +36,8 @@ function formatSlot(slotStart: string | null, slotEnd: string | null) {
 
 function statusVariant(status: string) {
   const normalized = status.toUpperCase()
-  if (normalized === "CONFIRMED") return "subtle" as const
-  if (normalized === "REJECTED") return "warning" as const
+  if (normalized === "CONFIRMED" || normalized === "SCHEDULED" || normalized === "COMPLETED") return "subtle" as const
+  if (normalized === "REJECTED" || normalized === "CANCELLED") return "warning" as const
   return "outline" as const
 }
 
@@ -44,19 +48,19 @@ export function DemoRequestsPage() {
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [items, setItems] = useState<AdminDemoRequestSummary[]>([])
+  const [meetingItems, setMeetingItems] = useState<AdminSupportMeetingSummary[]>([])
   const [actingId, setActingId] = useState<number | null>(null)
-
-  const meetingItems = useMemo(
-    () => items.filter((item) => item.status === "CONFIRMED" || Boolean(item.meetingUrl)),
-    [items]
-  )
+  const [actingMeetingId, setActingMeetingId] = useState<string | null>(null)
 
   const load = () => {
     if (!token) return
     setLoading(true)
     setError(null)
-    fetchAdminDemoRequests(token)
-      .then((data) => setItems(data))
+    Promise.all([fetchAdminDemoRequests(token), fetchAdminSupportMeetings(token)])
+      .then(([demoData, meetingData]) => {
+        setItems(demoData)
+        setMeetingItems(meetingData)
+      })
       .catch((err: unknown) => setError(err instanceof ApiError ? err.message : "Unable to load demo requests"))
       .finally(() => setLoading(false))
   }
@@ -84,6 +88,26 @@ export function DemoRequestsPage() {
       setError(err instanceof ApiError ? err.message : "Action failed")
     } finally {
       setActingId(null)
+    }
+  }
+
+  const runMeetingAction = async (meetingId: string, action: "approve" | "reject") => {
+    if (!token) return
+    setActingMeetingId(meetingId)
+    setError(null)
+    setNotice(null)
+    try {
+      const updatedMeeting =
+        action === "approve"
+          ? await approveAdminSupportMeeting(token, meetingId)
+          : await rejectAdminSupportMeeting(token, meetingId)
+
+      setMeetingItems((prev) => prev.map((item) => (item.id === meetingId ? updatedMeeting : item)))
+      setNotice(`Meeting ${action === "approve" ? "approved" : "rejected"} for request ${updatedMeeting.meeting_code}.`)
+    } catch (err: unknown) {
+      setError(err instanceof ApiError ? err.message : "Meeting action failed")
+    } finally {
+      setActingMeetingId(null)
     }
   }
 
@@ -224,7 +248,7 @@ export function DemoRequestsPage() {
                 </tbody>
               </table>
             ) : (
-              <table className="min-w-[960px] w-full border-separate border-spacing-0 text-sm">
+              <table className="min-w-[1080px] w-full border-separate border-spacing-0 text-sm">
                 <thead className="sticky top-0 bg-white">
                   <tr className="text-left text-[11px] font-semibold uppercase tracking-[0.12em] text-[color:rgba(15,23,42,0.55)]">
                     <th className="px-4 py-3">Client</th>
@@ -233,18 +257,19 @@ export function DemoRequestsPage() {
                     <th className="px-4 py-3">Slot</th>
                     <th className="px-4 py-3">Meeting</th>
                     <th className="px-4 py-3">Status</th>
+                    <th className="px-4 py-3">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {loading ? (
                     <tr>
-                      <td className="px-4 py-6 text-muted-foreground" colSpan={6}>
+                      <td className="px-4 py-6 text-muted-foreground" colSpan={7}>
                         Loading meetings...
                       </td>
                     </tr>
                   ) : meetingItems.length === 0 ? (
                     <tr>
-                      <td className="px-4 py-6 text-muted-foreground" colSpan={6}>
+                      <td className="px-4 py-6 text-muted-foreground" colSpan={7}>
                         No meetings available.
                       </td>
                     </tr>
@@ -252,16 +277,16 @@ export function DemoRequestsPage() {
                     meetingItems.map((item) => (
                       <tr key={item.id} className="border-t border-[color:rgba(15,23,42,0.06)]">
                         <td className="px-4 py-3 font-medium text-[color:rgba(15,23,42,0.88)]">
-                          {item.client.firstName} {item.client.lastName}
+                          {item.client.name}
                         </td>
                         <td className="px-4 py-3 text-[color:rgba(15,23,42,0.78)]">{item.client.email}</td>
-                        <td className="px-4 py-3 text-[color:rgba(15,23,42,0.78)]">{item.client.companyName ?? "-"}</td>
-                        <td className="px-4 py-3 text-[color:rgba(15,23,42,0.78)]">{formatSlot(item.slotStart, item.slotEnd)}</td>
+                        <td className="px-4 py-3 text-[color:rgba(15,23,42,0.78)]">{item.client.company_name ?? "-"}</td>
+                        <td className="px-4 py-3 text-[color:rgba(15,23,42,0.78)]">{formatSlot(item.slot_start, item.slot_end)}</td>
                         <td className="px-4 py-3">
-                          {item.meetingUrl ? (
+                          {item.meeting_url ? (
                             <a
                               className="font-semibold text-[color:rgba(47,125,106,0.92)] hover:underline underline-offset-4"
-                              href={item.meetingUrl}
+                              href={item.meeting_url}
                               target="_blank"
                               rel="noreferrer"
                             >
@@ -273,6 +298,26 @@ export function DemoRequestsPage() {
                         </td>
                         <td className="px-4 py-3">
                           <Badge variant={statusVariant(item.status)}>{item.status}</Badge>
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-2">
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              disabled={item.status !== "REQUESTED" || actingMeetingId === item.id}
+                              onClick={() => void runMeetingAction(item.id, "approve")}
+                            >
+                              Approve
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={item.status !== "REQUESTED" || actingMeetingId === item.id}
+                              onClick={() => void runMeetingAction(item.id, "reject")}
+                            >
+                              Reject
+                            </Button>
+                          </div>
                         </td>
                       </tr>
                     ))

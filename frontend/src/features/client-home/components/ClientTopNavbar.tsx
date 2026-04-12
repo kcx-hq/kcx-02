@@ -88,7 +88,7 @@ export function ClientTopNavbar({
   const roleLabel = toRoleLabel(userRole)
   const currentBreadcrumbLabel = getClientBreadcrumbLabel(route)
   const navIconButtonClass =
-    "relative h-10 rounded-md border border-[rgba(170,188,181,0.58)] bg-[color:#f6faf9] px-3 text-[color:#3a555d] transition duration-200 hover:border-[rgba(123,159,148,0.66)] hover:bg-[color:#eef6f3] hover:text-[color:#20363d]"
+    "relative h-10 rounded-md border border-[rgba(160,173,183,0.52)] bg-[#f3f6f5] px-3 text-[color:#4a5d69] transition duration-200 hover:border-[rgba(127,147,160,0.66)] hover:bg-[#e9efee] hover:text-[color:#1f3340]"
 
   function toAnnouncementTimestamp(iso: string | null | undefined) {
     if (!iso) return 0
@@ -125,7 +125,7 @@ export function ClientTopNavbar({
   }
 
   return (
-    <header className="sticky top-0 z-40 border-b border-[rgba(177,196,188,0.42)] bg-[linear-gradient(180deg,#fefefe_0%,#f5faf8_100%)] text-[color:#1f2e33] shadow-[0_8px_26px_rgba(16,37,35,0.08)] backdrop-blur-[2px] lg:ml-[228px] lg:w-[calc(100%-228px)]">
+    <header className="sticky top-0 z-40 border-b border-[rgba(160,173,183,0.38)] bg-[#f4f7f6] text-[color:#1f2e33] shadow-[0_6px_18px_rgba(16,37,35,0.06)] backdrop-blur-[2px] lg:ml-[228px] lg:w-[calc(100%-228px)]">
       <div className="mx-auto flex h-16 w-full items-center justify-between gap-4 px-4 sm:px-[22px]">
         <div className="flex min-w-0 flex-1 items-center gap-4">
           {onOpenSidebar ? (
@@ -133,7 +133,7 @@ export function ClientTopNavbar({
               type="button"
               variant="ghost"
               aria-label="Open sidebar navigation"
-              className="h-9 rounded-md border border-[color:#d5e0dd] bg-[color:#f8fbfa] px-2 text-[color:#3f595f] hover:bg-[color:#eef4f2] hover:text-[color:#21343a] lg:hidden"
+              className="h-9 rounded-md border border-[rgba(160,173,183,0.52)] bg-[#f3f6f5] px-2 text-[color:#4a5d69] hover:bg-[#e9efee] hover:text-[color:#1f3340] lg:hidden"
               onClick={onOpenSidebar}
             >
               <Menu className="h-4 w-4" />
@@ -251,7 +251,7 @@ export function ClientTopNavbar({
                 }}
                 aria-label="User Menu"
                 className={cn(
-                  "h-10 rounded-lg border border-[rgba(170,188,181,0.58)] bg-[color:#f6faf9] px-2 text-[color:#3a555d] transition duration-200 hover:border-[rgba(123,159,148,0.66)] hover:bg-[color:#eef6f3] hover:text-[color:#20363d]",
+                  "h-10 rounded-lg border border-[rgba(160,173,183,0.52)] bg-[#f3f6f5] px-2 text-[color:#4a5d69] transition duration-200 hover:border-[rgba(127,147,160,0.66)] hover:bg-[#e9efee] hover:text-[color:#1f3340]",
                   menuOpen
                     ? "border-[rgba(104,150,134,0.7)] bg-[color:#e5f1ec] text-[color:#163039]"
                     : ""
