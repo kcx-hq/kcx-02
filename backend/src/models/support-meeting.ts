@@ -10,6 +10,7 @@ import {
 export type SupportMeetingStatus =
   | "REQUESTED"
   | "SCHEDULED"
+  | "RESCHEDULED"
   | "COMPLETED"
   | "CANCELLED"
   | "REJECTED";

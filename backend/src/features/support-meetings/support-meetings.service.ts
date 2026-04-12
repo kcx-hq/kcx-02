@@ -59,9 +59,27 @@ const generateDefaultMeetingUrl = (): string => {
 const statusToAfterSummary = (status: SupportMeetingStatus | string): string => {
   if (status === "COMPLETED") return "Meeting completed";
   if (status === "REJECTED") return "Rejected by KCX";
-  if (status === "CANCELLED") return "Cancelled by client";
+  if (status === "CANCELLED") return "Cancelled";
+  if (status === "RESCHEDULED") return "Meeting rescheduled";
   if (status === "SCHEDULED") return "Meeting approved";
   return "Pending summary";
+};
+
+const ALLOWED_ADMIN_STATUSES = [
+  "REQUESTED",
+  "SCHEDULED",
+  "RESCHEDULED",
+  "COMPLETED",
+  "CANCELLED",
+  "REJECTED",
+] as const;
+
+const normalizeAdminMeetingStatus = (value: unknown): SupportMeetingStatus | "RESCHEDULED" => {
+  const normalized = normalizeString(value).toUpperCase();
+  if ((ALLOWED_ADMIN_STATUSES as readonly string[]).includes(normalized)) {
+    return normalized as SupportMeetingStatus | "RESCHEDULED";
+  }
+  throw new BadRequestError(`Invalid status. Allowed: ${ALLOWED_ADMIN_STATUSES.join(", ")}`);
 };
 
 const mapMeetingForClient = (meeting: SupportMeetingInstance): {
@@ -295,4 +313,54 @@ export async function rejectAdminSupportMeeting(params: {
     ],
   });
   return mapMeetingForAdmin(meeting as SupportMeetingInstance);
+}
+
+export async function updateAdminSupportMeetingStatus(params: {
+  meetingId: string;
+  adminId: number;
+  status: unknown;
+  meetingUrl?: unknown;
+  afterMeetingSummary?: unknown;
+}): Promise<ReturnType<typeof mapMeetingForAdmin>> {
+  const meeting = await getMeetingOrThrow(params.meetingId);
+  const status = normalizeAdminMeetingStatus(params.status);
+  const providedMeetingUrl = normalizeString(params.meetingUrl);
+  const providedSummary = normalizeString(params.afterMeetingSummary);
+
+  meeting.status = status;
+
+  if (status === "SCHEDULED" || status === "RESCHEDULED") {
+    meeting.meetingUrl = providedMeetingUrl || meeting.meetingUrl || generateDefaultMeetingUrl();
+    meeting.approvedByAdminId = params.adminId;
+    meeting.approvedAt = meeting.approvedAt ?? new Date();
+  }
+
+  if (status === "REQUESTED") {
+    meeting.meetingUrl = null;
+    meeting.approvedByAdminId = null;
+    meeting.approvedAt = null;
+  }
+
+  if (status === "REJECTED") {
+    meeting.meetingUrl = null;
+  }
+
+  meeting.afterMeetingSummary = providedSummary || statusToAfterSummary(status);
+  meeting.updatedAt = new Date();
+  await meeting.save();
+  await meeting.reload({
+    include: [
+      { model: User, attributes: ["id", "fullName", "email"] },
+      { model: Tenant, attributes: ["id", "name"] },
+    ],
+  });
+  return mapMeetingForAdmin(meeting as SupportMeetingInstance);
+}
+
+export async function deleteAdminSupportMeeting(params: {
+  meetingId: string;
+}): Promise<{ meetingId: string }> {
+  const meeting = await getMeetingOrThrow(params.meetingId);
+  await meeting.destroy();
+  return { meetingId: String(params.meetingId) };
 }

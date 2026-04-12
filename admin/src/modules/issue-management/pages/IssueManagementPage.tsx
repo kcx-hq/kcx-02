@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
 import * as Dialog from "@radix-ui/react-dialog"
-import { Eye, Loader2, RefreshCw, Trash2, X } from "lucide-react"
+import { Download, Eye, Loader2, RefreshCw, Trash2, X } from "lucide-react"
 
 import { ApiError } from "@/lib/api"
 import { getAdminToken } from "@/modules/auth/admin-session"
@@ -342,16 +342,6 @@ export function IssueManagementPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold tracking-[-0.02em] text-[color:rgba(15,23,42,0.92)]">Ticket Management</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Manage, assign, and track all client support tickets.</p>
-        </div>
-        <Button variant="outline" size="icon" onClick={() => void loadTickets()} disabled={loading} title="Refresh">
-          <RefreshCw className="h-4 w-4" />
-        </Button>
-      </div>
-
       {error ? (
         <div className="rounded-xl border border-red-500/20 bg-red-500/5 px-4 py-3 text-sm text-[color:rgba(15,23,42,0.86)]">{error}</div>
       ) : null}
@@ -360,50 +350,76 @@ export function IssueManagementPage() {
       ) : null}
 
       <Card>
-        <CardContent className="space-y-4 p-4">
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-            <div className="rounded-md border border-[color:rgba(15,23,42,0.1)] bg-white p-3">
+        <CardContent className="p-0">
+          <div className="grid grid-cols-2 border-b border-[color:rgba(15,23,42,0.12)] lg:grid-cols-4">
+            <div className="px-5 py-4 lg:border-r lg:border-[color:rgba(15,23,42,0.12)]">
               <p className="text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground">Total Tickets</p>
-              <p className="mt-1 text-2xl font-semibold text-foreground">{kpis.total}</p>
+              <p className="mt-2 text-4xl font-semibold leading-none text-foreground">{kpis.total}</p>
+              <p className="mt-1 text-sm text-muted-foreground">All issues logged</p>
             </div>
-            <div className="rounded-md border border-[color:rgba(15,23,42,0.1)] bg-white p-3">
+            <div className="px-5 py-4 lg:border-r lg:border-[color:rgba(15,23,42,0.12)]">
               <p className="text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground">Open Tickets</p>
-              <p className="mt-1 text-2xl font-semibold text-foreground">{kpis.open}</p>
+              <p className="mt-2 text-4xl font-semibold leading-none text-foreground">{kpis.open}</p>
+              <p className="mt-1 text-sm text-muted-foreground">Awaiting response</p>
             </div>
-            <div className="rounded-md border border-[color:rgba(15,23,42,0.1)] bg-white p-3">
+            <div className="px-5 py-4 lg:border-r lg:border-[color:rgba(15,23,42,0.12)]">
               <p className="text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground">In Progress</p>
-              <p className="mt-1 text-2xl font-semibold text-foreground">{kpis.inProgress}</p>
+              <p className="mt-2 text-4xl font-semibold leading-none text-foreground">{kpis.inProgress}</p>
+              <p className="mt-1 text-sm text-muted-foreground">KCX reviewing</p>
             </div>
-            <div className="rounded-md border border-[color:rgba(15,23,42,0.1)] bg-white p-3">
+            <div className="px-5 py-4">
               <p className="text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground">Resolved</p>
-              <p className="mt-1 text-2xl font-semibold text-foreground">{kpis.resolved}</p>
+              <p className="mt-2 text-4xl font-semibold leading-none text-foreground">{kpis.resolved}</p>
+              <p className="mt-1 text-sm text-muted-foreground">Completed items</p>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-[1fr_220px_auto]">
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search by ticket, client, title, category"
-              className="h-10 w-full rounded-md border border-[color:rgba(15,23,42,0.15)] bg-white px-3 text-sm text-foreground outline-none transition-colors focus:border-[color:rgba(47,125,106,0.7)]"
-            />
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="h-10 rounded-md border border-[color:rgba(15,23,42,0.15)] bg-white px-3 text-sm text-foreground outline-none transition-colors focus:border-[color:rgba(47,125,106,0.7)]"
-            >
-              <option value="ALL">All</option>
-              <option value="OPEN">Open</option>
-              <option value="UNDER_REVIEW">Under Review</option>
-              <option value="RESOLVED">Resolved</option>
-              <option value="CLOSED">Closed</option>
-              <option value="CANCELLED_BY_CLIENT">Cancelled by Client</option>
-            </select>
-            <Button variant="outline" onClick={() => exportTicketsCsv(filteredTickets)}>Export CSV</Button>
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[color:rgba(15,23,42,0.12)] px-5 py-4">
+            <div className="flex flex-wrap items-center gap-3">
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search by ticket, client, title, category"
+                className="h-10 w-[440px] max-w-[72vw] rounded-md border border-[color:rgba(15,23,42,0.15)] bg-white px-3 text-sm text-foreground outline-none transition-colors focus:border-[color:rgba(47,125,106,0.7)]"
+              />
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="h-10 min-w-[180px] rounded-md border border-[color:rgba(15,23,42,0.15)] bg-white px-3 text-sm text-foreground outline-none transition-colors focus:border-[color:rgba(47,125,106,0.7)]"
+              >
+                <option value="ALL">All</option>
+                <option value="OPEN">Open</option>
+                <option value="UNDER_REVIEW">Under Review</option>
+                <option value="RESOLVED">Resolved</option>
+                <option value="CLOSED">Closed</option>
+                <option value="CANCELLED_BY_CLIENT">Cancelled by Client</option>
+              </select>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-10 w-10"
+                title="Refresh tickets"
+                onClick={() => void loadTickets()}
+                disabled={loading}
+              >
+                <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+              </Button>
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-10 w-10"
+                title="Download CSV"
+                onClick={() => exportTicketsCsv(filteredTickets)}
+              >
+                <Download className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
 
-          <div className="overflow-auto rounded-xl ring-1 ring-[color:rgba(15,23,42,0.08)]">
-            <table className="min-w-[1650px] w-full border-separate border-spacing-0 text-sm">
+          <div className="overflow-auto px-5 py-4">
+            <table className="min-w-[1650px] w-full border-collapse text-sm">
               <thead className="sticky top-0 bg-white">
                 <tr className="text-left text-[11px] font-semibold uppercase tracking-[0.12em] text-[color:rgba(15,23,42,0.55)]">
                   <th className="px-3 py-3">Ticket ID</th>
@@ -423,15 +439,15 @@ export function IssueManagementPage() {
               <tbody>
                 {loading ? (
                   <tr>
-                    <td className="px-4 py-6 text-muted-foreground" colSpan={12}>Loading tickets...</td>
+                    <td className="px-3 py-6 text-muted-foreground" colSpan={12}>Loading tickets...</td>
                   </tr>
                 ) : filteredTickets.length === 0 ? (
                   <tr>
-                    <td className="px-4 py-6 text-muted-foreground" colSpan={12}>No tickets found.</td>
+                    <td className="px-3 py-6 text-muted-foreground" colSpan={12}>No tickets found.</td>
                   </tr>
                 ) : (
                   filteredTickets.map((ticket) => (
-                    <tr key={ticket.id} className="border-t border-[color:rgba(15,23,42,0.06)]">
+                    <tr key={ticket.id} className="border-b border-[color:rgba(15,23,42,0.12)]">
                       <td className="px-3 py-3">
                         <div className="flex items-center gap-2">
                           <span>{ticket.ticket_code || ticket.id}</span>
