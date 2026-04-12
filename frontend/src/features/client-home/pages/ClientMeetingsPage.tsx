@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react"
-import { Ban, CalendarDays, CalendarPlus2, CheckCircle2, Clock3, Eye, Link as LinkIcon, Video, XCircle } from "lucide-react"
+import { Ban, CalendarClock, CalendarDays, CalendarPlus2, CheckCircle2, Clock3, Eye, Link as LinkIcon, RefreshCw, Search, User, Video, XCircle } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -55,6 +55,7 @@ export function ClientMeetingsPage() {
   const [agendaPreview, setAgendaPreview] = useState<ClientSupportMeeting | null>(null)
   const [search, setSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState<"ALL" | ClientSupportMeetingStatus>("ALL")
+  const [page, setPage] = useState(1)
   const [meetingType, setMeetingType] = useState<string>(MEETING_TYPE_OPTIONS[0])
   const [agenda, setAgenda] = useState("")
   const [slot, setSlot] = useState<{ date: string; time: string; timeZone: string; slotStart?: string; slotEnd?: string } | null>(null)
@@ -100,6 +101,21 @@ export function ClientMeetingsPage() {
       return matchesSearch && matchesStatus
     })
   }, [meetings, search, statusFilter])
+
+  const rowsPerPage = 10
+  const totalPages = Math.max(1, Math.ceil(filteredHistory.length / rowsPerPage))
+  const paginatedHistory = useMemo(() => {
+    const start = (page - 1) * rowsPerPage
+    return filteredHistory.slice(start, start + rowsPerPage)
+  }, [filteredHistory, page])
+
+  useEffect(() => {
+    setPage(1)
+  }, [search, statusFilter])
+
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages)
+  }, [page, totalPages])
 
   function resetScheduleForm() {
     setMeetingType(MEETING_TYPE_OPTIONS[0])
@@ -149,9 +165,7 @@ export function ClientMeetingsPage() {
     <section className="rounded-[14px] border border-[color:var(--border-light)] bg-white px-5 py-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-text-muted">Support Center</p>
           <h2 className="mt-2 text-2xl font-semibold text-text-primary">Meetings Workspace</h2>
-          <p className="mt-1 text-sm text-text-secondary">Schedule a meeting, select slot booking, and track outcomes with KCX support.</p>
         </div>
         <div className="flex items-center gap-2">
           <Button
@@ -168,8 +182,8 @@ export function ClientMeetingsPage() {
       {error ? <div className="mt-4 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</div> : null}
       {notice ? <div className="mt-4 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{notice}</div> : null}
 
-      <section className="mt-5 grid grid-cols-1 divide-y divide-[color:var(--border-light)] border-t border-[color:var(--border-light)] pt-5 md:grid-cols-2 md:divide-x md:divide-y-0 xl:grid-cols-4">
-        <article className="px-4 py-3 md:first:pl-0">
+      <section className="mt-5 grid grid-cols-1 divide-y divide-[color:var(--border-light)] border-t border-[color:var(--border-light)] pt-4 md:grid-cols-2 md:divide-x md:divide-y-0 xl:grid-cols-4">
+        <article className="px-4 py-2 md:first:pl-0">
           <div className="flex items-start justify-between">
             <p className="text-xs font-semibold uppercase tracking-[0.1em] text-text-muted">Total Meetings</p>
             <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-[rgba(55,145,116,0.12)] text-[color:#1f7d60]">
@@ -177,10 +191,10 @@ export function ClientMeetingsPage() {
             </span>
           </div>
           <p className="mt-1 text-4xl font-semibold leading-none text-text-primary">{stats.total}</p>
-          <p className="mt-2 text-sm text-text-secondary">All scheduled sessions</p>
+          <p className="mt-1 text-sm text-text-secondary">All scheduled sessions</p>
         </article>
 
-        <article className="px-4 py-3">
+        <article className="px-4 py-2">
           <div className="flex items-start justify-between">
             <p className="text-xs font-semibold uppercase tracking-[0.1em] text-text-muted">Upcoming Meetings</p>
             <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-[rgba(214,135,26,0.14)] text-[color:#925208]">
@@ -188,10 +202,10 @@ export function ClientMeetingsPage() {
             </span>
           </div>
           <p className="mt-1 text-4xl font-semibold leading-none text-text-primary">{stats.upcoming}</p>
-          <p className="mt-2 text-sm text-text-secondary">Next sessions pending</p>
+          <p className="mt-1 text-sm text-text-secondary">Next sessions pending</p>
         </article>
 
-        <article className="px-4 py-3">
+        <article className="px-4 py-2">
           <div className="flex items-start justify-between">
             <p className="text-xs font-semibold uppercase tracking-[0.1em] text-text-muted">Completed Meetings</p>
             <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-[rgba(55,145,116,0.14)] text-[color:#1f7d60]">
@@ -199,10 +213,10 @@ export function ClientMeetingsPage() {
             </span>
           </div>
           <p className="mt-1 text-4xl font-semibold leading-none text-text-primary">{stats.completed}</p>
-          <p className="mt-2 text-sm text-text-secondary">Delivered sessions</p>
+          <p className="mt-1 text-sm text-text-secondary">Delivered sessions</p>
         </article>
 
-        <article className="px-4 py-3 md:last:pr-0">
+        <article className="px-4 py-2 md:last:pr-0">
           <div className="flex items-start justify-between">
             <p className="text-xs font-semibold uppercase tracking-[0.1em] text-text-muted">Cancelled Meetings</p>
             <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-[rgba(217,93,85,0.12)] text-[color:#a43d37]">
@@ -210,7 +224,7 @@ export function ClientMeetingsPage() {
             </span>
           </div>
           <p className="mt-1 text-4xl font-semibold leading-none text-text-primary">{stats.cancelled}</p>
-          <p className="mt-2 text-sm text-text-secondary">Requests cancelled</p>
+          <p className="mt-1 text-sm text-text-secondary">Requests cancelled</p>
         </article>
       </section>
 
@@ -222,7 +236,7 @@ export function ClientMeetingsPage() {
           ) : upcomingMeetings.length === 0 ? (
             <p className="text-sm text-text-secondary">No upcoming meetings yet.</p>
           ) : (
-            <div className="divide-y divide-[color:var(--border-light)] border-y border-[color:var(--border-light)]">
+            <div className="divide-y divide-[color:rgba(15,23,42,0.08)]">
               {upcomingMeetings.map((item) => (
                 <article key={item.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
                   <div>
@@ -254,15 +268,21 @@ export function ClientMeetingsPage() {
 
       <div className="mt-5 border-t border-[color:var(--border-light)] pt-5">
         <p className="text-xs font-semibold uppercase tracking-[0.12em] text-text-muted">Booking History</p>
-        <p className="mt-2 text-sm text-text-secondary">Track requested, scheduled, completed, and cancelled meetings.</p>
 
         <div className="mt-4 flex flex-wrap items-center gap-2">
-          <input
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search meeting title, requester, host"
-            className="h-10 min-w-[280px] flex-1 rounded-md border border-[color:var(--border-light)] bg-[color:var(--bg-surface)] px-3 text-sm text-text-primary outline-none transition-colors focus:border-[color:var(--kcx-border-strong)]"
-          />
+          <label className="sr-only" htmlFor="meeting-search">
+            Search meetings
+          </label>
+          <span className="relative block min-w-[280px] flex-1">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
+            <input
+              id="meeting-search"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Search meeting title, requester, host"
+              className="h-10 w-full rounded-md border border-[color:var(--border-light)] bg-[color:var(--bg-surface)] pl-9 pr-3 text-sm text-text-primary outline-none transition-colors focus:border-[color:var(--kcx-border-strong)]"
+            />
+          </span>
           <select
             value={statusFilter}
             onChange={(event) => setStatusFilter(event.target.value as "ALL" | ClientSupportMeetingStatus)}
@@ -275,20 +295,28 @@ export function ClientMeetingsPage() {
             <option value="CANCELLED">Cancelled</option>
             <option value="REJECTED">Rejected</option>
           </select>
+          <button
+            type="button"
+            onClick={() => void loadMeetings()}
+            className="inline-flex h-10 w-10 items-center justify-center rounded-md border border-[color:var(--border-light)] bg-[color:var(--bg-surface)] text-text-secondary transition-colors hover:bg-[color:var(--bg-soft)]"
+            aria-label="Refresh meetings"
+          >
+            <RefreshCw className="h-4 w-4" />
+          </button>
         </div>
 
-        <div className="mt-4 overflow-x-auto rounded-[12px] border border-[color:var(--border-light)]">
-          <table className="min-w-[1100px] w-full border-collapse text-left">
+        <div className="mt-4 overflow-x-auto">
+          <table className="min-w-[1200px] w-full border-collapse text-left">
             <thead>
-              <tr className="border-b border-[color:var(--border-light)] bg-[color:var(--bg-surface)]">
-                <th className="px-3 py-3 text-xs font-semibold uppercase tracking-[0.1em] text-text-muted">Meeting</th>
-                <th className="px-3 py-3 text-xs font-semibold uppercase tracking-[0.1em] text-text-muted">Date & Time</th>
-                <th className="px-3 py-3 text-xs font-semibold uppercase tracking-[0.1em] text-text-muted">Requested By</th>
-                <th className="px-3 py-3 text-xs font-semibold uppercase tracking-[0.1em] text-text-muted">KCX Host</th>
-                <th className="px-3 py-3 text-xs font-semibold uppercase tracking-[0.1em] text-text-muted">Status</th>
-                <th className="px-3 py-3 text-xs font-semibold uppercase tracking-[0.1em] text-text-muted">Duration</th>
-                <th className="px-3 py-3 text-xs font-semibold uppercase tracking-[0.1em] text-text-muted">After Meeting Summary</th>
-                <th className="px-3 py-3 text-xs font-semibold uppercase tracking-[0.1em] text-text-muted">Actions</th>
+              <tr className="border-b border-[color:var(--border-light)]">
+                <th className="px-3 py-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-text-muted">Meeting</th>
+                <th className="px-3 py-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-text-muted">Date & Time</th>
+                <th className="px-3 py-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-text-muted">Requested By</th>
+                <th className="px-3 py-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-text-muted">KCX Host</th>
+                <th className="px-3 py-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-text-muted">Status</th>
+                <th className="px-3 py-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-text-muted">Duration</th>
+                <th className="px-3 py-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-text-muted">After Meeting Summary</th>
+                <th className="px-3 py-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-text-muted">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -301,51 +329,61 @@ export function ClientMeetingsPage() {
                   <td colSpan={8} className="px-3 py-8 text-sm text-text-secondary">No meetings found.</td>
                 </tr>
               ) : (
-                filteredHistory.map((item) => (
+                paginatedHistory.map((item) => (
                   <tr key={item.id} className="border-b border-[color:var(--border-light)] last:border-b-0">
-                    <td className="px-3 py-3">
+                    <td className="px-3 py-4">
                       <p className="text-sm font-semibold text-text-primary">{item.title}</p>
-                      <p className="mt-0.5 text-sm text-text-secondary">{item.meetingType}</p>
+                      <p className="mt-1 text-xs text-text-secondary">{item.code}</p>
                     </td>
-                    <td className="px-3 py-3 text-sm text-text-secondary">{formatDateTimeRange(item.slotStart, item.slotEnd)}</td>
-                    <td className="px-3 py-3 text-sm text-text-secondary">{item.requestedBy}</td>
-                    <td className="px-3 py-3 text-sm text-text-secondary">{item.host}</td>
-                    <td className="px-3 py-3">
-                      <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold ${statusBadgeClass(item.status)}`}>
+                    <td className="px-3 py-4 text-sm text-text-secondary">
+                      <span className="inline-flex items-center gap-1">
+                        <CalendarClock className="h-3.5 w-3.5" />
+                        {formatDateTimeRange(item.slotStart, item.slotEnd)}
+                      </span>
+                    </td>
+                    <td className="px-3 py-4 text-sm text-text-secondary">
+                      <span className="inline-flex items-center gap-1">
+                        <User className="h-3.5 w-3.5 text-text-muted" />
+                        {item.requestedBy}
+                      </span>
+                    </td>
+                    <td className="px-3 py-4 text-sm text-text-secondary">{item.host}</td>
+                    <td className="px-3 py-4">
+                      <span className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] ${statusBadgeClass(item.status)}`}>
                         {item.status}
                       </span>
                     </td>
-                    <td className="px-3 py-3 text-sm text-text-secondary">{item.duration}</td>
-                    <td className="px-3 py-3 text-sm text-text-secondary">{item.afterSummary}</td>
-                    <td className="px-3 py-3">
-                      <div className="flex items-center gap-2">
+                    <td className="px-3 py-4 text-sm text-text-secondary">{item.duration}</td>
+                    <td className="px-3 py-4 text-sm text-text-secondary">{item.afterSummary}</td>
+                    <td className="px-3 py-4">
+                      <div className="flex items-center justify-end gap-1.5">
                         {item.meetingUrl ? (
                           <a
                             href={item.meetingUrl}
                             target="_blank"
                             rel="noreferrer"
-                            className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-emerald-200 bg-emerald-50 text-emerald-700"
+                            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-[rgba(55,145,116,0.26)] bg-[rgba(55,145,116,0.12)] text-[color:#1f7d60] transition hover:bg-[rgba(55,145,116,0.2)]"
                             title="Join meeting"
                           >
-                            <LinkIcon className="h-4 w-4" />
+                            <LinkIcon className="h-3.5 w-3.5" />
                           </a>
                         ) : null}
                         <button
                           type="button"
-                          className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-[color:var(--border-light)] bg-[color:var(--bg-surface)] text-text-secondary"
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-[rgba(55,145,116,0.26)] bg-[rgba(55,145,116,0.12)] text-[color:#1f7d60] transition hover:bg-[rgba(55,145,116,0.2)]"
                           title="View agenda"
                           onClick={() => setAgendaPreview(item)}
                         >
-                          <Eye className="h-4 w-4" />
+                          <Eye className="h-3.5 w-3.5" />
                         </button>
                         <button
                           type="button"
-                          className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-rose-200 bg-rose-50 text-rose-700 disabled:opacity-50"
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-[rgba(217,93,85,0.3)] bg-[rgba(217,93,85,0.11)] text-[color:#a43d37] transition hover:bg-[rgba(217,93,85,0.18)] disabled:opacity-50"
                           title="Cancel meeting"
                           disabled={item.status === "CANCELLED" || item.status === "COMPLETED" || item.status === "REJECTED"}
                           onClick={() => void handleCancelMeeting(item.id)}
                         >
-                          <Ban className="h-4 w-4" />
+                          <Ban className="h-3.5 w-3.5" />
                         </button>
                       </div>
                     </td>
@@ -355,6 +393,29 @@ export function ClientMeetingsPage() {
             </tbody>
           </table>
         </div>
+        {filteredHistory.length > rowsPerPage ? (
+          <div className="mt-3 flex items-center justify-end gap-2 text-sm">
+            <button
+              type="button"
+              onClick={() => setPage((current) => Math.max(1, current - 1))}
+              disabled={page === 1}
+              className="inline-flex h-8 items-center rounded-md border border-[color:var(--border-light)] bg-[color:var(--bg-surface)] px-3 text-text-secondary disabled:opacity-50"
+            >
+              Previous
+            </button>
+            <span className="text-text-secondary">
+              Page {page} of {totalPages}
+            </span>
+            <button
+              type="button"
+              onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
+              disabled={page === totalPages}
+              className="inline-flex h-8 items-center rounded-md border border-[color:var(--border-light)] bg-[color:var(--bg-surface)] px-3 text-text-secondary disabled:opacity-50"
+            >
+              Next
+            </button>
+          </div>
+        ) : null}
       </div>
 
       <Dialog
