@@ -49,6 +49,9 @@ Resources:
               - ec2:DescribeInstanceStatus
               - ec2:DescribeTags
               - ec2:DescribeRegions
+              - ec2:DescribeVolumes
+              - ec2:DescribeAddresses
+              - ec2:DescribeSnapshots
             Resource: "*"
 
           - !If
@@ -59,9 +62,18 @@ Resources:
                 Action: [
                   ec2:StartInstances,
                   ec2:StopInstances,
-                  ec2:RebootInstances
+                  ec2:RebootInstances,
+                  ec2:ModifyInstanceAttribute,
+                  ec2:DeleteVolume,
+                  ec2:ReleaseAddress,
+                  ec2:DeleteSnapshot
                 ],
-                Resource: "arn:aws:ec2:*:*:instance/*",
+                Resource: [
+                  "arn:aws:ec2:*:*:instance/*",
+                  "arn:aws:ec2:*:*:volume/*",
+                  "arn:aws:ec2:*:*:elastic-ip/*",
+                  "arn:aws:ec2:*:*:snapshot/*"
+                ],
                 Condition: {
                   StringEquals: {
                     "aws:ResourceTag/managed-by": !Ref ResourceTagValue
@@ -79,9 +91,18 @@ Resources:
                 Action: [
                   ec2:StartInstances,
                   ec2:StopInstances,
-                  ec2:RebootInstances
+                  ec2:RebootInstances,
+                  ec2:ModifyInstanceAttribute,
+                  ec2:DeleteVolume,
+                  ec2:ReleaseAddress,
+                  ec2:DeleteSnapshot
                 ],
-                Resource: "arn:aws:ec2:*:*:instance/*"
+                Resource: [
+                  "arn:aws:ec2:*:*:instance/*",
+                  "arn:aws:ec2:*:*:volume/*",
+                  "arn:aws:ec2:*:*:elastic-ip/*",
+                  "arn:aws:ec2:*:*:snapshot/*"
+                ]
               }
 
 Outputs:

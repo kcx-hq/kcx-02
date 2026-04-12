@@ -134,6 +134,18 @@ const env = {
     optionalPositiveInteger(process.env.OPTIMIZATION_RIGHTSIZING_SYNC_INTERVAL_MS) ?? 180 * 60 * 1000,
   optimizationRightsizingSchedulerStartupDelayMs:
     optionalPositiveInteger(process.env.OPTIMIZATION_RIGHTSIZING_SCHEDULER_STARTUP_DELAY_MS) ?? 30_000,
+  optimizationRightsizingActionProcessorEnabled:
+    optionalBoolean(process.env.OPTIMIZATION_RIGHTSIZING_ACTION_PROCESSOR_ENABLED) ?? true,
+  optimizationRightsizingActionProcessorIntervalMs:
+    optionalPositiveInteger(process.env.OPTIMIZATION_RIGHTSIZING_ACTION_PROCESSOR_INTERVAL_MS) ?? 10_000,
+  optimizationRightsizingActionProcessorStartupDelayMs:
+    optionalPositiveInteger(process.env.OPTIMIZATION_RIGHTSIZING_ACTION_PROCESSOR_STARTUP_DELAY_MS) ?? 10_000,
+  optimizationIdleActionProcessorEnabled:
+    optionalBoolean(process.env.OPTIMIZATION_IDLE_ACTION_PROCESSOR_ENABLED) ?? true,
+  optimizationIdleActionProcessorIntervalMs:
+    optionalPositiveInteger(process.env.OPTIMIZATION_IDLE_ACTION_PROCESSOR_INTERVAL_MS) ?? 10_000,
+  optimizationIdleActionProcessorStartupDelayMs:
+    optionalPositiveInteger(process.env.OPTIMIZATION_IDLE_ACTION_PROCESSOR_STARTUP_DELAY_MS) ?? 10_000,
   optimizationCommitmentSchedulerEnabled:
     optionalBoolean(process.env.OPTIMIZATION_COMMITMENT_SCHEDULER_ENABLED) ?? true,
   optimizationCommitmentSyncIntervalMs:

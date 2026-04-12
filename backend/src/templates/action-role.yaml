@@ -43,7 +43,31 @@ Resources:
                 Action:
                   - sts:GetCallerIdentity
                   - ec2:DescribeRegions
+                  - ec2:DescribeInstances
+                  - ec2:DescribeInstanceStatus
+                  - ec2:DescribeTags
+                  - ec2:DescribeVolumes
+                  - ec2:DescribeAddresses
+                  - ec2:DescribeSnapshots
                 Resource: "*"
+              - Sid: AllowEc2RuntimeActions
+                Effect: Allow
+                Action:
+                  - ec2:StartInstances
+                  - ec2:StopInstances
+                  - ec2:RebootInstances
+                  - ec2:ModifyInstanceAttribute
+                Resource: "arn:aws:ec2:*:*:instance/*"
+              - Sid: AllowIdleCleanupActions
+                Effect: Allow
+                Action:
+                  - ec2:DeleteVolume
+                  - ec2:ReleaseAddress
+                  - ec2:DeleteSnapshot
+                Resource:
+                  - "arn:aws:ec2:*:*:volume/*"
+                  - "arn:aws:ec2:*:*:elastic-ip/*"
+                  - "arn:aws:ec2:*:*:snapshot/*"
 
 Outputs:
   ActionRoleArn:

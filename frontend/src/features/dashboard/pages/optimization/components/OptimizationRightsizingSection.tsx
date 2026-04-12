@@ -1,9 +1,12 @@
 import { useMemo, useState } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   useOptimizationRightsizingOverviewQuery,
   useOptimizationRightsizingRecommendationDetailQuery,
   useOptimizationRightsizingRecommendationsQuery,
 } from "../../../hooks/useDashboardQueries";
+import { dashboardApi } from "../../../api/dashboardApi";
+import { useDashboardScope } from "../../../hooks/useDashboardScope";
 import { compactCurrencyFormatter } from "../optimization.constants";
 
 const PAGE_SIZE = 10;
@@ -34,12 +37,18 @@ function buildRecommendationLabel(recommendation: string, currentType: string | 
 }
 
 export function OptimizationRightsizingSection() {
+  const queryClient = useQueryClient();
+  const { scope } = useDashboardScope();
   const [status, setStatus] = useState<string>("all");
   const [effort, setEffort] = useState<string>("all");
   const [risk, setRisk] = useState<string>("all");
   const [region, setRegion] = useState<string>("all");
   const [page, setPage] = useState<number>(1);
   const [selectedRecommendationId, setSelectedRecommendationId] = useState<string | null>(null);
+  const [applyingRecommendationId, setApplyingRecommendationId] = useState<string | null>(null);
+  const [ignoringRecommendationId, setIgnoringRecommendationId] = useState<string | null>(null);
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const overviewQuery = useOptimizationRightsizingOverviewQuery();
   const recommendationsQuery = useOptimizationRightsizingRecommendationsQuery({
@@ -49,6 +58,8 @@ export function OptimizationRightsizingSection() {
     region: region !== "all" ? [region] : undefined,
     page,
     pageSize: PAGE_SIZE,
+  }, {
+    autoRefetchWhileInProgress: true,
   });
 
   const detailQuery = useOptimizationRightsizingRecommendationDetailQuery(selectedRecommendationId);
@@ -88,6 +99,104 @@ export function OptimizationRightsizingSection() {
   const hasPrev = Boolean(pagination && pagination.page > 1);
   const hasNext = Boolean(pagination && pagination.page < pagination.totalPages);
 
+  const executeMutation = useMutation({
+    mutationFn: async (recommendationId: string) => {
+      if (!scope) throw new Error("Dashboard scope is not resolved yet");
+      return dashboardApi.executeOptimizationRightsizingRecommendation(scope, recommendationId);
+    },
+    onMutate: (recommendationId) => {
+      setApplyingRecommendationId(recommendationId);
+      setActionError(null);
+      setActionMessage(null);
+    },
+    onSuccess: () => {
+      setActionMessage("Rightsizing action queued. Applying in background...");
+      void queryClient.invalidateQueries({
+        queryKey: ["dashboard", "optimization", "rightsizing"],
+      });
+    },
+    onError: (error) => {
+      const message = error instanceof Error ? error.message : "Failed to queue rightsizing action";
+      setActionError(message);
+    },
+    onSettled: () => {
+      setApplyingRecommendationId(null);
+    },
+  });
+
+  const ignoreMutation = useMutation({
+    mutationFn: async (recommendationId: string) => {
+      if (!scope) throw new Error("Dashboard scope is not resolved yet");
+      return dashboardApi.ignoreOptimizationRightsizingRecommendation(scope, recommendationId);
+    },
+    onMutate: (recommendationId) => {
+      setIgnoringRecommendationId(recommendationId);
+      setActionError(null);
+      setActionMessage(null);
+    },
+    onSuccess: (_data, recommendationId) => {
+      setActionMessage("Recommendation ignored successfully.");
+      queryClient.setQueryData(
+        ["dashboard", "optimization", "rightsizing", "recommendations", scope, {
+          status: status !== "all" ? [status] : undefined,
+          effort: effort !== "all" ? [effort] : undefined,
+          risk: risk !== "all" ? [risk] : undefined,
+          region: region !== "all" ? [region] : undefined,
+          page,
+          pageSize: PAGE_SIZE,
+        }],
+        (existing: { items?: Array<{ id: string; status: string }> } | undefined) => {
+          if (!existing?.items) return existing;
+          return {
+            ...existing,
+            items: existing.items.map((item) =>
+              item.id === recommendationId ? { ...item, status: "IGNORED" } : item,
+            ),
+          };
+        },
+      );
+      void queryClient.invalidateQueries({
+        queryKey: ["dashboard", "optimization", "rightsizing"],
+      });
+    },
+    onError: (error) => {
+      const message = error instanceof Error ? error.message : "Failed to ignore recommendation";
+      setActionError(message);
+    },
+    onSettled: () => {
+      setIgnoringRecommendationId(null);
+    },
+  });
+
+  const isApplyDisabled = (item: (typeof recommendationItems)[number]): boolean => {
+    const statusText = toUpper(item.status);
+    if (
+      statusText === "NO_ACTION_NEEDED" ||
+      statusText === "IN_PROGRESS" ||
+      statusText === "APPLIED" ||
+      statusText === "IGNORED"
+    ) {
+      return true;
+    }
+    if (!item.recommendedType || (item.currentType && item.currentType === item.recommendedType)) {
+      return true;
+    }
+    return executeMutation.isPending || ignoreMutation.isPending;
+  };
+
+  const isIgnoreDisabled = (item: (typeof recommendationItems)[number]): boolean => {
+    const statusText = toUpper(item.status);
+    if (
+      statusText === "NO_ACTION_NEEDED" ||
+      statusText === "IN_PROGRESS" ||
+      statusText === "APPLIED" ||
+      statusText === "IGNORED"
+    ) {
+      return true;
+    }
+    return executeMutation.isPending || ignoreMutation.isPending;
+  };
+
   return (
     <div className="optimization-rightsizing-shell">
       {overviewQuery.isLoading ? <p className="dashboard-note">Loading rightsizing overview...</p> : null}
@@ -119,6 +228,8 @@ export function OptimizationRightsizingSection() {
       </section>
 
       <section className="optimization-rightsizing-panel">
+        {actionMessage ? <p className="dashboard-note">{actionMessage}</p> : null}
+        {actionError ? <p className="dashboard-note">Action failed: {actionError}</p> : null}
         <div className="optimization-rightsizing-filters">
           <div className="optimization-rightsizing-filter-field">
             <p className="optimization-rightsizing-filter-label">Status</p>
@@ -236,13 +347,33 @@ export function OptimizationRightsizingSection() {
                       <span className={`optimization-rightsizing-pill is-status-${toUpper(item.status)}`}>{toTitleCase(item.status)}</span>
                     </td>
                     <td>
-                      <button
-                        type="button"
-                        className="optimization-rightsizing-view-btn"
-                        onClick={() => setSelectedRecommendationId(item.id)}
-                      >
-                        View
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          className="optimization-rightsizing-view-btn"
+                          disabled={isApplyDisabled(item)}
+                          onClick={() => executeMutation.mutate(item.id)}
+                        >
+                          {toUpper(item.status) === "IN_PROGRESS" || applyingRecommendationId === item.id
+                            ? "Applying..."
+                            : "Apply"}
+                        </button>
+                        <button
+                          type="button"
+                          className="optimization-rightsizing-view-btn"
+                          disabled={isIgnoreDisabled(item)}
+                          onClick={() => ignoreMutation.mutate(item.id)}
+                        >
+                          {ignoringRecommendationId === item.id ? "Ignoring..." : "Ignore"}
+                        </button>
+                        <button
+                          type="button"
+                          className="optimization-rightsizing-view-btn"
+                          onClick={() => setSelectedRecommendationId(item.id)}
+                        >
+                          View
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))

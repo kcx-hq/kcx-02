@@ -5,6 +5,13 @@ export type OptimizationSyncTrigger =
   | "DASHBOARD_OPEN"
   | "RECOMMENDATIONS_OPEN";
 
+export type RightsizingRecommendationStatus =
+  | "OPEN"
+  | "NO_ACTION_NEEDED"
+  | "IN_PROGRESS"
+  | "APPLIED"
+  | "FAILED";
+
 export type AwsComputeOptimizerEc2RecommendationInput = {
   accountId: string;
   region: string;
@@ -106,7 +113,7 @@ export type NormalizedRightsizingRecommendation = {
   observationEnd: Date | null;
   rawPayloadJson: string | null;
   sourceSystem: "AWS_COMPUTE_OPTIMIZER";
-  status: "OPEN";
+  status: RightsizingRecommendationStatus;
 };
 
 export type NormalizedIdleRecommendation = {

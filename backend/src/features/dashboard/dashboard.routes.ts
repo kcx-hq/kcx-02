@@ -11,14 +11,20 @@ import {
 import { handleGetDashboardScope, handleGetDashboardTestTotalSpend } from "./dashboard.controller.js";
 import { handleGetCostExplorerDashboard } from "./cost-explorer/cost-explorer.controller.js";
 import {
+  handleExecuteIdleRecommendation,
+  handleExecuteRightsizingRecommendation,
+  handleIgnoreIdleRecommendation,
+  handleIgnoreRightsizingRecommendation,
   handleDebugSyncOptimizationRecommendations,
   handleGetCommitmentOverview,
   handleGetCommitmentRecommendationDetail,
   handleGetCommitmentRecommendations,
+  handleGetIdleActionStatus,
   handleGetIdleOverview,
   handleGetIdleRecommendationDetail,
   handleGetIdleRecommendations,
   handleGetOptimizationDashboard,
+  handleGetRightsizingActionStatus,
   handleGetRightsizingOverview,
   handleGetRightsizingRecommendationDetail,
   handleGetRightsizingRecommendations,
@@ -76,6 +82,18 @@ router.get(
   "/dashboard/optimization/rightsizing/recommendations/:recommendationId",
   asyncHandler(handleGetRightsizingRecommendationDetail),
 );
+router.post(
+  "/dashboard/optimization/rightsizing/recommendations/:recommendationId/execute",
+  asyncHandler(handleExecuteRightsizingRecommendation),
+);
+router.post(
+  "/dashboard/optimization/rightsizing/recommendations/:recommendationId/ignore",
+  asyncHandler(handleIgnoreRightsizingRecommendation),
+);
+router.get(
+  "/dashboard/optimization/rightsizing/actions/:actionId",
+  asyncHandler(handleGetRightsizingActionStatus),
+);
 router.get(
   "/dashboard/optimization/idle/overview",
   asyncHandler(handleGetIdleOverview),
@@ -87,6 +105,18 @@ router.get(
 router.get(
   "/dashboard/optimization/idle/recommendations/:recommendationId",
   asyncHandler(handleGetIdleRecommendationDetail),
+);
+router.post(
+  "/dashboard/optimization/idle/recommendations/:recommendationId/execute",
+  asyncHandler(handleExecuteIdleRecommendation),
+);
+router.post(
+  "/dashboard/optimization/idle/recommendations/:recommendationId/ignore",
+  asyncHandler(handleIgnoreIdleRecommendation),
+);
+router.get(
+  "/dashboard/optimization/idle/actions/:actionId",
+  asyncHandler(handleGetIdleActionStatus),
 );
 router.get(
   "/dashboard/optimization/commitment/overview",

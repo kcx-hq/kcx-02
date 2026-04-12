@@ -5,11 +5,13 @@ import { UnauthorizedError } from "../../../../errors/http-errors.js";
 import { sendError, sendSuccess } from "../../../../utils/api-response.js";
 import { parseWithSchema } from "../../../_shared/validation/zod-validate.js";
 import {
+  ec2ChangeInstanceTypeBodySchema,
   ec2InstanceActionBodySchema,
   listEc2InstancesQuerySchema,
 } from "./ec2.schema.js";
 import {
   AwsEc2Error,
+  changeInstanceType,
   listInstances,
   rebootInstance,
   startInstance,
@@ -133,6 +135,34 @@ export async function handleRebootEc2Instance(req: Request, res: Response): Prom
       req,
       statusCode: HTTP_STATUS.OK,
       message: "EC2 reboot request accepted",
+      data: result,
+    });
+  } catch (error) {
+    if (error instanceof AwsEc2Error) {
+      sendEc2ServiceError(req, res, error);
+      return;
+    }
+    throw error;
+  }
+}
+
+export async function handleChangeEc2InstanceType(req: Request, res: Response): Promise<void> {
+  const tenantId = requireTenantId(req);
+  const body = parseWithSchema(ec2ChangeInstanceTypeBodySchema, req.body);
+
+  try {
+    const result = await changeInstanceType({
+      tenantId,
+      connectionId: body.connectionId,
+      instanceId: body.instanceId,
+      targetInstanceType: body.targetInstanceType,
+    });
+
+    sendSuccess({
+      res,
+      req,
+      statusCode: HTTP_STATUS.OK,
+      message: "EC2 instance-type change completed",
       data: result,
     });
   } catch (error) {

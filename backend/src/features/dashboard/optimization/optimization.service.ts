@@ -1,6 +1,8 @@
 import { QueryTypes } from "sequelize";
 import env from "../../../config/env.js";
+import { ConflictError, NotFoundError } from "../../../errors/http-errors.js";
 import { sequelize } from "../../../models/index.js";
+import { logger } from "../../../utils/logger.js";
 import type { DashboardSectionResponse } from "../overview/overview.service.js";
 import {
   syncAwsCommitmentRecommendations,
@@ -8,6 +10,20 @@ import {
   syncAwsIdleRecommendations,
   syncAwsRightsizingRecommendations,
 } from "./recommendation-sync/sync.service.js";
+import {
+  executeRightsizingAction,
+  getRightsizingActionStatus,
+  type RightsizingActionExecuteResult,
+  type RightsizingActionStatusResult,
+  processQueuedRightsizingActions,
+} from "./recommendation-sync/rightsizing-actions.service.js";
+import {
+  executeIdleAction,
+  getIdleActionStatus,
+  type IdleActionExecuteResult,
+  type IdleActionStatusResult,
+  processQueuedIdleActions,
+} from "./recommendation-sync/idle-actions.service.js";
 import type {
   AwsCommitmentRecommendationInput,
   AwsComputeOptimizerEc2RecommendationInput,
@@ -1260,6 +1276,252 @@ export async function triggerCommitmentRecommendationSync({
     billingSourceId,
     cloudConnectionId,
     recommendations,
+  });
+}
+
+export async function triggerRightsizingRecommendationExecute({
+  tenantId,
+  recommendationId,
+  requestedByUserId,
+  dryRun = false,
+  idempotencyKey,
+}: {
+  tenantId: string;
+  recommendationId: string;
+  requestedByUserId: string | null;
+  dryRun?: boolean;
+  idempotencyKey?: string | null;
+}): Promise<RightsizingActionExecuteResult> {
+  const result = await executeRightsizingAction({
+    tenantId,
+    recommendationId,
+    requestedByUserId,
+    dryRun,
+    idempotencyKey,
+  });
+
+  void processQueuedRightsizingActions().catch((error) => {
+    logger.warn("Rightsizing action immediate processor run failed", {
+      tenantId,
+      recommendationId,
+      actionId: result.actionId,
+      reason: error instanceof Error ? error.message : String(error),
+    });
+  });
+
+  return result;
+}
+
+export async function getRightsizingActionStatusData({
+  tenantId,
+  actionId,
+}: {
+  tenantId: string;
+  actionId: string;
+}): Promise<RightsizingActionStatusResult | null> {
+  return getRightsizingActionStatus({
+    tenantId,
+    actionId,
+  });
+}
+
+export async function ignoreRightsizingRecommendation({
+  tenantId,
+  recommendationId,
+}: {
+  tenantId: string;
+  recommendationId: string;
+}): Promise<{ recommendationId: string; status: "IGNORED" }> {
+  return sequelize.transaction(async (transaction) => {
+    const recommendationRows = await sequelize.query<{ id: string | number; status: string }>(
+      `
+        SELECT fr.id, fr.status
+        FROM fact_recommendations fr
+        WHERE fr.tenant_id = $1
+          AND fr.id = $2
+          AND ${RIGHTSIZING_PREDICATE_SQL}
+        LIMIT 1;
+      `,
+      {
+        bind: [tenantId, recommendationId],
+        type: QueryTypes.SELECT,
+        transaction,
+      },
+    );
+
+    const row = recommendationRows[0];
+    if (!row) throw new NotFoundError("Rightsizing recommendation not found");
+
+    const status = String(row.status ?? "").trim().toUpperCase();
+    if (status === "IN_PROGRESS") throw new ConflictError("Recommendation is currently in progress");
+    if (status === "APPLIED") throw new ConflictError("Recommendation is already applied");
+    if (status === "IGNORED") {
+      return {
+        recommendationId: String(row.id),
+        status: "IGNORED",
+      };
+    }
+
+    const activeActionRows = await sequelize.query<{ id: string | number }>(
+      `
+        SELECT id
+        FROM fact_recommendation_actions
+        WHERE tenant_id = $1
+          AND recommendation_id = $2
+          AND action_type = 'APPLY_RIGHTSIZING'
+          AND status IN ('QUEUED', 'RUNNING')
+        LIMIT 1;
+      `,
+      {
+        bind: [tenantId, recommendationId],
+        type: QueryTypes.SELECT,
+        transaction,
+      },
+    );
+
+    if (activeActionRows.length > 0) throw new ConflictError("A rightsizing action is already running");
+
+    await sequelize.query(
+      `
+        UPDATE fact_recommendations
+        SET status = 'IGNORED',
+            updated_at = NOW()
+        WHERE tenant_id = $1
+          AND id = $2;
+      `,
+      {
+        bind: [tenantId, recommendationId],
+        transaction,
+      },
+    );
+
+    return {
+      recommendationId: String(row.id),
+      status: "IGNORED",
+    };
+  });
+}
+
+export async function triggerIdleRecommendationExecute({
+  tenantId,
+  recommendationId,
+  requestedByUserId,
+  dryRun = false,
+  idempotencyKey,
+}: {
+  tenantId: string;
+  recommendationId: string;
+  requestedByUserId: string | null;
+  dryRun?: boolean;
+  idempotencyKey?: string | null;
+}): Promise<IdleActionExecuteResult> {
+  const result = await executeIdleAction({
+    tenantId,
+    recommendationId,
+    requestedByUserId,
+    dryRun,
+    idempotencyKey,
+  });
+
+  void processQueuedIdleActions().catch((error) => {
+    logger.warn("Idle action immediate processor run failed", {
+      tenantId,
+      recommendationId,
+      actionId: result.actionId,
+      reason: error instanceof Error ? error.message : String(error),
+    });
+  });
+
+  return result;
+}
+
+export async function getIdleActionStatusData({
+  tenantId,
+  actionId,
+}: {
+  tenantId: string;
+  actionId: string;
+}): Promise<IdleActionStatusResult | null> {
+  return getIdleActionStatus({
+    tenantId,
+    actionId,
+  });
+}
+
+export async function ignoreIdleRecommendation({
+  tenantId,
+  recommendationId,
+}: {
+  tenantId: string;
+  recommendationId: string;
+}): Promise<{ recommendationId: string; status: "IGNORED" }> {
+  return sequelize.transaction(async (transaction) => {
+    const recommendationRows = await sequelize.query<{ id: string | number; status: string }>(
+      `
+        SELECT fr.id, fr.status
+        FROM fact_recommendations fr
+        WHERE fr.tenant_id = $1
+          AND fr.id = $2
+          AND ${IDLE_PREDICATE_SQL}
+        LIMIT 1;
+      `,
+      {
+        bind: [tenantId, recommendationId],
+        type: QueryTypes.SELECT,
+        transaction,
+      },
+    );
+
+    const row = recommendationRows[0];
+    if (!row) throw new NotFoundError("Idle recommendation not found");
+
+    const status = String(row.status ?? "").trim().toUpperCase();
+    if (status === "IN_PROGRESS") throw new ConflictError("Recommendation is currently in progress");
+    if (status === "APPLIED") throw new ConflictError("Recommendation is already applied");
+    if (status === "IGNORED") {
+      return {
+        recommendationId: String(row.id),
+        status: "IGNORED",
+      };
+    }
+
+    const activeActionRows = await sequelize.query<{ id: string | number }>(
+      `
+        SELECT id
+        FROM fact_recommendation_actions
+        WHERE tenant_id = $1
+          AND recommendation_id = $2
+          AND action_type IN ('APPLY_IDLE_DELETE_EBS', 'APPLY_IDLE_RELEASE_EIP', 'APPLY_IDLE_DELETE_SNAPSHOT')
+          AND status IN ('QUEUED', 'RUNNING')
+        LIMIT 1;
+      `,
+      {
+        bind: [tenantId, recommendationId],
+        type: QueryTypes.SELECT,
+        transaction,
+      },
+    );
+
+    if (activeActionRows.length > 0) throw new ConflictError("An idle action is already running");
+
+    await sequelize.query(
+      `
+        UPDATE fact_recommendations
+        SET status = 'IGNORED',
+            updated_at = NOW()
+        WHERE tenant_id = $1
+          AND id = $2;
+      `,
+      {
+        bind: [tenantId, recommendationId],
+        transaction,
+      },
+    );
+
+    return {
+      recommendationId: String(row.id),
+      status: "IGNORED",
+    };
   });
 }
 
