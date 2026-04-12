@@ -40,7 +40,7 @@ export type AdminSupportMeetingSummary = {
   meeting_type: string
   agenda: string
   mode: string
-  status: "REQUESTED" | "SCHEDULED" | "COMPLETED" | "CANCELLED" | "REJECTED"
+  status: "REQUESTED" | "SCHEDULED" | "RESCHEDULED" | "COMPLETED" | "CANCELLED" | "REJECTED"
   slot_start: string
   slot_end: string
   time_zone: string
@@ -91,6 +91,29 @@ export async function approveAdminSupportMeeting(
 export async function rejectAdminSupportMeeting(token: string, meetingId: string): Promise<AdminSupportMeetingSummary> {
   return apiFetch<AdminSupportMeetingSummary>(`/admin/support-meetings/${meetingId}/reject`, {
     method: "PATCH",
+    token,
+  })
+}
+
+export async function updateAdminSupportMeetingStatus(
+  token: string,
+  meetingId: string,
+  payload: {
+    status: AdminSupportMeetingSummary["status"]
+    meetingUrl?: string
+    afterMeetingSummary?: string
+  }
+): Promise<AdminSupportMeetingSummary> {
+  return apiFetch<AdminSupportMeetingSummary>(`/admin/support-meetings/${meetingId}/status`, {
+    method: "PATCH",
+    token,
+    body: JSON.stringify(payload),
+  })
+}
+
+export async function deleteAdminSupportMeeting(token: string, meetingId: string): Promise<{ meetingId: string }> {
+  return apiFetch<{ meetingId: string }>(`/admin/support-meetings/${meetingId}`, {
+    method: "DELETE",
     token,
   })
 }

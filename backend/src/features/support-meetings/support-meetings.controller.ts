@@ -7,9 +7,11 @@ import {
   applyClientSupportMeetingAction,
   approveAdminSupportMeeting,
   createClientSupportMeeting,
+  deleteAdminSupportMeeting,
   getAdminSupportMeetings,
   getClientSupportMeetings,
   rejectAdminSupportMeeting,
+  updateAdminSupportMeetingStatus,
 } from "./support-meetings.service.js";
 
 export async function handleGetClientSupportMeetings(req: Request, res: Response): Promise<void> {
@@ -76,4 +78,25 @@ export async function handleRejectAdminSupportMeeting(req: Request, res: Respons
   const meetingId = String(req.params.meetingId ?? "");
   const data = await rejectAdminSupportMeeting({ meetingId });
   sendSuccess({ res, req, statusCode: HTTP_STATUS.OK, message: "Support meeting rejected", data });
+}
+
+export async function handleUpdateAdminSupportMeetingStatus(req: Request, res: Response): Promise<void> {
+  const adminId = Number(req.auth?.user?.id ?? 0);
+  if (!Number.isFinite(adminId) || adminId <= 0) throw new UnauthorizedError("Admin context is required");
+
+  const meetingId = String(req.params.meetingId ?? "");
+  const data = await updateAdminSupportMeetingStatus({
+    meetingId,
+    adminId,
+    status: req.body?.status,
+    meetingUrl: req.body?.meetingUrl,
+    afterMeetingSummary: req.body?.afterMeetingSummary,
+  });
+  sendSuccess({ res, req, statusCode: HTTP_STATUS.OK, message: "Support meeting status updated", data });
+}
+
+export async function handleDeleteAdminSupportMeeting(req: Request, res: Response): Promise<void> {
+  const meetingId = String(req.params.meetingId ?? "");
+  const data = await deleteAdminSupportMeeting({ meetingId });
+  sendSuccess({ res, req, statusCode: HTTP_STATUS.OK, message: "Support meeting deleted", data });
 }

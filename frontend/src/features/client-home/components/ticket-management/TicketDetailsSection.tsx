@@ -1,5 +1,5 @@
 import { cn } from "@/lib/utils"
-import type { TicketItem, TicketTableStatus, TicketView } from "@/features/client-home/components/ticket-management/types"
+import type { TicketItem, TicketView } from "@/features/client-home/components/ticket-management/types"
 import { CalendarClock, CheckCircle2, CircleDot, Eye, RefreshCw, Search, Tag, User, XCircle } from "lucide-react"
 
 type TicketDetailsSectionProps = {
@@ -18,7 +18,7 @@ type TicketDetailsSectionProps = {
   actionLoadingId?: string | null
 }
 
-function statusPillClass(status: TicketTableStatus) {
+function statusPillClass(status: string) {
   if (status === "Under Review") {
     return "border-[rgba(48,114,191,0.26)] bg-[rgba(66,123,179,0.14)] text-[color:#1f5b9c]"
   }
@@ -35,6 +35,12 @@ function statusPillClass(status: TicketTableStatus) {
   }
 
   return "border-[rgba(92,105,117,0.26)] bg-[rgba(92,105,117,0.12)] text-[color:#445362]"
+}
+
+function displayStatus(ticket: TicketItem) {
+  if (ticket.progress === "CLIENT_REVIEW") return "Client Review"
+  if (ticket.workflowStage === "Client Marked Unresolved") return "Not Resolved"
+  return ticket.status
 }
 
 export function TicketDetailsSection({
@@ -183,9 +189,14 @@ export function TicketDetailsSection({
                     </span>
                   </td>
                   <td className="px-3 py-4">
-                    <span className={cn("inline-flex rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.08em]", statusPillClass(ticket.status))}>
-                      {ticket.status}
-                    </span>
+                    <div className="space-y-1">
+                      <span className={cn("inline-flex rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.08em]", statusPillClass(displayStatus(ticket)))}>
+                        {displayStatus(ticket)}
+                      </span>
+                      {ticket.progress === "CLIENT_REVIEW" ? (
+                        <p className="text-[11px] font-medium text-[color:#8a4f00]">Please mark: Resolved / Not Resolved</p>
+                      ) : null}
+                    </div>
                   </td>
                   <td className="px-3 py-4 text-sm text-text-secondary">{ticket.workflowStage}</td>
                   <td className="px-3 py-4 text-sm text-text-secondary">
@@ -217,7 +228,7 @@ export function TicketDetailsSection({
                             onClick={() => onClientAction(ticket.id, "UNRESOLVED")}
                           >
                             <XCircle className="h-3.5 w-3.5" />
-                            Unresolved
+                            Not Resolved
                           </button>
                         </>
                       ) : null}
