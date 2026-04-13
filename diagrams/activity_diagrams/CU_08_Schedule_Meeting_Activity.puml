@@ -1,0 +1,16 @@
+@startuml
+title CU_08 Schedule Meeting - Activity
+start
+:ClientUser opens schedule meeting;
+:Select slot;
+if (Slot available?) then (Yes)
+  :Reserve slot;
+  :Submit meeting request;
+  :Show request submitted;
+  stop
+else (No)
+  :Show slot unavailable;
+  :Select another slot;
+  stop
+endif
+@enduml

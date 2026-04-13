@@ -1,0 +1,27 @@
+@startuml
+title AD_04 Manage Tickets - Activity
+
+start
+:Admin opens ticket management;
+:Select target ticket action;
+
+if (Action = Create?) then (Yes)
+  :Capture ticket details;
+  :Create ticket;
+elseif (Action = Update Status?) then (Yes)
+  :Select stage and progress;
+  :Advance ticket workflow;
+elseif (Action = Assign?) then (Yes)
+  :Select support team;
+  :Assign ticket team;
+elseif (Action = Chat?) then (Yes)
+  :Write response text;
+  :Add and post ticket message;
+else (Close)
+  :Close ticket;
+endif
+
+:Refresh ticket board;
+stop
+
+@enduml

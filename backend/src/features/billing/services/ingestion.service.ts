@@ -174,7 +174,10 @@ export async function getUploadHistoryForTenant(tenantId: string): Promise<Billi
           model: BillingSource,
           attributes: ["tenantId"],
           required: true,
-          where: { tenantId },
+          where: {
+            tenantId,
+            sourceType: "manual_upload",
+          },
         },
         {
           model: RawBillingFile,

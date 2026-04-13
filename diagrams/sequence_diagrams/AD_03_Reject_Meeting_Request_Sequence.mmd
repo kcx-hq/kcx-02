@@ -1,0 +1,7 @@
+%% Use Case: Reject Meeting Request
+sequenceDiagram
+    actor Admin
+    participant SupportMeeting
+
+    Admin->>SupportMeeting: reject(adminId: Integer, reason: String)
+    SupportMeeting-->>Admin: meeting rejected

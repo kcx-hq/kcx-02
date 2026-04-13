@@ -1,0 +1,7 @@
+%% Use Case: Create Ticket
+sequenceDiagram
+    actor ClientUser
+    participant SupportTicket
+
+    ClientUser->>SupportTicket: create(createdBy: UUID, title: String, category: String, priority: String, affected: String, description: String): SupportTicket
+    SupportTicket-->>ClientUser: ticket created

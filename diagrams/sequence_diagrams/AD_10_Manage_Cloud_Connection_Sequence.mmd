@@ -1,0 +1,14 @@
+%% Use Case: Manage Cloud Connection
+sequenceDiagram
+    actor Admin
+    participant CloudConnection
+    participant CloudIntegration
+
+    Admin->>CloudConnection: validateAccess(): Boolean
+    alt Access valid
+        Admin->>CloudConnection: activate()
+        Admin->>CloudIntegration: refreshHealth()
+        CloudIntegration-->>Admin: health refreshed
+    else Access invalid
+        Admin->>CloudConnection: suspend(reason: String)
+    end

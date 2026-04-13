@@ -1,0 +1,78 @@
+@startuml
+title CD_03 Cloud Domain Class Diagram
+
+skinparam classAttributeIconSize 0
+skinparam packageStyle rectangle
+
+package "Cloud Domain" {
+  class CloudProvider {
+    +id: BigInt
+    +code: String
+    +name: String
+    +status: String
+    --
+    +activate()
+    +suspend(reason: String)
+  }
+
+  class CloudConnection {
+    +id: UUID
+    +connectionName: String
+    +accountType: String
+    +status: String
+    +cloudAccountId: String?
+    --
+    +validateAccess(): Boolean
+    +activate()
+    +suspend(reason: String)
+  }
+
+  class CloudIntegration {
+    +id: UUID
+    +displayName: String
+    +connectionMode: String
+    +status: String
+    --
+    +refreshHealth()
+    +flagDuplicateAccount(accountId: String)
+  }
+
+  class CloudAccount {
+    +id: BigInt
+    +accountId: String
+    +accountName: String?
+    +onboardingStatus: String
+    +computeOptimizerEnabled: Boolean
+    --
+    +enableComputeOptimizer()
+    +disableComputeOptimizer()
+  }
+
+  class AwsManualConnection {
+    +awsAccountId: String
+    +billingRoleArn: String
+    +bucketName: String
+    +setupStep: Integer
+    +isComplete: Boolean
+    --
+    +validate()
+    +completeSetup()
+  }
+
+  class S3IngestionConnection {
+    +roleArn: String
+    +bucketName: String
+    +basePrefix: String?
+    +status: String
+    --
+    +validate()
+    +updatePrefix(prefix: String)
+  }
+
+  CloudProvider "1" -- "0..*" CloudConnection
+  CloudConnection "1" -- "0..*" CloudAccount
+  CloudConnection <|-- AwsManualConnection
+  CloudConnection <|-- S3IngestionConnection
+}
+
+@enduml

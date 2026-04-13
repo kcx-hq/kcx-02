@@ -1,0 +1,18 @@
+%% Use Case: Manage Tickets
+sequenceDiagram
+    actor Admin
+    participant SupportTicket
+    participant TicketMessage
+
+    alt Create a new ticket
+        Admin->>SupportTicket: create(createdBy: UUID, title: String, category: String, priority: String, affected: String, description: String)
+    else Update ticket workflow
+        Admin->>SupportTicket: advanceWorkflow(stage: String, progress: String)
+    else Assign ticket
+        Admin->>SupportTicket: assignTeam(team: String)
+    else Chat on ticket
+        Admin->>SupportTicket: addMessage(senderId: UUID, text: String)
+        SupportTicket->>TicketMessage: post(senderId: UUID, text: String)
+    else Close ticket
+        Admin->>SupportTicket: close()
+    end

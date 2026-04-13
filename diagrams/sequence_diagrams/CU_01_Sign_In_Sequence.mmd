@@ -1,0 +1,7 @@
+%% Use Case: Sign In
+sequenceDiagram
+    actor ClientUser
+    participant User
+
+    ClientUser->>User: authenticate(password: String): Boolean
+    User-->>ClientUser: authentication result

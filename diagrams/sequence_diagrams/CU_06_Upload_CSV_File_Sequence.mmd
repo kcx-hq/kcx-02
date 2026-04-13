@@ -1,0 +1,9 @@
+%% Use Case: Upload CSV File
+%% Limitation: class diagrams do not contain CSV upload methods; nearest grounded interaction is ingestion connection validation/prefix setup.
+sequenceDiagram
+    actor ClientUser
+    participant S3IngestionConnection
+
+    ClientUser->>S3IngestionConnection: updatePrefix(prefix: String)
+    ClientUser->>S3IngestionConnection: validate()
+    S3IngestionConnection-->>ClientUser: validation result

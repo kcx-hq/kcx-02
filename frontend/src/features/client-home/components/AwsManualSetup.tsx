@@ -5,12 +5,14 @@ import {
   ChevronLeft,
   ChevronRight,
   Copy,
+  ExternalLink,
   Loader2,
   Sparkles,
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { completeAwsManualSetup } from "@/features/client-home/api/cloud-connections.api"
 import { ApiError } from "@/lib/api"
 import { navigateTo } from "@/lib/navigation"
@@ -78,7 +80,7 @@ type GeneratedSnippet = {
 
 const STEPS = [
   "Setup Values",
-  "Billing Role",
+  "Roles",
   "Billing Export",
   "File Event Automation",
   "CloudTrail (Optional)",
@@ -289,6 +291,190 @@ function ValueCard({
   )
 }
 
+type AwsConsoleLinkProps = {
+  label: string
+  url: string
+  className?: string
+}
+
+type PolicyDrawerState = {
+  open: boolean
+  title: string
+  content: string
+}
+
+type HelpModalState = {
+  open: boolean
+  title: string
+  context: string
+}
+
+type InlineGuideStepProps = {
+  title: string
+  children: ReactNode
+  previewTitle: string
+  previewContext: string
+  onOpenHelp: (title: string, context: string) => void
+}
+
+function buildIamConsoleUrl(path: string, region: string) {
+  const base = "https://console.aws.amazon.com/iam/home"
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`
+  const regionParam = region.trim() ? `?region=${encodeURIComponent(region.trim())}` : ""
+  return `${base}${regionParam}#${normalizedPath}`
+}
+
+function AwsConsoleLink({ label, url, className }: AwsConsoleLinkProps) {
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      title="Opens AWS Console in a new tab"
+      className={cn("inline-flex items-center gap-1 text-sm font-medium text-brand-primary underline-offset-4 hover:underline", className)}
+    >
+      <span>{label}</span>
+      <ExternalLink className="h-3.5 w-3.5" />
+    </a>
+  )
+}
+
+function InlineActionLink({
+  label,
+  onClick,
+  className,
+  disabled,
+}: {
+  label: string
+  onClick: () => void
+  className?: string
+  disabled?: boolean
+}) {
+  return (
+    <button
+      type="button"
+      className={cn(
+        "inline-flex items-center gap-1 text-sm font-medium text-brand-primary underline-offset-4 hover:underline disabled:cursor-not-allowed disabled:text-text-muted disabled:no-underline",
+        className,
+      )}
+      onClick={onClick}
+      disabled={disabled}
+    >
+      {label}
+    </button>
+  )
+}
+
+function ReadonlyCopyField({
+  value,
+  copyKey,
+  copiedKey,
+  onCopy,
+  ariaLabel,
+}: {
+  value: string
+  copyKey: string
+  copiedKey: string | null
+  onCopy: (copyKey: string, value: string) => void
+  ariaLabel: string
+}) {
+  return (
+    <div className="inline-flex min-w-[260px] max-w-full items-center gap-1 rounded-md bg-[color:var(--bg-surface)] px-2 py-1">
+      <span className="truncate px-1.5 py-1 text-sm text-text-primary">{value || "-"}</span>
+      <button
+        type="button"
+        className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded text-text-muted hover:bg-[color:var(--brand-soft)] hover:text-text-primary"
+        onClick={() => onCopy(copyKey, value)}
+        aria-label={ariaLabel}
+        title={copiedKey === copyKey ? "Copied" : "Copy"}
+      >
+        <Copy className="h-3.5 w-3.5" />
+      </button>
+    </div>
+  )
+}
+
+function InlineGuideStep({
+  title,
+  children,
+  previewTitle,
+  previewContext,
+  onOpenHelp,
+}: InlineGuideStepProps) {
+  return (
+    <div className="grid grid-cols-1 items-start gap-4 border-t border-[color:var(--border-light)] py-4 md:grid-cols-[minmax(0,1fr)_190px]">
+      <div className="space-y-2">
+        <p className="text-[17px] font-semibold text-text-primary">{title}</p>
+        <div className="space-y-1 text-[15px] leading-6 text-text-secondary">{children}</div>
+      </div>
+      <button
+        type="button"
+        className="h-fit self-start rounded-lg border border-[color:var(--border-light)] bg-[color:var(--bg-surface)] px-3 py-2.5 text-left hover:border-[color:var(--brand-primary)]"
+        onClick={() => onOpenHelp(previewTitle, previewContext)}
+      >
+        <div className="mb-2 h-20 rounded-md bg-white/70" />
+        <p className="text-xs font-medium text-text-primary">{previewTitle}</p>
+        <p className="mt-1 text-[12px] text-text-muted">See steps in AWS</p>
+      </button>
+    </div>
+  )
+}
+
+function HelpModal({
+  state,
+  onOpenChange,
+}: {
+  state: HelpModalState
+  onOpenChange: (nextOpen: boolean) => void
+}) {
+  return (
+    <Dialog open={state.open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>{state.title}</DialogTitle>
+        </DialogHeader>
+        <div className="rounded-md border border-dashed border-[color:var(--border-light)] bg-[color:var(--bg-surface)] px-4 py-5 text-sm text-text-secondary">
+          Screenshot placeholder: {state.context}
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function PolicyDrawer({
+  state,
+  copied,
+  onOpenChange,
+  onCopy,
+}: {
+  state: PolicyDrawerState
+  copied: boolean
+  onOpenChange: (nextOpen: boolean) => void
+  onCopy: () => void
+}) {
+  return (
+    <Dialog open={state.open} onOpenChange={onOpenChange}>
+      <DialogContent className="left-auto right-0 top-0 h-screen w-[min(96vw,44rem)] translate-x-0 translate-y-0 rounded-none border-l border-[color:var(--border-light)] p-0 data-[state=open]:zoom-in-100 data-[state=closed]:zoom-out-100">
+        <div className="flex h-full flex-col">
+          <DialogHeader className="border-b border-[color:var(--border-light)] px-5 py-4">
+            <div className="flex items-center justify-between gap-3 pr-10">
+              <DialogTitle>{state.title}</DialogTitle>
+              <Button type="button" variant="outline" size="sm" className="h-8 rounded-md" onClick={onCopy}>
+                {copied ? "Copied" : "Copy Policy"}
+              </Button>
+            </div>
+          </DialogHeader>
+          <div className="flex-1 overflow-auto px-5 py-4">
+            <pre className="max-h-full overflow-auto rounded-md border border-[color:var(--border-light)] bg-[color:var(--bg-surface)] p-3 text-xs leading-relaxed text-text-primary">
+              <code>{state.content}</code>
+            </pre>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 function GeneratedBlock({
   title,
   content,
@@ -488,6 +674,8 @@ function ManualSetupWizard({ activeRoute }: { activeRoute: string }) {
   const [currentStep, setCurrentStep] = useState(0)
   const [copiedKey, setCopiedKey] = useState<string | null>(null)
   const [completed, setCompleted] = useState(false)
+  const [policyDrawer, setPolicyDrawer] = useState<PolicyDrawerState>({ open: false, title: "", content: "" })
+  const [helpModal, setHelpModal] = useState<HelpModalState>({ open: false, title: "", context: "" })
 
   const [billingValidation, setBillingValidation] = useState<ValidationState>("idle")
   const [exportValidation, setExportValidation] = useState<ValidationState>("idle")
@@ -864,6 +1052,14 @@ function ManualSetupWizard({ activeRoute }: { activeRoute: string }) {
     window.setTimeout(() => setCopiedKey((current) => (current === copyKey ? null : current)), 1200)
   }
 
+  function openPolicyDrawer(title: string, content: string) {
+    setPolicyDrawer({ open: true, title, content })
+  }
+
+  function openHelpModal(title: string, context: string) {
+    setHelpModal({ open: true, title, context })
+  }
+
   function simulateValidation(setter: Dispatch<SetStateAction<ValidationState>>, success: boolean) {
     setter("loading")
     // TODO: Replace mock validation with backend validation endpoints when available.
@@ -871,7 +1067,13 @@ function ManualSetupWizard({ activeRoute }: { activeRoute: string }) {
   }
   const canProceedFromStep = useMemo(() => {
     if (currentStep === 0) return requiredSetupValuesReady
-    if (currentStep === 1) return form.billingRoleArn.trim().length > 0 && billingValidation === "success"
+    if (currentStep === 1) {
+      return (
+        form.billingRoleArn.trim().length > 0
+        && billingValidation === "success"
+        && (!form.enableActionRole || form.actionRoleArn.trim().length > 0)
+      )
+    }
     if (currentStep === 2) {
       return (
         form.exportBucket.trim().length > 0
@@ -1021,6 +1223,16 @@ function ManualSetupWizard({ activeRoute }: { activeRoute: string }) {
     navigateTo(successRoute)
   }
 
+  const createRoleUrl = useMemo(() => buildIamConsoleUrl("/roles/create", form.awsRegion), [form.awsRegion])
+  const billingRoleDetailsUrl = useMemo(
+    () => buildIamConsoleUrl(`/roles/details/${encodeURIComponent(derived.billingRoleName)}`, form.awsRegion),
+    [derived.billingRoleName, form.awsRegion],
+  )
+  const actionRoleDetailsUrl = useMemo(
+    () => buildIamConsoleUrl(`/roles/details/${encodeURIComponent(derived.actionRoleName)}`, form.awsRegion),
+    [derived.actionRoleName, form.awsRegion],
+  )
+
   return (
     <div className="space-y-4">
       <SetupStepper currentStep={currentStep} />
@@ -1045,28 +1257,19 @@ function ManualSetupWizard({ activeRoute }: { activeRoute: string }) {
 
       {currentStep === 0 ? (
         <div className="space-y-4">
-          <section className="space-y-2">
+          <section className="space-y-2 rounded-[10px] border border-[color:var(--border-light)] bg-white p-4">
             <p className={SECTION_TITLE_CLASS}>Setup Values</p>
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-              <label className="space-y-1">
-                <span className={LABEL_CLASS}>External ID</span>
-                <input className={CONTROL_CLASS} value={form.externalId} onChange={(event) => setField("externalId", event.target.value)} />
-              </label>
+            <p className="text-sm text-text-secondary">
+              Enter your AWS setup values. We&apos;ll generate the required role details and policies for the next steps.
+            </p>
+          </section>
+
+          <section className="space-y-3 rounded-[10px] border border-[color:var(--border-light)] bg-white p-4">
+            <p className={SECTION_TITLE_CLASS}>Connection Details</p>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
               <label className="space-y-1">
                 <span className={LABEL_CLASS}>Connection Name</span>
                 <input className={CONTROL_CLASS} value={form.connectionName} onChange={(event) => setField("connectionName", event.target.value)} />
-              </label>
-              <label className="space-y-1 md:col-span-2">
-                <span className={LABEL_CLASS}>KCX Principal ARN</span>
-                <input className={CONTROL_CLASS} value={form.kcxPrincipalArn} onChange={(event) => setField("kcxPrincipalArn", event.target.value)} />
-              </label>
-              <label className="space-y-1 md:col-span-2">
-                <span className={LABEL_CLASS}>File Event Callback URL</span>
-                <input className={CONTROL_CLASS} value={form.fileEventCallbackUrl} onChange={(event) => setField("fileEventCallbackUrl", event.target.value)} />
-              </label>
-              <label className="space-y-1 md:col-span-2">
-                <span className={LABEL_CLASS}>Callback Token</span>
-                <input className={CONTROL_CLASS} value={form.callbackToken} onChange={(event) => setField("callbackToken", event.target.value)} />
               </label>
               <label className="space-y-1">
                 <span className={LABEL_CLASS}>AWS Account ID</span>
@@ -1087,7 +1290,29 @@ function ManualSetupWizard({ activeRoute }: { activeRoute: string }) {
             </div>
           </section>
 
-          <section className="space-y-2 border-t border-[color:var(--border-light)] pt-3">
+          <section className="space-y-3 rounded-[10px] border border-[color:var(--border-light)] bg-white p-4">
+            <p className={SECTION_TITLE_CLASS}>Access Setup Inputs</p>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              <label className="space-y-1">
+                <span className={LABEL_CLASS}>External ID</span>
+                <input className={CONTROL_CLASS} value={form.externalId} onChange={(event) => setField("externalId", event.target.value)} />
+              </label>
+              <label className="space-y-1 md:col-span-2">
+                <span className={LABEL_CLASS}>KCX Principal ARN</span>
+                <input className={CONTROL_CLASS} value={form.kcxPrincipalArn} onChange={(event) => setField("kcxPrincipalArn", event.target.value)} />
+              </label>
+              <label className="space-y-1 md:col-span-2">
+                <span className={LABEL_CLASS}>File Event Callback URL</span>
+                <input className={CONTROL_CLASS} value={form.fileEventCallbackUrl} onChange={(event) => setField("fileEventCallbackUrl", event.target.value)} />
+              </label>
+              <label className="space-y-1 md:col-span-2">
+                <span className={LABEL_CLASS}>Callback Token</span>
+                <input className={CONTROL_CLASS} value={form.callbackToken} onChange={(event) => setField("callbackToken", event.target.value)} />
+              </label>
+            </div>
+          </section>
+
+          <section className="space-y-3 rounded-[10px] border border-[color:var(--border-light)] bg-white p-4">
             <p className={SECTION_TITLE_CLASS}>Options</p>
             <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
               <label className="flex items-center gap-2 rounded-md border border-[color:var(--border-light)] bg-white px-3 py-2 text-sm text-text-primary">
@@ -1108,62 +1333,180 @@ function ManualSetupWizard({ activeRoute }: { activeRoute: string }) {
               </label>
             </div>
           </section>
-          <section className="space-y-2 border-t border-[color:var(--border-light)] pt-3">
-            <p className={SECTION_TITLE_CLASS}>Derived Values</p>
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-              <ValueCard label="Billing role name" value={derived.billingRoleName} copyKey="d1" copiedKey={copiedKey} onCopy={copyToClipboard} />
-              {form.enableActionRole ? <ValueCard label="Action role name" value={derived.actionRoleName} copyKey="d2" copiedKey={copiedKey} onCopy={copyToClipboard} /> : null}
-              <ValueCard label="Export bucket name" value={derived.exportBucketName} copyKey="d3" copiedKey={copiedKey} onCopy={copyToClipboard} />
-              {form.enableCloudTrail ? <ValueCard label="CloudTrail bucket name" value={derived.cloudTrailBucketName} copyKey="d4" copiedKey={copiedKey} onCopy={copyToClipboard} /> : null}
-              <ValueCard label="Export prefix" value={derived.exportPrefix} copyKey="d5" copiedKey={copiedKey} onCopy={copyToClipboard} />
-              {form.enableCloudTrail ? <ValueCard label="CloudTrail prefix" value={derived.cloudTrailPrefix} copyKey="d6" copiedKey={copiedKey} onCopy={copyToClipboard} /> : null}
-            </div>
-          </section>
         </div>
       ) : null}
 
       {currentStep === 1 ? (
-        <div className="space-y-3">
-          <ValueCard label="Billing role name" value={derived.billingRoleName} copyKey="brn" copiedKey={copiedKey} onCopy={copyToClipboard} />
-          <PolicyBlock title="Billing Role Trust Policy" content={generated.billingRoleTrustPolicy} copyKey="brtp" copiedKey={copiedKey} onCopy={copyToClipboard} disabled={!requiredSetupValuesReady} helper="External ID, KCX principal ARN, account ID, and region are required." />
-          <PolicyBlock title="Billing Role Permissions Policy" content={generated.billingRolePermissionsPolicy} copyKey="brpp" copiedKey={copiedKey} onCopy={copyToClipboard} disabled={!requiredSetupValuesReady} helper="Setup values and export bucket values are required." />
+        <div className="space-y-6">
+          <section className="rounded-[10px] border border-[color:var(--border-light)] bg-white p-4">
+            <p className={SECTION_TITLE_CLASS}>Roles</p>
+            <p className="text-sm text-text-secondary">Use these generated values to create the required IAM roles in AWS.</p>
+          </section>
 
-          {form.enableActionRole ? (
-            <details className="rounded-[10px] border border-[color:var(--border-light)] bg-[color:var(--bg-surface)] p-3">
-              <summary className="cursor-pointer text-sm font-semibold text-text-secondary">Action Role (Enabled)</summary>
-              <div className="mt-3 space-y-3 border-t border-[color:var(--border-light)] pt-3">
-                <ValueCard label="Action role name" value={derived.actionRoleName} copyKey="arn" copiedKey={copiedKey} onCopy={copyToClipboard} />
-                <label className="space-y-1">
-                  <span className={LABEL_CLASS}>Action Role ARN</span>
+          <div className="space-y-6">
+            <section className="space-y-1 rounded-[10px] border border-[color:var(--border-light)] bg-white p-4">
+              <h3 className="text-[22px] font-semibold text-text-primary">Billing Role</h3>
+
+              <InlineGuideStep title="Step 1: Create IAM role" previewTitle="Create role in IAM" previewContext="Create role in IAM" onOpenHelp={openHelpModal}>
+                <ol className="list-decimal space-y-2 pl-4">
+                  <li>Go to <strong>IAM → Roles</strong>. <AwsConsoleLink label="Create role in AWS" url={createRoleUrl} className="ml-1" /></li>
+                  <li>Click <strong>Create role</strong>.</li>
+                  <li>Select <strong>Another AWS account</strong>.</li>
+                  <li>
+                    Enter this <strong>Account ID</strong>:
+                    <div className="mt-1">
+                      <ReadonlyCopyField value={form.awsAccountId} copyKey="billing-account-id" copiedKey={copiedKey} onCopy={copyToClipboard} ariaLabel="Copy AWS account ID" />
+                    </div>
+                  </li>
+                  <li>
+                    Enable <strong>&quot;Require external ID&quot;</strong> and enter:
+                    <div className="mt-1">
+                      <ReadonlyCopyField value={form.externalId} copyKey="billing-external-id" copiedKey={copiedKey} onCopy={copyToClipboard} ariaLabel="Copy external ID" />
+                    </div>
+                  </li>
+                  <li>Click <strong>Next -&gt; Next</strong>.</li>
+                  <li>
+                    Set role name:
+                    <div className="mt-1">
+                      <ReadonlyCopyField value={derived.billingRoleName} copyKey="billing-role-name" copiedKey={copiedKey} onCopy={copyToClipboard} ariaLabel="Copy billing role name" />
+                    </div>
+                  </li>
+                  <li>Click <strong>Create role</strong>.</li>
+                </ol>
+              </InlineGuideStep>
+
+              <InlineGuideStep title="Step 2: Update trust policy" previewTitle="Edit trust policy" previewContext="Edit trust policy" onOpenHelp={openHelpModal}>
+                <ol className="list-decimal space-y-2 pl-4">
+                  <li>Open the created role.</li>
+                  <li>Go to <strong>Trust relationships</strong>.</li>
+                  <li>Click <strong>Edit trust policy</strong>.</li>
+                  <li>Replace the JSON with this policy:
+                    <div><InlineActionLink label="View Billing Role Trust Policy" onClick={() => openPolicyDrawer("Billing Role Trust Policy", generated.billingRoleTrustPolicy)} disabled={!requiredSetupValuesReady} /></div>
+                  </li>
+                  <li>Click <strong>Update policy</strong>.</li>
+                </ol>
+              </InlineGuideStep>
+
+              <InlineGuideStep title="Step 3: Add inline permissions policy" previewTitle="Create inline policy" previewContext="Create inline policy" onOpenHelp={openHelpModal}>
+                <ol className="list-decimal space-y-2 pl-4">
+                  <li>Go to the <strong>Permissions</strong> tab.</li>
+                  <li>Click <strong>Add permissions -&gt; Create inline policy</strong>.</li>
+                  <li>Select the <strong>JSON tab</strong>.</li>
+                  <li>Replace the JSON with this policy:
+                    <div><InlineActionLink label="View Billing Data Access Policy" onClick={() => openPolicyDrawer("Billing Data Access Policy", generated.billingRolePermissionsPolicy)} disabled={!requiredSetupValuesReady} /></div>
+                  </li>
+                  <li>Click <strong>Review policy</strong>.</li>
+                  <li>Enter a policy name.</li>
+                  <li>Click <strong>Create policy</strong>.</li>
+                </ol>
+              </InlineGuideStep>
+
+              <InlineGuideStep title="Step 4: Paste role ARN" previewTitle="Copy role ARN" previewContext="Copy role ARN" onOpenHelp={openHelpModal}>
+                <ol className="list-decimal space-y-2 pl-4">
+                  <li>Go to the role summary page.</li>
+                  <li>Copy the <strong>Role ARN</strong>.</li>
+                  <li>Paste it below.</li>
+                  <li>Click <strong>Validate Billing Role</strong>.</li>
+                </ol>
+                <div className="mt-2">
+                  {(form.billingRoleArn.trim() || billingValidation === "success") ? <AwsConsoleLink label="Open this role in AWS" url={billingRoleDetailsUrl} /> : null}
+                </div>
+                <label className="mt-2 block space-y-1">
+                  <span className={LABEL_CLASS}>Billing Role ARN</span>
                   <input
                     className={CONTROL_CLASS}
-                    value={form.actionRoleArn}
-                    onChange={(event) => setField("actionRoleArn", event.target.value)}
-                    placeholder={`arn:aws:iam::${form.awsAccountId || "123456789012"}:role/${derived.actionRoleName}`}
+                    value={form.billingRoleArn}
+                    onChange={(event) => {
+                      setField("billingRoleArn", event.target.value)
+                      setBillingValidation("idle")
+                    }}
+                    placeholder={`arn:aws:iam::${form.awsAccountId || "123456789012"}:role/${derived.billingRoleName}`}
                   />
                 </label>
-                <PolicyBlock title="Action Role Trust Policy" content={generated.actionRoleTrustPolicy} copyKey="artp" copiedKey={copiedKey} onCopy={copyToClipboard} disabled={!requiredSetupValuesReady} helper="Setup values are required." />
-                <PolicyBlock title="Action Role Base Permissions Policy" content={generated.actionRoleBasePermissionsPolicy} copyKey="arbp" copiedKey={copiedKey} onCopy={copyToClipboard} disabled={!requiredSetupValuesReady} helper="Setup values are required." />
-                {form.enableEc2Module ? <PolicyBlock title="EC2 Module Policy" content={generated.ec2ModulePolicy} copyKey="ec2p" copiedKey={copiedKey} onCopy={copyToClipboard} disabled={!requiredSetupValuesReady} helper="Setup values are required." /> : null}
-              </div>
-            </details>
-          ) : null}
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <Button type="button" className="h-9 rounded-md" onClick={() => simulateValidation(setBillingValidation, form.billingRoleArn.includes(derived.billingRoleName))} disabled={!form.billingRoleArn.trim() || billingValidation === "loading"}>Validate Billing Role</Button>
+                  <ValidationBanner state={billingValidation} idleText="Validation pending." successText="Billing role validated." errorText="Validation failed. Verify trust policy and ARN." />
+                </div>
+              </InlineGuideStep>
+            </section>
 
-          <label className="space-y-1">
-            <span className={LABEL_CLASS}>Billing Role ARN</span>
-            <input
-              className={CONTROL_CLASS}
-              value={form.billingRoleArn}
-              onChange={(event) => {
-                setField("billingRoleArn", event.target.value)
-                setBillingValidation("idle")
-              }}
-              placeholder={`arn:aws:iam::${form.awsAccountId || "123456789012"}:role/${derived.billingRoleName}`}
-            />
-          </label>
-          <div className="flex flex-wrap items-center gap-2">
-            <Button type="button" className="h-9 rounded-md" onClick={() => simulateValidation(setBillingValidation, form.billingRoleArn.includes(derived.billingRoleName))} disabled={!form.billingRoleArn.trim() || billingValidation === "loading"}>Validate Role</Button>
-            <ValidationBanner state={billingValidation} idleText="Validation pending." successText="Billing role validated." errorText="Validation failed. Verify trust policy and ARN." />
+            {form.enableActionRole ? (
+              <section className="space-y-1 rounded-[10px] border border-[color:var(--border-light)] bg-white p-4">
+                <h3 className="text-[22px] font-semibold text-text-primary">Action Role</h3>
+
+                <InlineGuideStep title="Step 1: Create IAM role" previewTitle="Create role in IAM" previewContext="Create role in IAM" onOpenHelp={openHelpModal}>
+                  <ol className="list-decimal space-y-2 pl-4">
+                    <li>Go to <strong>IAM → Roles</strong>. <AwsConsoleLink label="Create role in AWS" url={createRoleUrl} className="ml-1" /></li>
+                    <li>Click <strong>Create role</strong>.</li>
+                    <li>Select <strong>Another AWS account</strong>.</li>
+                    <li>
+                      Enter this <strong>Account ID</strong>:
+                      <div className="mt-1">
+                        <ReadonlyCopyField value={form.awsAccountId} copyKey="action-account-id" copiedKey={copiedKey} onCopy={copyToClipboard} ariaLabel="Copy AWS account ID" />
+                      </div>
+                    </li>
+                    <li>
+                      Enable <strong>&quot;Require external ID&quot;</strong> and enter:
+                      <div className="mt-1">
+                        <ReadonlyCopyField value={form.externalId} copyKey="action-external-id" copiedKey={copiedKey} onCopy={copyToClipboard} ariaLabel="Copy external ID" />
+                      </div>
+                    </li>
+                    <li>Click <strong>Next -&gt; Next</strong>.</li>
+                    <li>
+                      Set role name:
+                      <div className="mt-1">
+                        <ReadonlyCopyField value={derived.actionRoleName} copyKey="action-role-name" copiedKey={copiedKey} onCopy={copyToClipboard} ariaLabel="Copy action role name" />
+                      </div>
+                    </li>
+                    <li>Click <strong>Create role</strong>.</li>
+                  </ol>
+                </InlineGuideStep>
+
+                <InlineGuideStep title="Step 2: Update trust policy" previewTitle="Edit trust policy" previewContext="Edit trust policy" onOpenHelp={openHelpModal}>
+                  <ol className="list-decimal space-y-2 pl-4">
+                    <li>Open the created role.</li>
+                    <li>Go to <strong>Trust relationships</strong>.</li>
+                    <li>Click <strong>Edit trust policy</strong>.</li>
+                    <li>Replace the JSON with this policy:
+                      <div><InlineActionLink label="View Action Role Trust Policy" onClick={() => openPolicyDrawer("Action Role Trust Policy", generated.actionRoleTrustPolicy)} disabled={!requiredSetupValuesReady} /></div>
+                    </li>
+                    <li>Click <strong>Update policy</strong>.</li>
+                  </ol>
+                </InlineGuideStep>
+
+                <InlineGuideStep title="Step 3: Add inline permissions policy" previewTitle="Create inline policy" previewContext="Create inline policy" onOpenHelp={openHelpModal}>
+                  <ol className="list-decimal space-y-2 pl-4">
+                    <li>Go to the <strong>Permissions</strong> tab.</li>
+                    <li>Click <strong>Add permissions -&gt; Create inline policy</strong>.</li>
+                    <li>Select the <strong>JSON tab</strong>.</li>
+                    <li>Add this policy:
+                      <div><InlineActionLink label="View Core Permissions Policy" onClick={() => openPolicyDrawer("Core Permissions Policy", generated.actionRoleBasePermissionsPolicy)} disabled={!requiredSetupValuesReady} /></div>
+                    </li>
+                    <li>Click <strong>Review policy</strong>, add a name, then click <strong>Create policy</strong>.</li>
+                    {form.enableEc2Module ? <li>If EC2 module is enabled, create another inline policy using:
+                      <div><InlineActionLink label="View EC2 Read Access Policy" onClick={() => openPolicyDrawer("EC2 Read Access Policy", generated.ec2ModulePolicy)} disabled={!requiredSetupValuesReady} /></div>
+                    </li> : null}
+                  </ol>
+                </InlineGuideStep>
+
+                <InlineGuideStep title="Step 4: Paste role ARN" previewTitle="Copy role ARN" previewContext="Copy role ARN" onOpenHelp={openHelpModal}>
+                  <ol className="list-decimal space-y-2 pl-4">
+                    <li>Copy the <strong>Role ARN</strong> from AWS.</li>
+                    <li>Paste it below.</li>
+                  </ol>
+                  <div className="mt-2">{form.actionRoleArn.trim() ? <AwsConsoleLink label="Open this role in AWS" url={actionRoleDetailsUrl} /> : null}</div>
+                  <label className="mt-2 block space-y-1">
+                    <span className={LABEL_CLASS}>Action Role ARN</span>
+                    <input
+                      className={CONTROL_CLASS}
+                      value={form.actionRoleArn}
+                      onChange={(event) => setField("actionRoleArn", event.target.value)}
+                      placeholder={`arn:aws:iam::${form.awsAccountId || "123456789012"}:role/${derived.actionRoleName}`}
+                    />
+                  </label>
+                </InlineGuideStep>
+              </section>
+            ) : null}
           </div>
         </div>
       ) : null}
@@ -1242,6 +1585,18 @@ function ManualSetupWizard({ activeRoute }: { activeRoute: string }) {
           cloudTrailValidation={cloudTrailValidation}
         />
       ) : null}
+
+      <PolicyDrawer
+        state={policyDrawer}
+        copied={copiedKey === "policy-drawer-copy"}
+        onOpenChange={(nextOpen) => setPolicyDrawer((current) => ({ ...current, open: nextOpen }))}
+        onCopy={() => copyToClipboard("policy-drawer-copy", policyDrawer.content)}
+      />
+
+      <HelpModal
+        state={helpModal}
+        onOpenChange={(nextOpen) => setHelpModal((current) => ({ ...current, open: nextOpen }))}
+      />
 
       {completeSetupError ? (
         <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">

@@ -1,0 +1,13 @@
+@startuml
+title CU_14 Review Ticket - Activity
+start
+:ClientUser opens ticket details;
+:Review current status and progress;
+if (Client feedback required?) then (Yes)
+  :Update ticket workflow state;
+  stop
+else (No)
+  :Close review;
+  stop
+endif
+@enduml

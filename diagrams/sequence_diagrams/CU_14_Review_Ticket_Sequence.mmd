@@ -1,0 +1,8 @@
+%% Use Case: Review Ticket
+%% Limitation: no explicit review/read method in class diagrams; represented by workflow progression.
+sequenceDiagram
+    actor ClientUser
+    participant SupportTicket
+
+    ClientUser->>SupportTicket: advanceWorkflow(stage: String, progress: String)
+    SupportTicket-->>ClientUser: ticket workflow updated

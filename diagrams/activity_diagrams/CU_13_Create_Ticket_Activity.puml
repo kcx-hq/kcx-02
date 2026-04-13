@@ -1,0 +1,14 @@
+@startuml
+title CU_13 Create Ticket - Activity
+start
+:ClientUser enters issue details;
+if (Required fields valid?) then (Yes)
+  :Create support ticket;
+  :Show ticket code and status;
+  stop
+else (No)
+  :Show validation errors;
+  :Correct ticket details;
+  stop
+endif
+@enduml

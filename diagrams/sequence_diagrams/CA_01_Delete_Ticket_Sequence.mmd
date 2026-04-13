@@ -1,0 +1,8 @@
+%% Use Case: Delete Ticket
+%% Limitation: no explicit delete() method; modeled using close() as nearest supported operation.
+sequenceDiagram
+    actor ClientAdmin
+    participant SupportTicket
+
+    ClientAdmin->>SupportTicket: close()
+    SupportTicket-->>ClientAdmin: ticket closed

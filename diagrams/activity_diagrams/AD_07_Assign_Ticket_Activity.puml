@@ -1,0 +1,16 @@
+@startuml
+title AD_07 Assign Ticket - Activity
+
+start
+:Admin opens unassigned ticket;
+:Select support team;
+if (Team available?) then (Yes)
+  :Assign ticket team;
+  :Confirm assignment;
+  stop
+else (No)
+  :Select alternate team;
+  stop
+endif
+
+@enduml

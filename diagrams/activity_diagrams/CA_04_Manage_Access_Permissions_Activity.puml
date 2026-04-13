@@ -1,0 +1,14 @@
+@startuml
+title CA_04 Manage Access Permissions - Activity
+start
+:ClientAdmin opens access permissions;
+:Adjust roles/permissions;
+if (Changes valid?) then (Yes)
+  :Save permission updates;
+  :Show update success;
+  stop
+else (No)
+  :Show invalid permission configuration;
+  stop
+endif
+@enduml

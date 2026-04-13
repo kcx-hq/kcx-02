@@ -1,0 +1,8 @@
+%% Use Case: Delete Ticket
+%% Limitation: class_diagrams do not define SupportTicket.delete(); modeled with SupportTicket.close() as supported nearest action.
+sequenceDiagram
+    actor Admin
+    participant SupportTicket
+
+    Admin->>SupportTicket: close()
+    SupportTicket-->>Admin: ticket closed

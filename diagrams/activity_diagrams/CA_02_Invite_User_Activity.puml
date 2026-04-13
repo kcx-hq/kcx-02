@@ -1,0 +1,14 @@
+@startuml
+title CA_02 Invite User - Activity
+start
+:ClientAdmin opens team management;
+:Enter new user email and role;
+if (Invitation data valid?) then (Yes)
+  :Send invite to new user;
+  :Show invitation sent;
+  stop
+else (No)
+  :Show validation errors;
+  stop
+endif
+@enduml

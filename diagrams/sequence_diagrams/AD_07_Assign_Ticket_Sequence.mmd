@@ -1,0 +1,7 @@
+%% Use Case: Assign Ticket
+sequenceDiagram
+    actor Admin
+    participant SupportTicket
+
+    Admin->>SupportTicket: assignTeam(team: String)
+    SupportTicket-->>Admin: ticket assigned

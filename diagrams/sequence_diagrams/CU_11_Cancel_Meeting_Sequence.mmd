@@ -1,0 +1,7 @@
+%% Use Case: Cancel Meeting
+sequenceDiagram
+    actor ClientUser
+    participant SupportMeeting
+
+    ClientUser->>SupportMeeting: cancelByClient(reason: String)
+    SupportMeeting-->>ClientUser: meeting cancelled

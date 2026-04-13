@@ -1,0 +1,20 @@
+@startuml
+title PU_01 Select Slot - Activity
+
+start
+:Public User views available slots;
+:Public User selects preferred slot;
+:Call SlotReservation.reserve(...);
+
+if (Reservation active before expiry?) then (Yes)
+  :Keep slot reserved for inquiry;
+  stop
+else (No)
+  :Call SlotReservation.release();
+  :Select preferred slot again;
+  :Call SlotReservation.reserve(...);
+  :Keep slot reserved for inquiry;
+  stop
+endif
+
+@enduml
