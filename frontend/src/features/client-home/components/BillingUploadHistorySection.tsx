@@ -263,6 +263,7 @@ export function BillingUploadHistorySection({
                 </TableHead>
                 <TableHead>File Name</TableHead>
                 <TableHead>Uploaded At</TableHead>
+                <TableHead>Uploaded By</TableHead>
                 <TableHead>Processing Status</TableHead>
                 <TableHead>Rows</TableHead>
                 <TableHead className="text-right tracking-[0.14em]">Actions</TableHead>
@@ -290,6 +291,7 @@ export function BillingUploadHistorySection({
                     </TableCell>
                     <TableCell className="font-medium text-text-primary">{record.fileName}</TableCell>
                     <TableCell className="text-text-primary">{formatDateTime(record.uploadedAt)}</TableCell>
+                    <TableCell className="text-text-primary">{record.uploadedBy || "-"}</TableCell>
                     <TableCell>
                       <Badge variant="outline" className={cn("rounded-md", statusBadgeClass(status))}>
                         {formatStatusLabel(status)}
