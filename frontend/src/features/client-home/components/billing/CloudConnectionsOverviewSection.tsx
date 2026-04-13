@@ -15,6 +15,9 @@ type CloudConnectionsOverviewSectionProps = {
   dashboardConnectionActionId: string | null
   onRetryCloudIntegrations: () => void
   onOpenCloudConnectionDashboard: (integrationId: string) => void
+  onGetRequestActivityDetails: (
+    integrationId: string,
+  ) => Promise<{ ingestionRows: number | null; ingestedAt: string | null }>
   onConnectCloudProvider: (href: string) => void
 }
 
@@ -31,6 +34,7 @@ export function CloudConnectionsOverviewSection({
   dashboardConnectionActionId,
   onRetryCloudIntegrations,
   onOpenCloudConnectionDashboard,
+  onGetRequestActivityDetails,
   onConnectCloudProvider,
 }: CloudConnectionsOverviewSectionProps) {
   return (
@@ -66,6 +70,7 @@ export function CloudConnectionsOverviewSection({
             dashboardConnectionActionId={dashboardConnectionActionId}
             onRetry={onRetryCloudIntegrations}
             onOpenDashboard={onOpenCloudConnectionDashboard}
+            onGetRequestActivityDetails={onGetRequestActivityDetails}
           />
         </div>
         {dashboardActionError ? <p className="mt-3 text-sm text-rose-600">{dashboardActionError}</p> : null}
