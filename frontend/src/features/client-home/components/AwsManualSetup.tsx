@@ -8,7 +8,6 @@ import {
   Copy,
   ExternalLink,
   Loader2,
-  Sparkles,
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -88,10 +87,9 @@ const STEPS = [
   "Verify & Finish",
 ] as const
 
-const LABEL_CLASS = "text-[12px] font-semibold uppercase tracking-[0.08em] text-text-secondary"
+const LABEL_CLASS = "text-[13px] font-semibold uppercase tracking-[0.06em] text-text-secondary"
 const CONTROL_CLASS =
-  "h-[38px] w-full rounded-[8px] border border-[color:var(--border-light)] bg-white px-3 text-sm text-text-primary outline-none transition-colors focus:border-[color:var(--brand-primary)] focus:ring-2 focus:ring-[color:var(--brand-soft)]"
-const SECTION_TITLE_CLASS = "text-sm font-semibold uppercase tracking-[0.08em] text-brand-primary"
+  "h-[46px] w-full border-0 border-b border-[color:var(--border-light)] bg-transparent px-0 text-base font-medium text-text-primary outline-none transition-colors placeholder:text-text-muted focus:border-[color:var(--brand-primary)] focus:ring-0"
 
 function randomAlphaNumeric(length: number) {
   const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
@@ -226,44 +224,62 @@ function CopyButton({
   )
 }
 
-function SetupStepper({ currentStep }: { currentStep: number }) {
+function SetupStepper({
+  currentStep,
+  onStepChange,
+}: {
+  currentStep: number
+  onStepChange: (step: number) => void
+}) {
   return (
-    <ol className="grid grid-cols-1 gap-2 md:grid-cols-6" aria-label="Manual setup progress">
-      {STEPS.map((step, index) => {
-        const active = index === currentStep
-        const done = index < currentStep
-        return (
-          <li
-            key={step}
-            className={cn(
-              "rounded-[10px] border px-3 py-2 text-xs",
-              active
-                ? "border-[color:var(--brand-primary)] bg-[color:var(--brand-soft)]"
-                : done
-                  ? "border-emerald-200 bg-emerald-50"
-                  : "border-[color:var(--border-light)] bg-white",
-            )}
-          >
-            <div className="mb-1 flex items-center gap-2">
-              <span
-                className={cn(
-                  "inline-flex h-5 w-5 items-center justify-center rounded-full text-[11px] font-semibold",
-                  active
-                    ? "bg-[color:var(--brand-primary)] text-white"
-                    : done
-                      ? "bg-emerald-500 text-white"
-                      : "bg-[color:var(--bg-surface)] text-text-muted",
-                )}
+    <div className="overflow-x-auto pb-1">
+      <ol className="flex min-w-[780px] items-start" aria-label="Manual setup steps">
+        {STEPS.map((step, index) => {
+          const active = index === currentStep
+          const done = index < currentStep
+          return (
+            <li key={step} className="flex-1">
+              <button
+                type="button"
+                onClick={() => onStepChange(index)}
+                aria-current={active ? "step" : undefined}
+                className="group w-full px-1 text-left"
               >
-                {index + 1}
-              </span>
-              <p className={cn("font-semibold", active ? "text-brand-primary" : "text-text-secondary")}>{step}</p>
-            </div>
-            <p className="text-[11px] text-text-muted">{active ? "Active" : done ? "Completed" : "Upcoming"}</p>
-          </li>
-        )
-      })}
-    </ol>
+                <div className="relative mb-2 flex items-center">
+                  <span
+                    className={cn(
+                      "relative z-[1] inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border text-[12px] font-semibold transition-colors",
+                      active || done
+                        ? "border-[color:var(--brand-primary)] bg-[color:var(--brand-primary)] text-white"
+                        : "border-[color:var(--border-light)] bg-white text-text-muted group-hover:border-[color:var(--brand-primary)]",
+                    )}
+                  >
+                    {index + 1}
+                  </span>
+                  {index < STEPS.length - 1 ? (
+                    <span
+                      aria-hidden
+                      className={cn(
+                        "h-[2px] flex-1",
+                        done ? "bg-[color:var(--brand-primary)]" : "bg-[color:var(--border-light)]",
+                      )}
+                    />
+                  ) : null}
+                </div>
+                <p
+                  className={cn(
+                    "pr-2 text-xs font-semibold leading-4 transition-colors",
+                    active ? "text-brand-primary" : "text-text-secondary group-hover:text-text-primary",
+                  )}
+                >
+                  {step}
+                </p>
+              </button>
+            </li>
+          )
+        })}
+      </ol>
+    </div>
   )
 }
 function ValueCard({
@@ -600,19 +616,16 @@ function ValidationBanner({
 function OptionalSection({
   enabled,
   title,
-  description,
   children,
 }: {
   enabled: boolean
   title: string
-  description: string
   children: ReactNode
 }) {
   return (
-    <details className="space-y-3 rounded-[10px] border border-[color:var(--border-light)] bg-white p-3" open={enabled}>
+    <details className="space-y-3 border-b border-[color:var(--border-light)] pb-5" open={enabled}>
       <summary className="cursor-pointer list-none">
         <p className="text-sm font-semibold text-text-primary">{title}</p>
-        <p className="text-xs text-text-muted">{description}</p>
       </summary>
       <div className="mt-3 border-t border-[color:var(--border-light)] pt-3">
         {enabled ? children : <p className="text-sm text-text-muted">CloudTrail is disabled. This step is skippable.</p>}
@@ -1528,8 +1541,8 @@ FROM COST_AND_USAGE_REPORT`
   )
 
   return (
-    <div className="space-y-4">
-      <SetupStepper currentStep={currentStep} />
+    <div className="space-y-6">
+      <SetupStepper currentStep={currentStep} onStepChange={setCurrentStep} />
 
       {completed ? (
         <Card className="rounded-[10px] border-emerald-200 bg-emerald-50 shadow-none">
@@ -1551,8 +1564,7 @@ FROM COST_AND_USAGE_REPORT`
 
       {currentStep === 0 ? (
         <div className="space-y-4">
-          <section className="space-y-3 rounded-[10px] border border-[color:var(--border-light)] bg-white p-4">
-            <p className={SECTION_TITLE_CLASS}>Connection Details</p>
+          <section className="space-y-5 pb-4">
             <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
               <label className="space-y-1">
                 <span className={LABEL_CLASS}>Connection Name</span>
@@ -1577,14 +1589,13 @@ FROM COST_AND_USAGE_REPORT`
             </div>
           </section>
 
-          <section className="space-y-3 rounded-[10px] border border-[color:var(--border-light)] bg-white p-4">
-            <p className={SECTION_TITLE_CLASS}>Options</p>
+          <section className="space-y-5 pb-4">
             <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-              <label className="flex items-center gap-2 rounded-md border border-[color:var(--border-light)] bg-white px-3 py-2 text-sm text-text-primary">
+              <label className="flex items-center gap-3 px-1 py-2 text-base font-medium text-text-primary">
                 <input type="checkbox" className="h-4 w-4 accent-[color:var(--brand-primary)]" checked={form.enableCloudTrail} onChange={(event) => setField("enableCloudTrail", event.target.checked)} />
                 Enable CloudTrail
               </label>
-              <label className="flex items-center gap-2 rounded-md border border-[color:var(--border-light)] bg-white px-3 py-2 text-sm text-text-primary">
+              <label className="flex items-center gap-3 px-1 py-2 text-base font-medium text-text-primary">
                 <input type="checkbox" className="h-4 w-4 accent-[color:var(--brand-primary)]" checked={form.enableEc2Module} onChange={(event) => setField("enableEc2Module", event.target.checked)} />
                 Enable EC2 Module
               </label>
@@ -1595,15 +1606,8 @@ FROM COST_AND_USAGE_REPORT`
 
       {currentStep === 1 ? (
         <div className="space-y-6">
-          <section className="rounded-[10px] border border-[color:var(--border-light)] bg-white p-4">
-            <p className={SECTION_TITLE_CLASS}>Roles</p>
-            <p className="text-sm text-text-secondary">Use these generated values to create the required IAM roles in AWS.</p>
-          </section>
-
           <div className="space-y-6">
-            <section className="space-y-1 rounded-[10px] border border-[color:var(--border-light)] bg-white p-4">
-              <h3 className="text-[22px] font-semibold text-text-primary">Billing Role</h3>
-
+            <section className="space-y-2 border-b border-[color:var(--border-light)] pb-6">
               <InlineGuideStep title="Step 1: Create IAM role" previewTitle="Create role in IAM" previewContext="Create role in IAM" onOpenHelp={openHelpModal}>
                 <ol className="list-decimal space-y-2 pl-4">
                   <li>Go to <strong>IAM → Roles</strong>. <AwsConsoleLink label="Create role in AWS" url={createRoleUrl} className="ml-1" /></li>
@@ -1688,9 +1692,7 @@ FROM COST_AND_USAGE_REPORT`
             </section>
 
             {form.enableActionRole ? (
-              <section className="space-y-1 rounded-[10px] border border-[color:var(--border-light)] bg-white p-4">
-                <h3 className="text-[22px] font-semibold text-text-primary">Action Role</h3>
-
+              <section className="space-y-2 border-b border-[color:var(--border-light)] pb-6">
                 <InlineGuideStep title="Step 1: Create IAM role" previewTitle="Create role in IAM" previewContext="Create role in IAM" onOpenHelp={openHelpModal}>
                   <ol className="list-decimal space-y-2 pl-4">
                     <li>Go to <strong>IAM → Roles</strong>. <AwsConsoleLink label="Create role in AWS" url={createRoleUrl} className="ml-1" /></li>
@@ -1770,14 +1772,7 @@ FROM COST_AND_USAGE_REPORT`
 
       {currentStep === 2 ? (
         <div className="space-y-6">
-          <section className="rounded-[10px] border border-[color:var(--border-light)] bg-white p-4">
-            <p className={SECTION_TITLE_CLASS}>Billing Export</p>
-            <p className="text-sm text-text-secondary">Follow these steps to configure AWS Billing Data Export for KCX ingestion.</p>
-          </section>
-
-          <section className="space-y-1 rounded-[10px] border border-[color:var(--border-light)] bg-white p-4">
-            <h3 className="text-[22px] font-semibold text-text-primary">Billing Export</h3>
-
+          <section className="space-y-2 border-b border-[color:var(--border-light)] pb-6">
             <InlineGuideStep title="Step 1: Create S3 bucket" previewTitle="Create bucket in S3" previewContext="Create bucket in S3" onOpenHelp={openHelpModal}>
               <ol className="list-decimal space-y-2 pl-4">
                 <li>Open AWS S3. <AwsConsoleLink label="Create bucket in AWS" url={createBucketUrl} className="ml-1" /></li>
@@ -1905,16 +1900,7 @@ FROM COST_AND_USAGE_REPORT`
 
       {currentStep === 3 ? (
         <div className="space-y-4">
-          <div className="rounded-[10px] border border-[color:var(--brand-primary)] bg-[color:var(--brand-soft)] px-3 py-2.5">
-            <div className="flex items-start gap-2">
-              <Sparkles className="mt-0.5 h-4 w-4 text-brand-primary" />
-              <p className="text-sm font-medium text-text-primary">
-                File Event Automation is required for automatic ingestion. This flow routes S3 export files to EventBridge, then Lambda, then KCX callback.
-              </p>
-            </div>
-          </div>
-
-          <section className="space-y-0 rounded-[10px] border border-[color:var(--border-light)] bg-white px-4 py-3">
+          <section className="space-y-0">
             <InlineGuideStep title="Step 1: Create Lambda function" previewTitle="Create Lambda function" previewContext="Create Lambda function in AWS Lambda" onOpenHelp={openHelpModal}>
               <ol className="list-decimal space-y-2 pl-4">
                 <li>Open AWS Lambda. <AwsConsoleLink label="Create Lambda function in AWS" url={createLambdaUrl} className="ml-1" /></li>
@@ -2089,11 +2075,11 @@ FROM COST_AND_USAGE_REPORT`
       ) : null}
       {currentStep === 4 ? (
         <div className="space-y-3">
-          <label className="flex items-center gap-2 rounded-md border border-[color:var(--border-light)] bg-white px-3 py-2 text-sm text-text-primary">
+          <label className="flex items-center gap-3 border-b border-[color:var(--border-light)] px-1 py-2 text-base font-medium text-text-primary">
             <input type="checkbox" className="h-4 w-4 accent-[color:var(--brand-primary)]" checked={form.enableCloudTrail} onChange={(event) => setField("enableCloudTrail", event.target.checked)} />
             Enable CloudTrail ingestion
           </label>
-          <OptionalSection enabled={form.enableCloudTrail} title="CloudTrail setup" description="Optional module for CloudTrail file ingestion.">
+          <OptionalSection enabled={form.enableCloudTrail} title="CloudTrail setup">
             <div className="space-y-0">
               <InlineGuideStep title="Step 1: Create S3 bucket" previewTitle="Create bucket in S3" previewContext="Create bucket in S3" onOpenHelp={openHelpModal}>
                 <ol className="list-decimal space-y-2 pl-4">
@@ -2354,8 +2340,8 @@ FROM COST_AND_USAGE_REPORT`
         </div>
       ) : null}
 
-      <div className="sticky bottom-0 z-10 flex flex-wrap items-center justify-between gap-2 rounded-[10px] border border-[color:var(--border-light)] bg-white px-3 py-2">
-        <p className="text-xs text-text-muted">Step {currentStep + 1} of {STEPS.length}</p>
+      <div className="flex flex-wrap items-center justify-between gap-2 pt-4">
+        <p className="text-sm font-medium text-text-muted">Step {currentStep + 1} of {STEPS.length}</p>
         <div className="flex flex-wrap items-center gap-2">
           <Button type="button" variant="outline" className="h-9 rounded-md" onClick={goBack} disabled={currentStep === 0}>
             <span className="inline-flex items-center gap-1.5"><ChevronLeft className="h-4 w-4" />Back</span>
@@ -2385,3 +2371,4 @@ FROM COST_AND_USAGE_REPORT`
 export function AwsManualSetup({ activeRoute }: { activeRoute: string }) {
   return <ManualSetupWizard activeRoute={activeRoute} />
 }
+

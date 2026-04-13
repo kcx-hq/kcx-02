@@ -34,61 +34,24 @@ type ApiErrorPayload = {
 
 type FormState = {
   connectionName: string
-  region: string
   accountType: AccountType
-  enableEC2Module: boolean
-  enableCloudTrail: boolean
-  useTagScopedAccess: boolean
-  resourceTagKey: string
-  resourceTagValue: string
 }
 
-type FormErrors = Partial<Record<"connectionName" | "region" | "resourceTagKey" | "resourceTagValue", string>>
+type FormErrors = Partial<Record<"connectionName", string>>
 
-const AWS_REGION_OPTIONS = [
-  "us-east-1",
-  "us-east-2",
-  "us-west-1",
-  "us-west-2",
-  "ca-central-1",
-  "eu-west-1",
-  "eu-central-1",
-  "eu-west-2",
-  "ap-south-1",
-  "ap-southeast-1",
-  "ap-southeast-2",
-  "ap-northeast-1",
-]
+const DEFAULT_AWS_REGION = "us-east-1"
 
-const SECTION_TITLE_CLASS = "text-sm font-semibold uppercase tracking-[0.08em] text-brand-primary"
-const LABEL_CLASS = "text-[13px] font-semibold uppercase tracking-[0.06em] text-text-secondary"
-const REQUIRED_ASTERISK_CLASS = "ml-1 text-[13px] font-semibold text-brand-primary"
-const CONTROL_CLASS =
-  "h-[34px] w-full rounded-[7px] border border-[color:var(--border-light)] bg-[color:var(--bg-surface)] px-2.5 text-sm text-text-primary placeholder:text-text-muted outline-none transition-colors hover:border-[color:var(--kcx-border-strong)] focus:border-[color:var(--brand-primary)] focus:ring-2 focus:ring-[color:var(--brand-soft)]"
+const FIELD_LABEL_CLASS = "text-[18px] font-semibold text-text-secondary"
+const FIELD_CONTROL_CLASS =
+  "h-12 w-full border-0 border-b border-[color:var(--border-light)] bg-transparent px-0 text-[16px] text-text-primary outline-none transition-colors placeholder:text-text-muted hover:border-[color:var(--kcx-border-strong)] focus:border-[color:var(--brand-primary)] sm:text-[18px]"
 
 function validateForm(input: {
   connectionName: string
-  region: string
-  useTagScopedAccess: boolean
-  resourceTagKey: string
-  resourceTagValue: string
 }): FormErrors {
   const errors: FormErrors = {}
 
   if (!input.connectionName.trim()) {
     errors.connectionName = "Connection Name is required."
-  }
-
-  if (!input.region.trim()) {
-    errors.region = "Region is required."
-  }
-
-  if (input.useTagScopedAccess && !input.resourceTagKey.trim()) {
-    errors.resourceTagKey = "Resource Tag Key is required when tag scoped access is enabled."
-  }
-
-  if (input.useTagScopedAccess && !input.resourceTagValue.trim()) {
-    errors.resourceTagValue = "Resource Tag Value is required when tag scoped access is enabled."
   }
 
   return errors
@@ -105,15 +68,13 @@ function isDuplicateCloudConnectionError(error: ApiError): boolean {
 
 export function AwsAutomaticSetup({ activeRoute }: AwsAutomaticSetupProps) {
   void activeRoute
-  const [form, setForm] = useState<FormState>({
+  const initialFormState: FormState = {
     connectionName: "",
-    region: "us-east-1",
     accountType: "payer",
-    enableEC2Module: true,
-    enableCloudTrail: false,
-    useTagScopedAccess: false,
-    resourceTagKey: "",
-    resourceTagValue: "",
+  }
+
+  const [form, setForm] = useState<FormState>({
+    ...initialFormState,
   })
   const [hasSubmitted, setHasSubmitted] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -125,22 +86,18 @@ export function AwsAutomaticSetup({ activeRoute }: AwsAutomaticSetupProps) {
     () =>
       validateForm({
         connectionName: normalizedConnectionName,
-        region: form.region,
-        useTagScopedAccess: form.useTagScopedAccess,
-        resourceTagKey: form.resourceTagKey,
-        resourceTagValue: form.resourceTagValue,
       }),
-    [
-      form.region,
-      form.resourceTagKey,
-      form.resourceTagValue,
-      form.useTagScopedAccess,
-      normalizedConnectionName,
-    ],
+    [normalizedConnectionName],
   )
 
   function setField<K extends keyof FormState>(field: K, value: FormState[K]) {
     setForm((previous) => ({ ...previous, [field]: value }))
+  }
+
+  function onClearForm() {
+    setForm(initialFormState)
+    setHasSubmitted(false)
+    setSubmitError(null)
   }
 
   function onSubmitAutomaticSetup() {
@@ -161,13 +118,11 @@ export function AwsAutomaticSetup({ activeRoute }: AwsAutomaticSetupProps) {
         })
 
         const payload: AwsCloudFormationSetupPayload = {
-          region: form.region,
-          enableEC2Module: form.enableEC2Module,
-          enableCloudTrail: form.enableCloudTrail,
-          useTagScopedAccess: form.useTagScopedAccess,
+          region: DEFAULT_AWS_REGION,
+          enableEC2Module: true,
+          enableCloudTrail: true,
+          useTagScopedAccess: false,
           accountType: form.accountType,
-          ...(form.useTagScopedAccess ? { resourceTagKey: form.resourceTagKey.trim() } : {}),
-          ...(form.useTagScopedAccess ? { resourceTagValue: form.resourceTagValue.trim() } : {}),
         }
 
         const setup = await apiPost<{ url: string }>(`/cloud-connections/${created.id}/aws-cloudformation-url`, payload)
@@ -199,181 +154,93 @@ export function AwsAutomaticSetup({ activeRoute }: AwsAutomaticSetupProps) {
   }
 
   return (
-    <>
-      <div className="w-full max-w-[860px] space-y-4">
-        <section className="space-y-2.5">
-          <p className={SECTION_TITLE_CLASS}>Basic Connection Info</p>
-          <div className="grid grid-cols-1 gap-2.5 md:grid-cols-2">
-            <label className="space-y-1 md:col-span-2">
-              <span className={LABEL_CLASS}>
-                Connection Name
-                <span className={REQUIRED_ASTERISK_CLASS}>*</span>
-              </span>
-              <input
-                className={cn(
-                  CONTROL_CLASS,
-                  hasSubmitted && formErrors.connectionName ? "border-rose-300" : "border-[color:var(--border-light)]",
-                )}
-                placeholder="prod-aws-account"
-                value={form.connectionName}
-                onChange={(event) => setField("connectionName", event.target.value)}
-              />
-              {hasSubmitted && formErrors.connectionName ? (
-                <p className="text-xs text-rose-600">{formErrors.connectionName}</p>
-              ) : null}
-            </label>
-
-            <label className="space-y-1">
-              <span className={LABEL_CLASS}>
-                Region
-                <span className={REQUIRED_ASTERISK_CLASS}>*</span>
-              </span>
-              <select
-                className={cn(
-                  CONTROL_CLASS,
-                  hasSubmitted && formErrors.region ? "border-rose-300" : "border-[color:var(--border-light)]",
-                )}
-                value={form.region}
-                onChange={(event) => setField("region", event.target.value)}
-              >
-                {AWS_REGION_OPTIONS.map((region) => (
-                  <option key={region} value={region}>
-                    {region}
-                  </option>
-                ))}
-              </select>
-              {hasSubmitted && formErrors.region ? <p className="text-xs text-rose-600">{formErrors.region}</p> : null}
-            </label>
-
-            <fieldset className="space-y-1">
-              <legend className={LABEL_CLASS}>
-                Account Type
-                <span className={REQUIRED_ASTERISK_CLASS}>*</span>
-              </legend>
-              <div className="space-y-0.5 rounded-[7px] border border-[color:var(--border-light)] bg-[color:var(--bg-surface)] p-1.5">
-                <label className="flex items-center gap-2 rounded-sm px-1.5 py-0.5 text-sm text-text-primary transition-colors hover:bg-white">
-                  <input
-                    type="radio"
-                    name="aws-account-type"
-                    value="payer"
-                    checked={form.accountType === "payer"}
-                    onChange={() => setField("accountType", "payer")}
-                    className="h-4 w-4 accent-[color:var(--brand-primary)]"
-                  />
-                  <span>Payer Account</span>
-                </label>
-                <label className="flex items-center gap-2 rounded-sm px-1.5 py-0.5 text-sm text-text-primary transition-colors hover:bg-white">
-                  <input
-                    type="radio"
-                    name="aws-account-type"
-                    value="member"
-                    checked={form.accountType === "member"}
-                    onChange={() => setField("accountType", "member")}
-                    className="h-4 w-4 accent-[color:var(--brand-primary)]"
-                  />
-                  <span>Member Account</span>
-                </label>
-              </div>
-            </fieldset>
-          </div>
-        </section>
-
-        <section className="space-y-2.5 border-t border-[color:var(--border-light)] pt-4">
-          <p className={SECTION_TITLE_CLASS}>Optional Modules</p>
-          <div className="space-y-1">
-            <label className="flex items-center gap-2 rounded-[7px] px-2 py-1 text-sm text-text-primary transition-colors hover:bg-[color:var(--bg-surface)]">
-              <input
-                type="checkbox"
-                className="h-4 w-4 accent-[color:var(--brand-primary)]"
-                checked={form.enableCloudTrail}
-                onChange={(event) => setField("enableCloudTrail", event.target.checked)}
-              />
-              <span className="font-medium">Enable CloudTrail</span>
-            </label>
-            <label className="flex items-center gap-2 rounded-[7px] px-2 py-1 text-sm text-text-primary transition-colors hover:bg-[color:var(--bg-surface)]">
-              <input
-                type="checkbox"
-                className="h-4 w-4 accent-[color:var(--brand-primary)]"
-                checked={form.enableEC2Module}
-                onChange={(event) => setField("enableEC2Module", event.target.checked)}
-              />
-              <span className="font-medium">Enable EC2 Module</span>
-            </label>
-          </div>
-        </section>
-
-        <section className="space-y-2.5 border-t border-[color:var(--border-light)] pt-4">
-          <p className={SECTION_TITLE_CLASS}>Tag Scoped Access</p>
-          <label className="flex items-center gap-2 rounded-[7px] px-2 py-1 text-sm text-text-primary transition-colors hover:bg-[color:var(--bg-surface)]">
-            <input
-              type="checkbox"
-              className="h-4 w-4 accent-[color:var(--brand-primary)]"
-              checked={form.useTagScopedAccess}
-              onChange={(event) => setField("useTagScopedAccess", event.target.checked)}
-            />
-            <span className="font-medium">Use minimal tag access</span>
-          </label>
-
-          {form.useTagScopedAccess ? (
-            <div className="grid grid-cols-1 gap-2.5 md:grid-cols-2">
-              <label className="space-y-1">
-                <span className={LABEL_CLASS}>
-                  Resource Tag Key
-                  <span className={REQUIRED_ASTERISK_CLASS}>*</span>
-                </span>
-                <input
-                  className={cn(
-                    CONTROL_CLASS,
-                    hasSubmitted && formErrors.resourceTagKey ? "border-rose-300" : "border-[color:var(--border-light)]",
-                  )}
-                  placeholder="Environment"
-                  value={form.resourceTagKey}
-                  onChange={(event) => setField("resourceTagKey", event.target.value)}
-                />
-                {hasSubmitted && formErrors.resourceTagKey ? (
-                  <p className="text-xs text-rose-600">{formErrors.resourceTagKey}</p>
-                ) : null}
-              </label>
-
-              <label className="space-y-1">
-                <span className={LABEL_CLASS}>
-                  Resource Tag Value
-                  <span className={REQUIRED_ASTERISK_CLASS}>*</span>
-                </span>
-                <input
-                  className={cn(
-                    CONTROL_CLASS,
-                    hasSubmitted && formErrors.resourceTagValue ? "border-rose-300" : "border-[color:var(--border-light)]",
-                  )}
-                  placeholder="Production"
-                  value={form.resourceTagValue}
-                  onChange={(event) => setField("resourceTagValue", event.target.value)}
-                />
-                {hasSubmitted && formErrors.resourceTagValue ? (
-                  <p className="text-xs text-rose-600">{formErrors.resourceTagValue}</p>
-                ) : null}
-              </label>
-            </div>
-          ) : null}
-        </section>
-
-        {submitError ? (
-          <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{submitError}</div>
-        ) : null}
-
-        <div className="flex flex-wrap items-center gap-2 border-t border-[color:var(--border-light)] pt-2.5">
-          <Button className="h-9 rounded-md px-4" disabled={isSubmitting} onClick={onSubmitAutomaticSetup}>
-            {isSubmitting ? (
-              <span className="inline-flex items-center gap-2">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Generating Setup Link...
-              </span>
-            ) : (
-              "Generate AWS Setup Link"
-            )}
-          </Button>
+    <div className="w-full max-w-[980px] space-y-6">
+      <section className="max-w-[1040px] space-y-6 text-[16px] leading-[1.6] text-text-secondary md:text-[17px]">
+        <div className="space-y-3">
+          <p>
+            KCX launches a guided AWS onboarding using CloudFormation so your billing and usage discovery can be configured in one flow.
+          </p>
+          <p>
+            When you select <span className="font-semibold text-text-primary">Save & Continue,</span> we open AWS Console in a new tab to
+            deploy the stack with your account permissions.
+          </p>
+          <p>
+            For full setup steps, open{" "}
+            <a
+              href="/integrations/aws"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-semibold text-[color:var(--brand-primary)] underline underline-offset-4"
+            >
+              Automatically Connecting to AWS
+            </a>.
+          </p>
         </div>
+
+        <div className="space-y-3">
+          <p className="font-semibold text-text-primary">KCX automatic defaults</p>
+          <ul className="list-disc space-y-2 pl-7">
+            <li>Deploys the AWS integration stack in region <span className="font-semibold text-text-primary">{DEFAULT_AWS_REGION}</span>.</li>
+            <li>Enables CloudTrail and EC2 modules by default for complete billing and usage visibility.</li>
+          </ul>
+        </div>
+      </section>
+
+      <div className="grid grid-cols-1 gap-x-8 gap-y-6 md:grid-cols-2">
+        <label className="space-y-2">
+          <span className={FIELD_LABEL_CLASS}>Connection Name</span>
+          <input
+            className={cn(
+              FIELD_CONTROL_CLASS,
+              hasSubmitted && formErrors.connectionName ? "border-rose-300" : "border-[color:var(--border-light)]",
+            )}
+            placeholder="e.g. prod-aws-account"
+            value={form.connectionName}
+            onChange={(event) => setField("connectionName", event.target.value)}
+          />
+          {hasSubmitted && formErrors.connectionName ? (
+            <p className="text-xs text-rose-600">{formErrors.connectionName}</p>
+          ) : null}
+        </label>
+
+        <label className="space-y-2">
+          <span className={FIELD_LABEL_CLASS}>Account Type</span>
+          <select
+            className={cn(FIELD_CONTROL_CLASS, "pr-8")}
+            value={form.accountType}
+            onChange={(event) => setField("accountType", event.target.value as AccountType)}
+          >
+            <option value="payer">Payer Account</option>
+            <option value="member">Member Account</option>
+          </select>
+        </label>
+
       </div>
-    </>
+
+      {submitError ? (
+        <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{submitError}</div>
+      ) : null}
+
+      <div className="flex flex-wrap items-center justify-end gap-3 border-t border-[color:var(--border-light)] pt-5">
+        <button
+          type="button"
+          onClick={onClearForm}
+          className="h-10 rounded-md px-4 text-base font-semibold text-text-secondary transition-colors hover:text-text-primary"
+          disabled={isSubmitting}
+        >
+          Clear Form
+        </button>
+        <Button className="h-10 rounded-md px-5 text-base font-semibold" disabled={isSubmitting} onClick={onSubmitAutomaticSetup}>
+          {isSubmitting ? (
+            <span className="inline-flex items-center gap-2">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Generating Setup Link...
+            </span>
+          ) : (
+            "Save & Continue"
+          )}
+        </Button>
+      </div>
+    </div>
   )
 }
