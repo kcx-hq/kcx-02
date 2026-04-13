@@ -108,7 +108,9 @@ export async function requestPasswordReset(email: string): Promise<{ emailSent: 
         `Hi ${firstNameFromFullName(user.fullName)},`,
         "",
         "We received a request to reset your KCX password.",
-        ...(resetLink ? [`Reset link: ${resetLink}`] : ["Reset link is currently unavailable (missing FRONTEND_BASE_URL)."]),
+        ...(resetLink
+          ? [`Reset link: ${resetLink}`]
+          : ["Reset link is currently unavailable (missing/invalid FRONTEND_BASE_URL)."]),
         "",
         `This link expires in ${env.resetTokenTtlMinutes} minutes.`,
         "",

@@ -56,6 +56,15 @@ const optionalBoolean = (value: string | undefined): boolean | undefined => {
   return undefined;
 };
 
+const isLocalhostUrl = (value: string): boolean => {
+  try {
+    const hostname = new URL(value).hostname.toLowerCase();
+    return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
+  } catch {
+    return false;
+  }
+};
+
 const rawPort = process.env.PORT;
 const parsedPort = Number(rawPort ?? 5000);
 
@@ -76,6 +85,25 @@ const nodeEnv: "development" | "test" | "production" =
     ? process.env.NODE_ENV
     : "development";
 
+const resolveFrontendBaseUrl = (runtimeEnv: "development" | "test" | "production"): string | undefined => {
+  const frontendBaseUrl = optionalEnv(process.env.FRONTEND_BASE_URL);
+  const clientUrl = optionalEnv(process.env.CLIENT_URL);
+
+  if (runtimeEnv !== "production") {
+    return frontendBaseUrl ?? clientUrl;
+  }
+
+  if (frontendBaseUrl && !isLocalhostUrl(frontendBaseUrl)) {
+    return frontendBaseUrl;
+  }
+
+  if (clientUrl && !isLocalhostUrl(clientUrl)) {
+    return clientUrl;
+  }
+
+  return undefined;
+};
+
 const env = {
   dbUrl: requiredEnv(process.env.DB_URL, "DB_URL"),
   port,
@@ -94,7 +122,7 @@ const env = {
   mailgunApiKey: optionalEnv(process.env.MAILGUN_API_KEY),
   mailgunDomain: optionalEnv(process.env.MAILGUN_DOMAIN),
   mailgunFrom: optionalEnv(process.env.MAILGUN_FROM),
-  frontendBaseUrl: optionalEnv(process.env.FRONTEND_BASE_URL),
+  frontendBaseUrl: resolveFrontendBaseUrl(nodeEnv),
   awsCallbackUrl: optionalEnv(process.env.AWS_CALLBACK_URL),
   awsFileEventCallbackUrl:
     optionalEnv(process.env.AWS_FILE_EVENT_CALLBACK_URL) ?? optionalEnv(process.env.AWS_CALLBACK_URL),
