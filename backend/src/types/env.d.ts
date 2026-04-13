@@ -7,6 +7,7 @@ declare namespace NodeJS {
     MAILGUN_DOMAIN?: string;
     MAILGUN_FROM?: string;
     FRONTEND_BASE_URL?: string;
+    CLIENT_URL?: string;
     AWS_CALLBACK_URL?: string;
     AWS_ACCESS_KEY_ID?: string;
     AWS_SECRET_ACCESS_KEY?: string;

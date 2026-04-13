@@ -1,6 +1,7 @@
 import { useMemo, useState, type Dispatch, type ReactNode, type SetStateAction } from "react"
 import {
   AlertTriangle,
+  Check,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
@@ -301,6 +302,12 @@ type PolicyDrawerState = {
   open: boolean
   title: string
   content: string
+  description?: string
+  bullets?: string[]
+  note?: string
+  copyActionLabel?: string
+  copyAllFromKeyValues?: boolean
+  keyValues?: Array<{ key: string; value: string; helper?: string }>
 }
 
 type HelpModalState = {
@@ -388,7 +395,7 @@ function ReadonlyCopyField({
         aria-label={ariaLabel}
         title={copiedKey === copyKey ? "Copied" : "Copy"}
       >
-        <Copy className="h-3.5 w-3.5" />
+        {copiedKey === copyKey ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />}
       </button>
     </div>
   )
@@ -407,15 +414,17 @@ function InlineGuideStep({
         <p className="text-[17px] font-semibold text-text-primary">{title}</p>
         <div className="space-y-1 text-[15px] leading-6 text-text-secondary">{children}</div>
       </div>
-      <button
-        type="button"
-        className="h-fit self-start rounded-lg border border-[color:var(--border-light)] bg-[color:var(--bg-surface)] px-3 py-2.5 text-left hover:border-[color:var(--brand-primary)]"
-        onClick={() => onOpenHelp(previewTitle, previewContext)}
-      >
-        <div className="mb-2 h-20 rounded-md bg-white/70" />
-        <p className="text-xs font-medium text-text-primary">{previewTitle}</p>
+      <div className="self-start">
+        <p className="mb-1 text-xs font-medium text-text-primary">{previewTitle}</p>
+        <button
+          type="button"
+          className="inline-flex items-center rounded-md border border-[color:var(--border-light)] bg-[color:var(--bg-surface)] px-3 py-1.5 text-[13px] font-medium text-brand-primary hover:border-[color:var(--brand-primary)] hover:underline"
+          onClick={() => onOpenHelp(previewTitle, previewContext)}
+        >
+          Preview
+        </button>
         <p className="mt-1 text-[12px] text-text-muted">See steps in AWS</p>
-      </button>
+      </div>
     </div>
   )
 }
@@ -444,14 +453,20 @@ function HelpModal({
 function PolicyDrawer({
   state,
   copied,
+  copiedKey,
   onOpenChange,
   onCopy,
 }: {
   state: PolicyDrawerState
   copied: boolean
+  copiedKey: string | null
   onOpenChange: (nextOpen: boolean) => void
-  onCopy: () => void
+  onCopy: (copyKey: string, value: string) => void
 }) {
+  const copyValue = state.copyAllFromKeyValues
+    ? (state.keyValues ?? []).map((row) => `${row.key}=${row.value}`).join("\n")
+    : state.content
+
   return (
     <Dialog open={state.open} onOpenChange={onOpenChange}>
       <DialogContent className="left-auto right-0 top-0 h-screen w-[min(96vw,44rem)] translate-x-0 translate-y-0 rounded-none border-l border-[color:var(--border-light)] p-0 data-[state=open]:zoom-in-100 data-[state=closed]:zoom-out-100">
@@ -459,59 +474,82 @@ function PolicyDrawer({
           <DialogHeader className="border-b border-[color:var(--border-light)] px-5 py-4">
             <div className="flex items-center justify-between gap-3 pr-10">
               <DialogTitle>{state.title}</DialogTitle>
-              <Button type="button" variant="outline" size="sm" className="h-8 rounded-md" onClick={onCopy}>
-                {copied ? "Copied" : "Copy Policy"}
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-8 rounded-md"
+                onClick={() => onCopy("policy-drawer-copy", copyValue)}
+                disabled={!copyValue.trim()}
+              >
+                {copied ? "Copied" : (state.copyActionLabel ?? "Copy")}
               </Button>
             </div>
           </DialogHeader>
           <div className="flex-1 overflow-auto px-5 py-4">
-            <pre className="max-h-full overflow-auto rounded-md border border-[color:var(--border-light)] bg-[color:var(--bg-surface)] p-3 text-xs leading-relaxed text-text-primary">
-              <code>{state.content}</code>
-            </pre>
+            {state.description ? <p className="mb-2 text-sm text-text-secondary">{state.description}</p> : null}
+            {state.bullets?.length ? (
+              <ul className="mb-2 list-disc space-y-1 pl-5 text-sm text-text-secondary">
+                {state.bullets.map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+            ) : null}
+            {state.keyValues?.length ? (
+              <div className="mb-3 overflow-x-auto rounded-md border border-[color:var(--border-light)] bg-white">
+                <div className="min-w-[620px]">
+                  <div className="grid grid-cols-[minmax(0,230px)_minmax(0,1fr)_64px] items-center bg-[color:var(--bg-surface)] px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-text-secondary">
+                    <p>Key</p>
+                    <p>Value</p>
+                    <p className="text-right">Copy</p>
+                  </div>
+                  {state.keyValues.map((row) => {
+                    const rowCopyKey = `policy-drawer-kv-${row.key}`
+                    const copiedRow = copiedKey === rowCopyKey
+                    return (
+                      <div
+                        key={row.key}
+                        className="grid grid-cols-[minmax(0,230px)_minmax(0,1fr)_64px] items-start gap-2 border-t border-[color:var(--border-light)] px-3 py-2.5"
+                      >
+                        <p className="break-all pr-2 font-mono text-[12px] text-text-primary">{row.key}</p>
+                        <div className="space-y-1">
+                          <p
+                            className="whitespace-pre-wrap break-all font-mono text-[12px] leading-5 text-text-primary"
+                            title={row.value}
+                          >
+                            {row.value}
+                          </p>
+                          {row.helper ? <p className="text-[11px] text-text-muted">{row.helper}</p> : null}
+                        </div>
+                        <div className="flex justify-end">
+                          <button
+                            type="button"
+                            className="inline-flex h-7 w-7 items-center justify-center rounded text-text-muted hover:bg-[color:var(--brand-soft)] hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-60"
+                            onClick={() => onCopy(rowCopyKey, row.value)}
+                            aria-label={`Copy ${row.key} value`}
+                            title={copiedRow ? "Copied" : "Copy value"}
+                            disabled={!row.value.trim()}
+                          >
+                            {copiedRow ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />}
+                          </button>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            ) : null}
+            {state.note ? <p className="mb-3 text-xs text-text-muted">{state.note}</p> : null}
+            {state.content.trim() ? (
+              <pre className="max-h-full overflow-auto rounded-md border border-[color:var(--border-light)] bg-[color:var(--bg-surface)] p-3 text-xs leading-relaxed text-text-primary">
+                <code>{state.content}</code>
+              </pre>
+            ) : null}
           </div>
         </div>
       </DialogContent>
     </Dialog>
   )
-}
-
-function GeneratedBlock({
-  title,
-  content,
-  copyKey,
-  copiedKey,
-  onCopy,
-  disabled,
-  helper,
-}: {
-  title: string
-  content: string
-  copyKey: string
-  copiedKey: string | null
-  onCopy: (copyKey: string, value: string) => void
-  disabled?: boolean
-  helper?: string
-}) {
-  return (
-    <div className="space-y-2">
-      <div className="flex items-start justify-between gap-2">
-        <p className="text-sm font-semibold text-text-primary">{title}</p>
-        <CopyButton onCopy={() => onCopy(copyKey, content)} copied={copiedKey === copyKey} disabled={disabled || !content.trim()} />
-      </div>
-      {disabled ? (
-        <div className="rounded-md border border-amber-300 bg-amber-50 px-2.5 py-2 text-xs text-amber-900">
-          {helper ?? "Complete required values first."}
-        </div>
-      ) : null}
-      <pre className="max-h-80 overflow-auto rounded-md border border-[color:var(--border-light)] bg-[color:var(--bg-surface)] p-3 text-xs leading-relaxed text-text-primary">
-        <code>{content}</code>
-      </pre>
-    </div>
-  )
-}
-
-function PolicyBlock(props: Parameters<typeof GeneratedBlock>[0]) {
-  return <GeneratedBlock {...props} />
 }
 
 function ValidationBanner({
@@ -674,7 +712,16 @@ function ManualSetupWizard({ activeRoute }: { activeRoute: string }) {
   const [currentStep, setCurrentStep] = useState(0)
   const [copiedKey, setCopiedKey] = useState<string | null>(null)
   const [completed, setCompleted] = useState(false)
-  const [policyDrawer, setPolicyDrawer] = useState<PolicyDrawerState>({ open: false, title: "", content: "" })
+  const [policyDrawer, setPolicyDrawer] = useState<PolicyDrawerState>({
+    open: false,
+    title: "",
+    content: "",
+    description: "",
+    bullets: [],
+    note: "",
+    copyActionLabel: "Copy",
+    copyAllFromKeyValues: false,
+  })
   const [helpModal, setHelpModal] = useState<HelpModalState>({ open: false, title: "", context: "" })
 
   const [billingValidation, setBillingValidation] = useState<ValidationState>("idle")
@@ -710,7 +757,7 @@ function ManualSetupWizard({ activeRoute }: { activeRoute: string }) {
       awsAccountId,
       awsRegion,
       enableCloudTrail: false,
-      enableActionRole: false,
+      enableActionRole: true,
       enableEc2Module: true,
       useTagScopedAccess: false,
       billingRoleArn: "",
@@ -1032,6 +1079,9 @@ function ManualSetupWizard({ activeRoute }: { activeRoute: string }) {
   function setField<K extends keyof ManualSetupForm>(field: K, value: ManualSetupForm[K]) {
     setForm((previous) => {
       const next = { ...previous, [field]: value }
+      if (field === "enableEc2Module") {
+        next.enableActionRole = Boolean(value)
+      }
       if (field === "connectionName" || field === "awsAccountId" || field === "awsRegion") {
         const connectionName = field === "connectionName" ? String(value) : next.connectionName
         const accountId = field === "awsAccountId" ? String(value) : next.awsAccountId
@@ -1052,8 +1102,29 @@ function ManualSetupWizard({ activeRoute }: { activeRoute: string }) {
     window.setTimeout(() => setCopiedKey((current) => (current === copyKey ? null : current)), 1200)
   }
 
-  function openPolicyDrawer(title: string, content: string) {
-    setPolicyDrawer({ open: true, title, content })
+  function openPolicyDrawer(
+    title: string,
+    content: string,
+    details?: {
+      description?: string
+      bullets?: string[]
+      note?: string
+      copyActionLabel?: string
+      copyAllFromKeyValues?: boolean
+      keyValues?: Array<{ key: string; value: string; helper?: string }>
+    },
+  ) {
+    setPolicyDrawer({
+      open: true,
+      title,
+      content,
+      description: details?.description ?? "",
+      bullets: details?.bullets ?? [],
+      note: details?.note ?? "",
+      copyActionLabel: details?.copyActionLabel ?? "Copy",
+      copyAllFromKeyValues: details?.copyAllFromKeyValues ?? false,
+      keyValues: details?.keyValues ?? [],
+    })
   }
 
   function openHelpModal(title: string, context: string) {
@@ -1224,6 +1295,229 @@ function ManualSetupWizard({ activeRoute }: { activeRoute: string }) {
   }
 
   const createRoleUrl = useMemo(() => buildIamConsoleUrl("/roles/create", form.awsRegion), [form.awsRegion])
+  const createBucketUrl = "https://console.aws.amazon.com/s3/buckets"
+  const dataExportsUrl = "https://console.aws.amazon.com/costmanagement/home?#/data-exports"
+  const createLambdaUrl = "https://console.aws.amazon.com/lambda/home#/functions/create"
+  const eventBridgeRulesUrl = "https://console.aws.amazon.com/events/home#/rules"
+  const cloudTrailUrl = "https://console.aws.amazon.com/cloudtrail/home"
+  const billingFileEventFunctionName = "kcx-billing-file-event-handler"
+  const billingFileEventRuntime = "Node.js 18.x"
+  const cloudTrailFunctionName = "kcx-cloudtrail-event-handler"
+  const cloudTrailFunctionRuntime = "Node.js 18.x"
+  const billingFileEventLambdaCode = `const https = require('https');
+const { URL } = require('url');
+
+function postJson(urlString, payload) {
+  const parsed = new URL(urlString);
+  const body = JSON.stringify(payload);
+
+  const options = {
+    hostname: parsed.hostname,
+    port: parsed.port || 443,
+    path: parsed.pathname + (parsed.search || ''),
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Content-Length': Buffer.byteLength(body)
+    }
+  };
+
+  return new Promise((resolve, reject) => {
+    const req = https.request(options, (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        if (res.statusCode >= 200 && res.statusCode < 300) {
+          resolve({ statusCode: res.statusCode, body: data });
+        } else {
+          reject(new Error(\`File event callback failed: \${res.statusCode} \${data}\`));
+        }
+      });
+    });
+
+    req.on('error', reject);
+    req.write(body);
+    req.end();
+  });
+}
+
+exports.handler = async (event) => {
+  const callbackUrl = process.env.FILE_EVENT_CALLBACK_URL;
+  const callbackToken = process.env.CALLBACK_TOKEN;
+  const roleArn = process.env.ROLE_ARN;
+  const exportPrefix = process.env.EXPORT_PREFIX || '';
+  const sourceType = process.env.SOURCE_TYPE;
+  const schemaType = process.env.SCHEMA_TYPE;
+  const cadence = process.env.CADENCE;
+
+  if (!callbackUrl || !callbackToken || !roleArn) {
+    throw new Error('Missing required Lambda environment variables');
+  }
+
+  const bucket = event?.detail?.bucket?.name;
+  const rawKey = event?.detail?.object?.key;
+  const eventId = event?.id || null;
+
+  if (!bucket || !rawKey) {
+    throw new Error('Missing bucket name or object key in EventBridge event');
+  }
+
+  const objectKey = decodeURIComponent(String(rawKey).replace(/\\+/g, ' '));
+
+  if (exportPrefix && !objectKey.startsWith(exportPrefix)) {
+    return;
+  }
+
+  const isManifest =
+    objectKey.includes('/metadata/') &&
+    objectKey.endsWith('Manifest.json');
+
+  if (!isManifest) {
+    return;
+  }
+
+  await postJson(callbackUrl, {
+    callback_token: callbackToken,
+    trigger_type: 'manifest_created',
+    event_id: eventId,
+    account_id: event.account,
+    region: event.region,
+    role_arn: roleArn,
+    bucket_name: bucket,
+    object_key: objectKey,
+    source_type: sourceType,
+    schema_type: schemaType,
+    cadence: cadence
+  });
+};`
+  const billingExportEventPattern = pretty({
+    source: ["aws.s3"],
+    "detail-type": ["Object Created"],
+    detail: {
+      bucket: { name: [form.exportBucket.trim()] },
+      object: { key: [{ prefix: form.exportPrefix.trim() }] },
+    },
+  })
+  const cloudTrailEventPattern = pretty({
+    source: ["aws.s3"],
+    "detail-type": ["Object Created"],
+    detail: {
+      bucket: { name: [form.cloudTrailBucket.trim()] },
+      object: { key: [{ prefix: form.cloudTrailPrefix.trim() }] },
+    },
+  })
+  const billingFileEventEnvironmentValues = [
+    {
+      key: "FILE_EVENT_CALLBACK_URL",
+      value: form.fileEventCallbackUrl.trim(),
+      helper: "KCX endpoint that receives file event notifications.",
+    },
+    {
+      key: "CALLBACK_TOKEN",
+      value: form.callbackToken.trim(),
+      helper: "Setup-specific token used to authenticate the callback.",
+    },
+    {
+      key: "ROLE_ARN",
+      value: form.billingRoleArn.trim() || "Paste and validate Billing Role ARN in Step 2 first.",
+      helper: "Billing role ARN sent back with each file event.",
+    },
+    {
+      key: "EXPORT_PREFIX",
+      value: form.exportPrefix.trim() || "kcx/data-exports/cur2",
+      helper: "Only files under this prefix are considered.",
+    },
+    {
+      key: "SOURCE_TYPE",
+      value: "aws_data_exports_cur2",
+      helper: "Identifies the export source.",
+    },
+    {
+      key: "SCHEMA_TYPE",
+      value: "cur2_custom",
+      helper: "Identifies the KCX schema format.",
+    },
+    {
+      key: "CADENCE",
+      value: "hourly",
+      helper: "Identifies delivery cadence.",
+    },
+  ]
+  const cloudTrailEnvironmentValues = [
+    {
+      key: "FILE_EVENT_CALLBACK_URL",
+      value: form.fileEventCallbackUrl.trim(),
+      helper: "KCX endpoint that receives CloudTrail file event notifications.",
+    },
+    {
+      key: "CALLBACK_TOKEN",
+      value: form.callbackToken.trim(),
+      helper: "Setup-specific token used to authenticate the callback.",
+    },
+    {
+      key: "ROLE_ARN",
+      value: form.billingRoleArn.trim() || "Paste and validate Billing Role ARN in Step 2 first.",
+      helper: "Billing role ARN sent with each CloudTrail file event.",
+    },
+    {
+      key: "CLOUDTRAIL_PREFIX",
+      value: form.cloudTrailPrefix.trim() || "kcx/cloudtrail",
+      helper: "Only CloudTrail files under this prefix are considered.",
+    },
+    {
+      key: "SOURCE_TYPE",
+      value: "aws_cloudtrail",
+      helper: "Identifies the CloudTrail source.",
+    },
+    {
+      key: "SCHEMA_TYPE",
+      value: "cloudtrail_json",
+      helper: "Identifies the KCX schema format.",
+    },
+    {
+      key: "CADENCE",
+      value: "event_driven",
+      helper: "Indicates event-driven ingestion cadence.",
+    },
+  ]
+  const billingExportQuery = `SELECT
+  bill_billing_period_start_date AS billing_period_start_date,
+  bill_billing_period_end_date AS billing_period_end_date,
+  bill_payer_account_id AS billing_account_id,
+  bill_payer_account_name AS billing_account_name,
+  line_item_usage_account_id AS sub_account_id,
+  line_item_usage_account_name AS sub_account_name,
+  line_item_product_code AS service_name,
+  product_region_code AS region_id,
+  product_location AS region_name,
+  line_item_availability_zone AS availability_zone,
+  pricing_currency AS billing_currency,
+  line_item_usage_type AS usage_type,
+  line_item_operation AS operation,
+  line_item_line_item_type AS line_item_type,
+  line_item_resource_id AS resource_id,
+  line_item_unblended_cost AS billed_cost,
+  line_item_net_unblended_cost AS effective_cost,
+  pricing_public_on_demand_cost AS public_on_demand_cost,
+  line_item_usage_amount AS consumed_quantity,
+  line_item_usage_start_date AS usage_start_time,
+  line_item_usage_end_date AS usage_end_time,
+  pricing_term AS pricing_term,
+  pricing_purchase_option AS purchase_option,
+  pricing_unit AS pricing_unit,
+  product_sku AS sku_id,
+  pricing_rate_id AS sku_price_id,
+  pricing_rate_code AS pricing_rate_code,
+  tags AS tags_json,
+  discount_total_discount AS discount_amount,
+  line_item_tax_type AS tax_type,
+  reservation_reservation_a_r_n AS reservation_arn,
+  savings_plan_savings_plan_a_r_n AS savings_plan_arn,
+  savings_plan_offering_type AS savings_plan_type,
+  capacity_reservation_capacity_reservation_arn AS capacity_reservation_arn,
+  capacity_reservation_capacity_reservation_status AS capacity_reservation_status,
+  capacity_reservation_capacity_reservation_type AS capacity_reservation_type
+FROM COST_AND_USAGE_REPORT`
   const billingRoleDetailsUrl = useMemo(
     () => buildIamConsoleUrl(`/roles/details/${encodeURIComponent(derived.billingRoleName)}`, form.awsRegion),
     [derived.billingRoleName, form.awsRegion],
@@ -1257,13 +1551,6 @@ function ManualSetupWizard({ activeRoute }: { activeRoute: string }) {
 
       {currentStep === 0 ? (
         <div className="space-y-4">
-          <section className="space-y-2 rounded-[10px] border border-[color:var(--border-light)] bg-white p-4">
-            <p className={SECTION_TITLE_CLASS}>Setup Values</p>
-            <p className="text-sm text-text-secondary">
-              Enter your AWS setup values. We&apos;ll generate the required role details and policies for the next steps.
-            </p>
-          </section>
-
           <section className="space-y-3 rounded-[10px] border border-[color:var(--border-light)] bg-white p-4">
             <p className={SECTION_TITLE_CLASS}>Connection Details</p>
             <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
@@ -1291,28 +1578,6 @@ function ManualSetupWizard({ activeRoute }: { activeRoute: string }) {
           </section>
 
           <section className="space-y-3 rounded-[10px] border border-[color:var(--border-light)] bg-white p-4">
-            <p className={SECTION_TITLE_CLASS}>Access Setup Inputs</p>
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-              <label className="space-y-1">
-                <span className={LABEL_CLASS}>External ID</span>
-                <input className={CONTROL_CLASS} value={form.externalId} onChange={(event) => setField("externalId", event.target.value)} />
-              </label>
-              <label className="space-y-1 md:col-span-2">
-                <span className={LABEL_CLASS}>KCX Principal ARN</span>
-                <input className={CONTROL_CLASS} value={form.kcxPrincipalArn} onChange={(event) => setField("kcxPrincipalArn", event.target.value)} />
-              </label>
-              <label className="space-y-1 md:col-span-2">
-                <span className={LABEL_CLASS}>File Event Callback URL</span>
-                <input className={CONTROL_CLASS} value={form.fileEventCallbackUrl} onChange={(event) => setField("fileEventCallbackUrl", event.target.value)} />
-              </label>
-              <label className="space-y-1 md:col-span-2">
-                <span className={LABEL_CLASS}>Callback Token</span>
-                <input className={CONTROL_CLASS} value={form.callbackToken} onChange={(event) => setField("callbackToken", event.target.value)} />
-              </label>
-            </div>
-          </section>
-
-          <section className="space-y-3 rounded-[10px] border border-[color:var(--border-light)] bg-white p-4">
             <p className={SECTION_TITLE_CLASS}>Options</p>
             <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
               <label className="flex items-center gap-2 rounded-md border border-[color:var(--border-light)] bg-white px-3 py-2 text-sm text-text-primary">
@@ -1320,16 +1585,8 @@ function ManualSetupWizard({ activeRoute }: { activeRoute: string }) {
                 Enable CloudTrail
               </label>
               <label className="flex items-center gap-2 rounded-md border border-[color:var(--border-light)] bg-white px-3 py-2 text-sm text-text-primary">
-                <input type="checkbox" className="h-4 w-4 accent-[color:var(--brand-primary)]" checked={form.enableActionRole} onChange={(event) => setField("enableActionRole", event.target.checked)} />
-                Enable Action Role
-              </label>
-              <label className="flex items-center gap-2 rounded-md border border-[color:var(--border-light)] bg-white px-3 py-2 text-sm text-text-primary">
                 <input type="checkbox" className="h-4 w-4 accent-[color:var(--brand-primary)]" checked={form.enableEc2Module} onChange={(event) => setField("enableEc2Module", event.target.checked)} />
                 Enable EC2 Module
-              </label>
-              <label className="flex items-center gap-2 rounded-md border border-[color:var(--border-light)] bg-white px-3 py-2 text-sm text-text-primary">
-                <input type="checkbox" className="h-4 w-4 accent-[color:var(--brand-primary)]" checked={form.useTagScopedAccess} onChange={(event) => setField("useTagScopedAccess", event.target.checked)} />
-                Use tag-scoped access
               </label>
             </div>
           </section>
@@ -1353,23 +1610,23 @@ function ManualSetupWizard({ activeRoute }: { activeRoute: string }) {
                   <li>Click <strong>Create role</strong>.</li>
                   <li>Select <strong>Another AWS account</strong>.</li>
                   <li>
-                    Enter this <strong>Account ID</strong>:
-                    <div className="mt-1">
+                    Enter this <strong>Account ID</strong>:{" "}
+                    <span className="inline-flex align-middle">
                       <ReadonlyCopyField value={form.awsAccountId} copyKey="billing-account-id" copiedKey={copiedKey} onCopy={copyToClipboard} ariaLabel="Copy AWS account ID" />
-                    </div>
+                    </span>
                   </li>
                   <li>
-                    Enable <strong>&quot;Require external ID&quot;</strong> and enter:
-                    <div className="mt-1">
+                    Enable <strong>&quot;Require external ID&quot;</strong> and enter:{" "}
+                    <span className="inline-flex align-middle">
                       <ReadonlyCopyField value={form.externalId} copyKey="billing-external-id" copiedKey={copiedKey} onCopy={copyToClipboard} ariaLabel="Copy external ID" />
-                    </div>
+                    </span>
                   </li>
                   <li>Click <strong>Next -&gt; Next</strong>.</li>
                   <li>
-                    Set role name:
-                    <div className="mt-1">
+                    Set role name:{" "}
+                    <span className="inline-flex align-middle">
                       <ReadonlyCopyField value={derived.billingRoleName} copyKey="billing-role-name" copiedKey={copiedKey} onCopy={copyToClipboard} ariaLabel="Copy billing role name" />
-                    </div>
+                    </span>
                   </li>
                   <li>Click <strong>Create role</strong>.</li>
                 </ol>
@@ -1440,23 +1697,23 @@ function ManualSetupWizard({ activeRoute }: { activeRoute: string }) {
                     <li>Click <strong>Create role</strong>.</li>
                     <li>Select <strong>Another AWS account</strong>.</li>
                     <li>
-                      Enter this <strong>Account ID</strong>:
-                      <div className="mt-1">
+                      Enter this <strong>Account ID</strong>:{" "}
+                      <span className="inline-flex align-middle">
                         <ReadonlyCopyField value={form.awsAccountId} copyKey="action-account-id" copiedKey={copiedKey} onCopy={copyToClipboard} ariaLabel="Copy AWS account ID" />
-                      </div>
+                      </span>
                     </li>
                     <li>
-                      Enable <strong>&quot;Require external ID&quot;</strong> and enter:
-                      <div className="mt-1">
+                      Enable <strong>&quot;Require external ID&quot;</strong> and enter:{" "}
+                      <span className="inline-flex align-middle">
                         <ReadonlyCopyField value={form.externalId} copyKey="action-external-id" copiedKey={copiedKey} onCopy={copyToClipboard} ariaLabel="Copy external ID" />
-                      </div>
+                      </span>
                     </li>
                     <li>Click <strong>Next -&gt; Next</strong>.</li>
                     <li>
-                      Set role name:
-                      <div className="mt-1">
+                      Set role name:{" "}
+                      <span className="inline-flex align-middle">
                         <ReadonlyCopyField value={derived.actionRoleName} copyKey="action-role-name" copiedKey={copiedKey} onCopy={copyToClipboard} ariaLabel="Copy action role name" />
-                      </div>
+                      </span>
                     </li>
                     <li>Click <strong>Create role</strong>.</li>
                   </ol>
@@ -1512,43 +1769,322 @@ function ManualSetupWizard({ activeRoute }: { activeRoute: string }) {
       ) : null}
 
       {currentStep === 2 ? (
-        <div className="space-y-3">
-          <section className="space-y-2">
-            <p className="text-sm font-semibold text-text-primary">Create AWS Data Export</p>
-            <div className="rounded-md bg-[color:var(--bg-surface)] px-3 py-2 text-sm text-text-secondary">Checklist: Create export bucket, add bucket policy, then create Data Export.</div>
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-              <label className="space-y-1"><span className={LABEL_CLASS}>Export bucket</span><input className={CONTROL_CLASS} value={form.exportBucket} onChange={(event) => setField("exportBucket", event.target.value)} /></label>
-              <label className="space-y-1"><span className={LABEL_CLASS}>Export prefix</span><input className={CONTROL_CLASS} value={form.exportPrefix} onChange={(event) => setField("exportPrefix", event.target.value)} /></label>
-              <label className="space-y-1"><span className={LABEL_CLASS}>Region</span><input className={CONTROL_CLASS} value={form.exportRegion} onChange={(event) => setField("exportRegion", event.target.value)} /></label>
-              <label className="space-y-1"><span className={LABEL_CLASS}>Export name</span><input className={CONTROL_CLASS} value={form.exportName} onChange={(event) => setField("exportName", event.target.value)} /></label>
-              <label className="space-y-1"><span className={LABEL_CLASS}>Export ARN</span><input className={CONTROL_CLASS} value={form.exportArn} onChange={(event) => setField("exportArn", event.target.value)} /></label>
-            </div>
+        <div className="space-y-6">
+          <section className="rounded-[10px] border border-[color:var(--border-light)] bg-white p-4">
+            <p className={SECTION_TITLE_CLASS}>Billing Export</p>
+            <p className="text-sm text-text-secondary">Follow these steps to configure AWS Billing Data Export for KCX ingestion.</p>
           </section>
 
-          <ValueCard label="Export bucket name" value={form.exportBucket} copyKey="ebn" copiedKey={copiedKey} onCopy={copyToClipboard} />
-          <PolicyBlock title="Export Bucket Policy" content={generated.exportBucketPolicy} copyKey="ebp" copiedKey={copiedKey} onCopy={copyToClipboard} disabled={!requiredSetupValuesReady || !form.exportBucket.trim()} helper="Setup values and export bucket are required." />
+          <section className="space-y-1 rounded-[10px] border border-[color:var(--border-light)] bg-white p-4">
+            <h3 className="text-[22px] font-semibold text-text-primary">Billing Export</h3>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <Button type="button" className="h-9 rounded-md" onClick={() => simulateValidation(setExportValidation, Boolean((form.exportName.trim() || form.exportArn.trim()) && form.exportBucket.trim()))} disabled={exportValidation === "loading"}>Validate Export</Button>
-            <ValidationBanner state={exportValidation} idleText="Export validation pending." successText="Export configuration validated." errorText="Validation failed. Review bucket policy and export setup." />
-          </div>
+            <InlineGuideStep title="Step 1: Create S3 bucket" previewTitle="Create bucket in S3" previewContext="Create bucket in S3" onOpenHelp={openHelpModal}>
+              <ol className="list-decimal space-y-2 pl-4">
+                <li>Open AWS S3. <AwsConsoleLink label="Create bucket in AWS" url={createBucketUrl} className="ml-1" /></li>
+                <li>Click <strong>Create bucket</strong>.</li>
+                <li>
+                  Enter bucket name:{" "}
+                  <span className="inline-flex align-middle">
+                    <ReadonlyCopyField value={form.exportBucket} copyKey="export-bucket-name" copiedKey={copiedKey} onCopy={copyToClipboard} ariaLabel="Copy export bucket name" />
+                  </span>
+                </li>
+                <li>
+                  Select region:{" "}
+                  <span className="inline-flex align-middle">
+                    <ReadonlyCopyField value={form.exportRegion} copyKey="export-region" copiedKey={copiedKey} onCopy={copyToClipboard} ariaLabel="Copy export region" />
+                  </span>
+                </li>
+                <li>Keep default settings.</li>
+                <li>Click <strong>Create bucket</strong>.</li>
+              </ol>
+            </InlineGuideStep>
+
+            <InlineGuideStep title="Step 2: Add bucket policy" previewTitle="Edit bucket policy" previewContext="Edit bucket policy" onOpenHelp={openHelpModal}>
+              <ol className="list-decimal space-y-2 pl-4">
+                <li>Open the created bucket.</li>
+                <li>Go to <strong>Permissions</strong> tab.</li>
+                <li>Scroll to <strong>Bucket policy</strong>.</li>
+                <li>Click <strong>Edit</strong>.</li>
+                <li>Replace the policy with:
+                  <div>
+                    <InlineActionLink
+                      label="View Export Bucket Policy"
+                      onClick={() =>
+                        openPolicyDrawer("Export Bucket Policy", generated.exportBucketPolicy, {
+                          description: "This policy allows AWS Billing Data Exports to write data into your S3 bucket securely.",
+                          bullets: [
+                            "Allows bcm-data-exports.amazonaws.com to write objects",
+                            "Restricts access using SourceAccount and SourceArn",
+                            "Grants only required S3 permissions (PutObject)",
+                          ],
+                        })
+                      }
+                      disabled={!requiredSetupValuesReady || !form.exportBucket.trim()}
+                    />
+                  </div>
+                </li>
+                <li>Click <strong>Save changes</strong>.</li>
+              </ol>
+              <p className="text-[12px] text-text-muted">This policy allows AWS Billing Data Exports to write data into your S3 bucket securely.</p>
+            </InlineGuideStep>
+
+            <InlineGuideStep title="Step 3: Create billing export" previewTitle="Create data export" previewContext="Create data export" onOpenHelp={openHelpModal}>
+              <ol className="list-decimal space-y-2 pl-4">
+                <li>Open AWS Billing -&gt; Data Exports. <AwsConsoleLink label="Open Data Exports" url={dataExportsUrl} className="ml-1" /></li>
+                <li>Click <strong>Create export</strong>.</li>
+                <li>
+                  Enter export name:{" "}
+                  <span className="inline-flex align-middle">
+                    <ReadonlyCopyField value={form.exportName} copyKey="export-name" copiedKey={copiedKey} onCopy={copyToClipboard} ariaLabel="Copy export name" />
+                  </span>
+                </li>
+                <li>Select <strong>Export type: Cost and usage report</strong> and <strong>Format: Parquet</strong>.</li>
+                <li>Configure data: <strong>Time granularity: Hourly</strong>, <strong>Include resource IDs: Enabled</strong>.</li>
+                <li>
+                  In S3 destination choose bucket:{" "}
+                  <span className="inline-flex align-middle">
+                    <ReadonlyCopyField value={form.exportBucket} copyKey="export-bucket-dest" copiedKey={copiedKey} onCopy={copyToClipboard} ariaLabel="Copy export bucket destination" />
+                  </span>
+                  {" "}and prefix:{" "}
+                  <span className="inline-flex align-middle">
+                    <ReadonlyCopyField value={form.exportPrefix} copyKey="export-prefix" copiedKey={copiedKey} onCopy={copyToClipboard} ariaLabel="Copy export prefix" />
+                  </span>
+                </li>
+                <li>Use default KCX query:
+                  <div>
+                    <InlineActionLink
+                      label="View Billing Export Query"
+                      onClick={() =>
+                        openPolicyDrawer("Billing Export Query", billingExportQuery, {
+                          description: "This query exports:",
+                          bullets: [
+                            "billing period and usage timestamps",
+                            "resource IDs and service details",
+                            "cost, pricing, and usage metrics",
+                            "savings plans and reservation data",
+                            "resource tags for attribution",
+                          ],
+                          note: "This query is pre-configured for KCX ingestion. No changes are required.",
+                        })
+                      }
+                    />
+                  </div>
+                </li>
+                <li>Click <strong>Create export</strong>.</li>
+              </ol>
+              <p className="text-[12px] text-text-muted">This query selects billing, usage, pricing, and resource-level data required for KCX analytics.</p>
+            </InlineGuideStep>
+
+            <InlineGuideStep title="Step 4: Wait for export" previewTitle="Check export status" previewContext="Check export status in AWS" onOpenHelp={openHelpModal}>
+              <ol className="list-decimal space-y-2 pl-4">
+                <li>Wait 1-2 minutes.</li>
+                <li>Refresh the page.</li>
+                <li>Ensure export status is <strong>Active</strong>.</li>
+              </ol>
+            </InlineGuideStep>
+
+            <InlineGuideStep title="Step 5: Paste Export ARN" previewTitle="Copy export ARN" previewContext="Copy export ARN" onOpenHelp={openHelpModal}>
+              <ol className="list-decimal space-y-2 pl-4">
+                <li>Open the created export.</li>
+                <li>Copy the <strong>Export ARN</strong>.</li>
+                <li>Paste it below.</li>
+                <li>Click <strong>Validate Export</strong>.</li>
+              </ol>
+              <label className="mt-2 block space-y-1">
+                <span className={LABEL_CLASS}>Export ARN</span>
+                <input className={CONTROL_CLASS} value={form.exportArn} onChange={(event) => setField("exportArn", event.target.value)} />
+              </label>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <Button type="button" className="h-9 rounded-md" onClick={() => simulateValidation(setExportValidation, Boolean((form.exportName.trim() || form.exportArn.trim()) && form.exportBucket.trim()))} disabled={exportValidation === "loading"}>Validate Export</Button>
+                <ValidationBanner state={exportValidation} idleText="Export validation pending." successText="Export configuration validated." errorText="Validation failed. Review bucket policy and export setup." />
+              </div>
+            </InlineGuideStep>
+          </section>
         </div>
       ) : null}
 
       {currentStep === 3 ? (
-        <div className="space-y-3">
+        <div className="space-y-4">
           <div className="rounded-[10px] border border-[color:var(--brand-primary)] bg-[color:var(--brand-soft)] px-3 py-2.5">
             <div className="flex items-start gap-2">
               <Sparkles className="mt-0.5 h-4 w-4 text-brand-primary" />
-              <p className="text-sm font-medium text-text-primary">File Event Automation is required for automatic ingestion.</p>
+              <p className="text-sm font-medium text-text-primary">
+                File Event Automation is required for automatic ingestion. This flow routes S3 export files to EventBridge, then Lambda, then KCX callback.
+              </p>
             </div>
           </div>
-          <label className="space-y-1"><span className={LABEL_CLASS}>File Event Lambda ARN</span><input className={CONTROL_CLASS} value={form.fileEventLambdaArn} onChange={(event) => { setField("fileEventLambdaArn", event.target.value); setFileEventValidation("idle") }} /></label>
-          <label className="space-y-1"><span className={LABEL_CLASS}>EventBridge rule name</span><input className={CONTROL_CLASS} value={form.eventBridgeRuleName} onChange={(event) => { setField("eventBridgeRuleName", event.target.value); setFileEventValidation("idle") }} /></label>
-          <GeneratedBlock title="Billing Lambda Function Code (Node.js)" content={generated.billingLambdaFunctionCode} copyKey="blfc" copiedKey={copiedKey} onCopy={copyToClipboard} disabled={!requiredSetupValuesReady} helper="Setup values are required." />
-          <GeneratedBlock title="Billing File-Event Lambda Environment Values" content={generated.billingLambdaEnvValues} copyKey="blev" copiedKey={copiedKey} onCopy={copyToClipboard} disabled={!requiredSetupValuesReady || !form.billingRoleArn.trim()} helper="Setup values and Billing Role ARN are required." />
-          <GeneratedBlock title="Suggested EventBridge Rule Parameters" content={generated.billingEventBridgeParams} copyKey="bebp" copiedKey={copiedKey} onCopy={copyToClipboard} disabled={!requiredSetupValuesReady} helper="Setup values are required." />
-          <div className="flex flex-wrap items-center gap-2"><Button type="button" className="h-9 rounded-md" onClick={() => simulateValidation(setFileEventValidation, Boolean(form.fileEventLambdaArn.trim() && form.eventBridgeRuleName.trim()))} disabled={fileEventValidation === "loading"}>Test Event Setup</Button><ValidationBanner state={fileEventValidation} idleText="Event test pending." successText="File-event automation is ready." errorText="Event setup test failed. Verify Lambda trigger wiring." /></div>
+
+          <section className="space-y-0 rounded-[10px] border border-[color:var(--border-light)] bg-white px-4 py-3">
+            <InlineGuideStep title="Step 1: Create Lambda function" previewTitle="Create Lambda function" previewContext="Create Lambda function in AWS Lambda" onOpenHelp={openHelpModal}>
+              <ol className="list-decimal space-y-2 pl-4">
+                <li>Open AWS Lambda. <AwsConsoleLink label="Create Lambda function in AWS" url={createLambdaUrl} className="ml-1" /></li>
+                <li>Click <strong>Create function</strong>.</li>
+                <li>Select <strong>Author from scratch</strong>.</li>
+                <li>
+                  Enter function name:{" "}
+                  <span className="inline-flex align-middle">
+                    <ReadonlyCopyField
+                      value={billingFileEventFunctionName}
+                      copyKey="file-event-function-name"
+                      copiedKey={copiedKey}
+                      onCopy={copyToClipboard}
+                      ariaLabel="Copy Lambda function name"
+                    />
+                  </span>
+                </li>
+                <li>
+                  Select runtime:{" "}
+                  <span className="inline-flex align-middle">
+                    <ReadonlyCopyField
+                      value={billingFileEventRuntime}
+                      copyKey="file-event-runtime"
+                      copiedKey={copiedKey}
+                      onCopy={copyToClipboard}
+                      ariaLabel="Copy Lambda runtime"
+                    />
+                  </span>
+                </li>
+                <li>Click <strong>Create function</strong>.</li>
+              </ol>
+              <p className="text-[12px] text-text-muted">
+                This Lambda sends KCX a file event when a new export manifest is created.
+              </p>
+            </InlineGuideStep>
+
+            <InlineGuideStep title="Step 2: Add Lambda code" previewTitle="Replace Lambda code" previewContext="Replace Lambda code in the Code tab" onOpenHelp={openHelpModal}>
+              <ol className="list-decimal space-y-2 pl-4">
+                <li>Open the Lambda function and go to the <strong>Code</strong> tab.</li>
+                <li>
+                  Replace the default code with:{" "}
+                  <InlineActionLink
+                    label="View Billing File Event Lambda Code"
+                    onClick={() =>
+                      openPolicyDrawer("Billing File Event Lambda Code", billingFileEventLambdaCode, {
+                        description: "This Node.js function:",
+                        bullets: [
+                          "reads S3 object-created events",
+                          "filters to the configured export prefix",
+                          "only processes manifest files under metadata/",
+                          "posts the event to the KCX file callback endpoint",
+                        ],
+                      })
+                    }
+                  />
+                </li>
+                <li>Click <strong>Deploy</strong>.</li>
+              </ol>
+              <p className="text-[12px] text-text-muted">
+                This code listens for S3 object-created events and only forwards manifest files in the export prefix to KCX.
+              </p>
+            </InlineGuideStep>
+
+            <InlineGuideStep title="Step 3: Add environment variables" previewTitle="Add environment variables" previewContext="Configure Lambda environment variables" onOpenHelp={openHelpModal}>
+              <ol className="list-decimal space-y-2 pl-4">
+                <li>Go to <strong>Configuration</strong> -&gt; <strong>Environment variables</strong>.</li>
+                <li>Click <strong>Edit</strong>.</li>
+                <li>
+                  Add the required values:{" "}
+                  <InlineActionLink
+                    label="View Environment Variables"
+                    onClick={() =>
+                      openPolicyDrawer("Billing File Event Environment Variables", "", {
+                        description: "Add these environment variables in Lambda.",
+                        note: "Go to Lambda -> Configuration -> Environment variables -> Add all below.",
+                        copyActionLabel: "Copy All Variables",
+                        copyAllFromKeyValues: true,
+                        keyValues: billingFileEventEnvironmentValues,
+                      })
+                    }
+                  />
+                </li>
+                <li>Click <strong>Save</strong>.</li>
+              </ol>
+              <p className="text-[12px] text-text-muted">
+                These environment variables tell the Lambda where to send file events and how to identify KCX billing export files.
+              </p>
+            </InlineGuideStep>
+
+            <InlineGuideStep title="Step 4: Create EventBridge rule" previewTitle="Create EventBridge rule" previewContext="Create EventBridge rule for S3 object-created events" onOpenHelp={openHelpModal}>
+              <ol className="list-decimal space-y-2 pl-4">
+                <li>Open AWS EventBridge. <AwsConsoleLink label="Open EventBridge in AWS" url={eventBridgeRulesUrl} className="ml-1" /></li>
+                <li>Go to <strong>Rules</strong> and click <strong>Create rule</strong>.</li>
+                <li>
+                  Enter rule name:{" "}
+                  <span className="inline-flex align-middle">
+                    <ReadonlyCopyField
+                      value={form.eventBridgeRuleName}
+                      copyKey="eventbridge-rule-name"
+                      copiedKey={copiedKey}
+                      onCopy={copyToClipboard}
+                      ariaLabel="Copy EventBridge rule name"
+                    />
+                  </span>
+                </li>
+                <li>Select event source: <strong>AWS services</strong>, Service name: <strong>S3</strong>, Event type: <strong>Object Created</strong>.</li>
+                <li>
+                  Configure the event pattern:{" "}
+                  <InlineActionLink
+                    label="View EventBridge Event Pattern"
+                    onClick={() =>
+                      openPolicyDrawer("EventBridge Event Pattern", billingExportEventPattern, {
+                        description: "This rule should only match object-created events from the billing export bucket and export prefix.",
+                      })
+                    }
+                  />
+                </li>
+                <li>Set target to <strong>AWS service</strong> -&gt; <strong>Lambda function</strong>, then select your Lambda function.</li>
+                <li>Click <strong>Create rule</strong>.</li>
+              </ol>
+              <p className="text-[12px] text-text-muted">
+                This rule sends S3 object-created events from the billing export bucket to the Lambda function.
+              </p>
+            </InlineGuideStep>
+
+            <InlineGuideStep title="Step 5: Paste Lambda ARN and test" previewTitle="Copy Lambda ARN" previewContext="Copy Lambda function ARN from function details" onOpenHelp={openHelpModal}>
+              <ol className="list-decimal space-y-2 pl-4">
+                <li>Open the Lambda function.</li>
+                <li>Copy the <strong>Function ARN</strong>.</li>
+                <li>Paste it below.</li>
+                <li>Click <strong>Test Event Setup</strong>.</li>
+              </ol>
+              <p className="text-[12px] text-text-muted">
+                We will verify that the Lambda is configured and ready to receive export file events.
+              </p>
+
+              <label className="mt-2 block space-y-1">
+                <span className={LABEL_CLASS}>File Event Lambda ARN</span>
+                <input
+                  className={CONTROL_CLASS}
+                  value={form.fileEventLambdaArn}
+                  onChange={(event) => {
+                    setField("fileEventLambdaArn", event.target.value)
+                    setFileEventValidation("idle")
+                  }}
+                />
+              </label>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <Button
+                  type="button"
+                  className="h-9 rounded-md"
+                  onClick={() =>
+                    simulateValidation(
+                      setFileEventValidation,
+                      Boolean(form.fileEventLambdaArn.trim() && form.eventBridgeRuleName.trim()),
+                    )
+                  }
+                  disabled={fileEventValidation === "loading"}
+                >
+                  Test Event Setup
+                </Button>
+                <ValidationBanner
+                  state={fileEventValidation}
+                  idleText="Event test pending."
+                  successText="File-event automation is ready."
+                  errorText="Event setup test failed. Verify Lambda trigger wiring."
+                />
+              </div>
+            </InlineGuideStep>
+          </section>
         </div>
       ) : null}
       {currentStep === 4 ? (
@@ -1558,19 +2094,232 @@ function ManualSetupWizard({ activeRoute }: { activeRoute: string }) {
             Enable CloudTrail ingestion
           </label>
           <OptionalSection enabled={form.enableCloudTrail} title="CloudTrail setup" description="Optional module for CloudTrail file ingestion.">
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-              <label className="space-y-1"><span className={LABEL_CLASS}>CloudTrail bucket</span><input className={CONTROL_CLASS} value={form.cloudTrailBucket} onChange={(event) => setField("cloudTrailBucket", event.target.value)} /></label>
-              <label className="space-y-1"><span className={LABEL_CLASS}>CloudTrail prefix</span><input className={CONTROL_CLASS} value={form.cloudTrailPrefix} onChange={(event) => setField("cloudTrailPrefix", event.target.value)} /></label>
-              <label className="space-y-1"><span className={LABEL_CLASS}>Trail name</span><input className={CONTROL_CLASS} value={form.trailName} onChange={(event) => setField("trailName", event.target.value)} /></label>
-              <label className="space-y-1"><span className={LABEL_CLASS}>CloudTrail Lambda ARN</span><input className={CONTROL_CLASS} value={form.cloudTrailLambdaArn} onChange={(event) => setField("cloudTrailLambdaArn", event.target.value)} /></label>
-              <label className="space-y-1 md:col-span-2"><span className={LABEL_CLASS}>CloudTrail EventBridge rule name</span><input className={CONTROL_CLASS} value={form.cloudTrailRuleName} onChange={(event) => setField("cloudTrailRuleName", event.target.value)} /></label>
+            <div className="space-y-0">
+              <InlineGuideStep title="Step 1: Create S3 bucket" previewTitle="Create bucket in S3" previewContext="Create bucket in S3" onOpenHelp={openHelpModal}>
+                <ol className="list-decimal space-y-2 pl-4">
+                  <li>Open AWS S3. <AwsConsoleLink label="Create bucket in AWS" url={createBucketUrl} className="ml-1" /></li>
+                  <li>Click <strong>Create bucket</strong>.</li>
+                  <li>Enter bucket name:
+                    <span className="ml-1 inline-flex align-middle">
+                      <ReadonlyCopyField value={form.cloudTrailBucket} copyKey="cloudtrail-bucket-name" copiedKey={copiedKey} onCopy={copyToClipboard} ariaLabel="Copy CloudTrail bucket name" />
+                    </span>
+                  </li>
+                  <li>Select region:
+                    <span className="ml-1 inline-flex align-middle">
+                      <ReadonlyCopyField value={form.awsRegion} copyKey="cloudtrail-bucket-region" copiedKey={copiedKey} onCopy={copyToClipboard} ariaLabel="Copy AWS region" />
+                    </span>
+                  </li>
+                  <li>Keep <strong>Block all public access</strong> enabled.</li>
+                  <li>Enable <strong>Versioning</strong>.</li>
+                  <li>Use default encryption (<strong>AES-256</strong>).</li>
+                  <li>Click <strong>Create bucket</strong>.</li>
+                </ol>
+                <p className="text-[12px] text-text-muted">This bucket stores CloudTrail logs securely.</p>
+              </InlineGuideStep>
+
+              <InlineGuideStep title="Step 2: Enable EventBridge for bucket" previewTitle="Enable EventBridge" previewContext="Enable EventBridge notifications in S3" onOpenHelp={openHelpModal}>
+                <ol className="list-decimal space-y-2 pl-4">
+                  <li>Open the created bucket.</li>
+                  <li>Go to <strong>Properties</strong>.</li>
+                  <li>Scroll to <strong>Event notifications</strong>.</li>
+                  <li>Enable <strong>EventBridge notifications</strong>.</li>
+                </ol>
+                <p className="text-[12px] text-text-muted">This allows S3 object-created events to trigger automation.</p>
+              </InlineGuideStep>
+
+              <InlineGuideStep title="Step 3: Add bucket policy" previewTitle="Edit bucket policy" previewContext="Edit bucket policy in S3 permissions" onOpenHelp={openHelpModal}>
+                <ol className="list-decimal space-y-2 pl-4">
+                  <li>Go to <strong>Permissions</strong>.</li>
+                  <li>Scroll to <strong>Bucket policy</strong>.</li>
+                  <li>Click <strong>Edit</strong>.</li>
+                  <li>Replace the policy with:
+                    <div>
+                      <InlineActionLink
+                        label="View CloudTrail Bucket Policy"
+                        onClick={() =>
+                          openPolicyDrawer("CloudTrail Bucket Policy", generated.cloudTrailBucketPolicy, {
+                            description: "This policy allows AWS CloudTrail to write logs into your S3 bucket.",
+                            bullets: [
+                              "Allows cloudtrail.amazonaws.com to check bucket ACL",
+                              "Allows cloudtrail.amazonaws.com to write log objects",
+                              "Restricts writes to the configured CloudTrail prefix and AWS account path",
+                            ],
+                          })
+                        }
+                        disabled={!requiredSetupValuesReady || !form.cloudTrailBucket.trim()}
+                      />
+                    </div>
+                  </li>
+                  <li>Click <strong>Save changes</strong>.</li>
+                </ol>
+              </InlineGuideStep>
+
+              <InlineGuideStep title="Step 4: Create CloudTrail trail" previewTitle="Create CloudTrail trail" previewContext="Create trail in AWS CloudTrail" onOpenHelp={openHelpModal}>
+                <ol className="list-decimal space-y-2 pl-4">
+                  <li>Open AWS CloudTrail. <AwsConsoleLink label="Open CloudTrail" url={cloudTrailUrl} className="ml-1" /></li>
+                  <li>Click <strong>Create trail</strong>.</li>
+                  <li>Enter trail name:
+                    <span className="ml-1 inline-flex align-middle">
+                      <ReadonlyCopyField value={form.trailName} copyKey="cloudtrail-trail-name" copiedKey={copiedKey} onCopy={copyToClipboard} ariaLabel="Copy trail name" />
+                    </span>
+                  </li>
+                  <li>Select <strong>Existing S3 bucket</strong> and choose the created bucket.</li>
+                  <li>Enter prefix:
+                    <span className="ml-1 inline-flex align-middle">
+                      <ReadonlyCopyField value={form.cloudTrailPrefix} copyKey="cloudtrail-prefix" copiedKey={copiedKey} onCopy={copyToClipboard} ariaLabel="Copy CloudTrail prefix" />
+                    </span>
+                  </li>
+                  <li>Enable <strong>Multi-region trail</strong>.</li>
+                  <li>Enable <strong>Include global service events</strong>.</li>
+                  <li>Enable <strong>Log file validation</strong>.</li>
+                  <li>Under events keep <strong>Management events</strong> enabled and <strong>Read/Write = All</strong>.</li>
+                  <li>Click <strong>Create trail</strong>.</li>
+                </ol>
+                <p className="text-[12px] text-text-muted">
+                  This trail writes management events for all regions into your CloudTrail bucket and prefix.
+                </p>
+              </InlineGuideStep>
+
+              <InlineGuideStep title="Step 5: Create Lambda function" previewTitle="Create Lambda function" previewContext="Create Lambda function in AWS Lambda" onOpenHelp={openHelpModal}>
+                <ol className="list-decimal space-y-2 pl-4">
+                  <li>Open AWS Lambda. <AwsConsoleLink label="Create Lambda in AWS" url={createLambdaUrl} className="ml-1" /></li>
+                  <li>Click <strong>Create function</strong>.</li>
+                  <li>Select <strong>Author from scratch</strong>.</li>
+                  <li>Enter function name:
+                    <span className="ml-1 inline-flex align-middle">
+                      <ReadonlyCopyField value={cloudTrailFunctionName} copyKey="cloudtrail-function-name" copiedKey={copiedKey} onCopy={copyToClipboard} ariaLabel="Copy CloudTrail Lambda function name" />
+                    </span>
+                  </li>
+                  <li>Select runtime:
+                    <span className="ml-1 inline-flex align-middle">
+                      <ReadonlyCopyField value={cloudTrailFunctionRuntime} copyKey="cloudtrail-function-runtime" copiedKey={copiedKey} onCopy={copyToClipboard} ariaLabel="Copy CloudTrail Lambda runtime" />
+                    </span>
+                  </li>
+                  <li>Click <strong>Create function</strong>.</li>
+                </ol>
+                <p className="text-[12px] text-text-muted">
+                  This Lambda sends KCX a file event when a new CloudTrail log object is created.
+                </p>
+              </InlineGuideStep>
+
+              <InlineGuideStep title="Step 6: Add Lambda code" previewTitle="Replace Lambda code" previewContext="Replace Lambda code in the Code tab" onOpenHelp={openHelpModal}>
+                <ol className="list-decimal space-y-2 pl-4">
+                  <li>Open the Lambda function and go to the <strong>Code</strong> tab.</li>
+                  <li>Replace the default code with:
+                    <div>
+                      <InlineActionLink
+                        label="View CloudTrail Event Lambda Code"
+                        onClick={() =>
+                          openPolicyDrawer("CloudTrail Event Lambda Code", generated.cloudTrailLambdaFunctionCode, {
+                            description: "This Node.js function:",
+                            bullets: [
+                              "reads S3 object-created events",
+                              "filters to the configured CloudTrail prefix",
+                              "only processes CloudTrail log files under AWSLogs/",
+                              "posts the event to the KCX file callback endpoint",
+                            ],
+                          })
+                        }
+                        disabled={!requiredSetupValuesReady}
+                      />
+                    </div>
+                  </li>
+                  <li>Click <strong>Deploy</strong>.</li>
+                </ol>
+                <p className="text-[12px] text-text-muted">
+                  This code only forwards CloudTrail log objects that match the configured prefix.
+                </p>
+              </InlineGuideStep>
+
+              <InlineGuideStep title="Step 7: Add environment variables" previewTitle="Add environment variables" previewContext="Configure Lambda environment variables" onOpenHelp={openHelpModal}>
+                <ol className="list-decimal space-y-2 pl-4">
+                  <li>Go to <strong>Configuration</strong> -&gt; <strong>Environment variables</strong>.</li>
+                  <li>Click <strong>Edit</strong>.</li>
+                  <li>Add the required values:
+                    <div>
+                      <InlineActionLink
+                        label="View Environment Variables"
+                        onClick={() =>
+                          openPolicyDrawer("CloudTrail Environment Variables", generated.cloudTrailLambdaEnvValues, {
+                            description: "Add these environment variables in Lambda.",
+                            note: "Go to Lambda -> Configuration -> Environment variables -> Add all below.",
+                            copyActionLabel: "Copy All Variables",
+                            copyAllFromKeyValues: true,
+                            keyValues: cloudTrailEnvironmentValues,
+                          })
+                        }
+                        disabled={!requiredSetupValuesReady || !form.billingRoleArn.trim()}
+                      />
+                    </div>
+                  </li>
+                  <li>Click <strong>Save</strong>.</li>
+                </ol>
+                <p className="text-[12px] text-text-muted">
+                  These values tell the Lambda how to identify CloudTrail files and send them to KCX.
+                </p>
+              </InlineGuideStep>
+
+              <InlineGuideStep title="Step 8: Create EventBridge rule" previewTitle="Create EventBridge rule" previewContext="Create EventBridge rule for CloudTrail S3 object-created events" onOpenHelp={openHelpModal}>
+                <ol className="list-decimal space-y-2 pl-4">
+                  <li>Open AWS EventBridge. <AwsConsoleLink label="Open EventBridge in AWS" url={eventBridgeRulesUrl} className="ml-1" /></li>
+                  <li>Go to <strong>Rules</strong> and click <strong>Create rule</strong>.</li>
+                  <li>Enter rule name:
+                    <span className="ml-1 inline-flex align-middle">
+                      <ReadonlyCopyField value={form.cloudTrailRuleName} copyKey="cloudtrail-eventbridge-rule-name" copiedKey={copiedKey} onCopy={copyToClipboard} ariaLabel="Copy CloudTrail EventBridge rule name" />
+                    </span>
+                  </li>
+                  <li>Select event source:
+                    <div className="pl-1 text-sm text-text-primary">
+                      <div><strong>AWS services</strong></div>
+                      <div>Service: <strong>S3</strong></div>
+                      <div>Event type: <strong>Object Created</strong></div>
+                    </div>
+                  </li>
+                  <li>Configure the event pattern:
+                    <div>
+                      <InlineActionLink
+                        label="View EventBridge Event Pattern"
+                        onClick={() =>
+                          openPolicyDrawer("CloudTrail Event Pattern", cloudTrailEventPattern, {
+                            description: "This rule should only match object-created events from the CloudTrail bucket and prefix.",
+                          })
+                        }
+                        disabled={!requiredSetupValuesReady || !generated.cloudTrailEventBridgeParams.trim()}
+                      />
+                    </div>
+                  </li>
+                  <li>Set target to <strong>Lambda function</strong> and select the CloudTrail Lambda.</li>
+                  <li>Click <strong>Create rule</strong>.</li>
+                </ol>
+                <p className="text-[12px] text-text-muted">
+                  This rule forwards new CloudTrail objects from S3 to the Lambda function.
+                </p>
+              </InlineGuideStep>
+
+              <InlineGuideStep title="Step 9: Paste Lambda ARN and validate" previewTitle="Copy Lambda ARN" previewContext="Copy Lambda function ARN from function details" onOpenHelp={openHelpModal}>
+                <ol className="list-decimal space-y-2 pl-4">
+                  <li>Open the Lambda function.</li>
+                  <li>Copy the <strong>Function ARN</strong>.</li>
+                  <li>Paste it below.</li>
+                  <li>Click <strong>Validate CloudTrail</strong>.</li>
+                </ol>
+                <label className="mt-2 block space-y-1">
+                  <span className={LABEL_CLASS}>CloudTrail Lambda ARN</span>
+                  <input
+                    className={CONTROL_CLASS}
+                    value={form.cloudTrailLambdaArn}
+                    onChange={(event) => {
+                      setField("cloudTrailLambdaArn", event.target.value)
+                      setCloudTrailValidation("idle")
+                    }}
+                  />
+                </label>
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <Button type="button" className="h-9 rounded-md" onClick={() => simulateValidation(setCloudTrailValidation, Boolean(form.trailName.trim() && form.cloudTrailBucket.trim()))} disabled={cloudTrailValidation === "loading"}>Validate CloudTrail</Button>
+                  <ValidationBanner state={cloudTrailValidation} idleText="CloudTrail validation pending." successText="CloudTrail setup validated." errorText="Validation failed. Verify trail, policy, and event rule." />
+                </div>
+              </InlineGuideStep>
             </div>
-            <GeneratedBlock title="CloudTrail Bucket Name" content={form.cloudTrailBucket} copyKey="ctbn" copiedKey={copiedKey} onCopy={copyToClipboard} disabled={!form.cloudTrailBucket.trim()} helper="Provide CloudTrail bucket name." />
-            <PolicyBlock title="CloudTrail Bucket Policy" content={generated.cloudTrailBucketPolicy} copyKey="ctbp" copiedKey={copiedKey} onCopy={copyToClipboard} disabled={!requiredSetupValuesReady || !form.cloudTrailBucket.trim()} helper="Setup values and CloudTrail bucket are required." />
-            <GeneratedBlock title="CloudTrail Lambda Function Code (Node.js)" content={generated.cloudTrailLambdaFunctionCode} copyKey="ctlfc" copiedKey={copiedKey} onCopy={copyToClipboard} disabled={!requiredSetupValuesReady} helper="Setup values are required." />
-            <GeneratedBlock title="CloudTrail File-Event Lambda Environment Values" content={generated.cloudTrailLambdaEnvValues} copyKey="ctenv" copiedKey={copiedKey} onCopy={copyToClipboard} disabled={!requiredSetupValuesReady || !form.billingRoleArn.trim()} helper="Setup values and Billing Role ARN are required." />
-            <GeneratedBlock title="CloudTrail EventBridge Rule Parameters" content={generated.cloudTrailEventBridgeParams} copyKey="ctev" copiedKey={copiedKey} onCopy={copyToClipboard} disabled={!requiredSetupValuesReady} helper="Setup values are required." />
-            <div className="flex flex-wrap items-center gap-2"><Button type="button" className="h-9 rounded-md" onClick={() => simulateValidation(setCloudTrailValidation, Boolean(form.trailName.trim() && form.cloudTrailBucket.trim()))} disabled={cloudTrailValidation === "loading"}>Validate CloudTrail</Button><ValidationBanner state={cloudTrailValidation} idleText="CloudTrail validation pending." successText="CloudTrail setup validated." errorText="Validation failed. Verify trail, policy, and event rule." /></div>
           </OptionalSection>
         </div>
       ) : null}
@@ -1589,8 +2338,9 @@ function ManualSetupWizard({ activeRoute }: { activeRoute: string }) {
       <PolicyDrawer
         state={policyDrawer}
         copied={copiedKey === "policy-drawer-copy"}
+        copiedKey={copiedKey}
         onOpenChange={(nextOpen) => setPolicyDrawer((current) => ({ ...current, open: nextOpen }))}
-        onCopy={() => copyToClipboard("policy-drawer-copy", policyDrawer.content)}
+        onCopy={copyToClipboard}
       />
 
       <HelpModal

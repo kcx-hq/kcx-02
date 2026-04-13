@@ -2,7 +2,7 @@ import type { UseQueryResult } from "@tanstack/react-query";
 import { ManualDashboardPageHeader } from "../../components/ManualDashboardPageHeader";
 import { ManualDashboardPlaceholderBlock } from "../../components/ManualDashboardPlaceholderBlock";
 import { ManualDashboardSection } from "../../components/ManualDashboardSection";
-import type { UploadDashboardSectionResponse } from "../../api/uploadDashboardApi";
+import type { UploadDashboardSectionResponse } from "../../api/uploadDashboardTypes";
 
 type ManualDashboardSectionPageProps = {
   title: string;

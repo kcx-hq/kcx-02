@@ -2,6 +2,7 @@ import { apiGet, apiPatch, apiPost } from "@/lib/api";
 import type {
   AnomaliesFiltersQuery,
   AnomaliesListResponse,
+  AnomalyRecord,
   BudgetDashboardResponse,
   BudgetUpsertPayload,
   BudgetActualForecastPoint,
@@ -150,11 +151,10 @@ function withAnomaliesFilters(path: string, filters?: AnomaliesFiltersQuery): st
 function withAnomaliesAlertsFilters(
   path: string,
   scope: DashboardResolvedScope,
-  filters?: AnomalyAlertsFiltersQuery,
+  filters?: AnomaliesFiltersQuery,
 ): string {
   const params = new URLSearchParams(buildDashboardQueryParams(scope));
 
-  if (filters?.anomalyType) params.set("anomaly_type", filters.anomalyType);
   if (filters?.severity) params.set("severity", filters.severity);
   if (filters?.anomaly_type) params.set("anomaly_type", filters.anomaly_type);
   if (filters?.date_from) params.set("date_from", filters.date_from);
@@ -315,8 +315,33 @@ export const dashboardApi = {
     );
   },
 
-  getAnomaliesAlerts(scope: DashboardResolvedScope, filters?: AnomalyAlertsFiltersQuery) {
-    return apiGet<AnomalyAlertRecord[]>(withAnomaliesAlertsFilters("/dashboard/anomalies-alerts", scope, filters));
+  getOptimizationCommitmentOverview(scope: DashboardResolvedScope) {
+    return apiGet<OptimizationCommitmentOverview>(
+      withDashboardQuery("/dashboard/optimization/commitment/overview", scope),
+    );
+  },
+
+  getOptimizationCommitmentRecommendations(
+    scope: DashboardResolvedScope,
+    filters?: OptimizationRecommendationFiltersQuery,
+  ) {
+    return apiGet<OptimizationCommitmentRecommendationsResponse>(
+      withOptimizationFilters("/dashboard/optimization/commitment/recommendations", scope, filters),
+    );
+  },
+
+  getOptimizationCommitmentRecommendationDetail(scope: DashboardResolvedScope, recommendationId: string) {
+    return apiGet<OptimizationCommitmentRecommendationDetail>(
+      withDashboardQuery(`/dashboard/optimization/commitment/recommendations/${recommendationId}`, scope),
+    );
+  },
+
+  getAnomalies(filters?: AnomaliesFiltersQuery) {
+    return apiGet<AnomaliesListResponse>(withAnomaliesFilters("/anomalies", filters));
+  },
+
+  getAnomaliesAlerts(scope: DashboardResolvedScope, filters?: AnomaliesFiltersQuery) {
+    return apiGet<AnomalyRecord[]>(withAnomaliesAlertsFilters("/dashboard/anomalies-alerts", scope, filters));
   },
 
   getBudget(scope: DashboardResolvedScope) {

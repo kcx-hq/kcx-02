@@ -2,7 +2,12 @@ import * as Dialog from "@radix-ui/react-dialog"
 import { X } from "lucide-react"
 
 import type { BillingUploadDetailsResponse } from "@/modules/billing-uploads/admin-billing-uploads.api"
-import { formatBoolean, formatDateTime, formatFileSize, formatValue } from "@/modules/billing-uploads/billing-uploads.formatters"
+import {
+  formatBoolean,
+  formatCompactDateTime,
+  formatFileSize,
+  formatValue,
+} from "@/modules/billing-uploads/billing-uploads.formatters"
 import { Button } from "@/shared/ui/button"
 import { Card, CardContent } from "@/shared/ui/card"
 
@@ -78,11 +83,8 @@ export function BillingUploadDetailsDrawer({
                   <DetailRow label="Current Step" value={formatValue(data.runOverview.currentStep)} />
                   <DetailRow label="Progress %" value={String(data.runOverview.progressPercent)} />
                   <DetailRow label="Status Message" value={formatValue(data.runOverview.statusMessage)} />
-                  <DetailRow label="Started At" value={formatDateTime(data.runOverview.startedAt)} />
-                  <DetailRow label="Finished At" value={formatDateTime(data.runOverview.finishedAt)} />
-                  <DetailRow label="Created At" value={formatDateTime(data.runOverview.createdAt)} />
-                  <DetailRow label="Updated At" value={formatDateTime(data.runOverview.updatedAt)} />
-                  <DetailRow label="Last Heartbeat" value={formatDateTime(data.runOverview.lastHeartbeatAt)} />
+                  <DetailRow label="Started At" value={formatCompactDateTime(data.runOverview.startedAt)} />
+                  <DetailRow label="Finished At" value={formatCompactDateTime(data.runOverview.finishedAt)} />
                 </CardContent>
               </Card>
 
@@ -120,7 +122,7 @@ export function BillingUploadDetailsDrawer({
                   <DetailRow label="File Format" value={data.fileContext.fileFormat} />
                   <DetailRow label="File Size" value={formatFileSize(data.fileContext.fileSizeBytes)} />
                   <DetailRow label="Checksum" value={formatValue(data.fileContext.checksum)} />
-                  <DetailRow label="Uploaded At" value={formatDateTime(data.fileContext.uploadedAt)} />
+                  <DetailRow label="Uploaded At" value={formatCompactDateTime(data.fileContext.uploadedAt)} />
                   <DetailRow
                     label="Uploaded By"
                     value={
@@ -158,7 +160,7 @@ export function BillingUploadDetailsDrawer({
                   <DetailRow label="Error Message" value={formatValue(data.failureDetails.errorMessage)} />
                   <DetailRow label="Row Error Count" value={String(data.failureDetails.rowErrorCount)} />
 
-                  <div className="mt-2 overflow-auto rounded-xl ring-1 ring-[color:rgba(15,23,42,0.08)]">
+                  <div className="mt-2 overflow-x-auto rounded-xl ring-1 ring-[color:rgba(15,23,42,0.08)]">
                     <table className="min-w-[620px] w-full border-separate border-spacing-0 text-sm">
                       <thead className="bg-white">
                         <tr className="text-left text-[11px] font-semibold uppercase tracking-[0.12em] text-[color:rgba(15,23,42,0.55)]">
@@ -183,7 +185,7 @@ export function BillingUploadDetailsDrawer({
                               <td className="px-3 py-2.5">{formatValue(item.rowNumber)}</td>
                               <td className="px-3 py-2.5">{formatValue(item.errorCode)}</td>
                               <td className="px-3 py-2.5">{item.errorMessage}</td>
-                              <td className="px-3 py-2.5">{formatDateTime(item.createdAt)}</td>
+                              <td className="px-3 py-2.5">{formatCompactDateTime(item.createdAt)}</td>
                             </tr>
                           ))
                         )}
@@ -196,7 +198,7 @@ export function BillingUploadDetailsDrawer({
               <Card>
                 <CardContent className="space-y-3 p-4">
                   <div className="text-sm font-semibold text-[color:rgba(15,23,42,0.88)]">H. Related Files</div>
-                  <div className="overflow-auto rounded-xl ring-1 ring-[color:rgba(15,23,42,0.08)]">
+                  <div className="overflow-x-auto rounded-xl ring-1 ring-[color:rgba(15,23,42,0.08)]">
                     <table className="min-w-[620px] w-full border-separate border-spacing-0 text-sm">
                       <thead className="bg-white">
                         <tr className="text-left text-[11px] font-semibold uppercase tracking-[0.12em] text-[color:rgba(15,23,42,0.55)]">

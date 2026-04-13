@@ -2,6 +2,7 @@
   "typescript.tsdk": "frontend/node_modules/typescript/lib",
   "typescript.enablePromptUseWorkspaceTsdk": true,
   "cSpell.words": [
-    "ingestions"
+    "ingestions",
+    "VITE"
   ]
 }

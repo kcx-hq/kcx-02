@@ -28,6 +28,7 @@ import {
   assertCloudAccountIsUnique,
   syncAutomaticCloudIntegration,
 } from "../../cloud-integration-registry.service.js";
+import { syncS3UploadConnectionFromAwsSetup } from "../s3-upload-connection-sync.service.js";
 import {
   buildAwsCloudFormationCreateStackUrl,
 } from "./aws-cloudformation-url.js";
@@ -372,6 +373,28 @@ async function handleAwsDeleteCallback(input: {
     lastCheckedAt: now,
   });
 
+  try {
+    await syncS3UploadConnectionFromAwsSetup({
+      tenantId: connection.tenantId,
+      createdBy: connection.createdBy ?? null,
+      roleArn: billingRoleArn,
+      externalId: connection.externalId ?? null,
+      bucketName: payload.export_bucket.trim(),
+      basePrefix: payload.export_prefix.trim(),
+      awsAccountId: payload.account_id.trim(),
+      status: "suspended",
+      createIfMissing: false,
+    });
+  } catch (s3SyncError) {
+    logger.warn("AWS delete callback accepted but failed to suspend S3 upload connection", {
+      connectionId: connection.id,
+      tenantId: connection.tenantId,
+      bucketName: payload.export_bucket.trim(),
+      prefix: payload.export_prefix.trim(),
+      message: s3SyncError instanceof Error ? s3SyncError.message : String(s3SyncError),
+    });
+  }
+
   logger.info("AWS setup callback accepted (delete)", {
     ...logContext,
     cadence,
@@ -471,6 +494,27 @@ async function acceptAwsCallback(input: {
     lastCheckedAt: now,
     ...(shouldScheduleValidation ? {} : { lastValidatedAt: connection.lastValidatedAt ?? null }),
   });
+
+  try {
+    await syncS3UploadConnectionFromAwsSetup({
+      tenantId: connection.tenantId,
+      createdBy: connection.createdBy ?? null,
+      roleArn: billingRoleArn,
+      externalId: connection.externalId ?? null,
+      bucketName: payload.export_bucket.trim(),
+      basePrefix: payload.export_prefix.trim(),
+      awsAccountId: payload.account_id.trim(),
+      status: "active",
+    });
+  } catch (s3SyncError) {
+    logger.warn("AWS callback accepted but failed to sync S3 upload connection", {
+      connectionId: connection.id,
+      tenantId: connection.tenantId,
+      bucketName: payload.export_bucket.trim(),
+      prefix: payload.export_prefix.trim(),
+      message: s3SyncError instanceof Error ? s3SyncError.message : String(s3SyncError),
+    });
+  }
 
   logger.info("AWS setup callback accepted", {
     ...logContext,
