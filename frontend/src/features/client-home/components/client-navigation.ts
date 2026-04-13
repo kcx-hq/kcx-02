@@ -21,7 +21,7 @@ export const CLIENT_SIDEBAR_MENU: ClientSidebarMenuItem[] = [
   {
     id: "billing",
     label: "Billing",
-    href: "/client/billing",
+    href: "/client/billing/cloud-integration",
     icon: Banknote,
     activeMatches: ["/client/billing"],
     submenu: [
