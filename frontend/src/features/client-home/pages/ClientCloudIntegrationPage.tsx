@@ -8,7 +8,6 @@ import { ApiError } from "@/lib/api"
 import { navigateTo } from "@/lib/navigation"
 
 export function ClientCloudIntegrationPage() {
-  const [cloudConnectionsSearch, setCloudConnectionsSearch] = useState("")
   const [dashboardActionLoading, setDashboardActionLoading] = useState(false)
   const [dashboardConnectionActionId, setDashboardConnectionActionId] = useState<string | null>(null)
   const [dashboardActionError, setDashboardActionError] = useState<string | null>(null)
@@ -23,19 +22,7 @@ export function ClientCloudIntegrationPage() {
 
   const cloudOverviewRows = useMemo(() => cloudIntegrationRows.map(mapCloudIntegrationOverviewRow), [cloudIntegrationRows])
 
-  const filteredCloudOverviewRows = useMemo(() => {
-    const normalizedSearch = cloudConnectionsSearch.trim().toLowerCase()
-    if (!normalizedSearch) return cloudOverviewRows
-
-    return cloudOverviewRows.filter((row) => {
-      return (
-        row.connectionName.toLowerCase().includes(normalizedSearch) ||
-        row.provider.toLowerCase().includes(normalizedSearch) ||
-        row.statusLabel.toLowerCase().includes(normalizedSearch) ||
-        row.lastIngestOrMessage.toLowerCase().includes(normalizedSearch)
-      )
-    })
-  }, [cloudConnectionsSearch, cloudOverviewRows])
+  const filteredCloudOverviewRows = cloudOverviewRows
 
   const cloudIntegrationsErrorMessage =
     cloudIntegrationsError instanceof ApiError ? cloudIntegrationsError.message : "Unable to load cloud connections."
@@ -88,12 +75,24 @@ export function ClientCloudIntegrationPage() {
     })()
   }
 
+  async function handleGetRequestActivityDetails(integrationId: string) {
+    const scope = await getCloudIntegrationDashboardScope(integrationId)
+    const ingestedAt = scope.latest_ingested_at ?? scope.usage_to ?? scope.usage_from
+    return {
+      ingestionRows: scope.latest_ingestion_rows_loaded,
+      ingestedAt,
+    }
+  }
+
+  function handleOpenProviderSetup(provider: "aws" | "azure" | "gcp" | "oracle-cloud") {
+    navigateTo(`/client/billing/connect-cloud/${provider}`)
+  }
+
   return (
     <>
       <AddCloudConnectionSection
-        onOpenS3UploadModal={() => navigateTo("/client/billing/import-s3")}
-        cloudConnectionsSearch={cloudConnectionsSearch}
-        onCloudConnectionsSearchChange={setCloudConnectionsSearch}
+        onOpenProviderSetup={handleOpenProviderSetup}
+        onOpenS3Connection={() => navigateTo("/client/billing/import-s3")}
         cloudOverviewRows={cloudOverviewRows}
         filteredCloudOverviewRows={filteredCloudOverviewRows}
         isCloudIntegrationsLoading={isCloudIntegrationsLoading}
@@ -106,6 +105,7 @@ export function ClientCloudIntegrationPage() {
           void refetchCloudIntegrations()
         }}
         onOpenCloudConnectionDashboard={handleOpenCloudConnectionDashboard}
+        onGetRequestActivityDetails={handleGetRequestActivityDetails}
       />
     </>
   )

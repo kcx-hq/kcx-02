@@ -1,12 +1,10 @@
 import { useEffect, useMemo, useState } from "react"
+import { Loader2, UploadCloud } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
 } from "@/components/ui/dialog"
 import { ApiError, apiGet, apiPostForm } from "@/lib/api"
 import {
@@ -419,30 +417,21 @@ export function ManualBillingUploadDialog({
 
   return (
     <Dialog open={open} onOpenChange={(nextOpen) => (nextOpen ? onOpenChange(true) : closeDialog())}>
-      <DialogContent className="max-w-xl">
-        <DialogHeader>
-          <DialogTitle>Upload Billing File</DialogTitle>
-          <DialogDescription>
-            Choose how you want to provide billing files for ingestion.
-          </DialogDescription>
-        </DialogHeader>
-
+      <DialogContent className="max-w-xl rounded-[14px]">
         <div className="space-y-4">
-          {!hideSourceTabs ? (
-            <div className="rounded-md border border-[color:var(--border-light)] p-1">
-              <Button
-                type="button"
-                variant="default"
-                className="h-9 w-full rounded-md"
-                onClick={() => setSource("local")}
-              >
-                Upload from Local
-              </Button>
-            </div>
+          {!hideSourceTabs && source !== "local" ? (
+            <Button type="button" variant="outline" className="h-9 rounded-md" onClick={() => setSource("local")}>
+              Upload from Local
+            </Button>
           ) : null}
 
           {source === "local" ? (
             <div className="space-y-4">
+              <div className="space-y-1">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[rgba(62,138,118,0.95)]">Local Upload</p>
+                <p className="text-sm text-text-secondary">Upload a CSV or parquet billing file to start ingestion.</p>
+              </div>
+
               <label className="block space-y-1.5">
                 <span className="text-xs font-semibold uppercase tracking-[0.08em] text-text-muted">Cloud Provider</span>
                 <select
@@ -466,24 +455,54 @@ export function ManualBillingUploadDialog({
 
               <label className="block space-y-1.5">
                 <span className="text-xs font-semibold uppercase tracking-[0.08em] text-text-muted">Billing File</span>
-                <input
-                  type="file"
-                  accept=".csv,.parquet"
-                  className="block w-full rounded-md border border-[color:var(--border-light)] bg-white px-3 py-2 text-sm text-text-primary file:mr-3 file:rounded-md file:border-0 file:bg-[color:var(--bg-surface)] file:px-3 file:py-1.5 file:text-sm file:font-medium"
-                  onChange={onFileChange}
-                  disabled={submitting}
-                />
+                <div className="rounded-md border border-[color:var(--border-light)] bg-white p-2">
+                  <input
+                    id="billing-file-upload"
+                    type="file"
+                    accept=".csv,.parquet"
+                    className="sr-only"
+                    onChange={onFileChange}
+                    disabled={submitting}
+                  />
+                  <label
+                    htmlFor="billing-file-upload"
+                    className="flex cursor-pointer items-center gap-3 rounded-md px-2 py-1.5 transition-colors hover:bg-[color:var(--bg-surface)]"
+                  >
+                    <span className="inline-flex h-8 items-center rounded-md border border-[color:var(--border-light)] bg-[color:var(--bg-surface)] px-3 text-sm font-medium text-text-primary">
+                      Choose File
+                    </span>
+                    <span className="truncate text-sm text-text-secondary">{file?.name ?? "No file chosen"}</span>
+                  </label>
+                </div>
               </label>
 
               {localError ? <p className="text-sm text-rose-600">{localError}</p> : null}
               {successMessage ? <p className="text-sm text-emerald-700">{successMessage}</p> : null}
+              {submitting ? (
+                <div className="rounded-md border border-[rgba(62,138,118,0.25)] bg-[rgba(62,138,118,0.08)] px-3 py-2 text-sm text-[rgba(39,103,88,0.95)]">
+                  <div className="flex items-center gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Uploading file and preparing ingestion...
+                  </div>
+                </div>
+              ) : null}
 
               <div className="flex justify-end gap-2">
                 <Button variant="outline" className="h-10 rounded-md" onClick={closeDialog} disabled={submitting}>
                   Cancel
                 </Button>
                 <Button className="h-10 rounded-md" onClick={onSubmit} disabled={!localCanSubmit}>
-                  {submitting ? "Uploading..." : "Upload File"}
+                  {submitting ? (
+                    <span className="inline-flex items-center gap-2">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Uploading...
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-2">
+                      <UploadCloud className="h-4 w-4" />
+                      Upload File
+                    </span>
+                  )}
                 </Button>
               </div>
             </div>

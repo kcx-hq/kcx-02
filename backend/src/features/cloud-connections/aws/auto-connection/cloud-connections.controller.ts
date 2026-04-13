@@ -949,7 +949,7 @@ export async function handleGetCloudIntegrationDashboardScope(req: Request, res:
     .filter((billingSourceId) => Number.isInteger(billingSourceId));
   const billingSourceIdsAsText = billingSourceIds.map((billingSourceId) => String(billingSourceId));
 
-  type UsageRangeRow = {
+type UsageRangeRow = {
     usage_from: string | null;
     usage_to: string | null;
   };
@@ -978,6 +978,8 @@ export async function handleGetCloudIntegrationDashboardScope(req: Request, res:
   }
 
   let rawBillingFileIds: number[] = [];
+  let latestIngestedAt: string | null = null;
+  let latestIngestionRowsLoaded: number | null = null;
   if (billingSourceIdsAsText.length > 0) {
     const completedIngestionRuns = await BillingIngestionRun.findAll({
       where: {
@@ -997,6 +999,16 @@ export async function handleGetCloudIntegrationDashboardScope(req: Request, res:
       .filter((ingestionRunId) => Number.isInteger(ingestionRunId));
 
     if (completedIngestionRunIds.length > 0) {
+      const latestCompletedRun = completedIngestionRuns[0];
+      if (latestCompletedRun) {
+        latestIngestedAt =
+          latestCompletedRun.finishedAt?.toISOString() ??
+          latestCompletedRun.updatedAt?.toISOString() ??
+          null;
+        latestIngestionRowsLoaded =
+          Number.isFinite(Number(latestCompletedRun.rowsLoaded)) ? Number(latestCompletedRun.rowsLoaded) : null;
+      }
+
       const runFiles = await BillingIngestionRunFile.findAll({
         where: {
           ingestionRunId: {
@@ -1036,6 +1048,8 @@ export async function handleGetCloudIntegrationDashboardScope(req: Request, res:
       usage_to: usageTo,
       raw_billing_file_ids: rawBillingFileIds,
       ingested_files_count: rawBillingFileIds.length,
+      latest_ingested_at: latestIngestedAt,
+      latest_ingestion_rows_loaded: latestIngestionRowsLoaded,
     },
   });
 }

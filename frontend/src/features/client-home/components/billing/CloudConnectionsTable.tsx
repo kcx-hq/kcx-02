@@ -1,5 +1,8 @@
+import { useMemo, useState } from "react"
+
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { TablePagination } from "@/features/client-home/components/TablePagination"
 import { cn } from "@/lib/utils"
 
 import type { CloudIntegrationOverviewRow } from "./billingHelpers"
@@ -14,6 +17,22 @@ type CloudConnectionsTableProps = {
   dashboardConnectionActionId: string | null
   onRetry: () => void
   onOpenDashboard: (integrationId: string) => void
+  onGetRequestActivityDetails: (
+    integrationId: string,
+  ) => Promise<{ ingestionRows: number | null; ingestedAt: string | null }>
+}
+
+const PAGE_SIZE = 10
+
+function formatActivityDate(value: string | null) {
+  if (!value) return "-"
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  return date.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  })
 }
 
 function statusBadgeClass(status: CloudIntegrationOverviewRow["statusLabel"]) {
@@ -46,26 +65,69 @@ export function CloudConnectionsTable({
   dashboardConnectionActionId,
   onRetry,
   onOpenDashboard,
+  onGetRequestActivityDetails,
 }: CloudConnectionsTableProps) {
+  const [page, setPage] = useState(1)
+  const [activeActivityTooltipId, setActiveActivityTooltipId] = useState<string | null>(null)
+  const [activityDetailsById, setActivityDetailsById] = useState<
+    Record<string, { loading: boolean; ingestionRows: number | null; ingestedAt: string | null; error: boolean }>
+  >({})
+  const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE))
+  const currentPage = Math.min(page, totalPages)
+  const paginatedRows = useMemo(() => {
+    const startIndex = (currentPage - 1) * PAGE_SIZE
+    return rows.slice(startIndex, startIndex + PAGE_SIZE)
+  }, [currentPage, rows])
+
+  function handleLoadRequestActivityDetails(integrationId: string) {
+    const existing = activityDetailsById[integrationId]
+    if (existing?.loading || existing) return
+
+    setActivityDetailsById((previous) => ({
+      ...previous,
+      [integrationId]: { loading: true, ingestionRows: null, ingestedAt: null, error: false },
+    }))
+
+    void (async () => {
+      try {
+        const details = await onGetRequestActivityDetails(integrationId)
+        setActivityDetailsById((previous) => ({
+          ...previous,
+          [integrationId]: {
+            loading: false,
+            ingestionRows: details.ingestionRows,
+            ingestedAt: details.ingestedAt,
+            error: false,
+          },
+        }))
+      } catch {
+        setActivityDetailsById((previous) => ({
+          ...previous,
+          [integrationId]: { loading: false, ingestionRows: null, ingestedAt: null, error: true },
+        }))
+      }
+    })()
+  }
+
   return (
-    <div className="overflow-x-auto rounded-md border border-[color:var(--border-light)] bg-white">
-      <table className="w-full min-w-[980px] border-separate border-spacing-0 text-sm">
+    <div className="space-y-3">
+      <div className="overflow-x-auto overflow-y-visible">
+      <table className="w-full min-w-[900px] border-collapse text-left text-sm">
         <thead>
-          <tr className="text-left text-[0.78rem] font-semibold uppercase tracking-[0.1em] text-text-muted">
-            <th className="border-b border-[color:var(--border-light)] px-4 py-3">Name</th>
-            <th className="border-b border-[color:var(--border-light)] px-4 py-3">Cloud Provider</th>
-            <th className="border-b border-[color:var(--border-light)] px-4 py-3">Last Checked</th>
-            <th className="border-b border-[color:var(--border-light)] px-4 py-3">Last Success / Message</th>
-            <th className="border-b border-[color:var(--border-light)] px-4 py-3">Request Activity</th>
-            <th className="border-b border-[color:var(--border-light)] px-4 py-3">Status</th>
-            <th className="border-b border-[color:var(--border-light)] px-4 py-3 text-right">Action</th>
+          <tr className="border-b border-[color:var(--border-light)]">
+            <th className="px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-text-muted">Name</th>
+            <th className="px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-text-muted">Cloud Provider</th>
+            <th className="px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-text-muted">Last Checked</th>
+            <th className="px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-text-muted">Last Success</th>
+            <th className="px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-text-muted">Request Activity</th>
+            <th className="px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-text-muted">Status</th>
           </tr>
         </thead>
 
         {isLoading ? (
           <tbody>
             <tr>
-              <td className="px-4 py-8 text-text-secondary" colSpan={7}>
+              <td className="px-4 py-8 text-text-secondary" colSpan={6}>
                 Loading cloud connections...
               </td>
             </tr>
@@ -73,7 +135,7 @@ export function CloudConnectionsTable({
         ) : isError ? (
           <tbody>
             <tr>
-              <td className="px-4 py-8" colSpan={7}>
+              <td className="px-4 py-8" colSpan={6}>
                 <div className="flex items-center justify-between gap-3">
                   <span className="text-rose-600">{errorMessage}</span>
                   <Button variant="outline" size="sm" className="h-8 rounded-md" onClick={onRetry}>
@@ -86,7 +148,7 @@ export function CloudConnectionsTable({
         ) : rows.length === 0 ? (
           <tbody>
             <tr>
-              <td className="px-4 py-8" colSpan={7}>
+              <td className="px-4 py-8" colSpan={6}>
                 <p className="text-base font-semibold text-text-primary">No connections found</p>
                 <p className="mt-1 text-sm text-text-secondary">
                   {totalRows === 0
@@ -98,39 +160,87 @@ export function CloudConnectionsTable({
           </tbody>
         ) : (
           <tbody>
-            {rows.map((row) => (
-              <tr key={row.id} className="transition-colors hover:bg-[color:var(--bg-surface)]">
-                <td className="border-b border-[color:var(--border-light)] px-4 py-3 text-[0.95rem] font-semibold text-[#226176]">
+            {paginatedRows.map((row) => (
+              <tr
+                key={row.id}
+                role="button"
+                tabIndex={0}
+                onClick={() => {
+                  if (!dashboardActionLoading) onOpenDashboard(row.id)
+                }}
+                onKeyDown={(event) => {
+                  if (dashboardActionLoading) return
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault()
+                    onOpenDashboard(row.id)
+                  }
+                }}
+                className={cn(
+                  "border-b border-[color:var(--border-light)] transition-colors hover:bg-[color:var(--bg-surface)]",
+                  dashboardActionLoading ? "cursor-wait" : "cursor-pointer",
+                )}
+              >
+                <td className="px-4 py-3 text-[0.95rem] font-semibold text-[#226176]">
                   {row.connectionName}
+                  {dashboardConnectionActionId === row.id ? (
+                    <span className="ml-2 text-xs font-medium text-text-muted">Opening...</span>
+                  ) : null}
                 </td>
-                <td className="border-b border-[color:var(--border-light)] px-4 py-3 text-[0.95rem] text-text-primary">{row.provider}</td>
-                <td className="border-b border-[color:var(--border-light)] px-4 py-3 text-[0.95rem] text-text-primary">{row.lastChecked}</td>
-                <td className="border-b border-[color:var(--border-light)] px-4 py-3 text-[0.95rem] text-text-primary">{row.lastIngestOrMessage}</td>
-                <td className="border-b border-[color:var(--border-light)] px-4 py-3">
-                  <RequestActivitySparkline status={row.statusLabel} />
+                <td className="px-4 py-3 text-[0.95rem] text-text-primary">{row.provider}</td>
+                <td className="px-4 py-3 text-[0.95rem] text-text-primary">{row.lastChecked}</td>
+                <td className="px-4 py-3 text-[0.95rem] text-text-primary">{row.lastSuccess}</td>
+                <td className="overflow-visible px-4 py-3">
+                  <div
+                    className="relative inline-flex"
+                    onMouseEnter={() => {
+                      setActiveActivityTooltipId(row.id)
+                      handleLoadRequestActivityDetails(row.id)
+                    }}
+                    onMouseLeave={() => setActiveActivityTooltipId((previous) => (previous === row.id ? null : previous))}
+                    onFocus={() => {
+                      setActiveActivityTooltipId(row.id)
+                      handleLoadRequestActivityDetails(row.id)
+                    }}
+                    onBlur={() => setActiveActivityTooltipId((previous) => (previous === row.id ? null : previous))}
+                  >
+                    <RequestActivitySparkline status={row.statusLabel} />
+                    {activeActivityTooltipId === row.id ? (
+                      <div className="pointer-events-none absolute bottom-full left-1/2 z-30 mb-1 -translate-x-1/2 whitespace-nowrap rounded-md border border-[color:var(--border-light)] bg-white px-2.5 py-2 text-xs text-text-primary shadow-sm">
+                        {activityDetailsById[row.id]?.loading ? (
+                          <p>Loading activity...</p>
+                        ) : activityDetailsById[row.id]?.error ? (
+                          <p>Activity unavailable</p>
+                        ) : (
+                          <>
+                            <p>Ingestion rows: {activityDetailsById[row.id]?.ingestionRows ?? "-"}</p>
+                            <p>Ingested on: {formatActivityDate(activityDetailsById[row.id]?.ingestedAt ?? null)}</p>
+                          </>
+                        )}
+                      </div>
+                    ) : null}
+                  </div>
                 </td>
-                <td className="border-b border-[color:var(--border-light)] px-4 py-3">
+                <td className="px-4 py-3">
                   <Badge variant="outline" className={cn("rounded-sm px-1.5 py-0 text-[11px]", statusBadgeClass(row.statusLabel))}>
                     {row.statusLabel}
                   </Badge>
-                </td>
-                <td className="border-b border-[color:var(--border-light)] px-4 py-3 text-right">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-9 rounded-md"
-                    disabled={dashboardActionLoading}
-                    onClick={() => onOpenDashboard(row.id)}
-                  >
-                    {dashboardConnectionActionId === row.id ? "Opening..." : "Dashboard"}
-                  </Button>
                 </td>
               </tr>
             ))}
           </tbody>
         )}
       </table>
-
+      </div>
+      {!isLoading && !isError && rows.length > 0 ? (
+        <TablePagination
+          currentPage={currentPage}
+          totalPages={totalPages}
+          totalItems={rows.length}
+          pageSize={PAGE_SIZE}
+          onPrevious={() => setPage((previous) => Math.max(previous - 1, 1))}
+          onNext={() => setPage((previous) => Math.min(previous + 1, totalPages))}
+        />
+      ) : null}
     </div>
   )
 }

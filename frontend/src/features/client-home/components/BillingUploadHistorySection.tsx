@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import type { TenantUploadHistoryRecord } from "@/features/client-home/api/upload-history.api"
 import { useUploadHistorySelectionStore } from "@/features/client-home/stores/uploadHistorySelection.store"
+import { TablePagination } from "@/features/client-home/components/TablePagination"
 import { cn } from "@/lib/utils"
 
 type NormalizedStatus = "idle" | "queued" | "processing" | "completed" | "warning" | "failed"
@@ -21,6 +22,7 @@ type BillingUploadHistorySectionProps = {
   onViewDetails: (runId: string) => void
   onRetryUpload: (record: TenantUploadHistoryRecord) => void
   onOpenDashboard: (selectedRawBillingFileIds: number[]) => void
+  embedded?: boolean
 }
 
 const PAGE_SIZE = 10
@@ -111,9 +113,9 @@ function ErrorState({ message, onRetry }: { message: string | null; onRetry: () 
   )
 }
 
-function EmptyState() {
+function EmptyState({ embedded = false }: { embedded?: boolean }) {
   return (
-    <div className="rounded-md border border-dashed border-[color:var(--border-light)] bg-[color:var(--bg-surface)] p-6">
+    <div className={embedded ? "py-6" : "rounded-md border border-dashed border-[color:var(--border-light)] bg-[color:var(--bg-surface)] p-6"}>
       <p className="text-sm font-semibold text-text-primary">No billing files uploaded yet.</p>
       <p className="mt-1 text-sm text-text-secondary">
         Uploaded files and processing results will appear here.
@@ -133,6 +135,7 @@ export function BillingUploadHistorySection({
   onViewDetails,
   onRetryUpload,
   onOpenDashboard,
+  embedded = false,
 }: BillingUploadHistorySectionProps) {
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState<"all" | NormalizedStatus>("all")
@@ -171,12 +174,12 @@ export function BillingUploadHistorySection({
     visibleRawBillingFileIds.length > 0 &&
     visibleRawBillingFileIds.every((rawBillingFileId) => selectedFileIds.includes(rawBillingFileId))
 
-  const paginationStart = filteredRecords.length === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1
-  const paginationEnd = Math.min(currentPage * PAGE_SIZE, filteredRecords.length)
-
   return (
     <section
-      className="space-y-4 rounded-xl border border-[color:var(--border-light)] bg-white p-4 shadow-sm-custom md:p-5"
+      className={cn(
+        "space-y-4",
+        embedded ? "" : "rounded-xl border border-[color:var(--border-light)] bg-white p-4 shadow-sm-custom md:p-5"
+      )}
       aria-label="Files and processing history"
     >
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -214,8 +217,13 @@ export function BillingUploadHistorySection({
             </select>
           </label>
           <Button
-            variant="outline"
-            className="h-10 rounded-md"
+            variant={selectedFileIds.length > 0 ? "default" : "outline"}
+            className={cn(
+              "h-10 rounded-md",
+              selectedFileIds.length > 0
+                ? "bg-[color:var(--brand-primary)] text-[color:var(--text-on-dark)] hover:bg-[color:var(--brand-primary-hover)]"
+                : ""
+            )}
             disabled={selectedFileIds.length === 0 || dashboardActionLoading}
             onClick={() => onOpenDashboard(selectedFileIds)}
           >
@@ -224,35 +232,38 @@ export function BillingUploadHistorySection({
         </div>
       </div>
 
-      <div className="overflow-hidden rounded-lg border border-[color:var(--border-light)]">
+      <div className={cn(embedded ? "mt-4 overflow-x-auto" : "overflow-hidden rounded-lg border border-[color:var(--border-light)]")}>
         {dashboardActionError ? (
-          <div className="border-b border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+          <div className={cn("text-sm text-rose-700", embedded ? "mb-3 rounded-md border border-rose-200 bg-rose-50 px-3 py-2" : "border-b border-rose-200 bg-rose-50 px-3 py-2")}>
             {dashboardActionError}
           </div>
         ) : null}
         {isLoading ? (
-          <div className="p-3">
+          <div className={cn(embedded ? "" : "p-3")}>
             <LoadingState />
           </div>
         ) : isError ? (
-          <div className="p-3">
+          <div className={cn(embedded ? "" : "p-3")}>
             <ErrorState message={errorMessage} onRetry={onRetry} />
           </div>
         ) : filteredRecords.length === 0 ? (
-          <div className="p-3">
+          <div className={cn(embedded ? "" : "p-3")}>
             {records.length === 0 ? (
-              <EmptyState />
+              <EmptyState embedded={embedded} />
             ) : (
-              <div className="rounded-md border border-dashed border-[color:var(--border-light)] bg-[color:var(--bg-surface)] p-5 text-sm text-text-secondary">
+              <div className={cn(
+                "text-sm text-text-secondary",
+                embedded ? "py-5" : "rounded-md border border-dashed border-[color:var(--border-light)] bg-[color:var(--bg-surface)] p-5"
+              )}>
                 No files match your current search or filter.
               </div>
             )}
           </div>
         ) : (
-          <Table className="min-w-[980px]">
+          <Table className="min-w-[1200px]">
             <TableHeader>
-              <TableRow className="bg-[color:var(--bg-surface)]">
-                <TableHead className="w-[52px]">
+              <TableRow className="border-b border-[color:var(--border-light)] bg-transparent hover:bg-transparent">
+                <TableHead className="w-[52px] py-4">
                   <input
                     type="checkbox"
                     aria-label="Select all visible files"
@@ -261,12 +272,12 @@ export function BillingUploadHistorySection({
                     className="h-4 w-4 rounded border-[color:var(--border-light)] accent-[color:var(--brand-primary)]"
                   />
                 </TableHead>
-                <TableHead>File Name</TableHead>
-                <TableHead>Uploaded At</TableHead>
-                <TableHead>Uploaded By</TableHead>
-                <TableHead>Processing Status</TableHead>
-                <TableHead>Rows</TableHead>
-                <TableHead className="text-right tracking-[0.14em]">Actions</TableHead>
+                <TableHead className="py-4 text-[11px] uppercase tracking-[0.14em]">File Name</TableHead>
+                <TableHead className="py-4 text-[11px] uppercase tracking-[0.14em]">Uploaded At</TableHead>
+                <TableHead className="py-4 text-[11px] uppercase tracking-[0.14em]">Uploaded By</TableHead>
+                <TableHead className="py-4 text-[11px] uppercase tracking-[0.14em]">Processing Status</TableHead>
+                <TableHead className="py-4 text-[11px] uppercase tracking-[0.14em]">Rows</TableHead>
+                <TableHead className="py-4 text-right text-[11px] uppercase tracking-[0.14em]">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -276,8 +287,8 @@ export function BillingUploadHistorySection({
                 const rawBillingFileId = Number(record.rawBillingFileId)
 
                 return (
-                  <TableRow key={record.id} className="transition-colors hover:bg-[color:var(--bg-surface)]">
-                    <TableCell>
+                  <TableRow key={record.id} className="border-b border-[color:var(--border-light)] transition-colors hover:bg-[color:var(--bg-surface)]">
+                    <TableCell className="py-4">
                       <input
                         type="checkbox"
                         aria-label={`Select ${record.fileName}`}
@@ -289,16 +300,16 @@ export function BillingUploadHistorySection({
                         className="h-4 w-4 rounded border-[color:var(--border-light)] accent-[color:var(--brand-primary)]"
                       />
                     </TableCell>
-                    <TableCell className="font-medium text-text-primary">{record.fileName}</TableCell>
-                    <TableCell className="text-text-primary">{formatDateTime(record.uploadedAt)}</TableCell>
-                    <TableCell className="text-text-primary">{record.uploadedBy || "-"}</TableCell>
-                    <TableCell>
+                    <TableCell className="py-4 font-medium text-text-primary">{record.fileName}</TableCell>
+                    <TableCell className="py-4 text-text-primary">{formatDateTime(record.uploadedAt)}</TableCell>
+                    <TableCell className="py-4 text-text-primary">{record.uploadedBy || "-"}</TableCell>
+                    <TableCell className="py-4">
                       <Badge variant="outline" className={cn("rounded-md", statusBadgeClass(status))}>
                         {formatStatusLabel(status)}
                       </Badge>
                     </TableCell>
-                    <TableCell className="text-text-primary">{formatRows(record)}</TableCell>
-                    <TableCell>
+                    <TableCell className="py-4 text-text-primary">{formatRows(record)}</TableCell>
+                    <TableCell className="py-4">
                       <div className="flex justify-end gap-1.5">
                         <Button variant="ghost" size="sm" className="h-8 rounded-md text-[15px]" onClick={() => onViewDetails(record.id)}>
                           View details
@@ -319,34 +330,14 @@ export function BillingUploadHistorySection({
       </div>
 
       {!isLoading && !isError && filteredRecords.length > 0 ? (
-        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[color:var(--border-light)] pt-3">
-          <p className="text-sm text-text-secondary">
-            Showing {paginationStart}-{paginationEnd} of {filteredRecords.length}
-          </p>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-8 rounded-md"
-              disabled={currentPage <= 1}
-              onClick={() => setPage((previous) => Math.max(previous - 1, 1))}
-            >
-              Previous
-            </Button>
-            <span className="min-w-[90px] text-center text-sm text-text-secondary">
-              Page {currentPage} of {totalPages}
-            </span>
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-8 rounded-md"
-              disabled={currentPage >= totalPages}
-              onClick={() => setPage((previous) => Math.min(previous + 1, totalPages))}
-            >
-              Next
-            </Button>
-          </div>
-        </div>
+        <TablePagination
+          currentPage={currentPage}
+          totalPages={totalPages}
+          totalItems={filteredRecords.length}
+          pageSize={PAGE_SIZE}
+          onPrevious={() => setPage((previous) => Math.max(previous - 1, 1))}
+          onNext={() => setPage((previous) => Math.min(previous + 1, totalPages))}
+        />
       ) : null}
     </section>
   )

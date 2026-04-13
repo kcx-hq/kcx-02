@@ -45,7 +45,6 @@ export function ClientBillingPage() {
   const isLegacyCloudConnectionsOverviewRoute =
     activeRoute === "/client/billing/connect-cloud" || activeRoute === "/client/billing/connections"
   const shouldLoadCloudIntegrations = isBillingHubRoute || isAddCloudConnectionRoute
-  const [cloudConnectionsSearch, setCloudConnectionsSearch] = useState("")
 
   const cloudProviderSlug = useMemo(() => {
     const match = CLOUD_PROVIDER_ROUTE_REGEX.exec(activeRoute)
@@ -176,19 +175,7 @@ export function ClientBillingPage() {
 
   const cloudOverviewRows = useMemo(() => cloudIntegrationRows.map(mapCloudIntegrationOverviewRow), [cloudIntegrationRows])
 
-  const filteredCloudOverviewRows = useMemo(() => {
-    const normalizedSearch = cloudConnectionsSearch.trim().toLowerCase()
-    if (!normalizedSearch) return cloudOverviewRows
-
-    return cloudOverviewRows.filter((row) => {
-      return (
-        row.connectionName.toLowerCase().includes(normalizedSearch) ||
-        row.provider.toLowerCase().includes(normalizedSearch) ||
-        row.statusLabel.toLowerCase().includes(normalizedSearch) ||
-        row.lastIngestOrMessage.toLowerCase().includes(normalizedSearch)
-      )
-    })
-  }, [cloudConnectionsSearch, cloudOverviewRows])
+  const filteredCloudOverviewRows = cloudOverviewRows
 
   const cloudIntegrationsErrorMessage =
     cloudIntegrationsError instanceof ApiError ? cloudIntegrationsError.message : "Unable to load cloud connections."
@@ -372,6 +359,15 @@ export function ClientBillingPage() {
     })()
   }
 
+  async function handleGetRequestActivityDetails(integrationId: string) {
+    const scope = await getCloudIntegrationDashboardScope(integrationId)
+    const ingestedAt = scope.latest_ingested_at ?? scope.usage_to ?? scope.usage_from
+    return {
+      ingestionRows: scope.latest_ingestion_rows_loaded,
+      ingestedAt,
+    }
+  }
+
   if (isBillingHubRoute) {
     return (
       <>
@@ -434,9 +430,8 @@ export function ClientBillingPage() {
             <div className="space-y-6 p-6">
               {isAddCloudConnectionRoute ? (
               <AddCloudConnectionSection
-                onOpenS3UploadModal={() => navigateTo("/client/billing/import-s3")}
-                cloudConnectionsSearch={cloudConnectionsSearch}
-                onCloudConnectionsSearchChange={setCloudConnectionsSearch}
+                onOpenProviderSetup={(provider) => navigateTo(`/client/billing/connect-cloud/${provider}`)}
+                onOpenS3Connection={() => navigateTo("/client/billing/import-s3")}
                 cloudOverviewRows={cloudOverviewRows}
                 filteredCloudOverviewRows={filteredCloudOverviewRows}
                 isCloudIntegrationsLoading={isCloudIntegrationsLoading}
@@ -449,6 +444,7 @@ export function ClientBillingPage() {
                   void refetchCloudIntegrations()
                 }}
                 onOpenCloudConnectionDashboard={handleOpenCloudConnectionDashboard}
+                onGetRequestActivityDetails={handleGetRequestActivityDetails}
               />
               ) : null}
 

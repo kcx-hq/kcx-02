@@ -1,3 +1,6 @@
+import { useEffect, useMemo, useState } from "react"
+
+import { TablePagination } from "@/features/client-home/components/TablePagination"
 import { cn } from "@/lib/utils"
 import type { TicketItem, TicketView } from "@/features/client-home/components/ticket-management/types"
 import { CalendarClock, CheckCircle2, CircleDot, Eye, RefreshCw, Search, Tag, User, XCircle } from "lucide-react"
@@ -43,6 +46,8 @@ function displayStatus(ticket: TicketItem) {
   return ticket.status
 }
 
+const PAGE_SIZE = 10
+
 export function TicketDetailsSection({
   tickets,
   createdCount,
@@ -58,6 +63,22 @@ export function TicketDetailsSection({
   onClientAction,
   actionLoadingId = null,
 }: TicketDetailsSectionProps) {
+  const [page, setPage] = useState(1)
+  const totalPages = Math.max(1, Math.ceil(tickets.length / PAGE_SIZE))
+  const currentPage = Math.min(page, totalPages)
+  const paginatedTickets = useMemo(() => {
+    const start = (currentPage - 1) * PAGE_SIZE
+    return tickets.slice(start, start + PAGE_SIZE)
+  }, [currentPage, tickets])
+
+  useEffect(() => {
+    setPage(1)
+  }, [ticketView, searchQuery, statusFilter])
+
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages)
+  }, [page, totalPages])
+
   return (
     <section>
       <div className="flex flex-wrap items-end justify-between gap-3">
@@ -164,7 +185,7 @@ export function TicketDetailsSection({
                 </td>
               </tr>
             ) : (
-              tickets.map((ticket) => (
+              paginatedTickets.map((ticket) => (
                 <tr key={ticket.id} className="border-b border-[color:var(--border-light)] last:border-b-0">
                   <td className="px-3 py-4">
                     <p className="text-sm font-semibold text-text-primary">{ticket.title}</p>
@@ -257,6 +278,19 @@ export function TicketDetailsSection({
           </tbody>
         </table>
       </div>
+
+      {tickets.length > 0 ? (
+        <div className="mt-3">
+          <TablePagination
+            currentPage={currentPage}
+            totalPages={totalPages}
+            totalItems={tickets.length}
+            pageSize={PAGE_SIZE}
+            onPrevious={() => setPage((previous) => Math.max(1, previous - 1))}
+            onNext={() => setPage((previous) => Math.min(totalPages, previous + 1))}
+          />
+        </div>
+      ) : null}
     </section>
   )
 }

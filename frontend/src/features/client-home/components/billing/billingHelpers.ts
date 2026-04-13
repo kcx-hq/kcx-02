@@ -66,7 +66,7 @@ export type CloudIntegrationOverviewRow = {
   provider: string
   cloudAccountId: string | null
   lastChecked: string
-  lastIngestOrMessage: string
+  lastSuccess: string
   statusLabel: "NOT AVAILABLE" | "CONNECTING" | "PENDING" | "HEALTHY" | "WARNING" | "FAILED" | "SUSPENDED"
 }
 
@@ -106,25 +106,15 @@ function mapCloudIntegrationStatusLabel(status: CloudIntegrationStatus): CloudIn
   return "SUSPENDED"
 }
 
-function mapCloudIntegrationStatusMessage(row: CloudIntegrationListItem) {
-  const status = row.status
-  const hasError = typeof row.error_message === "string" && row.error_message.trim().length > 0
-
-  if (hasError && status === "failed") {
-    return row.error_message!.trim()
-  }
-
-  if (row.status_message && row.status_message.trim().length > 0) {
-    return row.status_message.trim()
-  }
-
-  if (status === "draft") return "Setup In Progress"
-  if (status === "connecting") return "Connecting"
-  if (status === "awaiting_validation") return "Awaiting Validation"
-  if (status === "active") return "Pending First Ingest"
-  if (status === "active_with_warnings") return "Warnings Detected"
-  if (status === "failed") return "Connection Failed"
-  return "Suspended"
+function formatCloudIntegrationLastSuccess(row: CloudIntegrationListItem) {
+  if (!row.last_success_at) return "-"
+  const date = new Date(row.last_success_at)
+  if (Number.isNaN(date.getTime())) return "-"
+  return date.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  })
 }
 
 export function mapCloudIntegrationOverviewRow(row: CloudIntegrationListItem): CloudIntegrationOverviewRow {
@@ -136,7 +126,7 @@ export function mapCloudIntegrationOverviewRow(row: CloudIntegrationListItem): C
     provider: providerLabel,
     cloudAccountId: row.cloud_account_id,
     lastChecked: formatCloudIntegrationLastChecked(row),
-    lastIngestOrMessage: mapCloudIntegrationStatusMessage(row),
+    lastSuccess: formatCloudIntegrationLastSuccess(row),
     statusLabel: mapCloudIntegrationStatusLabel(row.status),
   }
 }

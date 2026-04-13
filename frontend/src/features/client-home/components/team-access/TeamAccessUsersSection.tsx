@@ -14,11 +14,13 @@ import {
   updateOrganizationUserStatus,
   type OrganizationUser,
 } from "@/features/client-home/api/organization-users.api"
+import { TablePagination } from "@/features/client-home/components/TablePagination"
 import { ApiError } from "@/lib/api"
 import { getAuthUser } from "@/lib/auth"
 import { cn } from "@/lib/utils"
 
 const ORGANIZATION_USERS_QUERY_KEY = ["client-home", "organization-users"] as const
+const PAGE_SIZE = 10
 
 function formatDateTime(value: string | null): string {
   if (!value) return "-"
@@ -56,6 +58,7 @@ export function TeamAccessUsersSection() {
   const [notice, setNotice] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
   const [statusFilter, setStatusFilter] = useState<"ALL" | "active" | "inactive" | "invited" | "pending_approval">("ALL")
+  const [page, setPage] = useState(1)
   const [inviteForm, setInviteForm] = useState({
     fullName: "",
     email: "",
@@ -141,6 +144,13 @@ export function TeamAccessUsersSection() {
     })
   }, [users, searchQuery, statusFilter])
 
+  const totalPages = Math.max(1, Math.ceil(filteredUsers.length / PAGE_SIZE))
+  const currentPage = Math.min(page, totalPages)
+  const paginatedUsers = useMemo(() => {
+    const startIndex = (currentPage - 1) * PAGE_SIZE
+    return filteredUsers.slice(startIndex, startIndex + PAGE_SIZE)
+  }, [currentPage, filteredUsers])
+
   function onInviteSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const fullName = inviteForm.fullName.trim()
@@ -224,7 +234,10 @@ export function TeamAccessUsersSection() {
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
               <input
                 value={searchQuery}
-                onChange={(event) => setSearchQuery(event.target.value)}
+                onChange={(event) => {
+                  setSearchQuery(event.target.value)
+                  setPage(1)
+                }}
                 placeholder="Search users..."
                 className="h-9 w-full rounded-md border border-[color:var(--border-light)] bg-[color:var(--bg-surface)] pl-9 pr-3 text-sm text-text-primary outline-none transition-colors focus:border-[color:var(--kcx-border-strong)]"
               />
@@ -235,7 +248,10 @@ export function TeamAccessUsersSection() {
                 <select
                   value={statusFilter}
                   onChange={(event) =>
-                    setStatusFilter(event.target.value as "ALL" | "active" | "inactive" | "invited" | "pending_approval")
+                    {
+                      setStatusFilter(event.target.value as "ALL" | "active" | "inactive" | "invited" | "pending_approval")
+                      setPage(1)
+                    }
                   }
                   className="h-9 min-w-[11rem] rounded-md border border-[color:var(--border-light)] bg-[color:var(--bg-surface)] pl-9 pr-3 text-sm text-text-primary outline-none"
                 >
@@ -296,7 +312,7 @@ export function TeamAccessUsersSection() {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filteredUsers.map((user) => (
+                  paginatedUsers.map((user) => (
                     <TableRow key={user.id} className="border-b border-[color:var(--border-light)] hover:bg-transparent">
                       <TableCell className="py-6 font-medium text-text-primary">
                         {user.fullName}
@@ -358,6 +374,17 @@ export function TeamAccessUsersSection() {
                 )}
               </TableBody>
             </Table>
+          ) : null}
+
+          {!usersQuery.isLoading && !usersQuery.isError && filteredUsers.length > 0 ? (
+            <TablePagination
+              currentPage={currentPage}
+              totalPages={totalPages}
+              totalItems={filteredUsers.length}
+              pageSize={PAGE_SIZE}
+              onPrevious={() => setPage((previous) => Math.max(previous - 1, 1))}
+              onNext={() => setPage((previous) => Math.min(previous + 1, totalPages))}
+            />
           ) : null}
         </CardContent>
       </Card>

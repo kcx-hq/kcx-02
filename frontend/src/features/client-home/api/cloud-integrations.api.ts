@@ -49,6 +49,8 @@ export type CloudIntegrationDashboardScope = {
   usage_to: string | null
   raw_billing_file_ids: number[]
   ingested_files_count: number
+  latest_ingested_at: string | null
+  latest_ingestion_rows_loaded: number | null
 }
 
 export async function getTenantCloudIntegrations() {

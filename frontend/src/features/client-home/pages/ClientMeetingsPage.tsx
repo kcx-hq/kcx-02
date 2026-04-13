@@ -11,6 +11,7 @@ import {
   type ClientSupportMeetingStatus,
 } from "@/features/client-home/api/client-meetings.api"
 import { SlotPickerDialog } from "@/features/landing/pages/demo/components/SlotPickerDialog"
+import { TablePagination } from "@/features/client-home/components/TablePagination"
 import { ApiError } from "@/lib/api"
 
 const MEETING_TYPE_OPTIONS = [
@@ -393,27 +394,16 @@ export function ClientMeetingsPage() {
             </tbody>
           </table>
         </div>
-        {filteredHistory.length > rowsPerPage ? (
-          <div className="mt-3 flex items-center justify-end gap-2 text-sm">
-            <button
-              type="button"
-              onClick={() => setPage((current) => Math.max(1, current - 1))}
-              disabled={page === 1}
-              className="inline-flex h-8 items-center rounded-md border border-[color:var(--border-light)] bg-[color:var(--bg-surface)] px-3 text-text-secondary disabled:opacity-50"
-            >
-              Previous
-            </button>
-            <span className="text-text-secondary">
-              Page {page} of {totalPages}
-            </span>
-            <button
-              type="button"
-              onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
-              disabled={page === totalPages}
-              className="inline-flex h-8 items-center rounded-md border border-[color:var(--border-light)] bg-[color:var(--bg-surface)] px-3 text-text-secondary disabled:opacity-50"
-            >
-              Next
-            </button>
+        {filteredHistory.length > 0 ? (
+          <div className="mt-3">
+            <TablePagination
+              currentPage={page}
+              totalPages={totalPages}
+              totalItems={filteredHistory.length}
+              pageSize={rowsPerPage}
+              onPrevious={() => setPage((current) => Math.max(1, current - 1))}
+              onNext={() => setPage((current) => Math.min(totalPages, current + 1))}
+            />
           </div>
         ) : null}
       </div>
