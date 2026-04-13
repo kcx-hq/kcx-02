@@ -131,11 +131,6 @@ export function ClientAwsConnectionPage() {
             </>
           ) : activeTab === "manual" || isManualExplorerRoute || isManualRoute ? (
             <>
-              <div className="space-y-2">
-                <p className="kcx-eyebrow text-brand-primary">AWS Manual Setup</p>
-                <h2 className="text-2xl font-semibold tracking-tight text-text-primary">Manual Setup</h2>
-                <p className="text-sm text-text-secondary">Connect your AWS billing data in one guided setup flow.</p>
-              </div>
               <AwsManualSetup activeRoute={activeRoute} />
             </>
           ) : (

@@ -21,10 +21,12 @@ import {
   resolveAwsProviderId,
   syncManualCloudIntegration,
 } from "../../cloud-integration-registry.service.js";
+import { syncS3UploadConnectionFromAwsSetup } from "../s3-upload-connection-sync.service.js";
 import { UniqueConstraintError } from "sequelize";
 import { HTTP_STATUS } from "../../../../constants/http-status.js";
 import { DuplicateCloudConnectionError } from "../../../../errors/http-errors.js";
 import { validateAwsConnectionConfig } from "../auto-connection/aws-connection-validation.service.js";
+import { logger } from "../../../../utils/logger.js";
 
 export type ManualConnectionUserContext = {
   userId: string;
@@ -418,6 +420,27 @@ export async function completeManualConnectionSetup(
       statusMessage: "Pending First Ingest",
       lastCheckedAt: now,
     });
+
+    try {
+      await syncS3UploadConnectionFromAwsSetup({
+        tenantId: userContext.tenantId,
+        createdBy: userContext.userId,
+        roleArn: payload.billingRoleArn,
+        externalId: payload.externalId,
+        bucketName: payload.exportBucketName,
+        basePrefix: payload.exportPrefix,
+        awsAccountId: payload.awsAccountId,
+        status: "active",
+      });
+    } catch (s3SyncError) {
+      logger.warn("Manual setup completed but failed to sync S3 upload connection", {
+        tenantId: userContext.tenantId,
+        connectionName: payload.connectionName,
+        bucketName: payload.exportBucketName,
+        prefix: payload.exportPrefix,
+        message: s3SyncError instanceof Error ? s3SyncError.message : String(s3SyncError),
+      });
+    }
 
     return {
       success: true,
