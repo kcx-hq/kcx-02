@@ -7,7 +7,7 @@ import {
   type Sequelize,
 } from "sequelize";
 
-export type UserStatus = "active" | "inactive";
+export type UserStatus = "active" | "inactive" | "invited" | "pending_approval";
 
 class User extends Model<
   InferAttributes<User, { omit: "createdAt" | "updatedAt" }>,
@@ -20,6 +20,10 @@ class User extends Model<
   declare passwordHash: string;
   declare role: string;
   declare status: UserStatus | string;
+  declare invitedByUserId: string | null;
+  declare invitedAt: Date | null;
+  declare approvedByUserId: string | null;
+  declare approvedAt: Date | null;
   declare createdAt: CreationOptional<Date>;
   declare updatedAt: CreationOptional<Date>;
 }
@@ -34,6 +38,10 @@ const createUserModel = (sequelize: Sequelize): typeof User => {
       passwordHash: { type: DataTypes.STRING(255), allowNull: false },
       role: { type: DataTypes.STRING(30), allowNull: false },
       status: { type: DataTypes.STRING(30), allowNull: false, defaultValue: "active" },
+      invitedByUserId: { type: DataTypes.UUID, allowNull: true, defaultValue: null },
+      invitedAt: { type: DataTypes.DATE, allowNull: true, defaultValue: null },
+      approvedByUserId: { type: DataTypes.UUID, allowNull: true, defaultValue: null },
+      approvedAt: { type: DataTypes.DATE, allowNull: true, defaultValue: null },
     },
     {
       sequelize,

@@ -1,11 +1,12 @@
 import env from "../../config/env.js";
-import { BadRequestError, UnauthorizedError } from "../../errors/http-errors.js";
+import { BadRequestError, ForbiddenError, UnauthorizedError } from "../../errors/http-errors.js";
 import { AuthSession, PasswordResetToken, Tenant, User, sequelize } from "../../models/index.js";
 import { hashPassword, verifyPassword } from "../../utils/password.js";
 import { generateOpaqueToken, hashToken } from "../../utils/token.js";
 import { buildFrontendUrl } from "../../utils/frontend-url.js";
 import { sendEmail } from "../_shared/mail/mailgun.service.js";
 import { logger } from "../../utils/logger.js";
+import { deriveTenantSlugFromEmail } from "../../utils/tenant-identity.js";
 
 type LoginResult = {
   token: string;
@@ -27,8 +28,28 @@ const firstNameFromFullName = (fullName: string): string => {
 
 export async function loginWithEmailPassword(email: string, password: string): Promise<LoginResult> {
   const user = await User.findOne({ where: { email }, include: [{ model: Tenant }] });
-  if (!user) throw new UnauthorizedError("Invalid credentials");
-  if (user.status !== "active") throw new UnauthorizedError("Account is not active");
+  if (!user) {
+    const tenantSlug = deriveTenantSlugFromEmail(email);
+    const tenant = await Tenant.findOne({ where: { slug: tenantSlug } });
+    if (tenant) {
+      const activeAdmin = await User.findOne({
+        where: {
+          tenantId: tenant.id,
+          role: "admin",
+          status: "active",
+        },
+        attributes: ["id"],
+      });
+      if (activeAdmin) {
+        throw new ForbiddenError("Please contact your administrator for permission.");
+      }
+    }
+    throw new UnauthorizedError("Invalid credentials");
+  }
+
+  if (user.status !== "active") {
+    throw new ForbiddenError("Please contact your administrator for permission.");
+  }
 
   const ok = await verifyPassword(password, user.passwordHash);
   if (!ok) throw new UnauthorizedError("Invalid credentials");
@@ -87,7 +108,9 @@ export async function requestPasswordReset(email: string): Promise<{ emailSent: 
         `Hi ${firstNameFromFullName(user.fullName)},`,
         "",
         "We received a request to reset your KCX password.",
-        ...(resetLink ? [`Reset link: ${resetLink}`] : ["Reset link is currently unavailable (missing FRONTEND_BASE_URL)."]),
+        ...(resetLink
+          ? [`Reset link: ${resetLink}`]
+          : ["Reset link is currently unavailable (missing/invalid FRONTEND_BASE_URL)."]),
         "",
         `This link expires in ${env.resetTokenTtlMinutes} minutes.`,
         "",

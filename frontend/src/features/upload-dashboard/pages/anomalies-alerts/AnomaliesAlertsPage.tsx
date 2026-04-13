@@ -167,8 +167,8 @@ export default function AnomaliesAlertsPage() {
     [],
   );
 
-  const canGoNext = Boolean(pagination) && pagination.offset + pagination.limit < pagination.total;
-  const canGoPrevious = Boolean(pagination) && pagination.offset > 0;
+  const canGoNext = pagination ? pagination.offset + pagination.limit < pagination.total : false;
+  const canGoPrevious = pagination ? pagination.offset > 0 : false;
   const startRow = pagination && pagination.total > 0 ? pagination.offset + 1 : 0;
   const endRow = pagination ? Math.min(pagination.offset + pagination.limit, pagination.total) : 0;
   const totalRows = pagination?.total ?? 0;

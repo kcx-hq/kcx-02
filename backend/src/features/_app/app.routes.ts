@@ -18,6 +18,7 @@ import clientAnnouncementsRoutes from "../client-announcements/client-announceme
 import supportTicketsRoutes from "../support-tickets/support-tickets.routes.js";
 import supportMeetingsRoutes from "../support-meetings/support-meetings.routes.js";
 import anomalyRoutes from "../dashboard/anomaly-alerts/anomaly.routes.js";
+import organizationUsersRoutes from "../organization-users/organization-users.routes.js";
 const router = Router();
 
 router.use(scheduleDemoRoutes);
@@ -37,6 +38,7 @@ router.use(adminAnnouncementsRoutes);
 router.use(clientAnnouncementsRoutes);
 router.use(supportTicketsRoutes);
 router.use(supportMeetingsRoutes);
+router.use(organizationUsersRoutes);
 router.use(awsExportFileEventRoutes);
 router.use(anomalyRoutes);
 

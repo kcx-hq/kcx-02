@@ -10,10 +10,16 @@ type BackNavButtonProps = {
 
 export function BackNavButton({ fallbackHref = "/", className }: BackNavButtonProps) {
   const handleBack = () => {
-    const hasInAppHistory = window.history.state !== null
+    const hasBackEntry = window.history.length > 1
+    const currentPath = window.location.pathname
 
-    if (hasInAppHistory) {
+    if (hasBackEntry) {
       window.history.back()
+      window.setTimeout(() => {
+        if (window.location.pathname === currentPath) {
+          navigateTo(fallbackHref, { replace: true })
+        }
+      }, 120)
       return
     }
 

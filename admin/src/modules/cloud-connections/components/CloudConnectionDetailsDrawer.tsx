@@ -4,7 +4,7 @@ import { AlertTriangle, X } from "lucide-react"
 import type { AdminCloudConnectionDetailData } from "@/modules/cloud-connections/admin-cloud-connections.api"
 import {
   formatBoolean,
-  formatDateTime,
+  formatCompactDateTime,
   formatModeLabel,
   formatStatusLabel,
   formatValue,
@@ -43,6 +43,12 @@ export function CloudConnectionDetailsDrawer({
   onRetry,
 }: CloudConnectionDetailsDrawerProps) {
   const integrationStatus = data ? getStatusBadge(data.integration.status) : null
+  const integrationSetupAt = data?.integration.timestamps.connectedAt ?? data?.integration.timestamps.createdAt ?? null
+  const integrationLastHealthAt =
+    data?.integration.timestamps.lastSuccessAt ??
+    data?.integration.timestamps.lastValidatedAt ??
+    data?.integration.timestamps.lastCheckedAt ??
+    null
 
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
@@ -100,12 +106,8 @@ export function CloudConnectionDetailsDrawer({
                   <DetailRow label="Error Message" value={formatValue(data.integration.errorMessage)} />
                   <DetailRow label="Cloud Account ID" value={formatValue(data.integration.cloudAccountId)} />
                   <DetailRow label="Payer Account ID" value={formatValue(data.integration.payerAccountId)} />
-                  <DetailRow label="Connected At" value={formatDateTime(data.integration.timestamps.connectedAt)} />
-                  <DetailRow label="Last Validated At" value={formatDateTime(data.integration.timestamps.lastValidatedAt)} />
-                  <DetailRow label="Last Success At" value={formatDateTime(data.integration.timestamps.lastSuccessAt)} />
-                  <DetailRow label="Last Checked At" value={formatDateTime(data.integration.timestamps.lastCheckedAt)} />
-                  <DetailRow label="Created At" value={formatDateTime(data.integration.timestamps.createdAt)} />
-                  <DetailRow label="Updated At" value={formatDateTime(data.integration.timestamps.updatedAt)} />
+                  <DetailRow label="Connected At" value={formatCompactDateTime(integrationSetupAt)} />
+                  <DetailRow label="Last Health Activity" value={formatCompactDateTime(integrationLastHealthAt)} />
                 </CardContent>
               </Card>
 
@@ -143,11 +145,9 @@ export function CloudConnectionDetailsDrawer({
                       <DetailRow label="Export Prefix" value={formatValue(data.connectionDetail.export.prefix)} />
                       <DetailRow label="Export Region" value={formatValue(data.connectionDetail.export.region)} />
                       <DetailRow label="Export ARN" value={formatValue(data.connectionDetail.export.arn)} />
-                      <DetailRow label="Connected At" value={formatDateTime(data.connectionDetail.connectedAt)} />
-                      <DetailRow label="Last Validated At" value={formatDateTime(data.connectionDetail.lastValidatedAt)} />
+                      <DetailRow label="Connected At" value={formatCompactDateTime(data.connectionDetail.connectedAt)} />
+                      <DetailRow label="Last Validated At" value={formatCompactDateTime(data.connectionDetail.lastValidatedAt)} />
                       <DetailRow label="Error Message" value={formatValue(data.connectionDetail.errorMessage)} />
-                      <DetailRow label="Created At" value={formatDateTime(data.connectionDetail.createdAt)} />
-                      <DetailRow label="Updated At" value={formatDateTime(data.connectionDetail.updatedAt)} />
                     </div>
                   ) : (
                     <div className="space-y-3">
@@ -162,10 +162,9 @@ export function CloudConnectionDetailsDrawer({
                       <DetailRow label="Validation Status" value={data.connectionDetail.validationStatus} />
                       <DetailRow label="Assume Role Success" value={formatBoolean(data.connectionDetail.assumeRoleSuccess)} />
                       <DetailRow label="Status" value={data.connectionDetail.status} />
-                      <DetailRow label="Last Validated At" value={formatDateTime(data.connectionDetail.lastValidatedAt)} />
+                      <DetailRow label="Created At" value={formatCompactDateTime(data.connectionDetail.createdAt)} />
+                      <DetailRow label="Last Validated At" value={formatCompactDateTime(data.connectionDetail.lastValidatedAt)} />
                       <DetailRow label="Error Message" value={formatValue(data.connectionDetail.errorMessage)} />
-                      <DetailRow label="Created At" value={formatDateTime(data.connectionDetail.createdAt)} />
-                      <DetailRow label="Updated At" value={formatDateTime(data.connectionDetail.updatedAt)} />
                     </div>
                   )}
                 </CardContent>
@@ -192,11 +191,8 @@ export function CloudConnectionDetailsDrawer({
                   <DetailRow label="Cadence" value={formatValue(data.billingSource.cadence)} />
                   <DetailRow label="Status" value={formatValue(data.billingSource.status)} />
                   <DetailRow label="Temporary" value={formatBoolean(data.billingSource.isTemporary)} />
-                  <DetailRow label="Last Validated" value={formatDateTime(data.billingSource.lastValidatedAt)} />
-                  <DetailRow label="Last File Received" value={formatDateTime(data.billingSource.lastFileReceivedAt)} />
-                  <DetailRow label="Last Ingested" value={formatDateTime(data.billingSource.lastIngestedAt)} />
-                  <DetailRow label="Created At" value={formatDateTime(data.billingSource.createdAt)} />
-                  <DetailRow label="Updated At" value={formatDateTime(data.billingSource.updatedAt)} />
+                  <DetailRow label="Last File Received" value={formatCompactDateTime(data.billingSource.lastFileReceivedAt)} />
+                  <DetailRow label="Last Ingested" value={formatCompactDateTime(data.billingSource.lastIngestedAt)} />
                 </CardContent>
               </Card>
 
@@ -216,10 +212,12 @@ export function CloudConnectionDetailsDrawer({
                   <DetailRow label="Rows Read" value={formatValue(data.latestIngestion.latestRun?.rowsRead)} />
                   <DetailRow label="Rows Loaded" value={formatValue(data.latestIngestion.latestRun?.rowsLoaded)} />
                   <DetailRow label="Rows Failed" value={formatValue(data.latestIngestion.latestRun?.rowsFailed)} />
-                  <DetailRow label="Run Started" value={formatDateTime(data.latestIngestion.latestRun?.startedAt ?? null)} />
-                  <DetailRow label="Run Finished" value={formatDateTime(data.latestIngestion.latestRun?.finishedAt ?? null)} />
-                  <DetailRow label="Run Created" value={formatDateTime(data.latestIngestion.latestRun?.createdAt ?? null)} />
-                  <DetailRow label="Run Updated" value={formatDateTime(data.latestIngestion.latestRun?.updatedAt ?? null)} />
+                  <DetailRow
+                    label="Last Processed At"
+                    value={formatCompactDateTime(
+                      data.latestIngestion.latestRun?.finishedAt ?? data.latestIngestion.latestRun?.updatedAt ?? null,
+                    )}
+                  />
                   <DetailRow
                     label="Latest Raw File"
                     value={formatValue(data.latestIngestion.latestRawFile?.originalFileName)}
@@ -231,7 +229,10 @@ export function CloudConnectionDetailsDrawer({
                     value={formatValue(data.latestIngestion.latestRawFile?.rawStorageBucket)}
                   />
                   <DetailRow label="Raw Storage Key" value={formatValue(data.latestIngestion.latestRawFile?.rawStorageKey)} />
-                  <DetailRow label="Raw File Created" value={formatDateTime(data.latestIngestion.latestRawFile?.createdAt ?? null)} />
+                  <DetailRow
+                    label="Last Data Arrival"
+                    value={formatCompactDateTime(data.latestIngestion.latestRawFile?.createdAt ?? null)}
+                  />
                 </CardContent>
               </Card>
             </div>
@@ -245,4 +246,3 @@ export function CloudConnectionDetailsDrawer({
     </Dialog.Root>
   )
 }
-

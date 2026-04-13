@@ -2,6 +2,7 @@ import { apiGet, apiPatch, apiPost } from "@/lib/api";
 import type {
   AnomaliesFiltersQuery,
   AnomaliesListResponse,
+  AnomalyRecord,
   BudgetDashboardResponse,
   BudgetUpsertPayload,
   BudgetActualForecastPoint,
@@ -142,11 +143,10 @@ function withAnomaliesFilters(path: string, filters?: AnomaliesFiltersQuery): st
 function withAnomaliesAlertsFilters(
   path: string,
   scope: DashboardResolvedScope,
-  filters?: AnomalyAlertsFiltersQuery,
+  filters?: AnomaliesFiltersQuery,
 ): string {
   const params = new URLSearchParams(buildDashboardQueryParams(scope));
 
-  if (filters?.anomalyType) params.set("anomaly_type", filters.anomalyType);
   if (filters?.severity) params.set("severity", filters.severity);
   if (filters?.anomaly_type) params.set("anomaly_type", filters.anomaly_type);
   if (filters?.date_from) params.set("date_from", filters.date_from);
@@ -263,8 +263,8 @@ export const dashboardApi = {
     return apiGet<AnomaliesListResponse>(withAnomaliesFilters("/anomalies", filters));
   },
 
-  getAnomaliesAlerts(scope: DashboardResolvedScope, filters?: AnomalyAlertsFiltersQuery) {
-    return apiGet<AnomalyAlertRecord[]>(withAnomaliesAlertsFilters("/dashboard/anomalies-alerts", scope, filters));
+  getAnomaliesAlerts(scope: DashboardResolvedScope, filters?: AnomaliesFiltersQuery) {
+    return apiGet<AnomalyRecord[]>(withAnomaliesAlertsFilters("/dashboard/anomalies-alerts", scope, filters));
   },
 
   getBudget(scope: DashboardResolvedScope) {

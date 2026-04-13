@@ -84,7 +84,7 @@ export function AwsIntegrationPage() {
                 FinOps insights your teams can act on.
               </p>
               <Button className="mt-8 bg-[#3e8a76] px-6 text-white shadow-none hover:bg-[#357563] hover:shadow-none">
-                Book Demo
+                Schedule Demo
               </Button>
             </div>
 
@@ -100,4 +100,5 @@ export function AwsIntegrationPage() {
     </>
   )
 }
+
 
