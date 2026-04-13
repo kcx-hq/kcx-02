@@ -226,44 +226,62 @@ function CopyButton({
   )
 }
 
-function SetupStepper({ currentStep }: { currentStep: number }) {
+function SetupStepper({
+  currentStep,
+  onStepChange,
+}: {
+  currentStep: number
+  onStepChange: (step: number) => void
+}) {
   return (
-    <ol className="grid grid-cols-1 gap-2 md:grid-cols-6" aria-label="Manual setup progress">
-      {STEPS.map((step, index) => {
-        const active = index === currentStep
-        const done = index < currentStep
-        return (
-          <li
-            key={step}
-            className={cn(
-              "rounded-[10px] border px-3 py-2 text-xs",
-              active
-                ? "border-[color:var(--brand-primary)] bg-[color:var(--brand-soft)]"
-                : done
-                  ? "border-emerald-200 bg-emerald-50"
-                  : "border-[color:var(--border-light)] bg-white",
-            )}
-          >
-            <div className="mb-1 flex items-center gap-2">
-              <span
-                className={cn(
-                  "inline-flex h-5 w-5 items-center justify-center rounded-full text-[11px] font-semibold",
-                  active
-                    ? "bg-[color:var(--brand-primary)] text-white"
-                    : done
-                      ? "bg-emerald-500 text-white"
-                      : "bg-[color:var(--bg-surface)] text-text-muted",
-                )}
+    <div className="overflow-x-auto pb-1">
+      <ol className="flex min-w-[780px] items-start" aria-label="Manual setup steps">
+        {STEPS.map((step, index) => {
+          const active = index === currentStep
+          const done = index < currentStep
+          return (
+            <li key={step} className="flex-1">
+              <button
+                type="button"
+                onClick={() => onStepChange(index)}
+                aria-current={active ? "step" : undefined}
+                className="group w-full px-1 text-left"
               >
-                {index + 1}
-              </span>
-              <p className={cn("font-semibold", active ? "text-brand-primary" : "text-text-secondary")}>{step}</p>
-            </div>
-            <p className="text-[11px] text-text-muted">{active ? "Active" : done ? "Completed" : "Upcoming"}</p>
-          </li>
-        )
-      })}
-    </ol>
+                <div className="relative mb-2 flex items-center">
+                  <span
+                    className={cn(
+                      "relative z-[1] inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border text-[12px] font-semibold transition-colors",
+                      active || done
+                        ? "border-[color:var(--brand-primary)] bg-[color:var(--brand-primary)] text-white"
+                        : "border-[color:var(--border-light)] bg-white text-text-muted group-hover:border-[color:var(--brand-primary)]",
+                    )}
+                  >
+                    {index + 1}
+                  </span>
+                  {index < STEPS.length - 1 ? (
+                    <span
+                      aria-hidden
+                      className={cn(
+                        "h-[2px] flex-1",
+                        done ? "bg-[color:var(--brand-primary)]" : "bg-[color:var(--border-light)]",
+                      )}
+                    />
+                  ) : null}
+                </div>
+                <p
+                  className={cn(
+                    "pr-2 text-xs font-semibold leading-4 transition-colors",
+                    active ? "text-brand-primary" : "text-text-secondary group-hover:text-text-primary",
+                  )}
+                >
+                  {step}
+                </p>
+              </button>
+            </li>
+          )
+        })}
+      </ol>
+    </div>
   )
 }
 function ValueCard({
@@ -1529,7 +1547,7 @@ FROM COST_AND_USAGE_REPORT`
 
   return (
     <div className="space-y-4">
-      <SetupStepper currentStep={currentStep} />
+      <SetupStepper currentStep={currentStep} onStepChange={setCurrentStep} />
 
       {completed ? (
         <Card className="rounded-[10px] border-emerald-200 bg-emerald-50 shadow-none">

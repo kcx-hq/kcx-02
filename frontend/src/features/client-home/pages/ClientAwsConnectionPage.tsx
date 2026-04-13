@@ -81,35 +81,36 @@ export function ClientAwsConnectionPage() {
 
   return (
     <ClientPageContentContainer className={CLIENT_PAGE_SECTION_SPACING_CLASS}>
+      {!setupConnectionId && !isManualSuccessRoute ? (
+        <nav aria-label="AWS setup tabs" className="mb-3 border-b border-[color:var(--border-light)]">
+          <div className="flex items-end gap-6">
+            <button
+              type="button"
+              onClick={() => handleTabChange("automatic")}
+              className={`border-b-2 px-0 pb-2 text-sm font-semibold transition-colors ${
+                activeTab === "automatic"
+                  ? "border-[color:var(--brand-primary)] text-[color:var(--brand-primary)]"
+                  : "border-transparent text-text-secondary hover:text-text-primary"
+              }`}
+            >
+              Automatic Setup
+            </button>
+            <button
+              type="button"
+              onClick={() => handleTabChange("manual")}
+              className={`border-b-2 px-0 pb-2 text-sm font-semibold transition-colors ${
+                activeTab === "manual"
+                  ? "border-[color:var(--brand-primary)] text-[color:var(--brand-primary)]"
+                  : "border-transparent text-text-secondary hover:text-text-primary"
+              }`}
+            >
+              Manual Setup
+            </button>
+          </div>
+        </nav>
+      ) : null}
+
       <section aria-label="AWS cloud connection" className="overflow-hidden rounded-[8px] border border-[color:var(--border-light)] bg-white shadow-sm-custom">
-        {!setupConnectionId && !isManualSuccessRoute ? (
-          <nav aria-label="AWS setup tabs" className="rounded-t-[8px] border-b border-[color:var(--border-light)]">
-            <div className="grid grid-cols-2">
-              <button
-                type="button"
-                onClick={() => handleTabChange("automatic")}
-                className={`h-9 border-b-[3px] text-sm transition-colors first:rounded-tl-[8px] ${
-                  activeTab === "automatic"
-                    ? "border-[color:var(--brand-primary)] bg-[color:var(--brand-primary)] font-medium text-white"
-                    : "border-transparent font-medium text-text-muted hover:text-text-primary"
-                }`}
-              >
-                Automatic Setup
-              </button>
-              <button
-                type="button"
-                onClick={() => handleTabChange("manual")}
-                className={`h-9 border-b-[3px] text-sm transition-colors last:rounded-tr-[8px] ${
-                  activeTab === "manual"
-                    ? "border-[color:var(--brand-primary)] bg-[color:var(--brand-primary)] font-medium text-white"
-                    : "border-transparent font-medium text-text-muted hover:text-text-primary"
-                }`}
-              >
-                Manual Setup
-              </button>
-            </div>
-          </nav>
-        ) : null}
 
         <div className="space-y-3 px-4 py-3 md:px-6 md:py-4">
           {setupConnectionId ? (
