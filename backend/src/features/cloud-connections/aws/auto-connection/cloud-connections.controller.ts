@@ -1,5 +1,6 @@
 import type { Request, Response } from "express";
 import crypto from "node:crypto";
+import { ComputeOptimizerClient, UpdateEnrollmentStatusCommand } from "@aws-sdk/client-compute-optimizer";
 import { Op, QueryTypes, type Transaction } from "sequelize";
 
 import env from "../../../../config/env.js";
@@ -34,6 +35,7 @@ import {
 } from "./aws-cloudformation-url.js";
 import { runInitialBackfillAfterValidation } from "../exports/aws-export-ingestion.service.js";
 import { validateAwsConnection } from "./aws-connection-validation.service.js";
+import { assumeRole } from "../infrastructure/aws-sts.service.js";
 import {
   type AwsBillingConnectionCallbackPayload,
   type AwsCloudTrailConnectionCallbackPayload,
@@ -106,6 +108,11 @@ type AwsCloudTrailCallbackAcceptanceResult = {
   cloudtrailSource: CloudtrailSourceInstance;
   cadence: string;
   shouldScheduleValidation: false;
+};
+
+type ComputeOptimizerEnableResult = {
+  enabled: boolean;
+  error: string | null;
 };
 
 const postCallbackValidationInFlight = new Set<string>();
@@ -189,6 +196,68 @@ const hasConnectionCoreChanges = (
     String(connection.exportArn ?? "").trim() !== payload.export_arn.trim()
   );
 };
+
+async function enableComputeOptimizerBestEffort(input: {
+  connection: CloudConnectionV2Instance;
+  payload: AwsBillingConnectionCallbackPayload;
+}): Promise<ComputeOptimizerEnableResult> {
+  const { connection, payload } = input;
+  const preferredRoleArn = payload.action_role_arn?.trim();
+  const fallbackRoleArn = String(payload.billing_role_arn ?? "").trim();
+  const roleArn = preferredRoleArn || fallbackRoleArn;
+
+  if (!roleArn) {
+    return {
+      enabled: false,
+      error: "Missing AWS role ARN for Compute Optimizer enrollment",
+    };
+  }
+
+  const region = String(payload.export_region ?? connection.region ?? "us-east-1").trim() || "us-east-1";
+
+  try {
+    const credentials = await assumeRole(roleArn, connection.externalId ?? null);
+    const client = new ComputeOptimizerClient({
+      region,
+      credentials,
+    });
+    await client.send(
+      new UpdateEnrollmentStatusCommand({
+        status: "Active",
+      }),
+    );
+
+    logger.info("AWS Compute Optimizer enrollment enabled", {
+      connectionId: connection.id,
+      accountId: payload.account_id.trim(),
+      roleArn,
+      region,
+      sourceType: payload.source_type,
+      eventType: payload.event_type,
+    });
+
+    return {
+      enabled: true,
+      error: null,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    logger.warn("AWS callback accepted but Compute Optimizer enrollment failed", {
+      connectionId: connection.id,
+      accountId: payload.account_id.trim(),
+      roleArn,
+      region,
+      sourceType: payload.source_type,
+      eventType: payload.event_type,
+      message,
+    });
+
+    return {
+      enabled: false,
+      error: message,
+    };
+  }
+}
 
 async function findConnectionByCallbackToken(callbackToken: string): Promise<CloudConnectionV2Instance> {
   const normalizedCallbackToken = callbackToken.trim();
@@ -1288,6 +1357,10 @@ export async function handleAwsConnectionCallback(req: Request, res: Response): 
         payload,
         cadence,
       });
+  const isDeleteEvent = isDeleteCallbackEvent(payload.event_type);
+  const computeOptimizerResult = isDeleteEvent
+    ? { enabled: false, error: null }
+    : await enableComputeOptimizerBestEffort({ connection, payload });
 
   sendSuccess({
     res,
@@ -1309,6 +1382,8 @@ export async function handleAwsConnectionCallback(req: Request, res: Response): 
       format: payload.format,
       error_message: accepted.connection.errorMessage ?? null,
       async_validation_scheduled: accepted.shouldScheduleValidation,
+      compute_optimizer_enabled: computeOptimizerResult.enabled,
+      compute_optimizer_error: computeOptimizerResult.error,
     },
   });
 
