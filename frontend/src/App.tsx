@@ -12,8 +12,8 @@ import {
   ClientMeetingsPage,
   ClientOverviewPage,
   ClientProfilePage,
+  ClientTeamAccessPage,
   ClientTicketsPage,
-  ClientUsersPage,
 } from "@/features/client-home"
 import { DashboardRoutes } from "@/features/dashboard"
 import { ManualDashboardRoutes } from "@/features/manual-dashboard"
@@ -30,7 +30,7 @@ import {
   ResetPasswordPage,
   ScheduleDemoPage,
 } from "@/features/landing/pages"
-import { clearAuthSession, isAuthenticated } from "@/lib/auth"
+import { clearAuthSession, getAuthUser, isAuthenticated } from "@/lib/auth"
 import { ApiError, apiGet } from "@/lib/api"
 import { getBlogSlugFromPath, getRouteRedirectTarget, navigateTo, useCurrentRoute } from "@/lib/navigation"
 import { HomePage } from "@/pages/HomePage"
@@ -66,6 +66,7 @@ const CLIENT_WORKSPACE_ROUTES = new Set([
   "/client/support/schedule-call",
   "/client/support/live-chat",
   "/client/users",
+  "/client/organization/users",
   "/client/actions",
   "/client/profile",
 ])
@@ -78,6 +79,11 @@ const DASHBOARD_ROUTE_REGEX =
   /^\/dashboard(?:\/(?:overview|cost-explorer|resources|allocation|optimization|anomalies-alerts|budget|report))?$/
 const MANUAL_DASHBOARD_ROUTE_REGEX =
   /^\/uploads-dashboard(?:\/(?:overview|cost-explorer|anomalies-alerts))?$/
+const TEAM_ACCESS_ROUTE_SET = new Set([
+  "/client/users",
+  "/client/organization/users",
+])
+const MEETING_ROUTE_SET = new Set(["/client/support/meetings", "/client/support/schedule-call"])
 
 function isClientWorkspaceRoute(route: string) {
   return (
@@ -94,6 +100,8 @@ const HEADERLESS_ROUTES = new Set(["/schedule-demo", "/login", "/forgot-password
 export function App() {
   const route = useCurrentRoute()
   const storedAuthenticated = isAuthenticated()
+  const authUser = getAuthUser()
+  const isOrganizationAdmin = (authUser?.role ?? "").trim().toLowerCase() === "admin"
   const [authChecked, setAuthChecked] = useState(false)
   const [authenticated, setAuthenticated] = useState(false)
   const blogSlug = getBlogSlugFromPath(route)
@@ -158,10 +166,20 @@ export function App() {
       return
     }
 
+    if (authenticated && TEAM_ACCESS_ROUTE_SET.has(route) && !isOrganizationAdmin) {
+      navigateTo("/client/overview", { replace: true })
+      return
+    }
+
+    if (authenticated && MEETING_ROUTE_SET.has(route) && !isOrganizationAdmin) {
+      navigateTo("/client/support/ticket-management", { replace: true })
+      return
+    }
+
     if (route === "/login" && authenticated) {
       navigateTo("/client/overview", { replace: true })
     }
-  }, [route, authenticated, authChecked])
+  }, [route, authenticated, authChecked, isOrganizationAdmin])
 
   return (
     <main className="min-h-screen overflow-x-clip bg-background text-foreground">
@@ -241,9 +259,9 @@ export function App() {
           )}
         </ClientLayout>
       ) : null}
-      {route === "/client/users" ? (
+      {route === "/client/users" || route === "/client/organization/users" ? (
         <ClientLayout>
-          <ClientUsersPage />
+          <ClientTeamAccessPage />
         </ClientLayout>
       ) : null}
       {route === "/client/actions" ? (

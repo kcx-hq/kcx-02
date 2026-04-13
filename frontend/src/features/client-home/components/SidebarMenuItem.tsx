@@ -42,17 +42,17 @@ export function SidebarMenuItem({
         href={item.href}
         onClick={(event) => handleAppLinkClick(event, item.href, onNavigate)}
         className={cn(
-          "group relative flex min-h-[36px] items-center justify-between gap-[10px] rounded-none border-0 px-[10px] py-0 pl-[15px] text-[0.8rem] font-medium leading-none tracking-[0.01em] transition-colors",
+          "group relative flex min-h-[42px] items-center justify-between gap-3 rounded-none border-0 px-3.5 py-[7px] pl-[15px] text-[0.82rem] font-medium leading-none tracking-[0.01em] transition-colors duration-200",
           isActive
-            ? "text-[rgba(247,251,251,0.98)] font-semibold before:absolute before:left-0 before:top-1 before:h-[calc(100%-8px)] before:w-[3px] before:bg-[rgba(64,178,155,0.95)] before:content-['']"
+            ? "font-semibold text-[rgba(247,251,251,0.98)] before:absolute before:left-0 before:top-1.5 before:h-[calc(100%-12px)] before:w-[3px] before:rounded before:bg-[rgba(64,178,155,0.95)] before:content-['']"
             : "text-[rgba(207,222,232,0.95)] hover:text-[rgba(237,244,248,1)]"
         )}
         aria-current={isActive ? "page" : undefined}
       >
-        <span className="flex items-center gap-[10px]">
+        <span className="flex items-center gap-3">
           <span
             className={cn(
-              "inline-flex h-[18px] w-[18px] items-center justify-center",
+              "inline-flex h-[18px] w-[18px] items-center justify-center transition-colors",
               isActive ? "text-[rgba(237,244,248,1)]" : "text-[rgba(207,222,232,0.95)] group-hover:text-[rgba(237,244,248,1)]"
             )}
           >
@@ -62,7 +62,12 @@ export function SidebarMenuItem({
         </span>
 
         {item.submenu ? (
-          <ChevronDown className={cn("h-4 w-4 transition-transform", isExpanded ? "rotate-180" : "rotate-0")} />
+          <ChevronDown
+            className={cn(
+              "h-4 w-4 text-[rgba(195,216,226,0.94)] transition-transform duration-200",
+              isExpanded ? "rotate-180" : "rotate-0"
+            )}
+          />
         ) : null}
       </a>
 

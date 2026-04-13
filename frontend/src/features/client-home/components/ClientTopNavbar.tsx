@@ -125,7 +125,7 @@ export function ClientTopNavbar({
   }
 
   return (
-    <header className="sticky top-0 z-40 border-b border-[rgba(160,173,183,0.38)] bg-[#f4f7f6] text-[color:#1f2e33] shadow-[0_6px_18px_rgba(16,37,35,0.06)] backdrop-blur-[2px] lg:ml-[228px] lg:w-[calc(100%-228px)]">
+    <header className="sticky top-0 z-40 border-b border-[rgba(160,173,183,0.38)] bg-[#f4f7f6] text-[color:#1f2e33] backdrop-blur-[2px] lg:ml-[228px] lg:w-[calc(100%-228px)]">
       <div className="mx-auto flex h-16 w-full items-center justify-between gap-4 px-4 sm:px-[22px]">
         <div className="flex min-w-0 flex-1 items-center gap-4">
           {onOpenSidebar ? (

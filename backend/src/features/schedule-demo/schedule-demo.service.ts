@@ -1,5 +1,7 @@
 import { DemoRequest, SlotReservation, Tenant, User, sequelize } from "../../models/index.js";
+import { ConflictError } from "../../errors/http-errors.js";
 import { generateTemporaryPassword, hashPassword } from "../../utils/password.js";
+import { deriveTenantSlugFromEmail } from "../../utils/tenant-identity.js";
 import {
   getAvailableSlots as fetchAvailableSlotsFromCalcom,
   reserveSlot as reserveCalcomSlot,
@@ -48,7 +50,7 @@ export async function submitScheduleDemo(
         ?.trim()
         .toLowerCase()
         .replace(/\..*$/, "") ?? "";
-      const slug = domain.length > 0 ? domain : input.companyEmail.trim().toLowerCase();
+      const slug = domain.length > 0 ? domain : deriveTenantSlugFromEmail(input.companyEmail);
 
       const existingTenant = await Tenant.findOne({
         where: { slug },
@@ -73,6 +75,20 @@ export async function submitScheduleDemo(
         lock: transaction.LOCK.UPDATE,
       });
 
+      if (existingUser && String(existingUser.tenantId) !== String(tenant.id)) {
+        throw new ConflictError("This email is already associated with another organization");
+      }
+
+      const activeTenantAdmin = await User.findOne({
+        where: {
+          tenantId: tenant.id,
+          role: "admin",
+          status: "active",
+        },
+        transaction,
+        lock: transaction.LOCK.UPDATE,
+      });
+
       const fullName = `${input.firstName} ${input.lastName}`.trim();
 
       const user =
@@ -83,17 +99,18 @@ export async function submitScheduleDemo(
             fullName,
             email: input.companyEmail,
             passwordHash: await hashPassword(generateTemporaryPassword()),
-            role: "admin",
-            status: "active",
+            role: activeTenantAdmin ? "member" : "admin",
+            status: activeTenantAdmin ? "pending_approval" : "active",
+            invitedByUserId: activeTenantAdmin ? activeTenantAdmin.id : null,
+            invitedAt: activeTenantAdmin ? new Date() : null,
+            approvedByUserId: null,
+            approvedAt: activeTenantAdmin ? null : new Date(),
           },
           { transaction },
         ));
 
       if (existingUser) {
-        const updates: { tenantId?: string; fullName?: string } = {};
-        if (existingUser.tenantId !== tenant.id) {
-          updates.tenantId = tenant.id;
-        }
+        const updates: { fullName?: string } = {};
         if (!existingUser.fullName || existingUser.fullName.trim().length === 0) {
           updates.fullName = fullName;
         }

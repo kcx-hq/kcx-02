@@ -19,7 +19,7 @@ export function SidebarSubmenu({ items, activeHref, visible, onNavigate }: Sideb
       )}
       aria-hidden={visible ? "false" : "true"}
     >
-      <ul className="min-h-0 space-y-[2px] overflow-hidden pl-11 pr-[10px] pb-[2px]">
+      <ul className="min-h-0 space-y-1.5 overflow-hidden pl-[42px] pr-2 pb-1 pt-1">
         {items.map((item) => {
           const isActive = activeHref === item.href
           return (
@@ -28,10 +28,10 @@ export function SidebarSubmenu({ items, activeHref, visible, onNavigate }: Sideb
                 href={item.href}
                 onClick={(event) => handleAppLinkClick(event, item.href, onNavigate)}
                 className={cn(
-                  "relative block min-h-[30px] rounded-none px-[6px] py-[6px] text-[0.75rem] font-medium leading-none tracking-[0.01em] transition-colors",
+                  "relative block min-h-[32px] rounded-none px-2.5 py-[7px] text-[0.79rem] font-medium leading-none tracking-[0.01em] transition-colors duration-200",
                   isActive
-                    ? "font-semibold text-[rgba(247,251,251,0.98)] before:absolute before:left-[-12px] before:top-1 before:h-[calc(100%-8px)] before:w-[2px] before:bg-[rgba(64,178,155,0.9)] before:content-['']"
-                    : "text-[rgba(196,217,208,0.82)] hover:text-[rgba(237,247,242,0.96)]"
+                    ? "font-semibold text-[rgba(247,251,251,0.98)] before:absolute before:left-[-9px] before:top-1 before:h-[calc(100%-8px)] before:w-[2px] before:rounded before:bg-[rgba(64,178,155,0.92)] before:content-['']"
+                    : "text-[rgba(196,217,208,0.85)] hover:text-[rgba(237,247,242,0.96)]"
                 )}
                 aria-current={isActive ? "page" : undefined}
               >

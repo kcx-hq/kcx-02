@@ -8,4 +8,5 @@ export { ClientTicketsPage } from "@/features/client-home/pages/ClientTicketsPag
 export { ClientMeetingsPage } from "@/features/client-home/pages/ClientMeetingsPage"
 export { ClientLiveChatPage } from "@/features/client-home/pages/ClientLiveChatPage"
 export { ClientUsersPage } from "@/features/client-home/pages/ClientUsersPage"
+export { ClientTeamAccessPage } from "@/features/client-home/pages/ClientTeamAccessPage"
 export { ClientProfilePage } from "@/features/client-home/pages/ClientProfilePage"

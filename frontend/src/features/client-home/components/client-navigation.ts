@@ -4,6 +4,7 @@ export type ClientSidebarSubmenuItem = {
   label: string
   href: string
   activeMatches: string[]
+  adminOnly?: boolean
 }
 
 export type ClientSidebarMenuItem = {
@@ -13,6 +14,7 @@ export type ClientSidebarMenuItem = {
   icon: LucideIcon
   activeMatches: string[]
   submenu?: ClientSidebarSubmenuItem[]
+  adminOnly?: boolean
 }
 
 export const CLIENT_SIDEBAR_MENU: ClientSidebarMenuItem[] = [
@@ -57,25 +59,38 @@ export const CLIENT_SIDEBAR_MENU: ClientSidebarMenuItem[] = [
       {
         label: "Meetings",
         href: "/client/support/meetings",
+        adminOnly: true,
         activeMatches: ["/client/support/schedule-call", "/client/support/meetings"],
       },
     ],
   },
   {
     id: "organization-management",
-    label: "Organization Management",
-    href: "/client/organization/users-roles",
+    label: "Team & Access",
+    href: "/client/organization/users",
     icon: Building2,
+    adminOnly: true,
     activeMatches: ["/client/users", "/client/organization"],
     submenu: [
       {
-        label: "Users & Roles",
-        href: "/client/organization/users-roles",
-        activeMatches: ["/client/users", "/client/organization/users-roles"],
+        label: "Users",
+        href: "/client/organization/users",
+        activeMatches: ["/client/users", "/client/organization/users"],
       },
     ],
   },
 ]
+
+export function getClientSidebarMenu(userRole?: string | null): ClientSidebarMenuItem[] {
+  const normalizedRole = (userRole ?? "").trim().toLowerCase()
+  const isAdmin = normalizedRole === "admin"
+  const visibleItems = isAdmin ? CLIENT_SIDEBAR_MENU : CLIENT_SIDEBAR_MENU.filter((item) => !item.adminOnly)
+
+  return visibleItems.map((item) => ({
+    ...item,
+    submenu: item.submenu?.filter((submenu) => (isAdmin ? true : !submenu.adminOnly)),
+  }))
+}
 
 export function routeMatches(route: string, patterns: string[]) {
   return patterns.some((pattern) => route === pattern || route.startsWith(`${pattern}/`))
