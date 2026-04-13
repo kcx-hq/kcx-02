@@ -277,9 +277,38 @@ async function parseParquetSchemaColumnsFromBuffer(buffer) {
 }
 
 async function parseParquetRowsFromBuffer(buffer) {
+  const readWithParquetWasm = async () => {
+    const { readParquet, tableFromIPC } = await loadParquetWasmRuntime();
+    const wasmTable = await withTimeout(
+      Promise.resolve(readParquet(new Uint8Array(buffer))),
+      PARQUET_PARSE_TIMEOUT_MS,
+      "parquet-wasm readParquet",
+    );
+    const arrowTable = tableFromIPC(wasmTable.intoIPCStream());
+    const rows = [];
+
+    for (let rowIndex = 0; rowIndex < arrowTable.numRows; rowIndex += 1) {
+      const row = arrowTable.get(rowIndex);
+      rows.push(row && typeof row === "object" ? row : {});
+    }
+
+    return rows;
+  };
+
   try {
     const reader = await openParquetReader(buffer);
     try {
+      const schemaFields = Object.values(reader?.schema?.fields ?? {});
+      const hasInt96Columns = schemaFields.some(
+        (field) => String(field?.primitiveType ?? "").toUpperCase() === "INT96",
+      );
+
+      // parquetjs-lite mis-decodes INT96 timestamp values (common in AWS exports).
+      // Route those files through parquet-wasm, which returns correct epoch timestamps.
+      if (hasInt96Columns) {
+        return await readWithParquetWasm();
+      }
+
       const cursor = reader.getCursor();
       const rows = [];
 
@@ -309,21 +338,7 @@ async function parseParquetRowsFromBuffer(buffer) {
     });
 
     try {
-      const { readParquet, tableFromIPC } = await loadParquetWasmRuntime();
-      const wasmTable = await withTimeout(
-        Promise.resolve(readParquet(new Uint8Array(buffer))),
-        PARQUET_PARSE_TIMEOUT_MS,
-        "parquet-wasm readParquet",
-      );
-      const arrowTable = tableFromIPC(wasmTable.intoIPCStream());
-      const rows = [];
-
-      for (let rowIndex = 0; rowIndex < arrowTable.numRows; rowIndex += 1) {
-        const row = arrowTable.get(rowIndex);
-        rows.push(row && typeof row === "object" ? row : {});
-      }
-
-      return rows;
+      return await readWithParquetWasm();
     } catch (fallbackError) {
       throw new Error(
         `Parquet parsing failed with all readers. primary=${
@@ -340,6 +355,22 @@ async function* readParquetRowChunksFromBuffer(buffer, chunkSize = 1000) {
   try {
     const reader = await openParquetReader(buffer);
     try {
+      const schemaFields = Object.values(reader?.schema?.fields ?? {});
+      const hasInt96Columns = schemaFields.some(
+        (field) => String(field?.primitiveType ?? "").toUpperCase() === "INT96",
+      );
+
+      // Keep timestamp decoding consistent with parseParquetRowsFromBuffer().
+      // parquetjs-lite can mis-decode INT96 timestamps (common in AWS exports),
+      // so route chunked reads through parquet-wasm-backed parsing when INT96 exists.
+      if (hasInt96Columns) {
+        const rows = await parseParquetRowsFromBuffer(buffer);
+        for (let index = 0; index < rows.length; index += resolvedChunkSize) {
+          yield rows.slice(index, index + resolvedChunkSize);
+        }
+        return;
+      }
+
       const cursor = reader.getCursor();
       let chunk = [];
 

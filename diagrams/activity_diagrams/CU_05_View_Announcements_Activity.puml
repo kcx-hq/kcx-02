@@ -1,0 +1,12 @@
+@startuml
+title CU_05 View Announcements - Activity
+start
+:ClientUser opens announcements section;
+if (Announcements available?) then (Yes)
+  :Display published announcements;
+  stop
+else (No)
+  :Show empty state;
+  stop
+endif
+@enduml

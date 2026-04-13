@@ -33,7 +33,7 @@ export function ScheduleDemoPage() {
         </SplitHeroLeftPanel>
 
         {/* Right panel (light form) */}
-        <main className="flex items-start bg-[#f6faf8] px-6 py-12 text-[#0F1F1A] sm:px-10 lg:h-[100svh] lg:overflow-auto lg:px-12 lg:py-16">
+        <main className="flex items-center bg-[#f6faf8] px-6 py-12 text-[#0F1F1A] sm:px-10 lg:h-[100svh] lg:overflow-auto lg:px-12 lg:py-0">
           <div className="mx-auto w-full max-w-[30rem]">
             <DemoRequestForm tone="light" chrome="none" />
           </div>

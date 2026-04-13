@@ -3,14 +3,20 @@ import { useEffect, useState } from "react"
 import { Header } from "@/components/layout/Header"
 import { ActionPage } from "@/features/actions"
 import {
+  ClientAwsConnectionPage,
   ClientBillingPage,
+  ClientBillingUploadHistoryPage,
+  ClientCloudIntegrationPage,
+  ClientLiveChatPage,
   ClientLayout,
+  ClientMeetingsPage,
   ClientOverviewPage,
   ClientProfilePage,
-  ClientSupportPage,
-  ClientUsersPage,
+  ClientTeamAccessPage,
+  ClientTicketsPage,
 } from "@/features/client-home"
 import { DashboardRoutes } from "@/features/dashboard"
+import { ManualDashboardRoutes } from "@/features/manual-dashboard"
 import {
   AwsIntegrationPage,
   BlogDetailPage,
@@ -24,7 +30,7 @@ import {
   ResetPasswordPage,
   ScheduleDemoPage,
 } from "@/features/landing/pages"
-import { clearAuthSession, isAuthenticated } from "@/lib/auth"
+import { clearAuthSession, getAuthUser, isAuthenticated } from "@/lib/auth"
 import { ApiError, apiGet } from "@/lib/api"
 import { getBlogSlugFromPath, getRouteRedirectTarget, navigateTo, useCurrentRoute } from "@/lib/navigation"
 import { HomePage } from "@/pages/HomePage"
@@ -32,15 +38,18 @@ import { HomePage } from "@/pages/HomePage"
 const CLIENT_WORKSPACE_ROUTES = new Set([
   "/client/overview",
   "/client/billing",
+  "/client/billing/import-s3",
   "/client/billing/uploads",
   "/client/billing/connections",
   "/client/billing/connections/add",
+  "/client/billing/connections/add/aws",
   "/client/billing/connections/aws",
   "/client/billing/connections/aws/automatic",
   "/client/billing/connections/aws/manual",
   "/client/billing/connections/aws/manual/success",
   "/client/billing/connect-cloud",
   "/client/billing/connect-cloud/add",
+  "/client/billing/connect-cloud/add/aws",
   "/client/billing/connect-cloud/aws",
   "/client/billing/connect-cloud/azure",
   "/client/billing/connect-cloud/gcp",
@@ -48,20 +57,33 @@ const CLIENT_WORKSPACE_ROUTES = new Set([
   "/client/billing/connect-cloud/aws/automatic",
   "/client/billing/connect-cloud/aws/manual",
   "/client/billing/connect-cloud/aws/manual/success",
+  "/client/billing/cloud-integration",
+  "/client/billing/upload-files",
   "/client/support",
   "/client/support/tickets",
+  "/client/support/ticket-management",
+  "/client/support/meetings",
   "/client/support/schedule-call",
   "/client/support/live-chat",
   "/client/users",
+  "/client/organization/users",
   "/client/actions",
   "/client/profile",
 ])
 const AWS_CONNECTION_SETUP_ROUTE_REGEX = /^\/client\/billing\/(?:connect-cloud|connections)\/aws\/setup\/[0-9a-fA-F-]{36}$/
 const CLOUD_PROVIDER_ROUTE_REGEX = /^\/client\/billing\/(?:connect-cloud|connections)\/(aws|azure|gcp|oracle-cloud)$/
+const NON_AWS_PROVIDER_ROUTE_REGEX = /^\/client\/billing\/(?:connect-cloud|connections)\/(azure|gcp|oracle-cloud)$/
 const AWS_MANUAL_EXPLORER_ROUTE_REGEX = /^\/client\/billing\/(?:connect-cloud|connections)\/aws\/manual\/explorer(?:\/|$)/
 const AWS_MANUAL_SUCCESS_ROUTE_REGEX = /^\/client\/billing\/(?:connect-cloud|connections)\/aws\/manual\/success(?:\/|$)/
 const DASHBOARD_ROUTE_REGEX =
   /^\/dashboard(?:\/(?:overview|cost-explorer|resources|allocation|optimization|anomalies-alerts|budget|report))?$/
+const MANUAL_DASHBOARD_ROUTE_REGEX =
+  /^\/uploads-dashboard(?:\/(?:overview|cost-explorer|anomalies-alerts))?$/
+const TEAM_ACCESS_ROUTE_SET = new Set([
+  "/client/users",
+  "/client/organization/users",
+])
+const MEETING_ROUTE_SET = new Set(["/client/support/meetings", "/client/support/schedule-call"])
 
 function isClientWorkspaceRoute(route: string) {
   return (
@@ -78,6 +100,8 @@ const HEADERLESS_ROUTES = new Set(["/schedule-demo", "/login", "/forgot-password
 export function App() {
   const route = useCurrentRoute()
   const storedAuthenticated = isAuthenticated()
+  const authUser = getAuthUser()
+  const isOrganizationAdmin = (authUser?.role ?? "").trim().toLowerCase() === "admin"
   const [authChecked, setAuthChecked] = useState(false)
   const [authenticated, setAuthenticated] = useState(false)
   const blogSlug = getBlogSlugFromPath(route)
@@ -87,7 +111,8 @@ export function App() {
     !CLOUD_PROVIDER_ROUTE_REGEX.test(route) &&
     !AWS_MANUAL_EXPLORER_ROUTE_REGEX.test(route) &&
     !AWS_MANUAL_SUCCESS_ROUTE_REGEX.test(route) &&
-    !DASHBOARD_ROUTE_REGEX.test(route)
+    !DASHBOARD_ROUTE_REGEX.test(route) &&
+    !MANUAL_DASHBOARD_ROUTE_REGEX.test(route)
 
   useEffect(() => {
     if (!storedAuthenticated) {
@@ -141,10 +166,20 @@ export function App() {
       return
     }
 
+    if (authenticated && TEAM_ACCESS_ROUTE_SET.has(route) && !isOrganizationAdmin) {
+      navigateTo("/client/overview", { replace: true })
+      return
+    }
+
+    if (authenticated && MEETING_ROUTE_SET.has(route) && !isOrganizationAdmin) {
+      navigateTo("/client/support/ticket-management", { replace: true })
+      return
+    }
+
     if (route === "/login" && authenticated) {
       navigateTo("/client/overview", { replace: true })
     }
-  }, [route, authenticated, authChecked])
+  }, [route, authenticated, authChecked, isOrganizationAdmin])
 
   return (
     <main className="min-h-screen overflow-x-clip bg-background text-foreground">
@@ -163,43 +198,70 @@ export function App() {
       {blogSlug ? <BlogDetailPage slug={blogSlug} /> : null}
       {route === "/resources/documentation" ? <DocumentationPage /> : null}
       {DASHBOARD_ROUTE_REGEX.test(route) ? <DashboardRoutes /> : null}
+      {MANUAL_DASHBOARD_ROUTE_REGEX.test(route) ? <ManualDashboardRoutes /> : null}
       {route === "/client/overview" ? (
         <ClientLayout>
           <ClientOverviewPage />
         </ClientLayout>
       ) : null}
-      {route === "/client/billing" ||
-      route === "/client/billing/uploads" ||
+      {route === "/client/billing/uploads" || route === "/client/billing/upload-files" ? (
+        <ClientLayout>
+          <ClientBillingUploadHistoryPage />
+        </ClientLayout>
+      ) : null}
+      {route === "/client/billing/cloud-integration" ||
       route === "/client/billing/connections" ||
       route === "/client/billing/connections/add" ||
-      route === "/client/billing/connections/aws" ||
-      route === "/client/billing/connections/aws/automatic" ||
-      route === "/client/billing/connections/aws/manual" ||
+      route === "/client/billing/connections/add/aws" ||
       route === "/client/billing/connect-cloud" ||
       route === "/client/billing/connect-cloud/add" ||
+      route === "/client/billing/connect-cloud/add/aws" ? (
+        <ClientLayout>
+          <ClientCloudIntegrationPage />
+        </ClientLayout>
+      ) : null}
+      {route === "/client/billing/connections/aws" ||
       route === "/client/billing/connect-cloud/aws" ||
-      route === "/client/billing/connect-cloud/azure" ||
-      route === "/client/billing/connect-cloud/gcp" ||
-      route === "/client/billing/connect-cloud/oracle-cloud" ||
+      route === "/client/billing/connections/aws/automatic" ||
       route === "/client/billing/connect-cloud/aws/automatic" ||
+      route === "/client/billing/connections/aws/manual" ||
       route === "/client/billing/connect-cloud/aws/manual" ||
+      route === "/client/billing/connections/aws/manual/success" ||
       route === "/client/billing/connect-cloud/aws/manual/success" ||
-      CLOUD_PROVIDER_ROUTE_REGEX.test(route) ||
       AWS_MANUAL_EXPLORER_ROUTE_REGEX.test(route) ||
       AWS_MANUAL_SUCCESS_ROUTE_REGEX.test(route) ||
       AWS_CONNECTION_SETUP_ROUTE_REGEX.test(route) ? (
         <ClientLayout>
+          <ClientAwsConnectionPage />
+        </ClientLayout>
+      ) : null}
+      {route === "/client/billing" ||
+      route === "/client/billing/import-s3" ||
+      NON_AWS_PROVIDER_ROUTE_REGEX.test(route) ? (
+        <ClientLayout>
           <ClientBillingPage />
         </ClientLayout>
       ) : null}
-      {route === "/client/support" || route === "/client/support/tickets" || route === "/client/support/schedule-call" || route === "/client/support/live-chat" ? (
+      {route === "/client/support" ||
+      route === "/client/support/tickets" ||
+      route === "/client/support/ticket-management" ||
+      route === "/client/support/meetings" ||
+      route === "/client/support/schedule-call" ||
+      route === "/client/support/live-chat"
+      ? (
         <ClientLayout>
-          <ClientSupportPage />
+          {route === "/client/support/live-chat" ? (
+            <ClientLiveChatPage />
+          ) : route === "/client/support/schedule-call" || route === "/client/support/meetings" ? (
+            <ClientMeetingsPage />
+          ) : (
+            <ClientTicketsPage />
+          )}
         </ClientLayout>
       ) : null}
-      {route === "/client/users" ? (
+      {route === "/client/users" || route === "/client/organization/users" ? (
         <ClientLayout>
-          <ClientUsersPage />
+          <ClientTeamAccessPage />
         </ClientLayout>
       ) : null}
       {route === "/client/actions" ? (

@@ -1,0 +1,7 @@
+%% Use Case: View Announcements
+%% Limitation: class diagrams contain announcement lifecycle methods (publish/archive/unpublish) but no client-facing read/list method.
+sequenceDiagram
+    actor ClientUser
+    participant Announcement
+
+    Note over ClientUser,Announcement: Viewing announcements is unsupported directly by available class methods.

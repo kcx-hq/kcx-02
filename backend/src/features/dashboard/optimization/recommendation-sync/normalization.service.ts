@@ -61,6 +61,17 @@ export function normalizeAwsEc2Recommendations({
     }
 
     const estimatedSavings = Math.max(0, toNumber(item.estimatedMonthlySavings) ?? 0);
+    const currentType = toNonEmpty(item.currentInstanceType);
+    const recommendedType = toNonEmpty(item.recommendedInstanceType);
+    const rawPayloadFinding =
+      item.rawPayload && typeof item.rawPayload === "object"
+        ? toNonEmpty((item.rawPayload as Record<string, unknown>).finding)
+        : null;
+    const isOptimizedFinding = rawPayloadFinding?.toUpperCase() === "OPTIMIZED";
+    const status =
+      isOptimizedFinding || !recommendedType || (currentType !== null && recommendedType === currentType)
+        ? "NO_ACTION_NEEDED"
+        : "OPEN";
 
     normalizedRecords.push({
       tenantId,
@@ -71,8 +82,8 @@ export function normalizeAwsEc2Recommendations({
       resourceId,
       resourceArn: toNonEmpty(item.resourceArn),
       resourceName: toNonEmpty(item.resourceName),
-      currentResourceType: toNonEmpty(item.currentInstanceType),
-      recommendedResourceType: toNonEmpty(item.recommendedInstanceType),
+      currentResourceType: currentType,
+      recommendedResourceType: recommendedType,
       estimatedMonthlySavings: estimatedSavings,
       performanceRiskScore: toNumber(item.performanceRiskScore),
       performanceRiskLevel: toRiskBand(item.performanceRiskLevel),
@@ -84,7 +95,7 @@ export function normalizeAwsEc2Recommendations({
       observationEnd: toDateOrNull(item.observationEnd),
       rawPayloadJson: safeJson(item.rawPayload ?? item),
       sourceSystem: "AWS_COMPUTE_OPTIMIZER",
-      status: "OPEN",
+      status,
     });
   }
 

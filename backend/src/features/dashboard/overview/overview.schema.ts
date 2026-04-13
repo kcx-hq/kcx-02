@@ -119,6 +119,7 @@ const computeDefaultBillingPeriod = (): { start: string; end: string } => {
 const overviewFiltersSchema = z
   .object({
     tenantId: z.string().trim().min(1),
+    billingSourceIds: z.array(z.number().int().positive()).optional(),
     billingPeriodStart: z.string().regex(DATE_ONLY_REGEX),
     billingPeriodEnd: z.string().regex(DATE_ONLY_REGEX),
     accountKeys: z.array(z.number().int().positive()).optional(),
@@ -148,6 +149,9 @@ export function buildOverviewFilters(req: Request): OverviewFilters {
     normalizeDate(req.query.billingPeriodEnd, "billingPeriodEnd") ??
     normalizeDate(req.query.to, "to") ??
     defaultPeriod.end;
+  const billingSourceIds =
+    parseOptionalIntArray(req.query.billingSourceIds, "billingSourceIds") ??
+    parseOptionalIntArray(req.query.billingSourceId, "billingSourceId");
 
   const accountKeys =
     parseOptionalIntArray(req.query.accountKeys, "accountKeys") ??
@@ -170,6 +174,7 @@ export function buildOverviewFilters(req: Request): OverviewFilters {
 
   return parseWithSchema(overviewFiltersSchema, {
     tenantId,
+    billingSourceIds,
     billingPeriodStart,
     billingPeriodEnd,
     accountKeys,

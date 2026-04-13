@@ -1,0 +1,16 @@
+@startuml
+title CU_12 Connect AWS Bucket - Activity
+start
+:ClientUser enters AWS bucket/prefix details;
+:Validate ingestion connection;
+:Validate cloud access;
+if (Validation successful?) then (Yes)
+  :Activate cloud connection;
+  :Show integration ready;
+  stop
+else (No)
+  :Suspend/keep inactive connection;
+  :Show validation issues;
+  stop
+endif
+@enduml

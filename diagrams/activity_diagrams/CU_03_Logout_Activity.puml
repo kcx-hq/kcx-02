@@ -1,0 +1,8 @@
+@startuml
+title CU_03 Logout - Activity
+start
+:ClientUser clicks logout;
+:Revoke current session;
+:Redirect to sign-in page;
+stop
+@enduml

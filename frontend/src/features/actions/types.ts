@@ -20,11 +20,30 @@ export type Ec2Instance = {
 }
 
 export type Ec2ActionType = "start" | "stop" | "reboot"
+export type Ec2ExtendedActionType = Ec2ActionType | "change-instance-type"
 
 export type Ec2ActionResponse = {
   success: boolean
   action: Ec2ActionType
   instanceId: string
+  message: string
+}
+
+export type Ec2ChangeInstanceTypeResponse = {
+  success: true
+  action: "change-instance-type"
+  instanceId: string
+  previousInstanceType: string
+  targetInstanceType: string
+  initialState: string | null
+  finalState: string | null
+  steps: {
+    stopInitiated: boolean
+    waitedForStopped: boolean
+    typeModified: boolean
+    startInitiated: boolean
+    waitedForRunning: boolean
+  }
   message: string
 }
 

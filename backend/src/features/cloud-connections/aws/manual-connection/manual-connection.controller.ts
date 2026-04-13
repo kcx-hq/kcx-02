@@ -6,10 +6,12 @@ import { sendError, sendSuccess } from "../../../../utils/api-response.js";
 import { parseWithSchema } from "../../../_shared/validation/zod-validate.js";
 import {
   browseManualBucketSchema,
+  completeManualSetupSchema,
   createManualConnectionSchema,
 } from "./manual-connection.schema.js";
 import {
   browseManualConnectionBucket,
+  completeManualConnectionSetup,
   createManualConnection,
 } from "./manual-connection.service.js";
 import { ManualConnectionAwsError } from "./aws-assume-role.util.js";
@@ -93,4 +95,32 @@ export async function handleBrowseManualBucket(req: Request, res: Response): Pro
       },
     });
   }
+}
+
+export async function handleCompleteManualSetup(req: Request, res: Response): Promise<void> {
+  const userContext = requireUserContext(req);
+  const payload = parseWithSchema(completeManualSetupSchema, req.body);
+  const result = await completeManualConnectionSetup(payload, userContext);
+
+  if (!result.success) {
+    sendError({
+      res,
+      req,
+      statusCode: result.statusCode,
+      message: result.message,
+      error: {
+        code: result.errorCode,
+        ...(result.details ? { details: result.details } : {}),
+      },
+    });
+    return;
+  }
+
+  sendSuccess({
+    res,
+    req,
+    statusCode: HTTP_STATUS.OK,
+    message: "Manual AWS setup completed",
+    data: result,
+  });
 }

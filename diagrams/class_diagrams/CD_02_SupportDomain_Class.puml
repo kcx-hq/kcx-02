@@ -1,0 +1,74 @@
+@startuml
+title CD_02 Support Domain Class Diagram
+
+left to right direction
+skinparam classAttributeIconSize 0
+skinparam packageStyle rectangle
+skinparam shadowing false
+
+package "Support Domain" {
+
+  class SupportTicket {
+    +id: UUID
+    +ticketCode: String
+    +title: String
+    +issueCategory: String
+    +priority: String
+    +status: String
+    +workflowStage: String
+    +progress: String
+    --
+    +create(createdBy: UUID, title: String, category: String, priority: String, affected: String, description: String): SupportTicket
+    +addMessage(senderId: UUID, text: String): TicketMessage
+    +assignTeam(team: String)
+    +advanceWorkflow(stage: String, progress: String)
+    +close()
+  }
+
+  class TicketMessage {
+    +id: UUID
+    +senderType: String
+    +senderUserId: UUID?
+    +senderName: String?
+    +message: String
+    +createdAt: DateTime
+    --
+    +post(senderId: UUID, text: String)
+  }
+
+  class SupportMeeting {
+    +id: UUID
+    +meetingCode: String
+    +meetingType: String
+    +status: String
+    +agenda: String
+    +slotStart: DateTime
+    +slotEnd: DateTime
+    +timeZone: String
+    +meetingUrl: String?
+    --
+    +request(requestedBy: UUID, slotStart: DateTime, slotEnd: DateTime, agenda: String, meetingType: String, timeZone: String)
+    +approve(adminId: Integer, meetingUrl: String)
+    +reject(adminId: Integer, reason: String)
+    +cancelByClient(reason: String)
+  }
+
+  class Announcement {
+    +id: UUID
+    +title: String
+    +body: String
+    +status: String
+    +audienceScope: String
+    --
+    +publish()
+    +archive()
+    +unpublish()
+  }
+
+  SupportTicket "1" *-- "0..*" TicketMessage
+
+  SupportMeeting -[hidden]- Announcement
+  SupportTicket -[hidden]- SupportMeeting
+}
+
+@enduml

@@ -1,6 +1,6 @@
 import type { Request, Response } from "express";
 import crypto from "node:crypto";
-import { Op, type Transaction } from "sequelize";
+import { Op, QueryTypes, type Transaction } from "sequelize";
 
 import env from "../../../../config/env.js";
 import { HTTP_STATUS } from "../../../../constants/http-status.js";
@@ -18,6 +18,7 @@ import {
   CloudConnectionV2,
   CloudIntegration,
   CloudProvider,
+  CloudtrailSource,
   sequelize,
 } from "../../../../models/index.js";
 import { sendSuccess } from "../../../../utils/api-response.js";
@@ -33,6 +34,8 @@ import {
 import { runInitialBackfillAfterValidation } from "../exports/aws-export-ingestion.service.js";
 import { validateAwsConnection } from "./aws-connection-validation.service.js";
 import {
+  type AwsBillingConnectionCallbackPayload,
+  type AwsCloudTrailConnectionCallbackPayload,
   type AwsConnectionCallbackPayload,
   type GenerateAwsCloudFormationSetupPayload,
   awsConnectionCallbackSchema,
@@ -65,11 +68,16 @@ const PROVIDER_NAME_BY_CODE: Record<string, string> = {
 };
 
 const DEFAULT_AWS_EXPORT_PREFIX = "kcx/data-exports/cur2";
+const DEFAULT_AWS_CLOUDTRAIL_PREFIX = "kcx/cloudtrail";
 const DEFAULT_AWS_CALLBACK_CADENCE = "hourly";
+const DEFAULT_AWS_CLOUDTRAIL_CADENCE = "event_driven";
 const AWS_CALLBACK_DELETE_EVENT_TYPE = "stack_delete";
 const buildDefaultAwsExportName = (connectionId: string) => `KCX-CUR2-${connectionId.replace(/-/g, "").slice(0, 10)}`;
+const buildDefaultAwsCloudTrailName = (connectionId: string) =>
+  `kcx-cloudtrail-${connectionId.replace(/-/g, "").slice(0, 8)}`;
 type CloudConnectionV2Instance = InstanceType<typeof CloudConnectionV2>;
 type BillingSourceInstance = InstanceType<typeof BillingSource>;
+type CloudtrailSourceInstance = InstanceType<typeof CloudtrailSource>;
 
 type AwsCallbackLogContext = {
   connectionId: string;
@@ -90,6 +98,13 @@ type AwsCallbackAcceptanceResult = {
   cadence: string;
   shouldScheduleValidation: boolean;
   logContext: AwsCallbackLogContext;
+};
+
+type AwsCloudTrailCallbackAcceptanceResult = {
+  connection: CloudConnectionV2Instance;
+  cloudtrailSource: CloudtrailSourceInstance;
+  cadence: string;
+  shouldScheduleValidation: false;
 };
 
 const postCallbackValidationInFlight = new Set<string>();
@@ -144,12 +159,17 @@ const normalizeCadence = (value: string | null | undefined): string => {
   return normalized || DEFAULT_AWS_CALLBACK_CADENCE;
 };
 
+const normalizeCloudTrailCadence = (value: string | null | undefined): string => {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  return normalized || DEFAULT_AWS_CLOUDTRAIL_CADENCE;
+};
+
 const isDeleteCallbackEvent = (eventType: string): boolean =>
   eventType.trim().toLowerCase() === AWS_CALLBACK_DELETE_EVENT_TYPE;
 
 const hasConnectionCoreChanges = (
   connection: CloudConnectionV2Instance,
-  payload: AwsConnectionCallbackPayload,
+  payload: AwsBillingConnectionCallbackPayload,
 ): boolean => {
   const nextBillingRoleArn = String(payload.billing_role_arn ?? "").trim();
   const nextActionRoleArn = payload.action_role_arn?.trim();
@@ -184,7 +204,7 @@ async function findConnectionByCallbackToken(callbackToken: string): Promise<Clo
 
 async function upsertBillingSourceFromCallback(input: {
   connection: CloudConnectionV2Instance;
-  payload: AwsConnectionCallbackPayload;
+  payload: AwsBillingConnectionCallbackPayload;
   cadence: string;
   status?: string;
   transaction: Transaction;
@@ -240,9 +260,68 @@ async function upsertBillingSourceFromCallback(input: {
   return { billingSource, changed };
 }
 
+const normalizeCloudtrailPrefix = (value: string | null | undefined): string => {
+  const trimmed = String(value ?? "").trim();
+  if (!trimmed) return "";
+  return trimmed.replace(/^\/+/, "");
+};
+
+async function upsertCloudtrailSourceFromCallback(input: {
+  connection: CloudConnectionV2Instance;
+  payload: AwsCloudTrailConnectionCallbackPayload;
+  status: string;
+  transaction: Transaction;
+}): Promise<CloudtrailSourceInstance> {
+  const { connection, payload, status, transaction } = input;
+  const trailName = payload.trail_name.trim();
+  const bucketName = payload.bucket_name.trim();
+  const prefix = normalizeCloudtrailPrefix(payload.prefix);
+
+  let existingCloudtrailSource: CloudtrailSourceInstance | null = null;
+  if (trailName) {
+    existingCloudtrailSource = await CloudtrailSource.findOne({
+      where: {
+        cloudConnectionId: connection.id,
+        trailName,
+      },
+      transaction,
+      lock: transaction.LOCK.UPDATE,
+    });
+  }
+
+  if (!existingCloudtrailSource) {
+    existingCloudtrailSource = await CloudtrailSource.findOne({
+      where: {
+        cloudConnectionId: connection.id,
+        bucketName,
+        prefix,
+      },
+      transaction,
+      lock: transaction.LOCK.UPDATE,
+    });
+  }
+
+  const cloudtrailSourcePayload = {
+    tenantId: connection.tenantId,
+    cloudConnectionId: connection.id,
+    trailName,
+    bucketName,
+    bucketRegion: payload.bucket_region.trim(),
+    prefix,
+    status,
+    updatedAt: new Date(),
+  };
+
+  if (!existingCloudtrailSource) {
+    return CloudtrailSource.create(cloudtrailSourcePayload, { transaction });
+  }
+
+  return existingCloudtrailSource.update(cloudtrailSourcePayload, { transaction });
+}
+
 async function handleAwsDeleteCallback(input: {
   connection: CloudConnectionV2Instance;
-  payload: AwsConnectionCallbackPayload;
+  payload: AwsBillingConnectionCallbackPayload;
   cadence: string;
 }): Promise<AwsCallbackAcceptanceResult> {
   const { connection, payload, cadence } = input;
@@ -313,7 +392,7 @@ async function handleAwsDeleteCallback(input: {
 
 async function acceptAwsCallback(input: {
   connection: CloudConnectionV2Instance;
-  payload: AwsConnectionCallbackPayload;
+  payload: AwsBillingConnectionCallbackPayload;
   cadence: string;
 }): Promise<AwsCallbackAcceptanceResult> {
   const { connection, payload, cadence } = input;
@@ -409,6 +488,70 @@ async function acceptAwsCallback(input: {
     cadence,
     shouldScheduleValidation,
     logContext,
+  };
+}
+
+async function acceptAwsCloudTrailCallback(input: {
+  connection: CloudConnectionV2Instance;
+  payload: AwsCloudTrailConnectionCallbackPayload;
+  cadence: string;
+}): Promise<AwsCloudTrailCallbackAcceptanceResult> {
+  const { connection, payload, cadence } = input;
+  const now = new Date();
+  const nextStatus = isDeleteCallbackEvent(payload.event_type) ? "suspended" : "active";
+  const nextSourceStatus = isDeleteCallbackEvent(payload.event_type) ? "suspended" : "active";
+  const normalizedRoleArn = payload.role_arn?.trim();
+
+  const cloudtrailSource = await sequelize.transaction(async (transaction) => {
+    await connection.update(
+      {
+        cloudAccountId: payload.account_id.trim(),
+        stackId: payload.stack_id.trim(),
+        // CloudTrail callback role_arn represents the billing/read role, not the EC2 action role.
+        ...(normalizedRoleArn ? { billingRoleArn: normalizedRoleArn } : {}),
+        status: nextStatus,
+        connectedAt: nextStatus === "active" ? connection.connectedAt ?? now : connection.connectedAt,
+        errorMessage: null,
+      },
+      { transaction },
+    );
+
+    return upsertCloudtrailSourceFromCallback({
+      connection,
+      payload,
+      status: nextSourceStatus,
+      transaction,
+    });
+  });
+
+  await syncAutomaticCloudIntegration(connection, {
+    status: nextStatus === "suspended" ? "suspended" : "active",
+    statusMessage: nextStatus === "suspended" ? "Disconnected" : "Connected",
+    errorMessage: null,
+    lastCheckedAt: now,
+    ...(nextStatus === "active" ? { lastValidatedAt: now } : {}),
+  });
+
+  logger.info("AWS CloudTrail setup callback accepted", {
+    connectionId: connection.id,
+    accountId: payload.account_id.trim(),
+    stackId: payload.stack_id.trim(),
+    trailName: payload.trail_name.trim(),
+    bucketName: payload.bucket_name.trim(),
+    prefix: normalizeCloudtrailPrefix(payload.prefix),
+    sourceType: payload.source_type,
+    schemaType: payload.schema_type,
+    eventType: payload.event_type,
+    cadence,
+    cloudtrailSourceId: cloudtrailSource.id,
+    status: nextStatus,
+  });
+
+  return {
+    connection,
+    cloudtrailSource,
+    cadence,
+    shouldScheduleValidation: false,
   };
 }
 
@@ -801,14 +944,45 @@ export async function handleGetCloudIntegrationDashboardScope(req: Request, res:
     attributes: ["id"],
   });
 
-  const billingSourceIds = billingSources.map((source) => String(source.id));
+  const billingSourceIds = billingSources
+    .map((source) => Number(source.id))
+    .filter((billingSourceId) => Number.isInteger(billingSourceId));
+  const billingSourceIdsAsText = billingSourceIds.map((billingSourceId) => String(billingSourceId));
+
+  type UsageRangeRow = {
+    usage_from: string | null;
+    usage_to: string | null;
+  };
+
+  let usageFrom: string | null = null;
+  let usageTo: string | null = null;
+  if (billingSourceIds.length > 0) {
+    const usageRangeRows = await sequelize.query<UsageRangeRow>(
+      `
+        SELECT
+          MIN(dd.full_date) AS usage_from,
+          MAX(dd.full_date) AS usage_to
+        FROM fact_cost_line_items fcli
+        JOIN dim_date dd ON dd.id = fcli.usage_date_key
+        WHERE fcli.tenant_id = $1
+          AND fcli.billing_source_id = ANY($2::bigint[]);
+      `,
+      {
+        bind: [tenantId, billingSourceIds],
+        type: QueryTypes.SELECT,
+      },
+    );
+
+    usageFrom = usageRangeRows[0]?.usage_from ?? null;
+    usageTo = usageRangeRows[0]?.usage_to ?? null;
+  }
 
   let rawBillingFileIds: number[] = [];
-  if (billingSourceIds.length > 0) {
+  if (billingSourceIdsAsText.length > 0) {
     const completedIngestionRuns = await BillingIngestionRun.findAll({
       where: {
         billingSourceId: {
-          [Op.in]: billingSourceIds,
+          [Op.in]: billingSourceIdsAsText,
         },
         status: {
           [Op.in]: ["completed", "completed_with_warnings"],
@@ -852,9 +1026,14 @@ export async function handleGetCloudIntegrationDashboardScope(req: Request, res:
     data: {
       cloud_integration_id: integration.id,
       display_name: integration.displayName,
+      tenant_id: integration.tenantId,
       cloud_account_id: integration.cloudAccountId,
       detail_record_id: integration.detailRecordId,
       detail_record_type: integration.detailRecordType,
+      billing_source_ids: billingSourceIds,
+      billing_sources_count: billingSourceIds.length,
+      usage_from: usageFrom,
+      usage_to: usageTo,
       raw_billing_file_ids: rawBillingFileIds,
       ingested_files_count: rawBillingFileIds.length,
     },
@@ -878,27 +1057,31 @@ export async function handleGetAwsCloudFormationSetupUrl(req: Request, res: Resp
   }
 
   const stackName = normalizeOptional(postPayload?.stackName) ?? ensured.stackName ?? undefined;
-  const externalId = normalizeOptional(postPayload?.externalId) ?? ensured.externalId ?? undefined;
-  const callbackToken = normalizeOptional(postPayload?.callbackToken) ?? ensured.callbackToken ?? undefined;
-  const connectionName = normalizeOptional(postPayload?.connectionName) ?? connection.connectionName ?? undefined;
+  const externalId = ensured.externalId ?? undefined;
+  const callbackToken = ensured.callbackToken ?? undefined;
+  const connectionName = connection.connectionName ?? undefined;
   const region = normalizeOptional(postPayload?.region) ?? ensured.region ?? undefined;
 
-  const enableBillingExport = postPayload?.enableBillingExport ?? true;
-  const enableActionRole = postPayload?.enableActionRole ?? true;
-  const enableEC2Module = enableActionRole ? (postPayload?.enableEC2Module ?? true) : false;
+  const enableBillingExport = true;
+  const enableCloudTrail = postPayload?.enableCloudTrail ?? false;
+  const enableEC2Module = postPayload?.enableEC2Module ?? true;
+  const enableActionRole = enableEC2Module ? true : (postPayload?.enableActionRole ?? false);
   const useTagScopedAccess = postPayload?.useTagScopedAccess ?? false;
 
   const exportPrefix = normalizeOptional(postPayload?.exportPrefix) ?? DEFAULT_AWS_EXPORT_PREFIX;
   const exportName = normalizeOptional(postPayload?.exportName) ?? buildDefaultAwsExportName(connection.id);
-  const callbackUrl = normalizeOptional(postPayload?.callbackUrl) ?? env.awsCallbackUrl ?? undefined;
-  const fileEventCallbackUrl = env.awsFileEventCallbackUrl;
+  const callbackUrl = env.awsCallbackUrl ?? undefined;
+  const fileEventCallbackUrl =
+    normalizeOptional(postPayload?.fileEventCallbackUrl) ?? env.awsFileEventCallbackUrl ?? undefined;
+  const cloudTrailPrefix = normalizeOptional(postPayload?.cloudTrailPrefix) ?? DEFAULT_AWS_CLOUDTRAIL_PREFIX;
+  const cloudTrailName = normalizeOptional(postPayload?.cloudTrailName) ?? buildDefaultAwsCloudTrailName(connection.id);
   const resourceTagKey = useTagScopedAccess ? normalizeOptional(postPayload?.resourceTagKey) : undefined;
   const resourceTagValue = useTagScopedAccess ? normalizeOptional(postPayload?.resourceTagValue) : undefined;
 
   if (!stackName || !externalId || !callbackToken || !connectionName || !region) {
     throw new NotFoundError("CloudFormation setup is not available for this connection");
   }
-  if (!fileEventCallbackUrl) {
+  if ((enableBillingExport || enableCloudTrail) && !fileEventCallbackUrl) {
     throw new InternalServerError(
       "AWS CloudFormation setup is temporarily unavailable because callback configuration is missing",
     );
@@ -939,6 +1122,9 @@ export async function handleGetAwsCloudFormationSetupUrl(req: Request, res: Resp
     callbackUrl,
     callbackToken,
     enableBillingExport,
+    enableCloudTrail,
+    cloudTrailPrefix,
+    cloudTrailName,
     enableActionRole,
     enableEC2Module,
     useTagScopedAccess,
@@ -967,6 +1153,56 @@ export async function handleGetAwsCloudFormationSetupUrl(req: Request, res: Resp
 export async function handleAwsConnectionCallback(req: Request, res: Response): Promise<void> {
   const payload = parseWithSchema(awsConnectionCallbackSchema, req.body);
   const connection = await findConnectionByCallbackToken(payload.callback_token);
+
+  if (payload.source_type === "aws_cloudtrail") {
+    const cadence = normalizeCloudTrailCadence(payload.cadence);
+
+    logger.info("AWS CloudTrail setup callback received", {
+      connectionId: connection.id,
+      stackId: payload.stack_id.trim(),
+      accountId: payload.account_id.trim(),
+      trailName: payload.trail_name.trim(),
+      bucketName: payload.bucket_name.trim(),
+      prefix: normalizeCloudtrailPrefix(payload.prefix),
+      eventType: payload.event_type,
+      sourceType: payload.source_type,
+      schemaType: payload.schema_type,
+      cadence,
+    });
+
+    // Explicit routing: aws_cloudtrail setup callbacks use CloudTrail source upsert flow.
+    const accepted = await acceptAwsCloudTrailCallback({
+      connection,
+      payload,
+      cadence,
+    });
+
+    sendSuccess({
+      res,
+      req,
+      statusCode: HTTP_STATUS.OK,
+      message: "AWS callback accepted",
+      data: {
+        id: accepted.connection.id,
+        status: accepted.connection.status,
+        accepted: true,
+        source_type: payload.source_type,
+        schema_type: payload.schema_type,
+        event_type: payload.event_type,
+        cadence: accepted.cadence,
+        stack_id: payload.stack_id.trim(),
+        trail_name: payload.trail_name.trim(),
+        bucket_name: payload.bucket_name.trim(),
+        bucket_region: payload.bucket_region.trim(),
+        prefix: normalizeCloudtrailPrefix(payload.prefix),
+        cloudtrail_source_id: accepted.cloudtrailSource.id,
+        error_message: accepted.connection.errorMessage ?? null,
+        async_validation_scheduled: false,
+      },
+    });
+    return;
+  }
+
   const cadence = normalizeCadence(payload.cadence);
 
   logger.info("AWS setup callback received", {
@@ -977,9 +1213,12 @@ export async function handleAwsConnectionCallback(req: Request, res: Response): 
     actionRoleArn: payload.action_role_arn?.trim() ?? null,
     exportName: payload.export_name.trim(),
     eventType: payload.event_type,
+    sourceType: payload.source_type,
+    schemaType: payload.schema_type,
     cadence,
   });
 
+  // Explicit routing: aws_data_exports_cur2 setup callbacks use existing billing setup flow.
   const accepted = isDeleteCallbackEvent(payload.event_type)
     ? await handleAwsDeleteCallback({
         connection,
@@ -1001,6 +1240,8 @@ export async function handleAwsConnectionCallback(req: Request, res: Response): 
       id: accepted.connection.id,
       status: accepted.connection.status,
       accepted: true,
+      source_type: payload.source_type,
+      schema_type: payload.schema_type,
       event_type: payload.event_type,
       cadence: accepted.cadence,
       stack_id: payload.stack_id.trim(),

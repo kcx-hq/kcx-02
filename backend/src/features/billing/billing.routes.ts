@@ -12,8 +12,11 @@ import {
   handleManualUploadBillingFile,
 } from "./billing.controller.js";
 import {
+  handleCreatePersistentS3UploadConnection,
+  handleCreateS3UploadSessionFromConnection,
   handleCreateS3UploadSession,
   handleImportFromS3UploadSession,
+  handleListPersistentS3UploadConnections,
   handleListS3UploadSessionScope,
 } from "./s3-upload/s3-upload.controller.js";
 
@@ -35,6 +38,12 @@ router.get("/billing/uploads/history", asyncHandler(handleGetBillingUploadHistor
 router.post("/billing/uploads/s3/session", asyncHandler(handleCreateS3UploadSession));
 router.get("/billing/uploads/s3/session/:sessionId/list", asyncHandler(handleListS3UploadSessionScope));
 router.post("/billing/uploads/s3/session/:sessionId/import", asyncHandler(handleImportFromS3UploadSession));
+router.post("/billing/uploads/s3/connections", asyncHandler(handleCreatePersistentS3UploadConnection));
+router.get("/billing/uploads/s3/connections", asyncHandler(handleListPersistentS3UploadConnections));
+router.post(
+  "/billing/uploads/s3/connections/:connectionId/session",
+  asyncHandler(handleCreateS3UploadSessionFromConnection),
+);
 router.post("/billing/ingestion/upload", upload.single("file"), asyncHandler(handleManualUploadBillingFile));
 router.get("/billing/ingestions/latest-active", asyncHandler(handleGetLatestActiveBillingIngestion));
 router.get("/billing/ingestions/:id/status", asyncHandler(getBillingIngestionStatus));

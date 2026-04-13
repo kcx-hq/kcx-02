@@ -1,18 +1,14 @@
 import { useEffect, useRef, useState } from "react"
 
 import { Button } from "@/components/ui/button"
-import kcxLogo from "@/assets/logos/kcx-logo.svg"
 import { clearAuthSession } from "@/lib/auth"
 import { handleAppLinkClick, navigateTo, useCurrentRoute } from "@/lib/navigation"
+import { getClientBreadcrumbLabel } from "@/features/client-home/components/client-navigation"
 import { cn } from "@/lib/utils"
-import { Bell, ChevronDown, LifeBuoy, LogOut, Megaphone, User, UserCircle2 } from "lucide-react"
+import { Bell, ChevronDown, LifeBuoy, LogOut, Menu, Megaphone, User, UserCircle2 } from "lucide-react"
+import { useClientAnnouncements } from "@/features/client-home/hooks/useClientAnnouncements"
 
-const NAV_ITEMS = [
-  { label: "Billing", href: "/client/billing", matches: ["/client/billing", "/client/billing/uploads", "/client/billing/connect-cloud", "/client/billing/connect-cloud/aws", "/client/billing/connect-cloud/aws/automatic", "/client/billing/connect-cloud/aws/manual", "/client/billing/connect-cloud/aws/manual/success"] },
-  { label: "Actions", href: "/client/actions", matches: ["/client/actions"] },
-  { label: "Support", href: "/client/support/tickets", matches: ["/client/support", "/client/support/tickets", "/client/support/schedule-call", "/client/support/live-chat"] },
-  { label: "Users", href: "/client/users", matches: ["/client/users"] },
-] as const
+const ANNOUNCEMENTS_SEEN_KEY = "kcx_client_seen_announcement_at"
 
 function HeaderIconTooltip({ label }: { label: string }) {
   return (
@@ -27,6 +23,7 @@ type ClientTopNavbarProps = {
   userDisplayName: string
   userEmail: string
   userRole: string
+  onOpenSidebar?: () => void
 }
 
 function toRoleLabel(role: string) {
@@ -43,21 +40,35 @@ export function ClientTopNavbar({
   userDisplayName,
   userEmail,
   userRole,
+  onOpenSidebar,
 }: ClientTopNavbarProps) {
   const route = useCurrentRoute()
   const [menuOpen, setMenuOpen] = useState(false)
+  const [announcementsOpen, setAnnouncementsOpen] = useState(false)
+  const [seenAnnouncementAt, setSeenAnnouncementAt] = useState<number>(() => {
+    if (typeof window === "undefined") return 0
+    const raw = window.localStorage.getItem(ANNOUNCEMENTS_SEEN_KEY)
+    const parsed = raw ? Number(raw) : 0
+    return Number.isFinite(parsed) ? parsed : 0
+  })
   const menuRef = useRef<HTMLDivElement>(null)
+  const announcementsRef = useRef<HTMLDivElement>(null)
+  const { data: announcements = [], isLoading: isAnnouncementsLoading, isError: announcementsError } = useClientAnnouncements(true)
 
   useEffect(() => {
     function onPointerDown(event: MouseEvent) {
       if (!menuRef.current?.contains(event.target as Node)) {
         setMenuOpen(false)
       }
+      if (!announcementsRef.current?.contains(event.target as Node)) {
+        setAnnouncementsOpen(false)
+      }
     }
 
     function onEscape(event: KeyboardEvent) {
       if (event.key === "Escape") {
         setMenuOpen(false)
+        setAnnouncementsOpen(false)
       }
     }
 
@@ -71,57 +82,65 @@ export function ClientTopNavbar({
 
   useEffect(() => {
     setMenuOpen(false)
+    setAnnouncementsOpen(false)
   }, [route])
 
   const roleLabel = toRoleLabel(userRole)
+  const currentBreadcrumbLabel = getClientBreadcrumbLabel(route)
   const navIconButtonClass =
-    "h-9 rounded-md border border-[rgba(164,192,181,0.3)] bg-[rgba(13,24,28,0.46)] px-2 text-[rgba(228,240,235,0.9)] hover:bg-[rgba(158,191,178,0.16)] hover:text-white"
+    "relative h-10 rounded-md border border-[rgba(160,173,183,0.52)] bg-[#f3f6f5] px-3 text-[color:#4a5d69] transition duration-200 hover:border-[rgba(127,147,160,0.66)] hover:bg-[#e9efee] hover:text-[color:#1f3340]"
+
+  function toAnnouncementTimestamp(iso: string | null | undefined) {
+    if (!iso) return 0
+    const value = Date.parse(iso)
+    return Number.isNaN(value) ? 0 : value
+  }
+
+  const unreadAnnouncementsCount = announcements.reduce((count, announcement) => {
+    const announcementTimestamp = toAnnouncementTimestamp(announcement.publishAt ?? announcement.updatedAt)
+    return announcementTimestamp > seenAnnouncementAt ? count + 1 : count
+  }, 0)
+
+  function markAnnouncementsSeen() {
+    const latestAnnouncementAt = announcements.reduce((latest, announcement) => {
+      const announcementTimestamp = toAnnouncementTimestamp(announcement.publishAt ?? announcement.updatedAt)
+      return Math.max(latest, announcementTimestamp)
+    }, 0)
+
+    const nextSeenTimestamp = Math.max(latestAnnouncementAt, Date.now())
+    setSeenAnnouncementAt(nextSeenTimestamp)
+    window.localStorage.setItem(ANNOUNCEMENTS_SEEN_KEY, String(nextSeenTimestamp))
+  }
 
   function handleLogout() {
     clearAuthSession()
     navigateTo("/login", { replace: true })
   }
 
-  return (
-    <header className="sticky top-0 z-40 border-b border-[rgba(132,165,157,0.2)] bg-[rgba(10,18,20,0.7)] text-text-on-dark backdrop-blur-md">
-      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(92deg,rgba(11,22,24,0.74)_0%,rgba(11,22,24,0.54)_52%,rgba(11,22,24,0.68)_100%)]" />
-      <div className="hero-aurora-right-glow-a pointer-events-none absolute inset-0 opacity-[0.14]" />
-      <div className="hero-aurora-right-glow-b pointer-events-none absolute inset-0 opacity-[0.1]" />
-      <div className="hero-aurora-right-glow-c pointer-events-none absolute inset-0 opacity-[0.08]" />
-      <div className="hero-aurora-prism pointer-events-none absolute inset-0 opacity-[0.06]" />
-      <div className="hero-aurora-noise pointer-events-none absolute inset-0 opacity-[0.08]" />
-      <div className="relative mx-auto flex h-16 w-full max-w-[1440px] items-center justify-between gap-4 px-6">
-        <div className="flex min-w-0 flex-1 items-center gap-8">
-          <a
-            href="/client/overview"
-            onClick={(event) => handleAppLinkClick(event, "/client/overview")}
-            className="flex min-w-0 items-center gap-3"
-          >
-            <img src={kcxLogo} alt="KCX" className="h-7 w-auto" />
-            <div className="h-5 w-px bg-[rgba(196,216,208,0.28)]" />
-            <p className="truncate text-sm font-medium text-[rgba(236,244,241,0.88)]">{orgName}</p>
-          </a>
+  function formatAnnouncementTime(iso: string | null) {
+    if (!iso) return "Recently updated"
+    const date = new Date(iso)
+    if (Number.isNaN(date.getTime())) return "Recently updated"
+    return new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeStyle: "short" }).format(date)
+  }
 
-          <nav className="hidden h-16 items-stretch gap-6 lg:flex" aria-label="Client workspace">
-            {NAV_ITEMS.map((item) => {
-              const isActive = item.label === "Billing" ? route.startsWith("/client/billing") : item.matches.some((path) => path === route)
-              return (
-                <a
-                  key={item.href}
-                  href={item.href}
-                  onClick={(event) => handleAppLinkClick(event, item.href)}
-                  className={cn(
-                    "inline-flex h-full items-center border-b-2 border-transparent px-0 text-sm font-medium leading-none transition-colors",
-                    isActive
-                      ? "border-[rgba(132,205,180,0.82)] text-white"
-                      : "text-[rgba(218,232,226,0.78)] hover:text-white"
-                  )}
-                  aria-current={isActive ? "page" : undefined}
-                >
-                  {item.label}
-                </a>
-              )
-            })}
+  return (
+    <header className="sticky top-0 z-40 border-b border-[rgba(160,173,183,0.38)] bg-[#f4f7f6] text-[color:#1f2e33] backdrop-blur-[2px] lg:ml-[228px] lg:w-[calc(100%-228px)]">
+      <div className="mx-auto flex h-16 w-full items-center justify-between gap-4 px-4 sm:px-[22px]">
+        <div className="flex min-w-0 flex-1 items-center gap-4">
+          {onOpenSidebar ? (
+            <Button
+              type="button"
+              variant="ghost"
+              aria-label="Open sidebar navigation"
+              className="h-9 rounded-md border border-[rgba(160,173,183,0.52)] bg-[#f3f6f5] px-2 text-[color:#4a5d69] hover:bg-[#e9efee] hover:text-[color:#1f3340] lg:hidden"
+              onClick={onOpenSidebar}
+            >
+              <Menu className="h-4 w-4" />
+            </Button>
+          ) : null}
+          <nav className="inline-flex min-w-0 items-center gap-2" aria-label="Breadcrumb">
+            <span className="truncate text-[16px] font-semibold text-[color:#192630]">{currentBreadcrumbLabel}</span>
           </nav>
         </div>
 
@@ -136,15 +155,81 @@ export function ClientTopNavbar({
             </Button>
             <HeaderIconTooltip label="KCX Help" />
           </div>
-          <div className="group relative hidden xl:block">
-            <Button
-              variant="ghost"
-              aria-label="Announcements"
-              className={navIconButtonClass}
-            >
-              <Megaphone className="h-3.5 w-3.5" />
-            </Button>
-            <HeaderIconTooltip label="Announcements" />
+          <div className="relative hidden xl:block" ref={announcementsRef}>
+            <div className="group relative">
+              <Button
+                variant="ghost"
+                aria-label="Announcements"
+                onClick={() => {
+                  setAnnouncementsOpen((open) => {
+                    const next = !open
+                    if (next) {
+                      markAnnouncementsSeen()
+                    }
+                    return next
+                  })
+                  setMenuOpen(false)
+                }}
+                className={cn(
+                  navIconButtonClass,
+                  announcementsOpen
+                    ? "border-[rgba(104,150,134,0.7)] bg-[color:#e5f1ec] text-[color:#163039]"
+                    : ""
+                )}
+              >
+                <Megaphone className="h-3.5 w-3.5" />
+                {unreadAnnouncementsCount > 0 ? (
+                  <span className="ml-1 inline-flex min-w-[1.2rem] items-center justify-center rounded-full border border-[rgba(170,68,68,0.5)] bg-[linear-gradient(180deg,#ff9388_0%,#e66f64_100%)] px-1.5 py-0.5 text-[10px] font-semibold leading-none text-[rgba(255,247,246,0.96)] shadow-[0_4px_10px_rgba(192,67,55,0.35)]">
+                    {unreadAnnouncementsCount}
+                  </span>
+                ) : null}
+              </Button>
+              {!announcementsOpen ? <HeaderIconTooltip label="Announcements" /> : null}
+            </div>
+
+            {announcementsOpen ? (
+              <div className="absolute right-0 top-12 z-50 w-[360px] rounded-md border border-[rgba(163,189,179,0.38)] bg-[rgba(17,28,29,0.97)] p-3 shadow-[0_16px_36px_rgba(5,11,11,0.35)] backdrop-blur-md">
+                <div className="mb-2 flex items-center justify-between">
+                  <p className="text-sm font-semibold text-[rgba(242,248,246,0.94)]">Announcements</p>
+                  <span className="text-xs text-[rgba(201,220,212,0.78)]">{announcements.length} active</span>
+                </div>
+
+                {isAnnouncementsLoading ? (
+                  <div className="rounded-md border border-[rgba(163,189,179,0.22)] bg-[rgba(221,236,230,0.04)] p-3 text-sm text-[rgba(213,228,221,0.82)]">
+                    Loading announcements...
+                  </div>
+                ) : null}
+
+                {!isAnnouncementsLoading && announcementsError ? (
+                  <div className="rounded-md border border-[rgba(240,133,133,0.32)] bg-[rgba(255,132,132,0.09)] p-3 text-sm text-[rgba(255,220,220,0.94)]">
+                    Could not load announcements right now.
+                  </div>
+                ) : null}
+
+                {!isAnnouncementsLoading && !announcementsError && announcements.length === 0 ? (
+                  <div className="rounded-md border border-[rgba(163,189,179,0.22)] bg-[rgba(221,236,230,0.04)] p-3 text-sm text-[rgba(213,228,221,0.82)]">
+                    No active announcements.
+                  </div>
+                ) : null}
+
+                {!isAnnouncementsLoading && !announcementsError && announcements.length > 0 ? (
+                  <div className="max-h-[320px] space-y-2 overflow-auto pr-1">
+                    {announcements.map((announcement) => (
+                      <div
+                        key={announcement.id}
+                        className="rounded-md border border-[rgba(163,189,179,0.25)] bg-[rgba(221,236,230,0.06)] p-3"
+                      >
+                        <p className="text-sm font-semibold text-[rgba(242,248,246,0.94)]">{announcement.title}</p>
+                        <p className="mt-1 text-xs leading-5 text-[rgba(213,228,221,0.82)]">{announcement.body}</p>
+                        <p className="mt-2 text-[11px] text-[rgba(189,211,201,0.74)]">
+                          {formatAnnouncementTime(announcement.publishAt ?? announcement.updatedAt)}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
           </div>
           <div className="group relative">
             <Button
@@ -152,7 +237,6 @@ export function ClientTopNavbar({
               aria-label="Notifications"
               className={navIconButtonClass}
             >
-              <span className="sr-only">Notifications</span>
               <Bell className="h-4 w-4" />
             </Button>
             <HeaderIconTooltip label="Notifications" />
@@ -161,17 +245,22 @@ export function ClientTopNavbar({
             <div className="group relative">
               <Button
                 variant="ghost"
-                onClick={() => setMenuOpen((open) => !open)}
+                onClick={() => {
+                  setMenuOpen((open) => !open)
+                  setAnnouncementsOpen(false)
+                }}
                 aria-label="User Menu"
                 className={cn(
-                  "h-10 rounded-md border border-[rgba(164,192,181,0.3)] bg-[rgba(13,24,28,0.46)] px-2 text-[rgba(228,240,235,0.9)] hover:bg-[rgba(158,191,178,0.16)] hover:text-white",
-                  menuOpen ? "bg-[rgba(158,191,178,0.2)] text-white" : ""
+                  "h-10 rounded-lg border border-[rgba(160,173,183,0.52)] bg-[#f3f6f5] px-2 text-[color:#4a5d69] transition duration-200 hover:border-[rgba(127,147,160,0.66)] hover:bg-[#e9efee] hover:text-[color:#1f3340]",
+                  menuOpen
+                    ? "border-[rgba(104,150,134,0.7)] bg-[color:#e5f1ec] text-[color:#163039]"
+                    : ""
                 )}
                 aria-haspopup="menu"
                 aria-expanded={menuOpen ? "true" : "false"}
               >
                 <span className="sr-only">Open user menu</span>
-                <span className="flex h-8 w-8 items-center justify-center rounded-md bg-[rgba(209,226,219,0.14)] text-sm font-semibold text-[rgba(231,242,238,0.94)]">
+                <span className="flex h-7 w-7 items-center justify-center rounded-md bg-[color:#e6eeeb] text-sm font-semibold text-[color:#2f4a50]">
                   <User className="h-4 w-4" />
                 </span>
                 <ChevronDown className="ml-1 h-4 w-4 opacity-80" />

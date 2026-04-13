@@ -1,5 +1,7 @@
 import { apiGet, apiPatch, apiPost } from "@/lib/api";
 import type {
+  AnomaliesFiltersQuery,
+  AnomaliesListResponse,
   BudgetDashboardResponse,
   BudgetUpsertPayload,
   BudgetActualForecastPoint,
@@ -16,6 +18,21 @@ import type {
   DashboardResolvedScope,
   DashboardScopeInput,
   DashboardSectionData,
+  OptimizationIdleOverview,
+  OptimizationCommitmentOverview,
+  OptimizationIdleRecommendationsResponse,
+  OptimizationCommitmentRecommendationsResponse,
+  OptimizationIdleRecommendationDetail,
+  OptimizationCommitmentRecommendationDetail,
+  OptimizationRightsizingOverview,
+  OptimizationRecommendationFiltersQuery,
+  OptimizationRecommendationsResponse,
+  OptimizationRecommendationDetail,
+  IdleActionExecuteResponse,
+  IdleActionStatusResponse,
+  RecommendationIgnoreResponse,
+  RightsizingActionExecuteResponse,
+  RightsizingActionStatusResponse,
 } from "./dashboardTypes";
 import { buildDashboardQueryParams } from "../utils/buildDashboardQueryParams";
 
@@ -74,6 +91,76 @@ function withCostExplorerFilters(
   } else if (filters?.compareKey === null) {
     params.delete("compareKey");
   }
+
+  const query = params.toString();
+  return query.length > 0 ? `${path}?${query}` : path;
+}
+
+function withOptimizationFilters(
+  path: string,
+  scope: DashboardResolvedScope,
+  filters?: OptimizationRecommendationFiltersQuery,
+): string {
+  const params = new URLSearchParams(buildDashboardQueryParams(scope));
+  // Avoid inheriting unrelated scope filters (like serviceKey from other dashboard pages)
+  // that can silently hide optimization recommendations.
+  params.delete("providerId");
+  params.delete("billingAccountKey");
+  params.delete("subAccountKey");
+  params.delete("serviceKey");
+  params.delete("regionKey");
+
+  const appendArray = (key: string, values?: (string | number)[]) => {
+    if (!Array.isArray(values) || values.length === 0) {
+      return;
+    }
+    params.set(key, values.join(","));
+  };
+
+  appendArray("status", filters?.status);
+  appendArray("effort", filters?.effort);
+  appendArray("risk", filters?.risk);
+  appendArray("account", filters?.account);
+  appendArray("region", filters?.region);
+  appendArray("serviceKey", filters?.serviceKey);
+
+  if (typeof filters?.page === "number") params.set("page", String(filters.page));
+  if (typeof filters?.pageSize === "number") params.set("pageSize", String(filters.pageSize));
+
+  const query = params.toString();
+  return query.length > 0 ? `${path}?${query}` : path;
+}
+
+function withAnomaliesFilters(path: string, filters?: AnomaliesFiltersQuery): string {
+  const params = new URLSearchParams();
+
+  if (typeof filters?.billing_source_id === "number") params.set("billing_source_id", String(filters.billing_source_id));
+  if (filters?.status) params.set("status", filters.status);
+  if (filters?.severity) params.set("severity", filters.severity);
+  if (filters?.anomaly_type) params.set("anomaly_type", filters.anomaly_type);
+  if (filters?.date_from) params.set("date_from", filters.date_from);
+  if (filters?.date_to) params.set("date_to", filters.date_to);
+  if (typeof filters?.limit === "number") params.set("limit", String(filters.limit));
+  if (typeof filters?.offset === "number") params.set("offset", String(filters.offset));
+
+  const query = params.toString();
+  return query.length > 0 ? `${path}?${query}` : path;
+}
+
+function withAnomaliesAlertsFilters(
+  path: string,
+  scope: DashboardResolvedScope,
+  filters?: AnomalyAlertsFiltersQuery,
+): string {
+  const params = new URLSearchParams(buildDashboardQueryParams(scope));
+
+  if (filters?.anomalyType) params.set("anomaly_type", filters.anomalyType);
+  if (filters?.severity) params.set("severity", filters.severity);
+  if (filters?.anomaly_type) params.set("anomaly_type", filters.anomaly_type);
+  if (filters?.date_from) params.set("date_from", filters.date_from);
+  if (filters?.date_to) params.set("date_to", filters.date_to);
+  if (typeof filters?.limit === "number") params.set("limit", String(filters.limit));
+  if (typeof filters?.offset === "number") params.set("offset", String(filters.offset));
 
   const query = params.toString();
   return query.length > 0 ? `${path}?${query}` : path;
@@ -144,8 +231,92 @@ export const dashboardApi = {
     return apiGet<DashboardSectionData>(withDashboardQuery("/dashboard/optimization", scope));
   },
 
-  getAnomaliesAlerts(scope: DashboardResolvedScope) {
-    return apiGet<DashboardSectionData>(withDashboardQuery("/dashboard/anomalies-alerts", scope));
+  getOptimizationRightsizingOverview(scope: DashboardResolvedScope) {
+    return apiGet<OptimizationRightsizingOverview>(
+      withDashboardQuery("/dashboard/optimization/rightsizing/overview", scope),
+    );
+  },
+
+  getOptimizationRightsizingRecommendations(scope: DashboardResolvedScope, filters?: OptimizationRecommendationFiltersQuery) {
+    return apiGet<OptimizationRecommendationsResponse>(
+      withOptimizationFilters("/dashboard/optimization/rightsizing/recommendations", scope, filters),
+    );
+  },
+
+  getOptimizationRightsizingRecommendationDetail(scope: DashboardResolvedScope, recommendationId: string) {
+    return apiGet<OptimizationRecommendationDetail>(
+      withDashboardQuery(`/dashboard/optimization/rightsizing/recommendations/${recommendationId}`, scope),
+    );
+  },
+
+  executeOptimizationRightsizingRecommendation(
+    scope: DashboardResolvedScope,
+    recommendationId: string,
+    payload?: { dryRun?: boolean; idempotencyKey?: string },
+  ) {
+    return apiPost<RightsizingActionExecuteResponse>(
+      withDashboardQuery(`/dashboard/optimization/rightsizing/recommendations/${recommendationId}/execute`, scope),
+      payload ?? {},
+    );
+  },
+
+  getOptimizationRightsizingActionStatus(scope: DashboardResolvedScope, actionId: string) {
+    return apiGet<RightsizingActionStatusResponse>(
+      withDashboardQuery(`/dashboard/optimization/rightsizing/actions/${actionId}`, scope),
+    );
+  },
+
+  ignoreOptimizationRightsizingRecommendation(scope: DashboardResolvedScope, recommendationId: string) {
+    return apiPost<RecommendationIgnoreResponse>(
+      withDashboardQuery(`/dashboard/optimization/rightsizing/recommendations/${recommendationId}/ignore`, scope),
+      {},
+    );
+  },
+
+  getOptimizationIdleOverview(scope: DashboardResolvedScope) {
+    return apiGet<OptimizationIdleOverview>(
+      withDashboardQuery("/dashboard/optimization/idle/overview", scope),
+    );
+  },
+
+  getOptimizationIdleRecommendations(scope: DashboardResolvedScope, filters?: OptimizationRecommendationFiltersQuery) {
+    return apiGet<OptimizationIdleRecommendationsResponse>(
+      withOptimizationFilters("/dashboard/optimization/idle/recommendations", scope, filters),
+    );
+  },
+
+  getOptimizationIdleRecommendationDetail(scope: DashboardResolvedScope, recommendationId: string) {
+    return apiGet<OptimizationIdleRecommendationDetail>(
+      withDashboardQuery(`/dashboard/optimization/idle/recommendations/${recommendationId}`, scope),
+    );
+  },
+
+  executeOptimizationIdleRecommendation(
+    scope: DashboardResolvedScope,
+    recommendationId: string,
+    payload?: { dryRun?: boolean; idempotencyKey?: string },
+  ) {
+    return apiPost<IdleActionExecuteResponse>(
+      withDashboardQuery(`/dashboard/optimization/idle/recommendations/${recommendationId}/execute`, scope),
+      payload ?? {},
+    );
+  },
+
+  getOptimizationIdleActionStatus(scope: DashboardResolvedScope, actionId: string) {
+    return apiGet<IdleActionStatusResponse>(
+      withDashboardQuery(`/dashboard/optimization/idle/actions/${actionId}`, scope),
+    );
+  },
+
+  ignoreOptimizationIdleRecommendation(scope: DashboardResolvedScope, recommendationId: string) {
+    return apiPost<RecommendationIgnoreResponse>(
+      withDashboardQuery(`/dashboard/optimization/idle/recommendations/${recommendationId}/ignore`, scope),
+      {},
+    );
+  },
+
+  getAnomaliesAlerts(scope: DashboardResolvedScope, filters?: AnomalyAlertsFiltersQuery) {
+    return apiGet<AnomalyAlertRecord[]>(withAnomaliesAlertsFilters("/dashboard/anomalies-alerts", scope, filters));
   },
 
   getBudget(scope: DashboardResolvedScope) {
@@ -177,6 +348,9 @@ export const dashboardApi = {
 
 export type {
   BudgetActualForecastPoint,
+  AnomalyRecord,
+  AnomaliesFiltersQuery,
+  AnomaliesListResponse,
   BudgetDashboardResponse,
   BudgetItem,
   BudgetStatus,
@@ -203,4 +377,19 @@ export type {
   DashboardResolvedScope,
   DashboardScopeInput,
   DashboardSectionData,
+  OptimizationIdleOverview,
+  OptimizationCommitmentOverview,
+  OptimizationIdleRecommendationsResponse,
+  OptimizationCommitmentRecommendationsResponse,
+  OptimizationIdleRecommendationDetail,
+  OptimizationCommitmentRecommendationDetail,
+  OptimizationRightsizingOverview,
+  OptimizationRecommendationFiltersQuery,
+  OptimizationRecommendationsResponse,
+  OptimizationRecommendationDetail,
+  IdleActionExecuteResponse,
+  IdleActionStatusResponse,
+  RecommendationIgnoreResponse,
+  RightsizingActionExecuteResponse,
+  RightsizingActionStatusResponse,
 } from "./dashboardTypes";

@@ -1,17 +1,83 @@
 import type { Request, Response } from "express";
 import { HTTP_STATUS } from "../../../constants/http-status.js";
-import { BadRequestError } from "../../../errors/http-errors.js";
+import { BadRequestError, NotFoundError } from "../../../errors/http-errors.js";
 import { logger } from "../../../utils/logger.js";
 import { sendSuccess } from "../../../utils/api-response.js";
 import { resolveDashboardTenantId } from "../shared/dashboard-request-builder.js";
-import { getOptimizationDashboardData, triggerOptimizationRecommendationSync } from "./optimization.service.js";
-import { syncAwsRightsizingRecommendationsOnDashboardOpen } from "./recommendation-sync/sync.service.js";
-import type { AwsComputeOptimizerEc2RecommendationInput } from "./recommendation-sync/types.js";
+import {
+  getCommitmentOverviewData,
+  getCommitmentRecommendationDetailData,
+  getCommitmentRecommendationsData,
+  getIdleOverviewData,
+  getIdleActionStatusData,
+  getIdleRecommendationDetailData,
+  getIdleRecommendationsData,
+  ignoreIdleRecommendation,
+  ignoreRightsizingRecommendation,
+  getOptimizationRecommendationDebugData,
+  getOptimizationDashboardData,
+  getRightsizingOverviewData,
+  getRightsizingActionStatusData,
+  getRightsizingRecommendationDetailData,
+  getRightsizingRecommendationsData,
+  triggerRightsizingRecommendationExecute,
+  triggerCommitmentRecommendationSync,
+  triggerIdleRecommendationExecute,
+  triggerIdleRecommendationSync,
+  triggerOptimizationRecommendationSync,
+} from "./optimization.service.js";
+import {
+  syncAwsIdleRecommendationsOnRecommendationsOpen,
+  syncAwsRightsizingRecommendationsOnDashboardOpen,
+  syncAwsRightsizingRecommendationsOnRecommendationsOpen,
+} from "./recommendation-sync/sync.service.js";
+import type {
+  AwsCommitmentRecommendationInput,
+  AwsComputeOptimizerEc2RecommendationInput,
+} from "./recommendation-sync/types.js";
 
 type SyncRequestBody = {
   billingSourceId?: string;
   cloudConnectionId?: string;
   recommendations?: AwsComputeOptimizerEc2RecommendationInput[];
+};
+
+type CommitmentSyncRequestBody = {
+  billingSourceId?: string;
+  cloudConnectionId?: string;
+  recommendations?: AwsCommitmentRecommendationInput[];
+  forceRefresh?: boolean;
+};
+
+type DebugSyncQuery = {
+  billingSourceId?: string;
+  cloudConnectionId?: string;
+};
+
+type ExecuteRightsizingBody = {
+  dryRun?: boolean;
+  idempotencyKey?: string;
+};
+
+const parseCsvParam = (value: unknown): string[] | undefined => {
+  if (typeof value === "undefined") return undefined;
+  const normalized = String(value)
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
+  return normalized.length > 0 ? normalized : undefined;
+};
+
+const parseIntParam = (value: unknown, fallback: number): number => {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+};
+
+const parseIntListParam = (value: unknown): number[] | undefined => {
+  const textList = parseCsvParam(value);
+  if (!textList) return undefined;
+  const parsed = textList.map((entry) => Number(entry)).filter((entry) => Number.isInteger(entry));
+  return parsed.length > 0 ? parsed : undefined;
 };
 
 export async function handleGetOptimizationDashboard(req: Request, res: Response): Promise<void> {
@@ -20,7 +86,7 @@ export async function handleGetOptimizationDashboard(req: Request, res: Response
   try {
     await syncAwsRightsizingRecommendationsOnDashboardOpen({ tenantId });
   } catch (error) {
-    logger.warn("Optimization sync-on-dashboard-open failed", {
+    logger.warn("Optimization sync-on-optimization-click failed", {
       tenantId,
       reason: error instanceof Error ? error.message : String(error),
     });
@@ -64,5 +130,444 @@ export async function handleSyncOptimizationRecommendations(req: Request, res: R
     statusCode: HTTP_STATUS.OK,
     message: "Optimization recommendations sync completed",
     data: syncResult,
+  });
+}
+
+export async function handleSyncIdleRecommendations(req: Request, res: Response): Promise<void> {
+  const tenantId = resolveDashboardTenantId(req);
+  const body = (req.body ?? {}) as SyncRequestBody;
+  const billingSourceId = typeof body.billingSourceId === "string" ? body.billingSourceId.trim() : undefined;
+  const cloudConnectionId = typeof body.cloudConnectionId === "string" ? body.cloudConnectionId.trim() : undefined;
+
+  if (!billingSourceId && !cloudConnectionId) {
+    throw new BadRequestError("billingSourceId or cloudConnectionId is required");
+  }
+
+  const syncResult = await triggerIdleRecommendationSync({
+    tenantId,
+    billingSourceId: billingSourceId || undefined,
+    cloudConnectionId: cloudConnectionId || undefined,
+  });
+
+  sendSuccess({
+    res,
+    req,
+    statusCode: HTTP_STATUS.OK,
+    message: "Idle recommendations sync completed",
+    data: syncResult,
+  });
+}
+
+export async function handleSyncCommitmentRecommendations(req: Request, res: Response): Promise<void> {
+  const tenantId = resolveDashboardTenantId(req);
+  const body = (req.body ?? {}) as CommitmentSyncRequestBody;
+  const billingSourceId = typeof body.billingSourceId === "string" ? body.billingSourceId.trim() : undefined;
+  const cloudConnectionId = typeof body.cloudConnectionId === "string" ? body.cloudConnectionId.trim() : undefined;
+  const forceRefresh = body.forceRefresh === true;
+
+  if (!billingSourceId && !cloudConnectionId) {
+    throw new BadRequestError("billingSourceId or cloudConnectionId is required");
+  }
+
+  if (typeof body.recommendations !== "undefined" && !Array.isArray(body.recommendations)) {
+    throw new BadRequestError("recommendations must be an array when provided");
+  }
+
+  const syncResult = await triggerCommitmentRecommendationSync({
+    tenantId,
+    billingSourceId: billingSourceId || undefined,
+    cloudConnectionId: cloudConnectionId || undefined,
+    recommendations: Array.isArray(body.recommendations) ? body.recommendations : undefined,
+    forceRefresh,
+  });
+
+  sendSuccess({
+    res,
+    req,
+    statusCode: HTTP_STATUS.OK,
+    message: "Commitment recommendations sync completed",
+    data: syncResult,
+  });
+}
+
+export async function handleDebugSyncOptimizationRecommendations(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  const tenantId = resolveDashboardTenantId(req);
+  const query = (req.query ?? {}) as DebugSyncQuery;
+  const billingSourceId =
+    typeof query.billingSourceId === "string" ? query.billingSourceId.trim() : undefined;
+  const cloudConnectionId =
+    typeof query.cloudConnectionId === "string" ? query.cloudConnectionId.trim() : undefined;
+
+  const syncResult = await triggerOptimizationRecommendationSync({
+    tenantId,
+    billingSourceId: billingSourceId || undefined,
+    cloudConnectionId: cloudConnectionId || undefined,
+  });
+
+  const debugData = await getOptimizationRecommendationDebugData(tenantId);
+
+  sendSuccess({
+    res,
+    req,
+    statusCode: HTTP_STATUS.OK,
+    message: "Optimization recommendation debug sync completed",
+    data: {
+      syncResult,
+      debug: debugData,
+    },
+  });
+}
+
+export async function handleGetRightsizingOverview(req: Request, res: Response): Promise<void> {
+  const tenantId = resolveDashboardTenantId(req);
+  const data = await getRightsizingOverviewData(tenantId);
+
+  sendSuccess({
+    res,
+    req,
+    statusCode: HTTP_STATUS.OK,
+    message: "Rightsizing overview fetched successfully",
+    data,
+  });
+}
+
+export async function handleGetRightsizingRecommendations(req: Request, res: Response): Promise<void> {
+  const tenantId = resolveDashboardTenantId(req);
+  const data = await getRightsizingRecommendationsData({
+    tenantId,
+    filters: {
+      status: parseCsvParam(req.query.status),
+      effort: parseCsvParam(req.query.effort),
+      risk: parseCsvParam(req.query.risk),
+      accountIds: parseCsvParam(req.query.account),
+      regions: parseCsvParam(req.query.region),
+      serviceKeys: parseIntListParam(req.query.serviceKey),
+      page: parseIntParam(req.query.page, 1),
+      pageSize: parseIntParam(req.query.pageSize, 20),
+    },
+  });
+
+  void syncAwsRightsizingRecommendationsOnRecommendationsOpen({ tenantId }).catch((error) => {
+    logger.warn("Optimization sync-on-recommendations-open failed", {
+      tenantId,
+      reason: error instanceof Error ? error.message : String(error),
+    });
+  });
+
+  sendSuccess({
+    res,
+    req,
+    statusCode: HTTP_STATUS.OK,
+    message: "Rightsizing recommendations fetched successfully",
+    data,
+  });
+}
+
+export async function handleGetRightsizingRecommendationDetail(req: Request, res: Response): Promise<void> {
+  const tenantId = resolveDashboardTenantId(req);
+  const recommendationId = String(req.params.recommendationId ?? "").trim();
+  if (!recommendationId) {
+    throw new BadRequestError("recommendationId is required");
+  }
+
+  const data = await getRightsizingRecommendationDetailData({
+    tenantId,
+    recommendationId,
+  });
+  if (!data) {
+    throw new NotFoundError("Rightsizing recommendation not found");
+  }
+
+  sendSuccess({
+    res,
+    req,
+    statusCode: HTTP_STATUS.OK,
+    message: "Rightsizing recommendation detail fetched successfully",
+    data,
+  });
+}
+
+export async function handleExecuteRightsizingRecommendation(req: Request, res: Response): Promise<void> {
+  const tenantId = resolveDashboardTenantId(req);
+  const recommendationId = String(req.params.recommendationId ?? "").trim();
+  if (!recommendationId) {
+    throw new BadRequestError("recommendationId is required");
+  }
+
+  const body = (req.body ?? {}) as ExecuteRightsizingBody;
+  const requestedByUserId =
+    typeof req.auth?.user.id === "string" || typeof req.auth?.user.id === "number"
+      ? String(req.auth.user.id)
+      : null;
+
+  const data = await triggerRightsizingRecommendationExecute({
+    tenantId,
+    recommendationId,
+    requestedByUserId,
+    dryRun: body.dryRun === true,
+    idempotencyKey: typeof body.idempotencyKey === "string" ? body.idempotencyKey.trim() : null,
+  });
+
+  sendSuccess({
+    res,
+    req,
+    statusCode: HTTP_STATUS.OK,
+    message: "Rightsizing action queued",
+    data,
+  });
+}
+
+export async function handleGetRightsizingActionStatus(req: Request, res: Response): Promise<void> {
+  const tenantId = resolveDashboardTenantId(req);
+  const actionId = String(req.params.actionId ?? "").trim();
+  if (!actionId) {
+    throw new BadRequestError("actionId is required");
+  }
+
+  const data = await getRightsizingActionStatusData({
+    tenantId,
+    actionId,
+  });
+  if (!data) {
+    throw new NotFoundError("Rightsizing action not found");
+  }
+
+  sendSuccess({
+    res,
+    req,
+    statusCode: HTTP_STATUS.OK,
+    message: "Rightsizing action status fetched successfully",
+    data,
+  });
+}
+
+export async function handleIgnoreRightsizingRecommendation(req: Request, res: Response): Promise<void> {
+  const tenantId = resolveDashboardTenantId(req);
+  const recommendationId = String(req.params.recommendationId ?? "").trim();
+  if (!recommendationId) {
+    throw new BadRequestError("recommendationId is required");
+  }
+
+  const data = await ignoreRightsizingRecommendation({
+    tenantId,
+    recommendationId,
+  });
+
+  sendSuccess({
+    res,
+    req,
+    statusCode: HTTP_STATUS.OK,
+    message: "Rightsizing recommendation ignored successfully",
+    data,
+  });
+}
+
+export async function handleGetIdleOverview(req: Request, res: Response): Promise<void> {
+  const tenantId = resolveDashboardTenantId(req);
+  const data = await getIdleOverviewData(tenantId);
+
+  sendSuccess({
+    res,
+    req,
+    statusCode: HTTP_STATUS.OK,
+    message: "Idle overview fetched successfully",
+    data,
+  });
+}
+
+export async function handleGetIdleRecommendations(req: Request, res: Response): Promise<void> {
+  const tenantId = resolveDashboardTenantId(req);
+
+  const data = await getIdleRecommendationsData({
+    tenantId,
+    filters: {
+      status: parseCsvParam(req.query.status),
+      effort: parseCsvParam(req.query.effort),
+      risk: parseCsvParam(req.query.risk),
+      accountIds: parseCsvParam(req.query.account),
+      regions: parseCsvParam(req.query.region),
+      serviceKeys: parseIntListParam(req.query.serviceKey),
+      page: parseIntParam(req.query.page, 1),
+      pageSize: parseIntParam(req.query.pageSize, 20),
+    },
+  });
+
+  void syncAwsIdleRecommendationsOnRecommendationsOpen({ tenantId }).catch((error) => {
+    logger.warn("Idle sync-on-recommendations-open failed", {
+      tenantId,
+      reason: error instanceof Error ? error.message : String(error),
+    });
+  });
+
+  sendSuccess({
+    res,
+    req,
+    statusCode: HTTP_STATUS.OK,
+    message: "Idle recommendations fetched successfully",
+    data,
+  });
+}
+
+export async function handleGetIdleRecommendationDetail(req: Request, res: Response): Promise<void> {
+  const tenantId = resolveDashboardTenantId(req);
+  const recommendationId = String(req.params.recommendationId ?? "").trim();
+  if (!recommendationId) {
+    throw new BadRequestError("recommendationId is required");
+  }
+
+  const data = await getIdleRecommendationDetailData({
+    tenantId,
+    recommendationId,
+  });
+  if (!data) {
+    throw new NotFoundError("Idle recommendation not found");
+  }
+
+  sendSuccess({
+    res,
+    req,
+    statusCode: HTTP_STATUS.OK,
+    message: "Idle recommendation detail fetched successfully",
+    data,
+  });
+}
+
+export async function handleExecuteIdleRecommendation(req: Request, res: Response): Promise<void> {
+  const tenantId = resolveDashboardTenantId(req);
+  const recommendationId = String(req.params.recommendationId ?? "").trim();
+  if (!recommendationId) {
+    throw new BadRequestError("recommendationId is required");
+  }
+
+  const body = (req.body ?? {}) as ExecuteRightsizingBody;
+  const requestedByUserId =
+    typeof req.auth?.user.id === "string" || typeof req.auth?.user.id === "number"
+      ? String(req.auth.user.id)
+      : null;
+
+  const data = await triggerIdleRecommendationExecute({
+    tenantId,
+    recommendationId,
+    requestedByUserId,
+    dryRun: body.dryRun === true,
+    idempotencyKey: typeof body.idempotencyKey === "string" ? body.idempotencyKey.trim() : null,
+  });
+
+  sendSuccess({
+    res,
+    req,
+    statusCode: HTTP_STATUS.OK,
+    message: "Idle action queued",
+    data,
+  });
+}
+
+export async function handleGetIdleActionStatus(req: Request, res: Response): Promise<void> {
+  const tenantId = resolveDashboardTenantId(req);
+  const actionId = String(req.params.actionId ?? "").trim();
+  if (!actionId) {
+    throw new BadRequestError("actionId is required");
+  }
+
+  const data = await getIdleActionStatusData({
+    tenantId,
+    actionId,
+  });
+  if (!data) {
+    throw new NotFoundError("Idle action not found");
+  }
+
+  sendSuccess({
+    res,
+    req,
+    statusCode: HTTP_STATUS.OK,
+    message: "Idle action status fetched successfully",
+    data,
+  });
+}
+
+export async function handleIgnoreIdleRecommendation(req: Request, res: Response): Promise<void> {
+  const tenantId = resolveDashboardTenantId(req);
+  const recommendationId = String(req.params.recommendationId ?? "").trim();
+  if (!recommendationId) {
+    throw new BadRequestError("recommendationId is required");
+  }
+
+  const data = await ignoreIdleRecommendation({
+    tenantId,
+    recommendationId,
+  });
+
+  sendSuccess({
+    res,
+    req,
+    statusCode: HTTP_STATUS.OK,
+    message: "Idle recommendation ignored successfully",
+    data,
+  });
+}
+
+export async function handleGetCommitmentOverview(req: Request, res: Response): Promise<void> {
+  const tenantId = resolveDashboardTenantId(req);
+  const data = await getCommitmentOverviewData(tenantId);
+
+  sendSuccess({
+    res,
+    req,
+    statusCode: HTTP_STATUS.OK,
+    message: "Commitment overview fetched successfully",
+    data,
+  });
+}
+
+export async function handleGetCommitmentRecommendations(req: Request, res: Response): Promise<void> {
+  const tenantId = resolveDashboardTenantId(req);
+  const data = await getCommitmentRecommendationsData({
+    tenantId,
+    filters: {
+      status: parseCsvParam(req.query.status),
+      effort: parseCsvParam(req.query.effort),
+      risk: parseCsvParam(req.query.risk),
+      accountIds: parseCsvParam(req.query.account),
+      regions: parseCsvParam(req.query.region),
+      serviceKeys: parseIntListParam(req.query.serviceKey),
+      page: parseIntParam(req.query.page, 1),
+      pageSize: parseIntParam(req.query.pageSize, 20),
+    },
+  });
+
+  sendSuccess({
+    res,
+    req,
+    statusCode: HTTP_STATUS.OK,
+    message: "Commitment recommendations fetched successfully",
+    data,
+  });
+}
+
+export async function handleGetCommitmentRecommendationDetail(req: Request, res: Response): Promise<void> {
+  const tenantId = resolveDashboardTenantId(req);
+  const recommendationId = String(req.params.recommendationId ?? "").trim();
+  if (!recommendationId) {
+    throw new BadRequestError("recommendationId is required");
+  }
+
+  const data = await getCommitmentRecommendationDetailData({
+    tenantId,
+    recommendationId,
+  });
+  if (!data) {
+    throw new NotFoundError("Commitment recommendation not found");
+  }
+
+  sendSuccess({
+    res,
+    req,
+    statusCode: HTTP_STATUS.OK,
+    message: "Commitment recommendation detail fetched successfully",
+    data,
   });
 }

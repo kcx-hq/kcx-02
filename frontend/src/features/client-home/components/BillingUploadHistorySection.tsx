@@ -71,7 +71,7 @@ function formatDateTime(value: string | null) {
 
 function formatRows(record: TenantUploadHistoryRecord) {
   if (record.totalRows > 0 && record.processedRows > 0 && record.failedRows > 0) {
-    return `${record.processedRows} success · ${record.failedRows} failed`
+    return `${record.processedRows} success - ${record.failedRows} failed`
   }
   if (record.totalRows > 0 && record.processedRows > 0) {
     return `${record.processedRows} / ${record.totalRows} processed`
@@ -88,7 +88,7 @@ function LoadingState() {
       {[0, 1, 2, 3].map((row) => (
         <div
           key={row}
-          className="h-12 animate-pulse rounded-md border border-[color:var(--border-light)] bg-[color:var(--bg-surface)]"
+          className="h-12 animate-pulse rounded-lg border border-[color:var(--border-light)] bg-[color:var(--bg-surface)]"
         />
       ))}
     </div>
@@ -175,9 +175,12 @@ export function BillingUploadHistorySection({
   const paginationEnd = Math.min(currentPage * PAGE_SIZE, filteredRecords.length)
 
   return (
-    <section className="space-y-4" aria-label="Files and processing history">
+    <section
+      className="space-y-4 rounded-xl border border-[color:var(--border-light)] bg-white p-4 shadow-sm-custom md:p-5"
+      aria-label="Files and processing history"
+    >
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h3 className="text-base font-semibold text-text-primary">Files &amp; Processing History</h3>
+        <h3 className="text-lg font-semibold text-text-primary">Files &amp; Processing History</h3>
         <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
           <label className="relative min-w-[220px] flex-1 sm:w-[260px] sm:flex-none">
             <span className="sr-only">Search files</span>
@@ -189,7 +192,7 @@ export function BillingUploadHistorySection({
                 setPage(1)
               }}
               placeholder="Search file name"
-              className="h-9 w-full rounded-md border border-[color:var(--border-light)] bg-white pl-8 pr-3 text-sm outline-none transition-colors focus:border-[color:var(--kcx-border-strong)]"
+              className="h-10 w-full rounded-md border border-[color:var(--border-light)] bg-[color:var(--bg-surface)] pl-8 pr-3 text-sm outline-none transition-colors focus:border-[color:var(--kcx-border-strong)]"
             />
           </label>
           <label className="inline-flex items-center gap-2 text-sm text-text-secondary">
@@ -200,7 +203,7 @@ export function BillingUploadHistorySection({
                 setStatusFilter(event.target.value as "all" | NormalizedStatus)
                 setPage(1)
               }}
-              className="h-9 rounded-md border border-[color:var(--border-light)] bg-white px-3 text-sm text-text-primary outline-none transition-colors focus:border-[color:var(--kcx-border-strong)]"
+              className="h-10 rounded-md border border-[color:var(--border-light)] bg-[color:var(--bg-surface)] px-3 text-sm text-text-primary outline-none transition-colors focus:border-[color:var(--kcx-border-strong)]"
               aria-label="Filter by status"
             >
               {FILTER_OPTIONS.map((option) => (
@@ -212,8 +215,7 @@ export function BillingUploadHistorySection({
           </label>
           <Button
             variant="outline"
-            size="sm"
-            className="h-9 rounded-md"
+            className="h-10 rounded-md"
             disabled={selectedFileIds.length === 0 || dashboardActionLoading}
             onClick={() => onOpenDashboard(selectedFileIds)}
           >
@@ -222,7 +224,7 @@ export function BillingUploadHistorySection({
         </div>
       </div>
 
-      <div className="rounded-md border border-[color:var(--border-light)]">
+      <div className="overflow-hidden rounded-lg border border-[color:var(--border-light)]">
         {dashboardActionError ? (
           <div className="border-b border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
             {dashboardActionError}
@@ -247,9 +249,9 @@ export function BillingUploadHistorySection({
             )}
           </div>
         ) : (
-          <Table>
+          <Table className="min-w-[980px]">
             <TableHeader>
-              <TableRow>
+              <TableRow className="bg-[color:var(--bg-surface)]">
                 <TableHead className="w-[52px]">
                   <input
                     type="checkbox"
@@ -261,9 +263,10 @@ export function BillingUploadHistorySection({
                 </TableHead>
                 <TableHead>File Name</TableHead>
                 <TableHead>Uploaded At</TableHead>
+                <TableHead>Uploaded By</TableHead>
                 <TableHead>Processing Status</TableHead>
                 <TableHead>Rows</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
+                <TableHead className="text-right tracking-[0.14em]">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -287,16 +290,17 @@ export function BillingUploadHistorySection({
                       />
                     </TableCell>
                     <TableCell className="font-medium text-text-primary">{record.fileName}</TableCell>
-                    <TableCell>{formatDateTime(record.uploadedAt)}</TableCell>
+                    <TableCell className="text-text-primary">{formatDateTime(record.uploadedAt)}</TableCell>
+                    <TableCell className="text-text-primary">{record.uploadedBy || "-"}</TableCell>
                     <TableCell>
                       <Badge variant="outline" className={cn("rounded-md", statusBadgeClass(status))}>
                         {formatStatusLabel(status)}
                       </Badge>
                     </TableCell>
-                    <TableCell>{formatRows(record)}</TableCell>
+                    <TableCell className="text-text-primary">{formatRows(record)}</TableCell>
                     <TableCell>
                       <div className="flex justify-end gap-1.5">
-                        <Button variant="ghost" size="sm" className="h-8 rounded-md" onClick={() => onViewDetails(record.id)}>
+                        <Button variant="ghost" size="sm" className="h-8 rounded-md text-[15px]" onClick={() => onViewDetails(record.id)}>
                           View details
                         </Button>
                         {canRetry ? (
@@ -315,7 +319,7 @@ export function BillingUploadHistorySection({
       </div>
 
       {!isLoading && !isError && filteredRecords.length > 0 ? (
-        <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[color:var(--border-light)] pt-3">
           <p className="text-sm text-text-secondary">
             Showing {paginationStart}-{paginationEnd} of {filteredRecords.length}
           </p>
@@ -347,3 +351,4 @@ export function BillingUploadHistorySection({
     </section>
   )
 }
+

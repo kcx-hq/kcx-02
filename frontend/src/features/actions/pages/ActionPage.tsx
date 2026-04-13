@@ -16,14 +16,15 @@ import { ApiError } from "@/lib/api"
 import { navigateTo } from "@/lib/navigation"
 import { RefreshCcw } from "lucide-react"
 
-import { runEc2InstanceAction } from "@/features/actions/api/actions.api"
+import { runEc2ChangeInstanceTypeAction, runEc2InstanceAction } from "@/features/actions/api/actions.api"
 import { InstanceTable } from "@/features/actions/components/InstanceTable"
 import { EC2_INSTANCES_QUERY_KEY, useEc2Instances } from "@/features/actions/hooks/useEc2Instances"
-import type { AwsActionConnectionOption, Ec2ActionType } from "@/features/actions/types"
+import type { AwsActionConnectionOption, Ec2ActionType, Ec2ExtendedActionType } from "@/features/actions/types"
 
 type PendingConfirmation = {
   instanceId: string
-  action: Ec2ActionType
+  action: Ec2ExtendedActionType
+  targetInstanceType?: string
 }
 
 const PRIORITY_CONNECTION_STATUSES = new Set(["active", "active_with_warnings", "awaiting_validation", "connecting"])
@@ -81,7 +82,8 @@ export function ActionPage() {
   }, [cloudIntegrations])
 
   const [selectedConnectionId, setSelectedConnectionId] = useState<string | null>(null)
-  const [pendingActionByInstanceId, setPendingActionByInstanceId] = useState<Record<string, Ec2ActionType | null>>({})
+  const [pendingActionByInstanceId, setPendingActionByInstanceId] = useState<Record<string, Ec2ExtendedActionType | null>>({})
+  const [targetInstanceTypeById, setTargetInstanceTypeById] = useState<Record<string, string>>({})
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [pendingConfirmation, setPendingConfirmation] = useState<PendingConfirmation | null>(null)
@@ -197,6 +199,46 @@ export function ActionPage() {
     }
   }
 
+  async function runChangeInstanceType(instanceId: string, targetInstanceType: string) {
+    if (!selectedConnectionId) return
+
+    setErrorMessage(null)
+    setSuccessMessage(null)
+    setPendingActionByInstanceId((currentValue) => ({
+      ...currentValue,
+      [instanceId]: "change-instance-type",
+    }))
+
+    try {
+      const result = await runEc2ChangeInstanceTypeAction({
+        connectionId: selectedConnectionId,
+        instanceId,
+        targetInstanceType,
+      })
+
+      setSuccessMessage(result.message || `Instance type changed to ${targetInstanceType}.`)
+
+      await queryClient.invalidateQueries({
+        queryKey: [...EC2_INSTANCES_QUERY_KEY, selectedConnectionId],
+      })
+      await refetchInstances()
+    } catch (error) {
+      if (error instanceof ApiError) {
+        const reason = extractApiReason(error)
+        setErrorMessage(reason ?? error.message ?? "Failed to change instance type.")
+      } else if (error instanceof Error) {
+        setErrorMessage(error.message)
+      } else {
+        setErrorMessage("Failed to change instance type.")
+      }
+    } finally {
+      setPendingActionByInstanceId((currentValue) => ({
+        ...currentValue,
+        [instanceId]: null,
+      }))
+    }
+  }
+
   function handleActionClick(instanceId: string, action: Ec2ActionType) {
     if (action === "stop" || action === "reboot") {
       setPendingConfirmation({ instanceId, action })
@@ -206,10 +248,41 @@ export function ActionPage() {
     void runAction(instanceId, action)
   }
 
+  function handleTargetInstanceTypeChange(instanceId: string, value: string) {
+    setTargetInstanceTypeById((currentValue) => ({
+      ...currentValue,
+      [instanceId]: value,
+    }))
+  }
+
+  function handleChangeTypeClick(instanceId: string) {
+    const targetInstanceType = String(targetInstanceTypeById[instanceId] ?? "").trim()
+    if (!targetInstanceType) {
+      setErrorMessage("Enter a target instance type before applying rightsizing test action.")
+      return
+    }
+
+    setPendingConfirmation({
+      instanceId,
+      action: "change-instance-type",
+      targetInstanceType,
+    })
+  }
+
   function handleConfirmAction() {
     if (!pendingConfirmation) return
-    const { instanceId, action } = pendingConfirmation
+    const { instanceId, action, targetInstanceType } = pendingConfirmation
     setPendingConfirmation(null)
+
+    if (action === "change-instance-type") {
+      if (!targetInstanceType) {
+        setErrorMessage("Missing target instance type for rightsizing test action.")
+        return
+      }
+      void runChangeInstanceType(instanceId, targetInstanceType)
+      return
+    }
+
     void runAction(instanceId, action)
   }
 
@@ -244,7 +317,7 @@ export function ActionPage() {
           {!integrationsLoading && !integrationsError && !hasAwsConnection ? (
             <div className="space-y-3">
               <p className="text-sm text-text-secondary">No AWS connection found yet. Connect an AWS account before running EC2 actions.</p>
-              <Button className="h-9 rounded-md" onClick={() => navigateTo("/client/billing/connect-cloud/add")}>
+              <Button className="h-9 rounded-md" onClick={() => navigateTo("/client/billing/connect-cloud/add/aws")}>
                 Connect AWS
               </Button>
             </div>
@@ -367,7 +440,10 @@ export function ActionPage() {
                 <InstanceTable
                   instances={instances}
                   pendingActionByInstanceId={pendingActionByInstanceId}
+                  targetInstanceTypeById={targetInstanceTypeById}
                   onActionClick={handleActionClick}
+                  onTargetInstanceTypeChange={handleTargetInstanceTypeChange}
+                  onChangeTypeClick={handleChangeTypeClick}
                 />
               )}
             </div>
@@ -380,7 +456,9 @@ export function ActionPage() {
           <DialogHeader>
             <DialogTitle>Confirm Instance Action</DialogTitle>
             <DialogDescription>
-              {pendingConfirmation?.action === "stop"
+              {pendingConfirmation?.action === "change-instance-type"
+                ? `This will perform stop -> modify instance type -> start on the same instance (${pendingConfirmation.targetInstanceType}).`
+                : pendingConfirmation?.action === "stop"
                 ? "Stop will gracefully halt this instance. You can start it again later."
                 : "Reboot will restart this instance. Running sessions may be interrupted."}
             </DialogDescription>

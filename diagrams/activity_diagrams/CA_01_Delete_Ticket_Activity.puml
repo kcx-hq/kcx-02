@@ -1,0 +1,13 @@
+@startuml
+title CA_01 Delete Ticket - Activity
+start
+:ClientAdmin selects target ticket;
+if (Ticket can be removed from active queue?) then (Yes)
+  :Close ticket;
+  :Hide from active list;
+  stop
+else (No)
+  :Keep ticket active;
+  stop
+endif
+@enduml

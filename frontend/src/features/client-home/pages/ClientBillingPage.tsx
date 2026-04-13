@@ -3,26 +3,20 @@ import { useQueryClient } from "@tanstack/react-query"
 
 import type { TenantUploadHistoryRecord } from "@/features/client-home/api/upload-history.api"
 import { getCloudIntegrationDashboardScope } from "@/features/client-home/api/cloud-integrations.api"
-import { AwsAutomaticSetup } from "@/features/client-home/components/AwsAutomaticSetup"
-import { AwsManualSetup, AWS_MANUAL_EXPLORER_ROUTE_REGEX } from "@/features/client-home/components/AwsManualSetup"
-import { AwsManualSetupSuccess } from "@/features/client-home/components/AwsManualSetupSuccess"
 import { ClientPageHeader } from "@/features/client-home/components/ClientPageHeader"
 import { ManualBillingUploadDialog } from "@/features/client-home/components/ManualBillingUploadDialog"
 import { AddCloudConnectionSection } from "@/features/client-home/components/billing/AddCloudConnectionSection"
-import { AwsSetupConnectionSection } from "@/features/client-home/components/billing/AwsSetupConnectionSection"
 import { BillingHubSection } from "@/features/client-home/components/billing/BillingHubSection"
 import { BillingUploadsSection } from "@/features/client-home/components/billing/BillingUploadsSection"
+import { S3ImportConnectionsSection } from "@/features/client-home/components/billing/S3ImportConnectionsSection"
 import {
   ACTIVE_INGESTION_STORAGE_KEY,
-  AWS_MANUAL_SUCCESS_ROUTE_REGEX,
-  AWS_SETUP_ROUTE_REGEX,
   CLOUD_PROVIDER_LABELS,
   CLOUD_PROVIDER_ROUTE_REGEX,
   CLOUD_SETUP_METHOD_ROUTE_REGEX,
   isCloudConnectionsRoute,
   mapCloudIntegrationOverviewRow,
   normalizeUploadStatusLabel,
-  type CloudConnection,
 } from "@/features/client-home/components/billing/billingHelpers"
 import { CloudProviderComingSoonSection } from "@/features/client-home/components/billing/CloudProviderComingSoonSection"
 import { IngestionDetailsDialog } from "@/features/client-home/components/billing/IngestionDetailsDialog"
@@ -33,24 +27,24 @@ import {
 } from "@/features/client-home/hooks/useTenantUploadHistory"
 import { useTenantCloudIntegrations } from "@/features/client-home/hooks/useTenantCloudIntegrations"
 import { useUploadHistorySelectionStore } from "@/features/client-home/stores/uploadHistorySelection.store"
-import { dashboardApi } from "@/features/dashboard/api/dashboardApi"
 import { ApiError, apiGet } from "@/lib/api"
 import { handleAppLinkClick, navigateTo, useCurrentRoute } from "@/lib/navigation"
-import { Button } from "@/components/ui/button"
 
 export function ClientBillingPage() {
   const queryClient = useQueryClient()
   const route = useCurrentRoute()
   const activeRoute = route
   const isBillingHubRoute = activeRoute === "/client/billing"
-  const isBillingUploadsRoute = activeRoute === "/client/billing/uploads"
+  const isBillingUploadsRoute =
+    activeRoute === "/client/billing/uploads" || activeRoute === "/client/billing/upload-files"
+  const isS3ImportsRoute = activeRoute === "/client/billing/import-s3"
   const isAddCloudConnectionRoute =
-    activeRoute === "/client/billing/connect-cloud/add" || activeRoute === "/client/billing/connections/add"
+    activeRoute === "/client/billing/connect-cloud/add/aws" ||
+    activeRoute === "/client/billing/connections/add/aws" ||
+    activeRoute === "/client/billing/cloud-integration"
   const isLegacyCloudConnectionsOverviewRoute =
     activeRoute === "/client/billing/connect-cloud" || activeRoute === "/client/billing/connections"
-  const isLegacyAwsSetupChoiceRoute =
-    activeRoute === "/client/billing/connect-cloud/aws" || activeRoute === "/client/billing/connections/aws"
-  const shouldLoadCloudIntegrations = isBillingHubRoute
+  const shouldLoadCloudIntegrations = isBillingHubRoute || isAddCloudConnectionRoute
   const [cloudConnectionsSearch, setCloudConnectionsSearch] = useState("")
 
   const cloudProviderSlug = useMemo(() => {
@@ -122,23 +116,12 @@ export function ClientBillingPage() {
 
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false)
   const [localUploadDialogOpen, setLocalUploadDialogOpen] = useState(false)
-  const [s3UploadDialogOpen, setS3UploadDialogOpen] = useState(false)
   const [activeIngestionRunId, setActiveIngestionRunId] = useState<string | null>(() => {
     if (typeof window === "undefined") return null
     return window.localStorage.getItem(ACTIVE_INGESTION_STORAGE_KEY)
   })
   const [latestActiveIngestionLoaded, setLatestActiveIngestionLoaded] = useState(false)
   const [lastTerminalIngestionStatus, setLastTerminalIngestionStatus] = useState<IngestionStatusPayload | null>(null)
-
-  const setupConnectionId = useMemo(() => {
-    const match = AWS_SETUP_ROUTE_REGEX.exec(activeRoute)
-    if (!match) return null
-    return match[1]
-  }, [activeRoute])
-
-  const [setupConnection, setSetupConnection] = useState<CloudConnection | null>(null)
-  const [setupLoading, setSetupLoading] = useState(false)
-  const [setupError, setSetupError] = useState<string | null>(null)
 
   const { status: ingestionStatus } = useIngestionStatus({
     ingestionRunId: activeIngestionRunId,
@@ -211,32 +194,10 @@ export function ClientBillingPage() {
     cloudIntegrationsError instanceof ApiError ? cloudIntegrationsError.message : "Unable to load cloud connections."
 
   useEffect(() => {
-    if (isLegacyCloudConnectionsOverviewRoute || isLegacyAwsSetupChoiceRoute) {
-      navigateTo("/client/billing/connect-cloud/add")
+    if (isLegacyCloudConnectionsOverviewRoute) {
+      navigateTo("/client/billing/connect-cloud/add/aws")
     }
-  }, [isLegacyAwsSetupChoiceRoute, isLegacyCloudConnectionsOverviewRoute])
-
-  useEffect(() => {
-    if (!setupConnectionId) return
-    setSetupLoading(true)
-    setSetupError(null)
-
-    void (async () => {
-      try {
-        const connection = await apiGet<CloudConnection>(`/cloud-connections/${setupConnectionId}`)
-        setSetupConnection(connection)
-      } catch (error) {
-        if (error instanceof ApiError) {
-          setSetupError(error.message || "Failed to load connection")
-        } else {
-          setSetupError("Failed to load connection")
-        }
-        setSetupConnection(null)
-      } finally {
-        setSetupLoading(false)
-      }
-    })()
-  }, [setupConnectionId])
+  }, [isLegacyCloudConnectionsOverviewRoute])
 
   useEffect(() => {
     if (latestActiveIngestionLoaded || activeIngestionRunId) return
@@ -327,7 +288,13 @@ export function ClientBillingPage() {
     })()
   }
 
-  function openDashboardWithQuery(search: URLSearchParams) {
+  function openUploadsDashboardWithQuery(search: URLSearchParams) {
+    const nextUrl = `/uploads-dashboard/overview?${search.toString()}`
+    window.history.pushState({}, "", nextUrl)
+    window.dispatchEvent(new PopStateEvent("popstate"))
+  }
+
+  function openMainDashboardWithQuery(search: URLSearchParams) {
     const nextUrl = `/dashboard/overview?${search.toString()}`
     window.history.pushState({}, "", nextUrl)
     window.dispatchEvent(new PopStateEvent("popstate"))
@@ -347,14 +314,10 @@ export function ClientBillingPage() {
 
     void (async () => {
       try {
-        await dashboardApi.getScope({
-          rawBillingFileIds: validRawBillingFileIds,
-        })
-
         const query = new URLSearchParams({
           rawBillingFileIds: validRawBillingFileIds.join(","),
         })
-        openDashboardWithQuery(query)
+        openUploadsDashboardWithQuery(query)
       } catch (error) {
         if (error instanceof ApiError) {
           setDashboardActionError(error.message || "Unable to resolve upload scope for dashboard.")
@@ -377,21 +340,25 @@ export function ClientBillingPage() {
     void (async () => {
       try {
         const scope = await getCloudIntegrationDashboardScope(integrationId)
-        const validRawBillingFileIds = [...new Set(scope.raw_billing_file_ids.filter((id) => Number.isInteger(id)))]
+        const validBillingSourceIds = [...new Set(scope.billing_source_ids.filter((id) => Number.isInteger(id)))]
 
-        if (validRawBillingFileIds.length === 0) {
-          setDashboardActionError("No ingested files found for this cloud connection yet.")
+        if (validBillingSourceIds.length === 0) {
+          setDashboardActionError("No billing source found for this cloud connection yet.")
           return
         }
 
-        await dashboardApi.getScope({
-          rawBillingFileIds: validRawBillingFileIds,
-        })
+        if (!scope.usage_from || !scope.usage_to) {
+          setDashboardActionError("No ingested cost data found for this cloud connection yet.")
+          return
+        }
 
         const query = new URLSearchParams({
-          rawBillingFileIds: validRawBillingFileIds.join(","),
+          tenantId: scope.tenant_id,
+          billingSourceIds: validBillingSourceIds.join(","),
+          from: scope.usage_from,
+          to: scope.usage_to,
         })
-        openDashboardWithQuery(query)
+        openMainDashboardWithQuery(query)
       } catch (error) {
         if (error instanceof ApiError) {
           setDashboardActionError(error.message || "Unable to open dashboard for this cloud connection.")
@@ -410,31 +377,14 @@ export function ClientBillingPage() {
       <>
         <section aria-label="Billing header" className="flex flex-wrap items-start justify-between gap-3">
           <div className="space-y-1">
-            <p className="text-sm font-medium text-text-muted">Billing / Ingestion</p>
             <h1 className="text-2xl font-semibold tracking-tight text-text-primary">Billing</h1>
           </div>
-          <Button className="h-10 rounded-md" onClick={() => navigateTo("/client/billing/connect-cloud/add")}>
-            + Add Connection
-          </Button>
+        
         </section>
         <BillingHubSection
-          cloudConnectionsSearch={cloudConnectionsSearch}
-          onCloudConnectionsSearchChange={setCloudConnectionsSearch}
-          cloudOverviewRows={cloudOverviewRows}
-          filteredCloudOverviewRows={filteredCloudOverviewRows}
-          isCloudIntegrationsLoading={isCloudIntegrationsLoading}
-          isCloudIntegrationsError={isCloudIntegrationsError}
-          cloudIntegrationsErrorMessage={cloudIntegrationsErrorMessage}
-          dashboardActionError={dashboardActionError}
-          dashboardActionLoading={dashboardActionLoading}
-          dashboardConnectionActionId={dashboardConnectionActionId}
-          onRetryCloudIntegrations={() => {
-            void refetchCloudIntegrations()
-          }}
-          onOpenCloudConnectionDashboard={handleOpenCloudConnectionDashboard}
           onOpenLocalUploadModal={() => setLocalUploadDialogOpen(true)}
-          onOpenS3UploadModal={() => setS3UploadDialogOpen(true)}
           onOpenUploadHistory={() => navigateTo("/client/billing/uploads")}
+          onOpenConnectCloud={() => navigateTo("/client/billing/connect-cloud/add/aws")}
         />
 
         <ManualBillingUploadDialog
@@ -445,20 +395,13 @@ export function ClientBillingPage() {
           hideSourceTabs
         />
 
-        <ManualBillingUploadDialog
-          open={s3UploadDialogOpen}
-          onOpenChange={setS3UploadDialogOpen}
-          onIngestionQueued={handleIngestionQueued}
-          initialSource="s3"
-          hideSourceTabs
-        />
       </>
     )
   }
 
   return (
     <>
-      {!isBillingUploadsRoute ? (
+      {!isBillingUploadsRoute && !isS3ImportsRoute ? (
         <ClientPageHeader
           eyebrow="Billing Workspace"
           title={pageHeaderTitle}
@@ -467,78 +410,54 @@ export function ClientBillingPage() {
       ) : null}
 
       <section aria-label="Billing workspace options">
-        <div className="rounded-md border-[color:var(--border-light)] bg-white shadow-sm-custom">
-          <div className="space-y-6 p-6">
-            {isBillingUploadsRoute ? (
-              <BillingUploadsSection
-                compactStatusLabel={compactStatusLabel}
-                uploadHistoryRecords={uploadHistoryRecords}
-                isUploadHistoryLoading={isUploadHistoryLoading}
-                isUploadHistoryError={isUploadHistoryError}
-                uploadHistoryErrorMessage={uploadHistoryErrorMessage}
+        {isBillingUploadsRoute ? (
+          <BillingUploadsSection
+            compactStatusLabel={compactStatusLabel}
+            uploadHistoryRecords={uploadHistoryRecords}
+            isUploadHistoryLoading={isUploadHistoryLoading}
+            isUploadHistoryError={isUploadHistoryError}
+            uploadHistoryErrorMessage={uploadHistoryErrorMessage}
+            dashboardActionError={dashboardActionError}
+            dashboardActionLoading={dashboardActionLoading}
+            onChooseSource={() => setUploadDialogOpen(true)}
+            onRetryUploadHistory={() => {
+              void refetchUploadHistory()
+            }}
+            onViewUploadDetails={handleViewUploadDetails}
+            onRetryUploadRecord={handleRetryUploadRecord}
+            onOpenDashboard={handleOpenDashboard}
+          />
+        ) : isS3ImportsRoute ? (
+          <S3ImportConnectionsSection />
+        ) : (
+          <div className="rounded-md border-[color:var(--border-light)] bg-white shadow-sm-custom">
+            <div className="space-y-6 p-6">
+              {isAddCloudConnectionRoute ? (
+              <AddCloudConnectionSection
+                onOpenS3UploadModal={() => navigateTo("/client/billing/import-s3")}
+                cloudConnectionsSearch={cloudConnectionsSearch}
+                onCloudConnectionsSearchChange={setCloudConnectionsSearch}
+                cloudOverviewRows={cloudOverviewRows}
+                filteredCloudOverviewRows={filteredCloudOverviewRows}
+                isCloudIntegrationsLoading={isCloudIntegrationsLoading}
+                isCloudIntegrationsError={isCloudIntegrationsError}
+                cloudIntegrationsErrorMessage={cloudIntegrationsErrorMessage}
                 dashboardActionError={dashboardActionError}
                 dashboardActionLoading={dashboardActionLoading}
-                onChooseSource={() => setUploadDialogOpen(true)}
-                onRetryUploadHistory={() => {
-                  void refetchUploadHistory()
+                dashboardConnectionActionId={dashboardConnectionActionId}
+                onRetryCloudIntegrations={() => {
+                  void refetchCloudIntegrations()
                 }}
-                onViewUploadDetails={handleViewUploadDetails}
-                onRetryUploadRecord={handleRetryUploadRecord}
-                onOpenDashboard={handleOpenDashboard}
+                onOpenCloudConnectionDashboard={handleOpenCloudConnectionDashboard}
               />
-            ) : null}
+              ) : null}
 
-            {isAddCloudConnectionRoute ? (
-              <AddCloudConnectionSection
-                onAutomaticSetup={() => navigateTo("/client/billing/connect-cloud/aws/automatic")}
-                onManualSetup={() => navigateTo("/client/billing/connect-cloud/aws/manual")}
-              />
-            ) : null}
-
-            {cloudProviderSlug && cloudProviderSlug !== "aws" && cloudProviderName ? (
-              <CloudProviderComingSoonSection cloudProviderName={cloudProviderName} />
-            ) : null}
-
-            {activeRoute === "/client/billing/connect-cloud/aws/automatic" ||
-            activeRoute === "/client/billing/connections/aws/automatic" ? (
-              <AwsAutomaticSetup activeRoute={activeRoute} />
-            ) : null}
-
-            {setupConnectionId ? (
-              <AwsSetupConnectionSection
-                setupLoading={setupLoading}
-                setupError={setupError}
-                setupConnection={setupConnection}
-                onLaunchAwsSetup={() => window.open("/integrations/aws", "_blank", "noopener,noreferrer")}
-                onBackToSetupChoice={() => navigateTo("/client/billing/connect-cloud/aws")}
-              />
-            ) : null}
-
-            {AWS_MANUAL_SUCCESS_ROUTE_REGEX.test(activeRoute) ? (
-              <>
-                <div className="space-y-2">
-                  <p className="kcx-eyebrow text-brand-primary">AWS Manual Setup</p>
-                  <h2 className="text-2xl font-semibold tracking-tight text-text-primary">Success</h2>
-                  <p className="text-sm text-text-secondary">Your manual AWS connection is complete.</p>
-                </div>
-                <AwsManualSetupSuccess />
-              </>
-            ) : null}
-
-            {activeRoute === "/client/billing/connect-cloud/aws/manual" ||
-            activeRoute === "/client/billing/connections/aws/manual" ||
-            AWS_MANUAL_EXPLORER_ROUTE_REGEX.test(activeRoute) ? (
-              <>
-                <div className="space-y-2">
-                  <p className="kcx-eyebrow text-brand-primary">AWS Manual Setup</p>
-                  <h2 className="text-2xl font-semibold tracking-tight text-text-primary">Manual Setup</h2>
-                  <p className="text-sm text-text-secondary">Connect your AWS billing data in one guided setup flow.</p>
-                </div>
-                <AwsManualSetup activeRoute={activeRoute} />
-              </>
-            ) : null}
+              {cloudProviderSlug && cloudProviderSlug !== "aws" && cloudProviderName ? (
+                <CloudProviderComingSoonSection cloudProviderName={cloudProviderName} />
+              ) : null}
+            </div>
           </div>
-        </div>
+        )}
       </section>
 
       <IngestionDetailsDialog

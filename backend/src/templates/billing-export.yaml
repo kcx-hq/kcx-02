@@ -44,6 +44,19 @@ Parameters:
     Default: KCX-CUR2-Export
     Description: Name of the AWS Data Export
 
+  CloudTrailBucketName:
+    Type: String
+    Default: ''
+    Description: Optional CloudTrail S3 bucket name to allow read access for log ingestion
+
+  CloudTrailPrefix:
+    Type: String
+    Default: kcx/cloudtrail
+    Description: Prefix in the CloudTrail bucket where logs are delivered
+
+Conditions:
+  HasCloudTrailBucket: !Not [!Equals [!Ref CloudTrailBucketName, '']]
+
 Resources:
   KCXExportBucket:
     Type: AWS::S3::Bucket
@@ -93,8 +106,22 @@ Resources:
                 Action:
                   - sts:GetCallerIdentity
                   - ec2:DescribeRegions
+                  - ec2:DescribeInstances
+                  - ec2:DescribeVolumes
+                  - ec2:DescribeAddresses
+                  - ec2:DescribeSnapshots
+                  - elasticloadbalancing:DescribeLoadBalancers
+                  - cloudwatch:GetMetricData
+                  - cloudwatch:GetMetricStatistics
+                  - ec2:DescribeTags
+                  - cloudwatch:ListMetrics
+                  - tag:GetResources
                   - compute-optimizer:GetEC2InstanceRecommendations
                   - compute-optimizer:GetEnrollmentStatus
+                  - compute-optimizer:UpdateEnrollmentStatus
+                  - ce:StartSavingsPlansPurchaseRecommendationGeneration
+                  - ce:GetSavingsPlansPurchaseRecommendation
+                  - ce:GetSavingsPlanPurchaseRecommendationDetails
                 Resource: "*"
 
               - Sid: ListExportBucket
@@ -110,11 +137,42 @@ Resources:
                       - !Sub ${ExportPrefix}/metadata/*
                       - !Sub ${ExportPrefix}/data/*
 
+              - Sid: GetExportBucketLocation
+                Effect: Allow
+                Action:
+                  - s3:GetBucketLocation
+                Resource: !GetAtt KCXExportBucket.Arn
+
               - Sid: ReadExportObjects
                 Effect: Allow
                 Action:
                   - s3:GetObject
                 Resource: !Sub ${KCXExportBucket.Arn}/${ExportPrefix}/*
+
+              - !If
+                - HasCloudTrailBucket
+                - Sid: ListCloudTrailBucket
+                  Effect: Allow
+                  Action:
+                    - s3:ListBucket
+                    - s3:GetBucketLocation
+                  Resource: !Sub arn:aws:s3:::${CloudTrailBucketName}
+                  Condition:
+                    StringLike:
+                      s3:prefix:
+                        - !Ref CloudTrailPrefix
+                        - !Sub ${CloudTrailPrefix}/*
+                        - !Sub ${CloudTrailPrefix}/AWSLogs/*
+                - !Ref AWS::NoValue
+
+              - !If
+                - HasCloudTrailBucket
+                - Sid: ReadCloudTrailObjects
+                  Effect: Allow
+                  Action:
+                    - s3:GetObject
+                  Resource: !Sub arn:aws:s3:::${CloudTrailBucketName}/${CloudTrailPrefix}/*
+                - !Ref AWS::NoValue
 
   ExportBucketPolicy:
     Type: AWS::S3::BucketPolicy

@@ -284,6 +284,9 @@ export class CostExplorerRepository {
     if (typeof scope.providerId === "number") {
       pushEq(`${config.alias}.provider_id`, scope.providerId);
     }
+    if (Array.isArray(scope.billingSourceIds) && scope.billingSourceIds.length > 0) {
+      pushAnyArray(`${config.alias}.billing_source_id`, scope.billingSourceIds);
+    }
     if (typeof scope.subAccountKey === "number") {
       pushEq(`${config.alias}.sub_account_key`, scope.subAccountKey);
     }

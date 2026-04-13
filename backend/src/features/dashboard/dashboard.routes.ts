@@ -2,7 +2,6 @@ import { Router } from "express";
 import { requireAuth } from "../../middlewares/auth.middleware.js";
 import { asyncHandler } from "../../utils/async-handler.js";
 import { handleGetAllocationDashboard } from "./allocation/allocation.controller.js";
-import { handleGetAnomaliesAlertsDashboard } from "./anomalies-alerts/anomalies-alerts.controller.js";
 import {
   handleCreateBudget,
   handleGetBudgetDashboard,
@@ -12,7 +11,25 @@ import {
 import { handleGetDashboardScope, handleGetDashboardTestTotalSpend } from "./dashboard.controller.js";
 import { handleGetCostExplorerDashboard } from "./cost-explorer/cost-explorer.controller.js";
 import {
+  handleExecuteIdleRecommendation,
+  handleExecuteRightsizingRecommendation,
+  handleIgnoreIdleRecommendation,
+  handleIgnoreRightsizingRecommendation,
+  handleDebugSyncOptimizationRecommendations,
+  handleGetCommitmentOverview,
+  handleGetCommitmentRecommendationDetail,
+  handleGetCommitmentRecommendations,
+  handleGetIdleActionStatus,
+  handleGetIdleOverview,
+  handleGetIdleRecommendationDetail,
+  handleGetIdleRecommendations,
   handleGetOptimizationDashboard,
+  handleGetRightsizingActionStatus,
+  handleGetRightsizingOverview,
+  handleGetRightsizingRecommendationDetail,
+  handleGetRightsizingRecommendations,
+  handleSyncCommitmentRecommendations,
+  handleSyncIdleRecommendations,
   handleSyncOptimizationRecommendations,
 } from "./optimization/optimization.controller.js";
 import {
@@ -27,6 +44,7 @@ import {
   handleGetOverviewTopRegions,
   handleGetOverviewTopServices,
 } from "./overview/overview.controller.js";
+import { handleGetAnomalies as handleGetAnomaliesAlertsDashboard } from "./anomaly-alerts/anomaly.controller.js";
 import { handleGetReportDashboard } from "./report/report.controller.js";
 import { handleGetResourcesDashboard } from "./resources/resources.controller.js";
 
@@ -52,9 +70,81 @@ router.get("/dashboard/cost-explorer", asyncHandler(handleGetCostExplorerDashboa
 router.get("/dashboard/resources", asyncHandler(handleGetResourcesDashboard));
 router.get("/dashboard/allocation", asyncHandler(handleGetAllocationDashboard));
 router.get("/dashboard/optimization", asyncHandler(handleGetOptimizationDashboard));
+router.get(
+  "/dashboard/optimization/rightsizing/overview",
+  asyncHandler(handleGetRightsizingOverview),
+);
+router.get(
+  "/dashboard/optimization/rightsizing/recommendations",
+  asyncHandler(handleGetRightsizingRecommendations),
+);
+router.get(
+  "/dashboard/optimization/rightsizing/recommendations/:recommendationId",
+  asyncHandler(handleGetRightsizingRecommendationDetail),
+);
+router.post(
+  "/dashboard/optimization/rightsizing/recommendations/:recommendationId/execute",
+  asyncHandler(handleExecuteRightsizingRecommendation),
+);
+router.post(
+  "/dashboard/optimization/rightsizing/recommendations/:recommendationId/ignore",
+  asyncHandler(handleIgnoreRightsizingRecommendation),
+);
+router.get(
+  "/dashboard/optimization/rightsizing/actions/:actionId",
+  asyncHandler(handleGetRightsizingActionStatus),
+);
+router.get(
+  "/dashboard/optimization/idle/overview",
+  asyncHandler(handleGetIdleOverview),
+);
+router.get(
+  "/dashboard/optimization/idle/recommendations",
+  asyncHandler(handleGetIdleRecommendations),
+);
+router.get(
+  "/dashboard/optimization/idle/recommendations/:recommendationId",
+  asyncHandler(handleGetIdleRecommendationDetail),
+);
+router.post(
+  "/dashboard/optimization/idle/recommendations/:recommendationId/execute",
+  asyncHandler(handleExecuteIdleRecommendation),
+);
+router.post(
+  "/dashboard/optimization/idle/recommendations/:recommendationId/ignore",
+  asyncHandler(handleIgnoreIdleRecommendation),
+);
+router.get(
+  "/dashboard/optimization/idle/actions/:actionId",
+  asyncHandler(handleGetIdleActionStatus),
+);
+router.get(
+  "/dashboard/optimization/commitment/overview",
+  asyncHandler(handleGetCommitmentOverview),
+);
+router.get(
+  "/dashboard/optimization/commitment/recommendations",
+  asyncHandler(handleGetCommitmentRecommendations),
+);
+router.get(
+  "/dashboard/optimization/commitment/recommendations/:recommendationId",
+  asyncHandler(handleGetCommitmentRecommendationDetail),
+);
 router.post(
   "/dashboard/optimization/recommendations/sync",
   asyncHandler(handleSyncOptimizationRecommendations),
+);
+router.post(
+  "/dashboard/optimization/idle/sync",
+  asyncHandler(handleSyncIdleRecommendations),
+);
+router.post(
+  "/dashboard/optimization/commitment/sync",
+  asyncHandler(handleSyncCommitmentRecommendations),
+);
+router.get(
+  "/dashboard/optimization/recommendations/debug-sync",
+  asyncHandler(handleDebugSyncOptimizationRecommendations),
 );
 router.get("/dashboard/anomalies-alerts", asyncHandler(handleGetAnomaliesAlertsDashboard));
 router.get("/dashboard/budget", asyncHandler(handleGetBudgetDashboard));

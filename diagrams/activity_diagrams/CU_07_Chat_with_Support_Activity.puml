@@ -1,0 +1,15 @@
+@startuml
+title CU_07 Chat with Support - Activity
+start
+:ClientUser opens ticket conversation;
+:Type support message;
+:Submit message;
+if (Message posted?) then (Yes)
+  :Show updated conversation thread;
+  stop
+else (No)
+  :Show posting error;
+  :Retry sending message;
+  stop
+endif
+@enduml

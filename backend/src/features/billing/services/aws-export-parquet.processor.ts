@@ -21,6 +21,11 @@ import {
   normalizeRowToCanonical,
   validateHeaders,
 } from "./schema-validator.service.js";
+import { upsertCostAggregationsForRun } from "./cost-aggregation.service.js";
+import {
+  syncAwsIdleRecommendationsAfterIngestion,
+  syncAwsRightsizingRecommendationsAfterIngestion,
+} from "../../dashboard/optimization/recommendation-sync/sync.service.js";
 
 const STAGE_MESSAGE = {
   validating_schema: "Validating manifest and parquet schema",
@@ -535,6 +540,46 @@ export async function processAwsExportParquetRun({ run }) {
       lastIngestedAt: now(),
       status: "active",
     });
+
+    if (rowsLoaded > 0) {
+      await upsertCostAggregationsForRun({
+        ingestionRunId: runId,
+        tenantId: source.tenantId,
+        providerId: source.cloudProviderId,
+        billingSourceId: source.id,
+        uploadedBy: connection.createdBy ?? null,
+      });
+
+      try {
+        await syncAwsRightsizingRecommendationsAfterIngestion({
+          tenantId: String(source.tenantId),
+          billingSourceId: String(source.id),
+          ingestionRunId: runId,
+        });
+      } catch (syncError) {
+        logger.warn("Optimization recommendation sync failed after AWS parquet ingestion", {
+          ingestionRunId: runId,
+          tenantId: source.tenantId ?? null,
+          billingSourceId: source.id ?? null,
+          reason: toErrorMessage(syncError),
+        });
+      }
+
+      try {
+        await syncAwsIdleRecommendationsAfterIngestion({
+          tenantId: String(source.tenantId),
+          billingSourceId: String(source.id),
+          ingestionRunId: runId,
+        });
+      } catch (idleSyncError) {
+        logger.warn("Idle recommendation sync failed after AWS parquet ingestion", {
+          ingestionRunId: runId,
+          tenantId: source.tenantId ?? null,
+          billingSourceId: source.id ?? null,
+          reason: toErrorMessage(idleSyncError),
+        });
+      }
+    }
 
     logger.info("AWS parquet ingestion completed", {
       ingestionRunId: runId,

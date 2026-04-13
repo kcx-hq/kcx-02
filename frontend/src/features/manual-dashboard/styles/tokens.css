@@ -1,0 +1,57 @@
+.kcx-dashboard {
+  --dashboard-sidebar-width: 228px;
+  --dashboard-sidebar-width-collapsed: 68px;
+  --dashboard-main-max-width: 1140px;
+  --dashboard-page-padding-x: 22px;
+  --dashboard-page-padding-y: 18px;
+
+  --dashboard-space-2xs: 2px;
+  --dashboard-space-xs: var(--space-xs);
+  --dashboard-space-sm: var(--space-sm);
+  --dashboard-space-md: var(--space-md);
+  --dashboard-space-lg: var(--space-lg);
+
+  --dashboard-radius-sm: 7px;
+  --dashboard-radius-md: 10px;
+  --dashboard-radius-lg: 12px;
+
+  --dashboard-shadow-rest: 0 1px 2px rgba(15, 23, 42, 0.04);
+  --dashboard-shadow-focus: 0 8px 18px rgba(15, 23, 42, 0.06);
+
+  --dashboard-white-soft: #f2f7f7;
+  --dashboard-white-muted: #ebf2f1;
+  --dashboard-white-strong: #f7fbfb;
+
+  --dashboard-surface-main: #f1f6f5;
+  --dashboard-surface-card: #f7fbfb;
+  --dashboard-surface-soft: #f4f8f7;
+  --dashboard-surface-soft-2: #edf3f1;
+  --dashboard-surface-quiet: #f6faf9;
+
+  --dashboard-sidebar-surface: #0f1a24;
+  --dashboard-sidebar-surface-2: #152534;
+  --dashboard-sidebar-border: rgba(255, 255, 255, 0.1);
+  --dashboard-sidebar-separator: rgba(255, 255, 255, 0.09);
+  --dashboard-sidebar-text: #edf4f8;
+  --dashboard-sidebar-text-muted: #cfdee8;
+  --dashboard-sidebar-text-soft: #b5c8d6;
+  --dashboard-sidebar-hover: rgba(64, 178, 155, 0.16);
+  --dashboard-sidebar-active: rgba(64, 178, 155, 0.18);
+  --dashboard-sidebar-active-border: rgba(64, 178, 155, 0.44);
+
+  --dashboard-border-light: var(--border-light);
+  --dashboard-border-muted: #e5ebe8;
+  --dashboard-separator: color-mix(in srgb, var(--border-light) 72%, var(--dashboard-white-strong) 28%);
+
+  --dashboard-text-primary: var(--text-primary);
+  --dashboard-text-secondary: var(--text-secondary);
+  --dashboard-text-muted: var(--text-muted);
+
+  --dashboard-accent: var(--brand-primary);
+  --dashboard-accent-hover: var(--brand-primary-hover);
+  --dashboard-accent-soft: var(--brand-primary-soft);
+  --dashboard-dark: var(--brand-secondary);
+
+  --dashboard-transition-fast: var(--transition-fast);
+  --dashboard-transition-base: var(--transition-base);
+}

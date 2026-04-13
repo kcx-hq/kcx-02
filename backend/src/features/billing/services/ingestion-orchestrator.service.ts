@@ -7,7 +7,10 @@ import { NotFoundError } from "../../../errors/http-errors.js";
 import { RawBillingFile } from "../../../models/index.js";
 import { logger } from "../../../utils/logger.js";
 import { mapFactCostLineItem } from "../mappers/raw_focus_to_dimensions.mapper.js";
-import { syncAwsRightsizingRecommendationsAfterIngestion } from "../../dashboard/optimization/recommendation-sync/sync.service.js";
+import {
+  syncAwsIdleRecommendationsAfterIngestion,
+  syncAwsRightsizingRecommendationsAfterIngestion,
+} from "../../dashboard/optimization/recommendation-sync/sync.service.js";
 import { processAwsExportParquetRun } from "./aws-export-parquet.processor.js";
 import {
   createIngestionDimensionCache,
@@ -759,6 +762,21 @@ async function processIngestionRun(ingestionRunId) {
             tenantId: rawFile.tenantId ?? null,
             billingSourceId: rawFile.billingSourceId ?? null,
             reason: toErrorMessage(syncError),
+          });
+        }
+
+        try {
+          await syncAwsIdleRecommendationsAfterIngestion({
+            tenantId: tenantIdForSync,
+            billingSourceId: billingSourceIdForSync,
+            ingestionRunId: String(run.id),
+          });
+        } catch (idleSyncError) {
+          logger.warn("Idle recommendation sync failed after ingestion", {
+            ingestionRunId: run.id,
+            tenantId: rawFile.tenantId ?? null,
+            billingSourceId: rawFile.billingSourceId ?? null,
+            reason: toErrorMessage(idleSyncError),
           });
         }
       }

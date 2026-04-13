@@ -1,0 +1,15 @@
+@startuml
+title CU_06 Upload CSV File - Activity
+start
+:ClientUser chooses CSV file;
+:Provide upload path/prefix;
+if (Connection valid?) then (Yes)
+  :Upload CSV file;
+  :Show upload accepted status;
+  stop
+else (No)
+  :Show validation failure;
+  :Prompt fix and retry;
+  stop
+endif
+@enduml

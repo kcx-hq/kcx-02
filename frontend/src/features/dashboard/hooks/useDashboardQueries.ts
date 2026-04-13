@@ -1,8 +1,20 @@
 import { useQuery } from "@tanstack/react-query";
 import {
   dashboardApi,
+  type AnomaliesFiltersQuery,
+  type AnomaliesListResponse,
   type CostExplorerFiltersQuery,
   type DashboardResolvedScope,
+  type OptimizationIdleOverview,
+  type OptimizationCommitmentOverview,
+  type OptimizationIdleRecommendationDetail,
+  type OptimizationCommitmentRecommendationDetail,
+  type OptimizationIdleRecommendationsResponse,
+  type OptimizationCommitmentRecommendationsResponse,
+  type OptimizationRecommendationDetail,
+  type OptimizationRecommendationFiltersQuery,
+  type OptimizationRecommendationsResponse,
+  type OptimizationRightsizingOverview,
   type OverviewAnomaliesResponse,
   type OverviewFiltersQuery,
   type OverviewRecommendationsResponse,
@@ -89,12 +101,118 @@ export function useOptimizationQuery() {
   });
 }
 
-export function useAnomaliesAlertsQuery() {
+export function useOptimizationRightsizingOverviewQuery() {
   const { scope } = useDashboardScope();
-  return useQuery({
-    queryKey: ["dashboard", "anomalies-alerts", scope],
-    queryFn: () => dashboardApi.getAnomaliesAlerts(assertScope(scope)),
+  return useQuery<OptimizationRightsizingOverview, Error>({
+    queryKey: ["dashboard", "optimization", "rightsizing", "overview", scope],
+    queryFn: () => dashboardApi.getOptimizationRightsizingOverview(assertScope(scope)),
     enabled: Boolean(scope),
+  });
+}
+
+export function useOptimizationRightsizingRecommendationsQuery(
+  filters?: OptimizationRecommendationFiltersQuery,
+  options?: {
+    autoRefetchWhileInProgress?: boolean;
+  },
+) {
+  const { scope } = useDashboardScope();
+  return useQuery<OptimizationRecommendationsResponse, Error>({
+    queryKey: ["dashboard", "optimization", "rightsizing", "recommendations", scope, filters],
+    queryFn: () => dashboardApi.getOptimizationRightsizingRecommendations(assertScope(scope), filters),
+    enabled: Boolean(scope),
+    refetchInterval: (query) => {
+      if (!options?.autoRefetchWhileInProgress) return false;
+      const rows = query.state.data?.items ?? [];
+      const hasInProgress = rows.some(
+        (item) => String(item.status ?? "").trim().toUpperCase() === "IN_PROGRESS",
+      );
+      return hasInProgress ? 5000 : false;
+    },
+  });
+}
+
+export function useOptimizationRightsizingRecommendationDetailQuery(recommendationId: string | null) {
+  const { scope } = useDashboardScope();
+  return useQuery<OptimizationRecommendationDetail, Error>({
+    queryKey: ["dashboard", "optimization", "rightsizing", "recommendation", recommendationId, scope],
+    queryFn: () => dashboardApi.getOptimizationRightsizingRecommendationDetail(assertScope(scope), recommendationId as string),
+    enabled: Boolean(scope) && Boolean(recommendationId),
+  });
+}
+
+export function useOptimizationIdleOverviewQuery() {
+  const { scope } = useDashboardScope();
+  return useQuery<OptimizationIdleOverview, Error>({
+    queryKey: ["dashboard", "optimization", "idle", "overview", scope],
+    queryFn: () => dashboardApi.getOptimizationIdleOverview(assertScope(scope)),
+    enabled: Boolean(scope),
+  });
+}
+
+export function useOptimizationIdleRecommendationsQuery(
+  filters?: OptimizationRecommendationFiltersQuery,
+  options?: {
+    autoRefetchWhileInProgress?: boolean;
+    autoRefetchWhileLocalPending?: boolean;
+  },
+) {
+  const { scope } = useDashboardScope();
+  return useQuery<OptimizationIdleRecommendationsResponse, Error>({
+    queryKey: ["dashboard", "optimization", "idle", "recommendations", scope, filters],
+    queryFn: () => dashboardApi.getOptimizationIdleRecommendations(assertScope(scope), filters),
+    enabled: Boolean(scope),
+    refetchInterval: (query) => {
+      if (!options?.autoRefetchWhileInProgress && !options?.autoRefetchWhileLocalPending) return false;
+      const rows = query.state.data?.items ?? [];
+      const hasInProgress = rows.some(
+        (item) => String(item.status ?? "").trim().toUpperCase() === "IN_PROGRESS",
+      );
+      return hasInProgress || options?.autoRefetchWhileLocalPending ? 5000 : false;
+    },
+  });
+}
+
+export function useOptimizationIdleRecommendationDetailQuery(recommendationId: string | null) {
+  const { scope } = useDashboardScope();
+  return useQuery<OptimizationIdleRecommendationDetail, Error>({
+    queryKey: ["dashboard", "optimization", "idle", "recommendation", recommendationId, scope],
+    queryFn: () => dashboardApi.getOptimizationIdleRecommendationDetail(assertScope(scope), recommendationId as string),
+    enabled: Boolean(scope) && Boolean(recommendationId),
+  });
+}
+
+export function useOptimizationCommitmentOverviewQuery() {
+  const { scope } = useDashboardScope();
+  return useQuery<OptimizationCommitmentOverview, Error>({
+    queryKey: ["dashboard", "optimization", "commitment", "overview", scope],
+    queryFn: () => dashboardApi.getOptimizationCommitmentOverview(assertScope(scope)),
+    enabled: Boolean(scope),
+  });
+}
+
+export function useOptimizationCommitmentRecommendationsQuery(filters?: OptimizationRecommendationFiltersQuery) {
+  const { scope } = useDashboardScope();
+  return useQuery<OptimizationCommitmentRecommendationsResponse, Error>({
+    queryKey: ["dashboard", "optimization", "commitment", "recommendations", scope, filters],
+    queryFn: () => dashboardApi.getOptimizationCommitmentRecommendations(assertScope(scope), filters),
+    enabled: Boolean(scope),
+  });
+}
+
+export function useOptimizationCommitmentRecommendationDetailQuery(recommendationId: string | null) {
+  const { scope } = useDashboardScope();
+  return useQuery<OptimizationCommitmentRecommendationDetail, Error>({
+    queryKey: ["dashboard", "optimization", "commitment", "recommendation", recommendationId, scope],
+    queryFn: () => dashboardApi.getOptimizationCommitmentRecommendationDetail(assertScope(scope), recommendationId as string),
+    enabled: Boolean(scope) && Boolean(recommendationId),
+  });
+}
+
+export function useAnomaliesQuery(filters?: AnomaliesFiltersQuery) {
+  return useQuery<AnomaliesListResponse, Error>({
+    queryKey: ["dashboard", "anomalies", filters],
+    queryFn: () => dashboardApi.getAnomalies(filters),
   });
 }
 

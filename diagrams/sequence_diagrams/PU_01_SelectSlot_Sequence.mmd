@@ -1,0 +1,13 @@
+sequenceDiagram
+    actor PublicUser
+    participant SlotReservation
+
+    PublicUser->>SlotReservation: reserve(calcomReservationId: String)
+    alt Reservation still valid
+        SlotReservation-->>PublicUser: Slot reserved
+    else Reservation expired or cancelled
+        PublicUser->>SlotReservation: release()
+        SlotReservation-->>PublicUser: Slot released
+        PublicUser->>SlotReservation: reserve(calcomReservationId: String)
+        SlotReservation-->>PublicUser: Slot reserved
+    end

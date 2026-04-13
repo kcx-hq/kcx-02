@@ -1,0 +1,17 @@
+@startuml
+title AD_05 Update Ticket Status - Activity
+
+start
+:Admin opens selected ticket;
+:Choose workflow stage and progress;
+if (Stage/progress valid?) then (Yes)
+  :Update ticket workflow;
+  :Persist new status;
+  stop
+else (No)
+  :Show validation error;
+  :Re-enter stage/progress;
+  stop
+endif
+
+@enduml

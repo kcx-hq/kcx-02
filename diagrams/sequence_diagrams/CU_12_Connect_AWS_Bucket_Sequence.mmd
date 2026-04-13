@@ -1,0 +1,14 @@
+%% Use Case: Connect AWS Bucket
+sequenceDiagram
+    actor ClientUser
+    participant S3IngestionConnection
+    participant CloudConnection
+
+    ClientUser->>S3IngestionConnection: updatePrefix(prefix: String)
+    ClientUser->>S3IngestionConnection: validate()
+    ClientUser->>CloudConnection: validateAccess(): Boolean
+    alt Access valid
+        ClientUser->>CloudConnection: activate()
+    else Access invalid
+        ClientUser->>CloudConnection: suspend(reason: String)
+    end

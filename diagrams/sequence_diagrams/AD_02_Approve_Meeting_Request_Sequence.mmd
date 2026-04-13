@@ -1,0 +1,7 @@
+%% Use Case: Approve Meeting Request
+sequenceDiagram
+    actor Admin
+    participant SupportMeeting
+
+    Admin->>SupportMeeting: approve(adminId: Integer, meetingUrl: String)
+    SupportMeeting-->>Admin: meeting approved

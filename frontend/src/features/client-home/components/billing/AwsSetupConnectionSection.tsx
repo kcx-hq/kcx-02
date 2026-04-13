@@ -24,8 +24,6 @@ export function AwsSetupConnectionSection({
     <>
       <div className="space-y-2">
         <p className="kcx-eyebrow text-brand-primary">Setup AWS Connection</p>
-        <h2 className="text-2xl font-semibold tracking-tight text-text-primary">Setup AWS Connection</h2>
-        <p className="text-sm text-text-secondary">Review connection details and launch guided setup.</p>
       </div>
 
       <div className="grid grid-cols-1 gap-4">

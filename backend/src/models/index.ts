@@ -7,16 +7,23 @@ import createDemoRequestModel from "./demo-request.js";
 import createPasswordResetTokenModel from "./password-reset-token.js";
 import createSlotReservationModel from "./slot-reservation.js";
 import createAdminUserModel from "./admin-user.js";
+import createAnnouncementModel from "./announcement.js";
 import createCloudConnectionV2Model from "./cloud-connection-v2.js";
 import createCloudProviderModel from "./cloud-provider.js";
 import createCloudIntegrationModel from "./cloud-integration.js";
+import createClientCloudAccountModel from "./client-cloud-account.js";
 import createTenantModel from "./tenant.js";
 import createUserModel from "./user.js";
 import createRawBillingFileModel from "./raw-billing-file.js";
 import createBillingSourceModel from "./billing-source.js";
 import createBillingIngestionRunModel from "./billing-ingestion-run.js";
 import createBillingIngestionRunFileModel from "./billing-ingestion-run-file.js";
+import createAnomalyDetectionRunModel from "./anomaly-detection-run.js";
 import createManualCloudConnectionModel from "./manual-cloud-connection.js";
+import createS3UploadConnectionModel from "./s3-upload-connection.js";
+import createSupportTicketModel from "./support-ticket.js";
+import createSupportTicketMessageModel from "./support-ticket-message.js";
+import createSupportMeetingModel from "./support-meeting.js";
 import createDimBillingAccountModel from "./billing/dim_billing_account.js";
 import createDimSubAccountModel from "./billing/dim_sub_account.js";
 import createDimRegionModel from "./billing/dim_region.js";
@@ -30,6 +37,9 @@ import createBillingIngestionRowErrorModel from "./billing/billing_ingestion_row
 import createResourceInventorySnapshotModel from "./billing/resource_inventory_snapshots.js";
 import createResourceUtilizationDailyModel from "./billing/resource_utilization_daily.js";
 import createFactAnomaliesModel from "./billing/fact_anomalies.js";
+import createAnomalyContributorModel from "./billing/anomaly_contributors.js";
+import createCloudtrailSourceModel from "./billing/cloudtrail_sources.js";
+import createCloudEventModel from "./billing/cloud_events.js";
 import createFactRecommendationsModel from "./billing/fact_recommendations.js";
 import createFactCostAllocationsModel from "./billing/fact_cost_allocations.js";
 import createFactCommitmentCoverageModel from "./billing/fact_commitment_coverage.js";
@@ -62,17 +72,24 @@ const DemoRequest = createDemoRequestModel(sequelize);
 const PasswordResetToken = createPasswordResetTokenModel(sequelize);
 const AuthSession = createAuthSessionModel(sequelize);
 const AdminUser = createAdminUserModel(sequelize);
+const Announcement = createAnnouncementModel(sequelize);
 const AdminAuthSession = createAdminAuthSessionModel(sequelize);
 const SlotReservation = createSlotReservationModel(sequelize);
 const CloudProvider = createCloudProviderModel(sequelize);
 const CloudIntegration = createCloudIntegrationModel(sequelize);
+const ClientCloudAccount = createClientCloudAccountModel(sequelize);
 const CloudConnectionV2 = createCloudConnectionV2Model(sequelize);
 const Tenant = createTenantModel(sequelize);
 const RawBillingFile = createRawBillingFileModel(sequelize);
 const BillingSource = createBillingSourceModel(sequelize);
 const BillingIngestionRun = createBillingIngestionRunModel(sequelize);
 const BillingIngestionRunFile = createBillingIngestionRunFileModel(sequelize);
+const AnomalyDetectionRun = createAnomalyDetectionRunModel(sequelize);
 const ManualCloudConnection = createManualCloudConnectionModel(sequelize);
+const S3UploadConnection = createS3UploadConnectionModel(sequelize);
+const SupportTicket = createSupportTicketModel(sequelize);
+const SupportTicketMessage = createSupportTicketMessageModel(sequelize);
+const SupportMeeting = createSupportMeetingModel(sequelize);
 const DimBillingAccount = createDimBillingAccountModel(sequelize);
 const DimSubAccount = createDimSubAccountModel(sequelize);
 const DimRegion = createDimRegionModel(sequelize);
@@ -86,6 +103,9 @@ const BillingIngestionRowError = createBillingIngestionRowErrorModel(sequelize);
 const ResourceInventorySnapshot = createResourceInventorySnapshotModel(sequelize);
 const ResourceUtilizationDaily = createResourceUtilizationDailyModel(sequelize);
 const FactAnomalies = createFactAnomaliesModel(sequelize);
+const AnomalyContributor = createAnomalyContributorModel(sequelize);
+const CloudtrailSource = createCloudtrailSourceModel(sequelize);
+const CloudEvent = createCloudEventModel(sequelize);
 const FactRecommendations = createFactRecommendationsModel(sequelize);
 const FactCostAllocations = createFactCostAllocationsModel(sequelize);
 const FactCommitmentCoverage = createFactCommitmentCoverageModel(sequelize);
@@ -119,6 +139,12 @@ CloudProvider.hasMany(CloudIntegration, { foreignKey: "providerId" });
 CloudIntegration.belongsTo(CloudProvider, { foreignKey: "providerId" });
 User.hasMany(CloudIntegration, { foreignKey: "createdBy" });
 CloudIntegration.belongsTo(User, { foreignKey: "createdBy" });
+Tenant.hasMany(ClientCloudAccount, { foreignKey: "tenantId" });
+ClientCloudAccount.belongsTo(Tenant, { foreignKey: "tenantId" });
+CloudProvider.hasMany(ClientCloudAccount, { foreignKey: "providerId" });
+ClientCloudAccount.belongsTo(CloudProvider, { foreignKey: "providerId" });
+CloudConnectionV2.hasMany(ClientCloudAccount, { foreignKey: "cloudConnectionId" });
+ClientCloudAccount.belongsTo(CloudConnectionV2, { foreignKey: "cloudConnectionId" });
 CloudProvider.hasMany(BillingSource, { foreignKey: "cloudProviderId" });
 BillingSource.belongsTo(CloudProvider, { foreignKey: "cloudProviderId" });
 BillingSource.hasMany(RawBillingFile, { foreignKey: "billingSourceId" });
@@ -133,12 +159,30 @@ RawBillingFile.hasMany(BillingIngestionRun, { foreignKey: "rawBillingFileId" });
 BillingIngestionRun.belongsTo(RawBillingFile, { foreignKey: "rawBillingFileId" });
 BillingIngestionRun.hasMany(BillingIngestionRunFile, { foreignKey: "ingestionRunId" });
 BillingIngestionRunFile.belongsTo(BillingIngestionRun, { foreignKey: "ingestionRunId" });
+BillingIngestionRun.hasMany(AnomalyDetectionRun, { foreignKey: "ingestionRunId" });
+AnomalyDetectionRun.belongsTo(BillingIngestionRun, { foreignKey: "ingestionRunId" });
 RawBillingFile.hasMany(BillingIngestionRunFile, { foreignKey: "rawBillingFileId" });
 BillingIngestionRunFile.belongsTo(RawBillingFile, { foreignKey: "rawBillingFileId" });
 Tenant.hasMany(ManualCloudConnection, { foreignKey: "tenantId" });
 ManualCloudConnection.belongsTo(Tenant, { foreignKey: "tenantId" });
 User.hasMany(ManualCloudConnection, { foreignKey: "createdBy" });
 ManualCloudConnection.belongsTo(User, { foreignKey: "createdBy" });
+Tenant.hasMany(S3UploadConnection, { foreignKey: "tenantId" });
+S3UploadConnection.belongsTo(Tenant, { foreignKey: "tenantId" });
+User.hasMany(S3UploadConnection, { foreignKey: "createdBy" });
+S3UploadConnection.belongsTo(User, { foreignKey: "createdBy" });
+Tenant.hasMany(SupportTicket, { foreignKey: "tenantId" });
+SupportTicket.belongsTo(Tenant, { foreignKey: "tenantId" });
+User.hasMany(SupportTicket, { foreignKey: "createdBy" });
+SupportTicket.belongsTo(User, { foreignKey: "createdBy" });
+SupportTicket.hasMany(SupportTicketMessage, { foreignKey: "ticketId" });
+SupportTicketMessage.belongsTo(SupportTicket, { foreignKey: "ticketId" });
+User.hasMany(SupportTicketMessage, { foreignKey: "senderUserId" });
+SupportTicketMessage.belongsTo(User, { foreignKey: "senderUserId" });
+Tenant.hasMany(SupportMeeting, { foreignKey: "tenantId" });
+SupportMeeting.belongsTo(Tenant, { foreignKey: "tenantId" });
+User.hasMany(SupportMeeting, { foreignKey: "requestedBy" });
+SupportMeeting.belongsTo(User, { foreignKey: "requestedBy" });
 Tenant.hasMany(DimBillingAccount, { foreignKey: "tenantId" });
 DimBillingAccount.belongsTo(Tenant, { foreignKey: "tenantId" });
 CloudProvider.hasMany(DimBillingAccount, { foreignKey: "providerId" });
@@ -206,11 +250,27 @@ CloudConnectionV2.hasMany(ResourceInventorySnapshot, { foreignKey: "cloudConnect
 ResourceInventorySnapshot.belongsTo(CloudConnectionV2, { foreignKey: "cloudConnectionId" });
 CloudProvider.hasMany(ResourceInventorySnapshot, { foreignKey: "providerId" });
 ResourceInventorySnapshot.belongsTo(CloudProvider, { foreignKey: "providerId" });
+DimResource.hasMany(ResourceInventorySnapshot, { foreignKey: "resourceKey" });
+ResourceInventorySnapshot.belongsTo(DimResource, { foreignKey: "resourceKey" });
+DimService.hasMany(ResourceInventorySnapshot, { foreignKey: "serviceKey" });
+ResourceInventorySnapshot.belongsTo(DimService, { foreignKey: "serviceKey" });
+DimRegion.hasMany(ResourceInventorySnapshot, { foreignKey: "regionKey" });
+ResourceInventorySnapshot.belongsTo(DimRegion, { foreignKey: "regionKey" });
+DimSubAccount.hasMany(ResourceInventorySnapshot, { foreignKey: "subAccountKey" });
+ResourceInventorySnapshot.belongsTo(DimSubAccount, { foreignKey: "subAccountKey" });
 
 Tenant.hasMany(ResourceUtilizationDaily, { foreignKey: "tenantId" });
 ResourceUtilizationDaily.belongsTo(Tenant, { foreignKey: "tenantId" });
 CloudConnectionV2.hasMany(ResourceUtilizationDaily, { foreignKey: "cloudConnectionId" });
 ResourceUtilizationDaily.belongsTo(CloudConnectionV2, { foreignKey: "cloudConnectionId" });
+CloudProvider.hasMany(ResourceUtilizationDaily, { foreignKey: "providerId" });
+ResourceUtilizationDaily.belongsTo(CloudProvider, { foreignKey: "providerId" });
+DimResource.hasMany(ResourceUtilizationDaily, { foreignKey: "resourceKey" });
+ResourceUtilizationDaily.belongsTo(DimResource, { foreignKey: "resourceKey" });
+DimRegion.hasMany(ResourceUtilizationDaily, { foreignKey: "regionKey" });
+ResourceUtilizationDaily.belongsTo(DimRegion, { foreignKey: "regionKey" });
+DimSubAccount.hasMany(ResourceUtilizationDaily, { foreignKey: "subAccountKey" });
+ResourceUtilizationDaily.belongsTo(DimSubAccount, { foreignKey: "subAccountKey" });
 
 Tenant.hasMany(FactAnomalies, { foreignKey: "tenantId" });
 FactAnomalies.belongsTo(Tenant, { foreignKey: "tenantId" });
@@ -222,9 +282,39 @@ DimRegion.hasMany(FactAnomalies, { foreignKey: "regionKey" });
 FactAnomalies.belongsTo(DimRegion, { foreignKey: "regionKey" });
 DimResource.hasMany(FactAnomalies, { foreignKey: "resourceKey" });
 FactAnomalies.belongsTo(DimResource, { foreignKey: "resourceKey" });
+DimSubAccount.hasMany(FactAnomalies, { foreignKey: "subAccountKey" });
+FactAnomalies.belongsTo(DimSubAccount, { foreignKey: "subAccountKey" });
+BillingSource.hasMany(FactAnomalies, { foreignKey: "billingSourceId" });
+FactAnomalies.belongsTo(BillingSource, { foreignKey: "billingSourceId" });
+FactAnomalies.hasMany(AnomalyContributor, { foreignKey: "anomalyId" });
+AnomalyContributor.belongsTo(FactAnomalies, { foreignKey: "anomalyId" });
+Tenant.hasMany(AnomalyDetectionRun, { foreignKey: "tenantId" });
+AnomalyDetectionRun.belongsTo(Tenant, { foreignKey: "tenantId" });
+BillingSource.hasMany(AnomalyDetectionRun, { foreignKey: "billingSourceId" });
+AnomalyDetectionRun.belongsTo(BillingSource, { foreignKey: "billingSourceId" });
+CloudConnectionV2.hasMany(AnomalyDetectionRun, { foreignKey: "cloudConnectionId" });
+AnomalyDetectionRun.belongsTo(CloudConnectionV2, { foreignKey: "cloudConnectionId" });
+User.hasMany(AnomalyDetectionRun, { foreignKey: "createdBy" });
+AnomalyDetectionRun.belongsTo(User, { foreignKey: "createdBy" });
+
+Tenant.hasMany(CloudtrailSource, { foreignKey: "tenantId" });
+CloudtrailSource.belongsTo(Tenant, { foreignKey: "tenantId" });
+CloudConnectionV2.hasMany(CloudtrailSource, { foreignKey: "cloudConnectionId" });
+CloudtrailSource.belongsTo(CloudConnectionV2, { foreignKey: "cloudConnectionId" });
+
+Tenant.hasMany(CloudEvent, { foreignKey: "tenantId" });
+CloudEvent.belongsTo(Tenant, { foreignKey: "tenantId" });
+CloudConnectionV2.hasMany(CloudEvent, { foreignKey: "cloudConnectionId" });
+CloudEvent.belongsTo(CloudConnectionV2, { foreignKey: "cloudConnectionId" });
+CloudProvider.hasMany(CloudEvent, { foreignKey: "providerId" });
+CloudEvent.belongsTo(CloudProvider, { foreignKey: "providerId" });
 
 Tenant.hasMany(FactRecommendations, { foreignKey: "tenantId" });
 FactRecommendations.belongsTo(Tenant, { foreignKey: "tenantId" });
+CloudConnectionV2.hasMany(FactRecommendations, { foreignKey: "cloudConnectionId" });
+FactRecommendations.belongsTo(CloudConnectionV2, { foreignKey: "cloudConnectionId" });
+BillingSource.hasMany(FactRecommendations, { foreignKey: "billingSourceId" });
+FactRecommendations.belongsTo(BillingSource, { foreignKey: "billingSourceId" });
 DimService.hasMany(FactRecommendations, { foreignKey: "serviceKey" });
 FactRecommendations.belongsTo(DimService, { foreignKey: "serviceKey" });
 DimSubAccount.hasMany(FactRecommendations, { foreignKey: "subAccountKey" });
@@ -283,6 +373,8 @@ BudgetAlerts.belongsTo(Budgets, { foreignKey: "budgetId" });
 
 AdminUser.hasMany(AdminAuthSession, { foreignKey: "adminUserId" });
 AdminAuthSession.belongsTo(AdminUser, { foreignKey: "adminUserId" });
+AdminUser.hasMany(Announcement, { foreignKey: "createdByAdminId" });
+Announcement.belongsTo(AdminUser, { foreignKey: "createdByAdminId" });
 
 Tenant.hasMany(User, { foreignKey: "tenantId" });
 User.belongsTo(Tenant, { foreignKey: "tenantId" });
@@ -297,16 +389,23 @@ export {
   PasswordResetToken,
   AuthSession,
   AdminUser,
+  Announcement,
   AdminAuthSession,
   CloudProvider,
   CloudIntegration,
+  ClientCloudAccount,
   CloudConnectionV2,
   Tenant,
   RawBillingFile,
   BillingSource,
   BillingIngestionRun,
   BillingIngestionRunFile,
+  AnomalyDetectionRun,
   ManualCloudConnection,
+  S3UploadConnection,
+  SupportTicket,
+  SupportTicketMessage,
+  SupportMeeting,
   DimBillingAccount,
   DimSubAccount,
   DimRegion,
@@ -320,6 +419,9 @@ export {
   ResourceInventorySnapshot,
   ResourceUtilizationDaily,
   FactAnomalies,
+  AnomalyContributor,
+  CloudtrailSource,
+  CloudEvent,
   FactRecommendations,
   FactCostAllocations,
   FactCommitmentCoverage,

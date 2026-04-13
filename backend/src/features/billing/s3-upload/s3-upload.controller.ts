@@ -5,13 +5,18 @@ import { UnauthorizedError } from "../../../errors/http-errors.js";
 import { sendSuccess } from "../../../utils/api-response.js";
 import { parseWithSchema } from "../../_shared/validation/zod-validate.js";
 import {
+  createS3UploadConnectionSchema,
+  createS3UploadConnectionSessionSchema,
   createS3UploadSessionSchema,
   importS3UploadFilesSchema,
   listS3UploadSessionSchema,
 } from "./s3-upload.schema.js";
 import {
+  createPersistentS3UploadConnection,
+  createTemporaryS3UploadSessionFromConnection,
   createTemporaryS3UploadSession,
   importFilesFromTemporaryS3UploadSession,
+  listPersistentS3UploadConnections,
   listTemporaryS3UploadSessionScope,
 } from "./s3-upload.service.js";
 
@@ -41,6 +46,50 @@ export async function handleCreateS3UploadSession(req: Request, res: Response): 
     req,
     statusCode: HTTP_STATUS.CREATED,
     message: "Temporary S3 upload session created",
+    data: result,
+  });
+}
+
+export async function handleCreatePersistentS3UploadConnection(req: Request, res: Response): Promise<void> {
+  const user = requireUserContext(req);
+  const payload = parseWithSchema(createS3UploadConnectionSchema, req.body);
+
+  const result = await createPersistentS3UploadConnection(payload, user);
+
+  sendSuccess({
+    res,
+    req,
+    statusCode: HTTP_STATUS.CREATED,
+    message: "S3 connection saved",
+    data: result,
+  });
+}
+
+export async function handleListPersistentS3UploadConnections(req: Request, res: Response): Promise<void> {
+  const user = requireUserContext(req);
+  const result = await listPersistentS3UploadConnections(user);
+
+  sendSuccess({
+    res,
+    req,
+    statusCode: HTTP_STATUS.OK,
+    message: "S3 connections loaded",
+    data: result,
+  });
+}
+
+export async function handleCreateS3UploadSessionFromConnection(req: Request, res: Response): Promise<void> {
+  const user = requireUserContext(req);
+  const connectionId = String(req.params.connectionId ?? "").trim();
+  const payload = parseWithSchema(createS3UploadConnectionSessionSchema, req.body ?? {});
+
+  const result = await createTemporaryS3UploadSessionFromConnection(connectionId, payload, user);
+
+  sendSuccess({
+    res,
+    req,
+    statusCode: HTTP_STATUS.CREATED,
+    message: "Temporary S3 upload session created from saved connection",
     data: result,
   });
 }

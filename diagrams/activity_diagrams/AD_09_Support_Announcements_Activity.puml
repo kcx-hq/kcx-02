@@ -1,0 +1,19 @@
+@startuml
+title AD_09 Support Announcements - Activity
+
+start
+:Admin opens announcements module;
+:Select announcement action;
+
+if (Action = Publish?) then (Yes)
+  :Publish announcement;
+elseif (Action = Archive?) then (Yes)
+  :Archive announcement;
+else (Unpublish)
+  :Unpublish announcement;
+endif
+
+:Refresh announcement list;
+stop
+
+@enduml

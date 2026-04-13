@@ -98,6 +98,7 @@ const env = {
   awsCallbackUrl: optionalEnv(process.env.AWS_CALLBACK_URL),
   awsFileEventCallbackUrl:
     optionalEnv(process.env.AWS_FILE_EVENT_CALLBACK_URL) ?? optionalEnv(process.env.AWS_CALLBACK_URL),
+  awsCloudTrailTemplateUrl: optionalEnv(process.env.AWS_CLOUDTRAIL_TEMPLATE_URL),
   awsValidationAccessKeyId:
     optionalEnv(process.env.AWS_VALIDATION_ACCESS_KEY_ID) ?? optionalEnv(process.env.AWS_ACCESS_KEY_ID),
   awsValidationSecretAccessKey:
@@ -121,6 +122,38 @@ const env = {
     optionalPositiveInteger(process.env.BILLING_INGESTION_STATUS_MIN_INTERVAL_MS) ?? 2000,
   billingS3UploadSessionTtlMinutes:
     optionalPositiveInteger(process.env.BILLING_S3_UPLOAD_SESSION_TTL_MINUTES) ?? 45,
+  optimizationIdleSchedulerEnabled:
+    optionalBoolean(process.env.OPTIMIZATION_IDLE_SCHEDULER_ENABLED) ?? true,
+  optimizationIdleSyncIntervalMs:
+    optionalPositiveInteger(process.env.OPTIMIZATION_IDLE_SYNC_INTERVAL_MS) ?? 180 * 60 * 1000,
+  optimizationIdleSchedulerStartupDelayMs:
+    optionalPositiveInteger(process.env.OPTIMIZATION_IDLE_SCHEDULER_STARTUP_DELAY_MS) ?? 30_000,
+  optimizationRightsizingSchedulerEnabled:
+    optionalBoolean(process.env.OPTIMIZATION_RIGHTSIZING_SCHEDULER_ENABLED) ?? true,
+  optimizationRightsizingSyncIntervalMs:
+    optionalPositiveInteger(process.env.OPTIMIZATION_RIGHTSIZING_SYNC_INTERVAL_MS) ?? 180 * 60 * 1000,
+  optimizationRightsizingSchedulerStartupDelayMs:
+    optionalPositiveInteger(process.env.OPTIMIZATION_RIGHTSIZING_SCHEDULER_STARTUP_DELAY_MS) ?? 30_000,
+  optimizationRightsizingActionProcessorEnabled:
+    optionalBoolean(process.env.OPTIMIZATION_RIGHTSIZING_ACTION_PROCESSOR_ENABLED) ?? true,
+  optimizationRightsizingActionProcessorIntervalMs:
+    optionalPositiveInteger(process.env.OPTIMIZATION_RIGHTSIZING_ACTION_PROCESSOR_INTERVAL_MS) ?? 10_000,
+  optimizationRightsizingActionProcessorStartupDelayMs:
+    optionalPositiveInteger(process.env.OPTIMIZATION_RIGHTSIZING_ACTION_PROCESSOR_STARTUP_DELAY_MS) ?? 10_000,
+  optimizationIdleActionProcessorEnabled:
+    optionalBoolean(process.env.OPTIMIZATION_IDLE_ACTION_PROCESSOR_ENABLED) ?? true,
+  optimizationIdleActionProcessorIntervalMs:
+    optionalPositiveInteger(process.env.OPTIMIZATION_IDLE_ACTION_PROCESSOR_INTERVAL_MS) ?? 10_000,
+  optimizationIdleActionProcessorStartupDelayMs:
+    optionalPositiveInteger(process.env.OPTIMIZATION_IDLE_ACTION_PROCESSOR_STARTUP_DELAY_MS) ?? 10_000,
+  optimizationCommitmentSchedulerEnabled:
+    optionalBoolean(process.env.OPTIMIZATION_COMMITMENT_SCHEDULER_ENABLED) ?? true,
+  optimizationCommitmentSyncIntervalMs:
+    optionalPositiveInteger(process.env.OPTIMIZATION_COMMITMENT_SYNC_INTERVAL_MS) ?? 360 * 60 * 1000,
+  optimizationCommitmentSchedulerStartupDelayMs:
+    optionalPositiveInteger(process.env.OPTIMIZATION_COMMITMENT_SCHEDULER_STARTUP_DELAY_MS) ?? 45_000,
+  optimizationCommitmentSyncFreshnessMinutes:
+    optionalPositiveInteger(process.env.OPTIMIZATION_COMMITMENT_SYNC_FRESHNESS_MINUTES) ?? 360,
 };
 
 export default env;

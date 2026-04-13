@@ -2,6 +2,8 @@ export type DashboardScopeInput = {
   tenantId?: string;
   rawBillingFileId?: number;
   rawBillingFileIds?: number[];
+  billingSourceId?: number;
+  billingSourceIds?: number[];
   from?: string;
   to?: string;
   providerId?: number;
@@ -27,6 +29,7 @@ export type DashboardResolvedScope =
       from: string;
       to: string;
       providerId: number | null;
+      billingSourceIds: number[] | null;
       billingAccountKey: number | null;
       subAccountKey: number | null;
       serviceKey: number | null;
@@ -44,6 +47,273 @@ export type DashboardSectionData = {
   title: string;
   message: string;
   summary: DashboardSummaryItem[];
+};
+
+export type OptimizationRightsizingOverview = {
+  category: "RIGHTSIZING";
+  totalPotentialSavings: number;
+  openRecommendationCount: number;
+  quickWinsCount: number;
+  highPriorityCount: number;
+  riskMix: {
+    low: number;
+    medium: number;
+    high: number;
+  };
+};
+
+export type OptimizationIdleOverview = {
+  category: "IDLE";
+  totalPotentialSavings: number;
+  openRecommendationCount: number;
+  highImpactCount: number;
+  lowRiskCount: number;
+};
+
+export type OptimizationCommitmentOverview = {
+  category: "COMMITMENT";
+  totalPotentialSavings: number;
+  openRecommendationCount: number;
+  recommendedHourlyCommitmentTotal: number;
+  oneYearCount: number;
+  threeYearCount: number;
+};
+
+export type OptimizationRecommendationItem = {
+  id: string;
+  recommendation: string;
+  resource: string;
+  currentType: string | null;
+  recommendedType: string | null;
+  currentCost: number;
+  estimatedSavings: number;
+  risk: string | null;
+  effort: string | null;
+  status: string;
+  awsAccountId: string;
+  awsRegionCode: string;
+  serviceName: string | null;
+};
+
+export type RightsizingActionExecuteResponse = {
+  actionId: string;
+  recommendationId: string;
+  status: "QUEUED" | "RUNNING" | "SUCCEEDED" | "FAILED";
+};
+
+export type RightsizingActionStatusResponse = {
+  actionId: string;
+  recommendationId: string;
+  status: "QUEUED" | "RUNNING" | "SUCCEEDED" | "FAILED";
+  requestedByUserId: string | null;
+  requestedAt: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+  instanceId: string | null;
+  fromInstanceType: string | null;
+  toInstanceType: string | null;
+  cloudConnectionId: string | null;
+  awsAccountId: string | null;
+  awsRegionCode: string | null;
+  dryRun: boolean;
+  errorCode: string | null;
+  errorMessage: string | null;
+  details: unknown;
+  awsRequestIds: unknown;
+};
+
+export type IdleActionExecuteResponse = {
+  actionId: string;
+  recommendationId: string;
+  status: "QUEUED" | "RUNNING" | "SUCCEEDED" | "FAILED";
+};
+
+export type IdleActionStatusResponse = {
+  actionId: string;
+  recommendationId: string;
+  status: "QUEUED" | "RUNNING" | "SUCCEEDED" | "FAILED";
+  requestedByUserId: string | null;
+  requestedAt: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+  dryRun: boolean;
+  errorCode: string | null;
+  errorMessage: string | null;
+  details: unknown;
+  awsRequestIds: unknown;
+  resourceId: string | null;
+  resourceType: string | null;
+  recommendationType: string | null;
+  cloudConnectionId: string | null;
+  awsAccountId: string | null;
+  awsRegionCode: string | null;
+};
+
+export type RecommendationIgnoreResponse = {
+  recommendationId: string;
+  status: "IGNORED";
+};
+
+export type OptimizationIdleRecommendationItem = {
+  id: string;
+  recommendationType: string;
+  recommendation: string;
+  resourceId: string;
+  resourceName: string | null;
+  resourceType: string | null;
+  idleReason: string | null;
+  idleObservationValue: string | null;
+  currentMonthlyCost: number;
+  estimatedMonthlySavings: number;
+  status: string;
+  awsAccountId: string;
+  awsRegionCode: string;
+  serviceName: string | null;
+  lastObservedAt: string | null;
+};
+
+export type OptimizationRecommendationsResponse = {
+  items: OptimizationRecommendationItem[];
+  pagination: {
+    page: number;
+    pageSize: number;
+    total: number;
+    totalPages: number;
+  };
+};
+
+export type OptimizationIdleRecommendationsResponse = {
+  items: OptimizationIdleRecommendationItem[];
+  pagination: {
+    page: number;
+    pageSize: number;
+    total: number;
+    totalPages: number;
+  };
+};
+
+export type OptimizationRecommendationDetail = {
+  id: string;
+  recommendationType: string;
+  category: string;
+  resourceId: string;
+  resourceName: string | null;
+  resourceArn: string | null;
+  awsAccountId: string;
+  awsRegionCode: string;
+  serviceName: string | null;
+  currentResourceType: string | null;
+  recommendedResourceType: string | null;
+  currentMonthlyCost: number;
+  estimatedMonthlySavings: number;
+  projectedMonthlyCost: number;
+  performanceRiskLevel: string | null;
+  performanceRiskScore: number | null;
+  effortLevel: string | null;
+  riskLevel: string | null;
+  status: string;
+  recommendationTitle: string | null;
+  recommendationText: string | null;
+  sourceSystem: string;
+  observationStart: string | null;
+  observationEnd: string | null;
+  rawPayloadJson: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type OptimizationIdleRecommendationDetail = {
+  id: string;
+  recommendationType: string;
+  category: string;
+  resourceId: string;
+  resourceName: string | null;
+  resourceArn: string | null;
+  resourceType: string | null;
+  idleReason: string | null;
+  idleObservationValue: string | null;
+  awsAccountId: string;
+  awsRegionCode: string;
+  serviceName: string | null;
+  currentResourceType: string | null;
+  currentMonthlyCost: number;
+  estimatedMonthlySavings: number;
+  projectedMonthlyCost: number;
+  effortLevel: string | null;
+  riskLevel: string | null;
+  status: string;
+  recommendationTitle: string | null;
+  recommendationText: string | null;
+  sourceSystem: string;
+  observationStart: string | null;
+  observationEnd: string | null;
+  rawPayloadJson: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type OptimizationCommitmentRecommendationItem = {
+  id: string;
+  recommendationType: string;
+  recommendation: string;
+  resourceName: string | null;
+  currentMonthlyCost: number;
+  estimatedMonthlySavings: number;
+  projectedMonthlyCost: number;
+  recommendedHourlyCommitment: number;
+  recommendedPaymentOption: string | null;
+  recommendedTerm: string | null;
+  commitmentPlanType: string | null;
+  status: string;
+  awsAccountId: string;
+  awsRegionCode: string | null;
+};
+
+export type OptimizationCommitmentRecommendationsResponse = {
+  items: OptimizationCommitmentRecommendationItem[];
+  pagination: {
+    page: number;
+    pageSize: number;
+    total: number;
+    totalPages: number;
+  };
+};
+
+export type OptimizationCommitmentRecommendationDetail = {
+  id: string;
+  recommendationType: string;
+  category: string;
+  resourceId: string | null;
+  resourceName: string | null;
+  awsAccountId: string;
+  awsRegionCode: string | null;
+  currentMonthlyCost: number;
+  estimatedMonthlySavings: number;
+  projectedMonthlyCost: number;
+  recommendedHourlyCommitment: number;
+  recommendedPaymentOption: string | null;
+  recommendedTerm: string | null;
+  commitmentPlanType: string | null;
+  status: string;
+  recommendationTitle: string | null;
+  recommendationText: string | null;
+  sourceSystem: string;
+  observationStart: string | null;
+  observationEnd: string | null;
+  rawPayloadJson: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type OptimizationRecommendationFiltersQuery = {
+  status?: string[];
+  effort?: string[];
+  risk?: string[];
+  account?: string[];
+  region?: string[];
+  serviceKey?: number[];
+  page?: number;
+  pageSize?: number;
 };
 
 export type BudgetScopeType = "overall" | "service" | "region" | "account";
@@ -196,6 +466,55 @@ export type OverviewRecommendationsResponse = {
     estimatedSavingsTotal: number;
   };
   pagination: PaginationMeta;
+};
+
+export type AnomaliesFiltersQuery = {
+  billing_source_id?: number;
+  status?: "open" | "resolved" | "ignored";
+  severity?: "low" | "medium" | "high";
+  anomaly_type?: string;
+  date_from?: string;
+  date_to?: string;
+  limit?: number;
+  offset?: number;
+};
+
+export type AnomalyRecord = {
+  id: string;
+  tenant_id: string | null;
+  billing_source_id: number | null;
+  billing_source_name: string | null;
+  cloud_connection_id: string | null;
+  usage_date: string;
+  detected_at: string;
+  anomaly_type: string | null;
+  anomaly_scope: string | null;
+  baseline_type: string | null;
+  source_granularity: string | null;
+  source_table: string | null;
+  expected_cost: number | string | null;
+  actual_cost: number | string | null;
+  delta_cost: number | string | null;
+  delta_percent: number | string | null;
+  severity: "low" | "medium" | "high";
+  status: "open" | "resolved" | "ignored";
+  root_cause_hint: string | null;
+  explanation_json: Record<string, unknown> | null;
+  metadata_json: Record<string, unknown> | null;
+  first_seen_at: string | null;
+  last_seen_at: string | null;
+  resolved_at: string | null;
+  ignored_reason: string | null;
+  created_at: string;
+};
+
+export type AnomaliesListResponse = {
+  items: AnomalyRecord[];
+  pagination: {
+    limit: number;
+    offset: number;
+    total: number;
+  };
 };
 
 export type OverviewFiltersResponse = {

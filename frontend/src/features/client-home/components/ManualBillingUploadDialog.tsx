@@ -9,7 +9,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { ApiError, apiGet, apiPostForm } from "@/lib/api"
-import { navigateTo } from "@/lib/navigation"
 import {
   createS3UploadSession,
   importS3UploadSessionFiles,
@@ -50,6 +49,11 @@ type ApiErrorPayload = {
   }
 }
 
+type FailedKeyDetail = {
+  key?: string
+  reason?: string
+}
+
 function normalizePrefix(value: string) {
   return value.trim().replace(/\\/g, "/").replace(/^\/+/, "")
 }
@@ -84,6 +88,32 @@ function isDuplicateImportError(error: ApiError) {
   const message = error.message.toLowerCase()
   if (code && code.toLowerCase().includes("duplicate")) return true
   return message.includes("duplicate") || message.includes("already been imported")
+}
+
+function getS3ImportFailureMessage(error: ApiError): string | null {
+  const payload = error.payload && typeof error.payload === "object"
+    ? (error.payload as ApiErrorPayload)
+    : null
+  const details = payload?.error?.details
+  if (!details || typeof details !== "object") return null
+
+  const failedKeys = (details as { failedKeys?: FailedKeyDetail[] }).failedKeys
+  if (!Array.isArray(failedKeys) || failedKeys.length === 0) return null
+
+  const topFailuresList = failedKeys.slice(0, 3)
+    .map((entry) => {
+      const key = typeof entry?.key === "string" ? entry.key : "unknown-key"
+      const reason = typeof entry?.reason === "string" && entry.reason.trim().length > 0
+        ? entry.reason
+        : "unknown reason"
+      return `${key}: ${reason}`
+    })
+  const topFailures = topFailuresList.join(" | ")
+
+  const remainingCount = failedKeys.length - topFailuresList.length
+  return remainingCount > 0
+    ? `Import failed. ${topFailures} | +${remainingCount} more`
+    : `Import failed. ${topFailures}`
 }
 
 export function ManualBillingUploadDialog({
@@ -128,6 +158,18 @@ export function ManualBillingUploadDialog({
     const itemMap = new Map(s3Items.map((item) => [item.key, item.name]))
     return s3SelectedKeys.map((key) => itemMap.get(key) || key)
   }, [s3Items, s3SelectedKeys])
+
+  function openUploadsDashboardWithIngestion(params: { ingestionRunId: string; rawBillingFileIds: string[] }) {
+    const search = new URLSearchParams()
+    search.set("ingestionRunId", params.ingestionRunId)
+    if (params.rawBillingFileIds.length > 0) {
+      search.set("rawBillingFileIds", params.rawBillingFileIds.join(","))
+    }
+
+    const nextUrl = `/uploads-dashboard/overview?${search.toString()}`
+    window.history.pushState({}, "", nextUrl)
+    window.dispatchEvent(new PopStateEvent("popstate"))
+  }
 
   useEffect(() => {
     if (!open) return
@@ -307,7 +349,12 @@ export function ManualBillingUploadDialog({
         }
 
         closeDialog()
-        navigateTo("/client/billing/uploads")
+        if (firstRunId) {
+          openUploadsDashboardWithIngestion({
+            ingestionRunId: firstRunId,
+            rawBillingFileIds: result.rawFileIds,
+          })
+        }
       } catch (requestError) {
         if (requestError instanceof ApiError && isSessionExpiredError(requestError)) {
           setS3Step("session_expired")
@@ -321,6 +368,14 @@ export function ManualBillingUploadDialog({
             "One or more selected files have already been imported. Duplicate file imports are not allowed."
           )
           return
+        }
+
+        if (requestError instanceof ApiError) {
+          const detailedMessage = getS3ImportFailureMessage(requestError)
+          if (detailedMessage) {
+            setS3ImportError(detailedMessage)
+            return
+          }
         }
 
         setS3ImportError(requestError instanceof ApiError ? requestError.message : "Failed to import selected files.")
@@ -344,6 +399,11 @@ export function ManualBillingUploadDialog({
         const result = await apiPostForm<ManualUploadResponse>("/billing/ingestion/upload", formData)
         setSuccessMessage(`Upload queued successfully. Ingestion run ID: ${result.ingestionRunId}`)
         onIngestionQueued?.({ ingestionRunId: result.ingestionRunId })
+        closeDialog()
+        openUploadsDashboardWithIngestion({
+          ingestionRunId: result.ingestionRunId,
+          rawBillingFileIds: [result.rawFileId],
+        })
         setFile(null)
       } catch (requestError) {
         if (requestError instanceof ApiError) {
@@ -369,22 +429,14 @@ export function ManualBillingUploadDialog({
 
         <div className="space-y-4">
           {!hideSourceTabs ? (
-            <div className="grid grid-cols-2 gap-2 rounded-md border border-[color:var(--border-light)] p-1">
+            <div className="rounded-md border border-[color:var(--border-light)] p-1">
               <Button
                 type="button"
-                variant={source === "local" ? "default" : "ghost"}
-                className="h-9 rounded-md"
+                variant="default"
+                className="h-9 w-full rounded-md"
                 onClick={() => setSource("local")}
               >
                 Upload from Local
-              </Button>
-              <Button
-                type="button"
-                variant={source === "s3" ? "default" : "ghost"}
-                className="h-9 rounded-md"
-                onClick={() => setSource("s3")}
-              >
-                Upload from S3
               </Button>
             </div>
           ) : null}

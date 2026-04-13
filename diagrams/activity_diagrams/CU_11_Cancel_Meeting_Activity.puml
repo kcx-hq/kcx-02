@@ -1,0 +1,13 @@
+@startuml
+title CU_11 Cancel Meeting - Activity
+start
+:ClientUser opens scheduled meeting;
+if (Cancellation allowed?) then (Yes)
+  :Provide cancellation reason;
+  :Cancel meeting;
+  stop
+else (No)
+  :Show cannot cancel message;
+  stop
+endif
+@enduml

@@ -1,0 +1,17 @@
+@startuml
+title AD_02 Approve Meeting Request - Activity
+
+start
+:Admin reviews meeting request;
+if (Request eligible for approval?) then (Yes)
+  :Provide meeting URL;
+  :Approve meeting request;
+  :Notify client of approval;
+  stop
+else (No)
+  :Keep request pending;
+  :Record review note;
+  stop
+endif
+
+@enduml

@@ -1,0 +1,16 @@
+@startuml
+title CU_10 Reschedule Meeting - Activity
+start
+:ClientUser opens existing meeting;
+:Request reschedule;
+:Cancel current meeting slot;
+:Select new slot;
+if (New slot available?) then (Yes)
+  :Submit new meeting request;
+  :Show reschedule success;
+  stop
+else (No)
+  :Show reschedule failure;
+  stop
+endif
+@enduml

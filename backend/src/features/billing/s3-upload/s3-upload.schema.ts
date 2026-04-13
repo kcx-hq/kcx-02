@@ -38,6 +38,14 @@ export const importS3UploadFilesSchema = z.object({
     .max(200, "Too many object keys selected"),
 });
 
+export const createS3UploadConnectionSchema = createS3UploadSessionSchema;
+
+export const createS3UploadConnectionSessionSchema = z.object({
+  prefix: z.string().optional().transform(normalizeOptionalPrefix),
+});
+
 export type CreateS3UploadSessionInput = z.infer<typeof createS3UploadSessionSchema>;
 export type ListS3UploadSessionInput = z.infer<typeof listS3UploadSessionSchema>;
 export type ImportS3UploadFilesInput = z.infer<typeof importS3UploadFilesSchema>;
+export type CreateS3UploadConnectionInput = z.infer<typeof createS3UploadConnectionSchema>;
+export type CreateS3UploadConnectionSessionInput = z.infer<typeof createS3UploadConnectionSessionSchema>;

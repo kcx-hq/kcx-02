@@ -1,0 +1,12 @@
+%% Use Case: Reschedule Meeting
+%% Limitation: no explicit reschedule method in class diagrams; modeled as cancel + select slot + new request.
+sequenceDiagram
+    actor ClientUser
+    participant SupportMeeting
+    participant SlotReservation
+
+    ClientUser->>SupportMeeting: cancelByClient(reason: String)
+    ClientUser->>SlotReservation: release()
+    ClientUser->>SlotReservation: reserve(calcomReservationId: String)
+    ClientUser->>SupportMeeting: request(requestedBy: UUID, slotStart: DateTime, slotEnd: DateTime, agenda: String, meetingType: String, timeZone: String)
+    SupportMeeting-->>ClientUser: meeting rescheduled via new request

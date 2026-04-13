@@ -1,0 +1,8 @@
+%% Use Case: View Dashboard
+%% Limitation: class diagrams do not define dashboard read methods; only session validity check is representable.
+sequenceDiagram
+    actor ClientUser
+    participant ClientSession
+
+    ClientUser->>ClientSession: isActive(now: DateTime): Boolean
+    ClientSession-->>ClientUser: session active/inactive
