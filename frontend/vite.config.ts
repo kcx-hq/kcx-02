@@ -13,4 +13,8 @@ export default defineConfig({
       "@": resolve(__dirname, "src"),
     },
   },
+  preview: {
+    host: true,
+    allowedHosts: "all",
+  },
 })
