@@ -16,39 +16,39 @@ interface FAQSectionData {
 
 const faqSections: FAQSectionData[] = [
   {
-    id: "general",
-    label: "General",
+    id: "onboarding",
+    label: "Onboarding",
     items: [
       {
-        question: "Do we need perfect tagging before we can start using KCX?",
+        question: "What onboarding paths does KCX support?",
         answer:
-          "No. KCX is designed for real enterprise environments with imperfect tags and ownership metadata, then improves allocation confidence as governance matures.",
+          "KCX supports three onboarding paths: file upload, S3 import, and guided AWS connection. Teams can start with the path that fits their current billing environment and expand over time.",
       },
       {
-        question: "How quickly can finance and platform teams see value?",
+        question: "How quickly can teams become operational?",
         answer:
-          "Teams usually see first trusted visibility within days, then expand into optimization, governance scoring, and action workflows in phased milestones.",
+          "Most teams can move from onboarding to first validated views quickly, then phase into budgets, anomaly workflows, and optimization operations as governance is aligned.",
       },
     ],
   },
   {
-    id: "data-foundation",
-    label: "Data Foundation",
+    id: "data-readiness",
+    label: "Data Readiness",
     items: [
       {
-        question: "How does KCX normalize multi-cloud billing schemas?",
+        question: "Can KCX work with messy or incomplete billing data?",
         answer:
-          "KCX maps provider-specific line items into a unified cost model so finance and engineering can compare spend, usage, and ownership with one shared vocabulary.",
+          "Yes. KCX is designed for real-world billing quality. It validates ingestion quality, normalizes what is available, and helps teams improve confidence over time rather than requiring perfect data on day one.",
       },
       {
-        question: "Can KCX allocate shared platform and Kubernetes costs?",
+        question: "What does data readiness mean inside KCX?",
         answer:
-          "Yes. Shared cost pools can be distributed by policy rules, drivers, and ownership context to provide clearer unit economics and accountability.",
+          "Data readiness means billing inputs are validated and normalized into warehouse-backed structures that support dashboards, budgets, anomalies, and optimization workflows.",
       },
       {
-        question: "Can we trace insights back to original billing records?",
+        question: "How does KCX support analytics confidence?",
         answer:
-          "Yes. KCX preserves traceability from decision views to source-level records, so teams can validate recommendations before execution.",
+          "KCX preserves a structured path from ingestion through normalized analytics, so finance and platform teams can investigate spend changes with clearer traceability and fewer ad hoc data disputes.",
       },
     ],
   },
@@ -57,93 +57,56 @@ const faqSections: FAQSectionData[] = [
     label: "Governance",
     items: [
       {
-        question: "Can we enforce approvals before optimization actions are executed?",
+        question: "How does KCX handle governance for optimization and actions?",
         answer:
-          "Yes. KCX supports governance checkpoints and review workflows so high-impact decisions can be validated by finance and platform owners before rollout.",
+          "KCX is built for governed operations. Teams can review recommendations, align ownership, and execute selected actions with visibility into status and accountability.",
       },
       {
-        question: "How does KCX support policy-based cost controls?",
+        question: "Can we control who can view data and execute actions?",
         answer:
-          "Teams can define guardrails for anomaly severity, budget thresholds, and ownership responsibilities, with action queues prioritized by business impact.",
+          "Yes. KCX supports role-aligned access patterns so organizations can separate visibility, investigation, and execution permissions across finance, FinOps, and platform stakeholders.",
       },
       {
-        question: "Can business owners sign off on allocation and reporting logic?",
+        question: "Does KCX provide a roadmap-safe execution model?",
         answer:
-          "Yes. KCX enables collaborative review loops where finance, FinOps, and business stakeholders align on allocation policy and trust readiness.",
-      },
-    ],
-  },
-  {
-    id: "security",
-    label: "Security",
-    items: [
-      {
-        question: "Does KCX support role-based access by team, account, and environment?",
-        answer:
-          "Yes. Access can be scoped to organizational structure and operational responsibilities so stakeholders only see the views and actions relevant to their role.",
-      },
-      {
-        question: "How is data protected in transit and at rest?",
-        answer:
-          "KCX follows enterprise security controls including encrypted transport and encrypted storage patterns aligned with modern cloud security practices.",
-      },
-      {
-        question: "Is there an audit trail for workflow and configuration changes?",
-        answer:
-          "Yes. KCX tracks important workflow activity and decision lifecycle changes so teams can support compliance, postmortems, and internal governance.",
+          "Yes. Execution today is intentionally scoped to selected AWS actions. KCX emphasizes controlled, high-confidence workflows over broad automation claims that outpace governance readiness.",
       },
     ],
   },
   {
-    id: "integrations",
-    label: "Integrations",
+    id: "analytics-optimization",
+    label: "Analytics & Optimization",
     items: [
       {
-        question: "Which ecosystem integrations are commonly used with KCX?",
+        question: "Which signals can teams operationalize in KCX?",
         answer:
-          "KCX commonly integrates with cloud billing exports, ownership metadata systems, data platforms, and team workflows used by finance and engineering.",
+          "Teams can operationalize warehouse-backed dashboards, budgets, anomaly detection, and optimization recommendations including rightsizing, idle, and commitment opportunities.",
       },
       {
-        question: "Can KCX push findings into our existing ticketing or chat workflows?",
+        question: "What is the scope of AWS execution inside KCX?",
         answer:
-          "Yes. Actionable signals can be operationalized through existing collaboration and execution workflows so teams can resolve cost issues faster.",
+          "KCX supports selected AWS execution paths tied to vetted recommendations. This keeps action workflows practical and controlled while retaining clear governance context.",
       },
       {
-        question: "Can we export curated data for BI and executive reporting?",
+        question: "Can teams investigate anomalies without switching tools?",
         answer:
-          "Yes. KCX supports export-friendly structures for analytics and executive reporting while preserving consistent allocation and governance logic.",
+          "Yes. KCX brings ingestion context, validated analytics, anomalies, and recommendation workflows into one workspace so teams can move from detection to action more efficiently.",
       },
     ],
   },
   {
-    id: "pricing",
-    label: "Pricing",
+    id: "trust-adoption",
+    label: "Trust & Adoption",
     items: [
       {
-        question: "How is enterprise pricing structured?",
+        question: "Is KCX suitable for enterprise access-control requirements?",
         answer:
-          "Pricing is typically scoped to deployment footprint, operating complexity, and support model so it aligns with enterprise adoption stages.",
+          "KCX is designed for enterprise collaboration models where finance, engineering, and cloud operations need scoped access, validated workflows, and shared decision context.",
       },
       {
-        question: "Do you provide pilot options before annual commitment?",
+        question: "How should teams think about roadmap and adoption expectations?",
         answer:
-          "Yes. Many teams start with a guided pilot that defines success criteria, validates trust, and establishes a production rollout plan.",
-      },
-    ],
-  },
-  {
-    id: "support",
-    label: "Support",
-    items: [
-      {
-        question: "What onboarding model is included for enterprise teams?",
-        answer:
-          "Onboarding usually includes implementation guidance, stakeholder enablement, and rollout playbooks tailored for finance and platform collaboration.",
-      },
-      {
-        question: "Do we get strategic support after implementation?",
-        answer:
-          "Yes. KCX includes ongoing success partnership focused on adoption maturity, operating cadence, and measurable cost decision outcomes.",
+          "KCX focuses on operational depth over over-promising breadth. Teams typically start with validated onboarding and trusted intelligence, then expand optimization and selected AWS action workflows as readiness increases.",
       },
     ],
   },

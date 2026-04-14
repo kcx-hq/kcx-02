@@ -13,9 +13,9 @@ const ecosystems = [
 ]
 
 const trustSignals = [
-  { label: "Built for", value: "Finance, FinOps, Platform" },
-  { label: "Decision readiness", value: "Governance-aware context" },
-  { label: "Workflow focus", value: "From drift to prioritized action" },
+  { label: "Shared visibility", value: "Finance, FinOps, and platform leadership" },
+  { label: "Validated onboarding", value: "Upload, S3, or guided AWS connection" },
+  { label: "One workspace", value: "Budgets, anomalies, and optimization workflows" },
 ]
 
 export function IntegrationsMarquee() {
@@ -42,12 +42,26 @@ export function IntegrationsMarquee() {
         <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
           <Reveal className="max-w-3xl" distance={18}>
             <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[rgba(176,232,216,0.8)]">
-              Trusted Cloud Ecosystem Coverage
+              One Operating Layer
             </p>
             <p className="mt-2.5 text-sm leading-[1.7] text-[rgba(210,229,224,0.78)] sm:text-[15px]">
-              KCX is designed for teams that need dependable cloud cost intelligence across providers,
-              ownership models, and governance boundaries.
+              KCX gives cloud teams a shared workspace for onboarding billing data, validating cost
+              intelligence, and moving from visibility to prioritized action.
             </p>
+            <p className="mt-2.5 text-sm leading-[1.7] text-[rgba(210,229,224,0.74)] sm:text-[15px]">
+              Built for organizations that need more than static cloud cost reporting. KCX helps
+              teams align on trusted spend data, investigate changes faster, and operate FinOps with
+              clearer governance and next-step execution.
+            </p>
+            <p className="mt-2.5 text-[12px] leading-[1.65] text-[rgba(176,232,216,0.8)] sm:text-[13px]">
+              Operational automation today is deepest for AWS.
+            </p>
+            <a
+              href={`#${landingSectionIds.works}`}
+              className="mt-4 inline-flex items-center rounded-lg border border-[rgba(132,195,175,0.24)] bg-[rgba(11,30,40,0.58)] px-4 py-2 text-[13px] font-semibold text-[rgba(224,241,234,0.9)] transition-colors duration-200 hover:border-[rgba(132,195,175,0.38)] hover:text-[rgba(238,248,244,0.96)]"
+            >
+              See How KCX Works
+            </a>
           </Reveal>
 
           <Reveal delay={0.1} className="grid gap-2.5 sm:grid-cols-2 sm:gap-3 lg:min-w-[34rem] lg:grid-cols-3">

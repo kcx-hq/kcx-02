@@ -4,9 +4,10 @@ import { handleAppLinkClick } from "@/lib/navigation"
 import { landingSectionIds } from "@/features/landing/utils/landingSectionIds"
 
 const ctaRows = [
-  "Live walkthrough of your cost intelligence workflow",
-  "Validation model for governance and trust readiness",
-  "Action-prioritization view for finance and platform teams",
+  "A walkthrough of the right onboarding path for your current billing environment",
+  "A review of how KCX validates and scopes cloud cost data",
+  "A view of budgets, anomalies, and optimization workflows in practice",
+  "A discussion of where selected AWS actions can be executed safely",
 ]
 
 export function EnterpriseCTA() {
@@ -28,11 +29,16 @@ export function EnterpriseCTA() {
           <Reveal className="relative">
             <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#2f7f67]">Ready to Start</p>
             <h2 className="kcx-heading mt-4 max-w-4xl text-[1.85rem] font-semibold tracking-tight text-[#10231d] sm:text-4xl md:text-[2.65rem] md:leading-[1.14] lg:text-[3rem]">
-              Build a trusted cost intelligence operating model with KCX
+              Build a trusted FinOps operating model with KCX
             </h2>
+            <p className="mt-5 max-w-3xl text-[15px] leading-[1.7] text-[#3f5d55] sm:text-base sm:leading-[1.75]">
+              Move from fragmented billing inputs to validated cost intelligence, prioritized
+              optimization, and selected AWS action workflows from one enterprise workspace.
+            </p>
             <p className="mt-5 max-w-3xl text-[15px] leading-[1.7] text-[#4f6660] sm:mt-6 sm:text-base sm:leading-[1.75]">
-              Move from fragmented reports to high-confidence cloud cost decisions with workflows your finance
-              and platform teams can align on quickly.
+              The first conversation should help your team understand which onboarding path fits
+              your environment, how KCX structures cost intelligence, and where your highest-value
+              optimization workflows can become more operational.
             </p>
 
             <div className="mt-8 hidden gap-3 sm:flex lg:flex-row lg:items-center">
@@ -81,7 +87,7 @@ export function EnterpriseCTA() {
             onClick={(event) => handleAppLinkClick(event, "/schedule-demo")}
             className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-brand-primary px-5 py-3.5 text-[0.9rem] font-semibold text-white shadow-[0_16px_32px_-18px_rgba(31,128,104,0.65),inset_0_1px_0_rgba(255,255,255,0.12)] transition-all duration-300 hover:-translate-y-0.5 hover:bg-brand-primary-hover"
           >
-            Book a Demo
+            Schedule a Demo
             <CalendarCheck2 className="h-4 w-4" />
           </a>
           <a

@@ -9,6 +9,7 @@ import {
   useTransform,
   MotionValue,
 } from "framer-motion"
+import { landingSectionIds } from "@/features/landing/utils/landingSectionIds"
 
 // --- Configuration & Design System ---
 
@@ -26,41 +27,61 @@ type StepConfig = {
 const KCX_STEPS: StepConfig[] = [
   {
     id: "connect",
-    title: "Connect your cloud",
-    subtitle: "Securely aggregate AWS, Azure, and GCP into a single intelligent control layer without agents.",
-    bullets: ["Multi-cloud API ingestion", "Read-only IAM role security", "Instant asset discovery"],
+    title: "Onboard billing data",
+    subtitle:
+      "Start with the path that fits your environment: upload billing files, import from S3, or use a guided AWS connection.",
+    bullets: [
+      "Upload files, import from S3, or connect AWS",
+      "Validated onboarding flows for production teams",
+      "Clear lineage from ingestion to analytics",
+    ],
     imageSide: "right",
-    insightLabel: "Data Ingestion",
+    insightLabel: "01 - Onboarding",
     cssThemeClass: "kcx-premium-card--teal",
     tone: { border: "rgba(62,138,118,0.42)", glow: "rgba(62,138,118,0.18)", activeIndicator: "#3e8a76" },
   },
   {
     id: "visibility",
-    title: "Gain full visibility",
-    subtitle: "Map raw billing metadata to real business units, engineering teams, and product features.",
-    bullets: ["Automated tag compliance", "Shared resource splitting", "Unit economics dashboard"],
+    title: "Validate and normalize",
+    subtitle:
+      "KCX converts fragmented raw billing inputs into validated, warehouse-backed cost intelligence teams can trust.",
+    bullets: [
+      "Validate billing inputs before operational use",
+      "Normalize provider records into a shared cost model",
+      "Aggregate spend into governance-ready analytics",
+    ],
     imageSide: "left",
-    insightLabel: "Cost Allocation",
+    insightLabel: "02 - Validation",
     cssThemeClass: "kcx-premium-card--blue",
     tone: { border: "rgba(56,189,248,0.38)", glow: "rgba(56,189,248,0.16)", activeIndicator: "#38bdf8" },
   },
   {
     id: "anomaly",
-    title: "Detect anomalies",
-    subtitle: "Identify cost spikes in real-time before they impact your end-of-month burn rate.",
-    bullets: ["ML baseline forecasting", "Slack & Teams alerting", "Drill-down root cause analysis"],
+    title: "Surface the signals that matter",
+    subtitle:
+      "Move from static reporting to active cost intelligence with dashboards, budgets, anomalies, and optimization recommendations.",
+    bullets: [
+      "Warehouse-backed dashboards for spend investigation",
+      "Budgets and anomaly detection with clearer prioritization",
+      "Rightsizing, idle, and commitment recommendations",
+    ],
     imageSide: "right",
-    insightLabel: "Risk Management",
+    insightLabel: "03 - Signals",
     cssThemeClass: "kcx-premium-card--rose",
     tone: { border: "rgba(244,63,94,0.38)", glow: "rgba(244,63,94,0.16)", activeIndicator: "#f43f5e" },
   },
   {
     id: "savings",
-    title: "Unlock savings",
-    subtitle: "One-click recommendations to right-size instances, upgrade plans, and delete idle waste.",
-    bullets: ["Reserved Instance planning", "Orphaned volume cleanup", "Compute rightsizing logic"],
+    title: "Execute selected AWS actions",
+    subtitle:
+      "Turn recommendations into accountable action in the same workspace, with selected AWS execution and tracked status.",
+    bullets: [
+      "Selected AWS execution for approved recommendations",
+      "Action tracking for governance and operational follow-through",
+      "Clear scope boundaries for safe enterprise adoption",
+    ],
     imageSide: "left",
-    insightLabel: "Optimization",
+    insightLabel: "04 - Action",
     cssThemeClass: "kcx-premium-card--emerald",
     tone: { border: "rgba(16,185,129,0.38)", glow: "rgba(16,185,129,0.16)", activeIndicator: "#10b981" },
   },
@@ -491,6 +512,7 @@ export function HowKcxWorks() {
 
   return (
     <section 
+      id={landingSectionIds.works}
       ref={containerRef}
       data-header-theme="dark"
       className="relative w-full bg-[linear-gradient(180deg,#050b11_0%,#081520_50%,#081620_100%)] pb-12 sm:pb-16" 
@@ -519,7 +541,7 @@ export function HowKcxWorks() {
             viewport={{ once: true, margin: "-50px" }}
             className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[rgba(140,216,190,0.72)]"
           >
-            Platform Workflow
+            Operational Workflow
           </motion.p>
 
           <motion.h2 
@@ -529,7 +551,7 @@ export function HowKcxWorks() {
             transition={{ delay: 0.1 }}
             className="mt-4 text-[1.85rem] sm:text-[2.5rem] md:text-[3rem] lg:text-[3.5rem] font-semibold text-white tracking-tight"
           >
-            How <span className="text-transparent bg-clip-text bg-gradient-to-br from-[#3e8a76] to-emerald-400">KCX</span> Works
+            How <span className="text-transparent bg-clip-text bg-gradient-to-br from-[#3e8a76] to-emerald-400">KCX</span> Operationalizes FinOps
           </motion.h2>
 
           <motion.p 
@@ -539,7 +561,7 @@ export function HowKcxWorks() {
             transition={{ delay: 0.2 }}
             className="mt-5 max-w-2xl text-[0.9rem] sm:text-[0.95rem] lg:text-base text-slate-400 leading-[1.7] text-balance px-4"
           >
-            A seamless pipeline from raw cloud ingestion to actionable, unit-economic optimization. No agents required.
+            Follow the four-stage path from onboarding billing data to validated intelligence, prioritized optimization, and selected AWS execution.
           </motion.p>
           
         </div>

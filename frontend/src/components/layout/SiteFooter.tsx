@@ -8,27 +8,28 @@ const footerColumns = [
     title: "Platform",
     links: [
       { label: "Overview", href: "#" },
-      { label: "Cost Visibility", href: "#" },
-      { label: "Optimization", href: "#" },
+      { label: "Data Onboarding", href: "#" },
+      { label: "Cost Intelligence", href: "#" },
       { label: "Anomaly Detection", href: "#" },
+      { label: "Optimization Actions", href: "#" },
     ],
   },
   {
     title: "Solutions",
     links: [
-      { label: "Finance Teams", href: "#" },
-      { label: "Engineering Teams", href: "#" },
-      { label: "Our Story", href: "/about/our-story" },
-      { label: "Leadership", href: "/about/leadership" },
-      { label: "FinOps Maturity", href: "#" },
+      { label: "Finance Leaders", href: "#" },
+      { label: "FinOps Teams", href: "#" },
+      { label: "Platform Engineering", href: "#" },
+      { label: "Cloud Operations", href: "#" },
     ],
   },
   {
     title: "Resources",
     links: [
-      { label: "Blog", href: "/resources/blog" },
+      { label: "FinOps Maturity", href: "#" },
       { label: "Documentation", href: "/resources/documentation" },
       { label: "Implementation Guide", href: "#" },
+      { label: "Blog", href: "/resources/blog" },
     ],
   },
 ]
@@ -59,7 +60,7 @@ export function SiteFooter() {
             </div>
 
             <p className="mt-6 text-[0.88rem] leading-[1.6] text-[rgba(198,217,226,0.82)]">
-              Your FinOps operating partner for trusted cloud visibility, optimization velocity, and decision-ready governance.
+              Trusted FinOps operations from onboarding to validated cost intelligence, optimization, and selected AWS action workflows.
             </p>
 
             <p className="mt-7 text-[0.72rem] font-semibold uppercase tracking-[0.18em] text-[rgba(214,236,228,0.82)]">

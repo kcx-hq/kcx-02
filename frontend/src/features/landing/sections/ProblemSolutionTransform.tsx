@@ -16,27 +16,27 @@ import { Reveal } from "@/components/motion/Reveal"
 import { landingSectionIds } from "@/features/landing/utils/landingSectionIds"
 
 const problems = [
-  { label: "Fragmented billing data", icon: Split },
-  { label: "Limited decision-ready visibility", icon: ScanSearch },
-  { label: "Low trust in data", icon: ShieldX },
-  { label: "Slow investigation cycles", icon: AlertTriangle },
-  { label: "Weak prioritization", icon: Gauge },
+  { label: "Upload, S3, and cloud inputs live in disconnected flows", icon: Split },
+  { label: "Teams rely on static cost reports that are hard to operationalize", icon: ScanSearch },
+  { label: "Data confidence gaps slow governance decisions", icon: ShieldX },
+  { label: "Spend changes are slow to investigate and explain", icon: AlertTriangle },
+  { label: "Optimization work lacks clear prioritization", icon: Gauge },
 ]
 
 const intelligence = [
-  { label: "Structured billing ingestion", icon: Database },
-  { label: "Transparent analysis scope", icon: ListChecks },
-  { label: "Trusted cost visibility", icon: ShieldCheck },
-  { label: "Governance and trust cues", icon: ShieldCheck },
-  { label: "Prioritized action support", icon: TrendingUp },
+  { label: "Upload / Import / Connect onboarding paths", icon: Database },
+  { label: "Validate / Normalize / Aggregate processing", icon: ListChecks },
+  { label: "Warehouse-backed trusted analytics", icon: ShieldCheck },
+  { label: "Budgets and anomaly detection in one layer", icon: ShieldCheck },
+  { label: "Optimization and action workflows with accountability", icon: TrendingUp },
 ]
 
 const outcomes = [
-  { label: "Unified cost visibility", icon: CheckCircle2 },
-  { label: "Faster, confident decisions", icon: TrendingUp },
-  { label: "Trusted, validated data", icon: ShieldCheck },
-  { label: "Rapid anomaly investigation", icon: ScanSearch },
-  { label: "Clear prioritization of actions", icon: ListChecks },
+  { label: "Shared visibility for finance, FinOps, and platform teams", icon: CheckCircle2 },
+  { label: "Faster investigation with trusted spend context", icon: TrendingUp },
+  { label: "Clearer budget and anomaly operations", icon: ShieldCheck },
+  { label: "Prioritized optimization execution paths", icon: ScanSearch },
+  { label: "More accountable FinOps governance", icon: ListChecks },
 ]
 
 function PremiumCornerNetwork() {
@@ -167,14 +167,14 @@ export function ProblemSolutionTransform() {
           </p>
 
           <h2 className="kcx-heading mt-5 text-[1.75rem] font-semibold tracking-tight text-[#0F1F1A] sm:text-[2.2rem] md:text-[2.7rem] md:leading-[1.14]">
-            From fragmented billing inputs to trusted, decision-ready cloud
-            intelligence
+            From fragmented billing inputs to trusted cost intelligence
           </h2>
 
           <p className="mx-auto mt-5 max-w-3xl text-[0.9rem] leading-[1.7] text-[#516b63] sm:text-[0.95rem] sm:leading-[1.75]">
-            This is the operating transition KCX enables for cloud finance and
-            engineering teams: reduce cost chaos, establish trust, and move
-            faster with prioritized action.
+            KCX turns raw billing files, S3 imports, and guided cloud
+            connections into validated, warehouse-backed analytics that help
+            teams investigate spend, manage budgets, and prioritize action with
+            confidence.
           </p>
         </Reveal>
 
@@ -190,11 +190,11 @@ export function ProblemSolutionTransform() {
                   Current State
                 </p>
                 <h3 className="mt-2.5 text-[1.32rem] font-semibold text-[#142E25]">
-                  Cloud Cost Chaos
+                  Cloud Cost Friction
                 </h3>
                 <p className="mt-2 text-[0.9rem] leading-[1.65] text-[#3C6457]">
-                  Teams struggle to align finance and engineering because cost
-                  signals are fragmented and hard to trust.
+                  Billing inputs and analytics readiness are often fragmented,
+                  creating delay and misalignment across stakeholders.
                 </p>
 
                 <ul className="mt-4 space-y-2.5">
@@ -231,11 +231,11 @@ export function ProblemSolutionTransform() {
                   KCX Platform
                 </p>
                 <h3 className="mt-2.5 text-[1.32rem] font-semibold text-white">
-                  KCX Intelligence Layer
+                  Trusted Cost Intelligence Layer
                 </h3>
                 <p className="mt-2 text-[0.9rem] leading-[1.65] text-[rgba(211,234,226,0.8)]">
-                  KCX converts billing complexity into structured, explainable
-                  intelligence with governance-aware trust signals.
+                  KCX creates a validated operational layer where ingestion,
+                  normalization, and analytics become execution-ready.
                 </p>
 
                 <ul className="mt-4 space-y-2.5">
@@ -268,11 +268,11 @@ export function ProblemSolutionTransform() {
                   Business Impact
                 </p>
                 <h3 className="mt-2.5 text-[1.32rem] font-semibold tracking-tight text-[#1A2E28]">
-                  Decision-Ready Clarity
+                  Clearer FinOps Operations
                 </h3>
                 <p className="mt-2 text-[0.9rem] leading-[1.65] text-[#44675C]">
-                  Finance and engineering teams get trusted visibility and a
-                  clear path to high-impact execution.
+                  Teams move from visibility to accountable next steps with
+                  better governance and stronger operational cadence.
                 </p>
 
                 <ul className="mt-4 space-y-2.5">
