@@ -88,11 +88,11 @@ const KCX_STEPS: StepConfig[] = [
 ]
 
 const ANOMALY_LOG_LINES = [
-  "KCX-AGENT: Monitoring rds-prod-01 baseline drift...",
-  "KCX-AGENT: Checking read-iops anomaly confidence...",
-  "KCX-AGENT: Correlating spend variance with workload spikes...",
-  "KCX-AGENT: Root-cause trace initiated for cluster alpha...",
-  "KCX-AGENT: Alert routed to platform-oncall workflow...",
+  "KCX-PIPELINE: Evaluating budget variance thresholds...",
+  "KCX-PIPELINE: Checking anomaly confidence and contributors...",
+  "KCX-PIPELINE: Prioritizing rightsizing opportunities...",
+  "KCX-PIPELINE: Ranking idle and commitment recommendations...",
+  "KCX-PIPELINE: Routing signals into action workflow queue...",
 ]
 
 // --- Premium Visual Components ---
@@ -110,7 +110,7 @@ function MockUIConnect({ tone }: { tone: StepConfig["tone"] }) {
       <div className="relative z-10 flex w-full max-w-[280px] sm:max-w-sm items-center justify-between">
         {/* Cloud Sources */}
         <div className="flex flex-col gap-5 sm:gap-8 w-24 sm:w-32 z-20">
-          {["AWS", "AZURE", "GCP"].map((cloud, i) => (
+          {["UPLOAD", "S3 IMPORT", "AWS CONNECT"].map((cloud, i) => (
             <div key={cloud} className="relative flex items-center justify-end">
               <motion.div 
                 initial={{ opacity: 0, x: -20 }} whileInView={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.15 + 0.2 }}
@@ -160,7 +160,7 @@ function MockUIConnect({ tone }: { tone: StepConfig["tone"] }) {
             className="relative z-10 flex h-20 w-20 sm:h-24 sm:w-24 shrink-0 flex-col items-center justify-center rounded-2xl border border-white/20 bg-gradient-to-br from-slate-800 to-slate-950 shadow-[0_0_40px_rgba(0,0,0,0.5)] backdrop-blur-xl"
             initial={{ scale: 0.8, opacity: 0 }} whileInView={{ scale: 1, opacity: 1 }} transition={{ type: "spring", bounce: 0.4 }}
           >
-            <div className="absolute inset-0 rounded-2xl animate-pulse opacity-30" style={{ backgroundColor: tone.glow }} />
+          <div className="absolute inset-0 rounded-2xl animate-pulse opacity-30" style={{ backgroundColor: tone.glow }} />
             <motion.div 
               className="absolute inset-0 rounded-2xl border-2" style={{ borderColor: tone.activeIndicator }}
               animate={{ opacity: [0.3, 1, 0.3] }} transition={{ repeat: Infinity, duration: 2 }}
@@ -185,17 +185,17 @@ function MockUIVisibility({ tone }: { tone: StepConfig["tone"] }) {
         className="flex items-center justify-between z-20 bg-slate-800/50 border border-white/5 rounded-xl p-2.5 sm:p-4 backdrop-blur-md shadow-lg"
       >
         <div>
-          <div className="text-[10px] sm:text-xs font-medium uppercase tracking-widest text-slate-400 mb-1">Total Allocated</div>
+          <div className="text-[10px] sm:text-xs font-medium uppercase tracking-widest text-slate-400 mb-1">Records Validated</div>
           <div className="text-lg sm:text-3xl font-bold text-white tracking-tight flex items-center gap-2">
-            $142,850 
-            <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 font-mono tracking-normal">+2.4%</span>
+            1,284,302
+            <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 font-mono tracking-normal">99.2%</span>
           </div>
         </div>
         <div className="hidden sm:block text-right">
-          <div className="text-[10px] sm:text-xs font-medium uppercase tracking-widest text-slate-400 mb-1">Top Cost Center</div>
+          <div className="text-[10px] sm:text-xs font-medium uppercase tracking-widest text-slate-400 mb-1">Normalization Status</div>
           <div className="text-sm font-bold text-white flex items-center justify-end gap-2">
             <div className="w-2 h-2 rounded-full" style={{ backgroundColor: tone.activeIndicator }} />
-            Engineering Team
+            Schema aligned
           </div>
         </div>
       </motion.div>
@@ -247,8 +247,8 @@ function MockUIVisibility({ tone }: { tone: StepConfig["tone"] }) {
           className="absolute z-30 bg-slate-900 border border-white/10 rounded-lg p-1.5 sm:p-2 shadow-2xl backdrop-blur-md left-1/2 top-1 -translate-x-1/2 sm:-top-4 sm:-translate-y-full"
           initial={{ opacity: 0, y: 10, scale: 0.9 }} whileInView={{ opacity: 1, y: 0, scale: 1 }} transition={{ delay: 1.6, type: "spring" }}
         >
-          <div className="text-[9px] text-slate-400 mb-0.5">May 14 - Proj_Alpha</div>
-          <div className="text-xs sm:text-sm font-bold text-white">$4,250.00</div>
+          <div className="text-[9px] text-slate-400 mb-0.5">Warehouse batch #214</div>
+          <div className="text-xs sm:text-sm font-bold text-white">Normalized + aggregated</div>
           <div className="absolute -bottom-1.5 left-1/2 hidden -translate-x-1/2 w-3 h-3 bg-slate-900 border-b border-r border-white/10 rotate-45 sm:block" />
         </motion.div>
       </div>
@@ -290,8 +290,8 @@ function MockUIAnomaly({ tone }: { tone: StepConfig["tone"] }) {
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#f43f5e" strokeWidth="3"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
           </div>
           <div>
-            <div className="text-[10px] font-bold text-slate-300">KCX Alert Bot</div>
-            <div className="text-[10px] text-slate-400 mt-0.5 leading-snug">Unusual spike in <span className="text-rose-400 font-mono">rds-prod-01</span> detected. +340% above baseline.</div>
+            <div className="text-[10px] font-bold text-slate-300">KCX Signal Bot</div>
+            <div className="text-[10px] text-slate-400 mt-0.5 leading-snug">Budget anomaly detected for <span className="text-rose-400 font-mono">prod-data</span>. Recommendation queue reprioritized.</div>
           </div>
         </motion.div>
 
@@ -307,10 +307,10 @@ function MockUIAnomaly({ tone }: { tone: StepConfig["tone"] }) {
           />
 
           <div className="flex items-center gap-2 sm:gap-3 mb-2 sm:mb-4 relative z-10">
-            <div className="text-xs sm:text-sm font-bold text-white tracking-wide">Read IOPS Utilization</div>
+            <div className="text-xs sm:text-sm font-bold text-white tracking-wide">Budget + Anomaly Signals</div>
             <div className="ml-auto flex items-center gap-1.5 px-2 py-0.5 rounded bg-rose-500/10 border border-rose-500/20 text-rose-400 text-[10px] font-bold">
               <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse" />
-              ANOMALY
+              PRIORITY
             </div>
           </div>
           
@@ -343,9 +343,9 @@ function MockUISavings({ tone }: { tone: StepConfig["tone"] }) {
         className="mb-1 sm:mb-2"
         initial={{ opacity: 0, y: -10 }} whileInView={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}
       >
-        <div className="text-[9px] sm:text-[10px] font-bold tracking-widest text-slate-400 mb-1 uppercase">Potential Monthly Savings</div>
+        <div className="text-[9px] sm:text-[10px] font-bold tracking-widest text-slate-400 mb-1 uppercase">Selected AWS Actions</div>
         <div className="text-lg sm:text-4xl font-black text-white flex items-center gap-2 sm:gap-3">
-          $13,720
+          12 Ready
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={tone.activeIndicator} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="animate-bounce sm:h-6 sm:w-6"><path d="M12 5v14M19 12l-7 7-7-7"/></svg>
         </div>
       </motion.div>
@@ -353,9 +353,9 @@ function MockUISavings({ tone }: { tone: StepConfig["tone"] }) {
       {/* Interactive-looking Action Cards */}
       <div className="flex flex-col gap-2 sm:gap-3 z-10">
         {[
-          { t: "Downgrade Idle RDS", target: "db-analytics-02", save: "$800/mo" },
-          { t: "Clean Orphaned Volumes", target: "4 EBS Volumes", save: "$120/mo" },
-          { t: "Apply Reserved Instance", target: "c5.4xlarge x 8", save: "$3,200/mo" }
+          { t: "Apply rightsizing recommendation", target: "ec2 / app-cluster", save: "Pending" },
+          { t: "Remove idle storage resource", target: "4 EBS volumes", save: "Approved" },
+          { t: "Execute commitment adjustment", target: "compute plan scope", save: "In Progress" }
         ].map((action, i) => (
           <motion.div 
             key={i}
@@ -374,7 +374,7 @@ function MockUISavings({ tone }: { tone: StepConfig["tone"] }) {
               <span className="font-mono text-[11px] sm:text-sm font-bold" style={{ color: tone.activeIndicator }}>{action.save}</span>
               {/* Mock Action Button */}
               <div className="hidden sm:flex px-3 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-bold tracking-wide group-hover:bg-emerald-500 group-hover:text-white transition-all duration-300">
-                APPLY
+                EXECUTE
               </div>
             </div>
           </motion.div>
