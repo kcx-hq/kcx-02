@@ -56,7 +56,7 @@ export function ClientLayout({ children, orgName = "Your Organization" }: Client
         </div>
       </aside>
 
-      <div className="relative min-h-[calc(100vh-4rem)] w-full bg-[#eef2f1] lg:ml-[228px] lg:w-[calc(100%-228px)]">
+      <div className="kcx-client-content-radiusless relative min-h-[calc(100vh-4rem)] w-full bg-[#eef2f1] lg:ml-[228px] lg:w-[calc(100%-228px)]">
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(58%_36%_at_88%_0%,rgba(99,127,140,0.08),rgba(99,127,140,0)_70%)]" />
         <main className="relative min-w-0 px-4 py-5 sm:px-[22px] sm:py-[18px]">
           <div className="mx-auto w-full max-w-[1440px]">

@@ -1,5 +1,4 @@
 import type { OptimizationInsightKey } from "../optimization.constants";
-import { OptimizationCategoryPlaceholderSection } from "./OptimizationCategoryPlaceholderSection";
 import { OptimizationCommitmentSection } from "./OptimizationCommitmentSection";
 import { OptimizationIdleResourcesSection } from "./OptimizationIdleResourcesSection";
 import { OptimizationRightsizingSection } from "./OptimizationRightsizingSection";
@@ -19,7 +18,7 @@ export function OptimizationRecommendationsSection({ activeRecommendationTab }: 
     if (activeRecommendationTab === "commitments") {
       return <OptimizationCommitmentSection />;
     }
-    return <OptimizationCategoryPlaceholderSection categoryLabel="Storage" />;
+    return <OptimizationCommitmentSection />;
   };
 
   return (
