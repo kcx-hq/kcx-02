@@ -147,7 +147,7 @@ export function FAQSection() {
                     key={section.id}
                     type="button"
                     onClick={() => setActiveSectionId(section.id)}
-                    className={`group flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[15px] font-medium transition-all duration-200 ${
+                    className={`group flex w-full items-center gap-2.5 rounded-none px-2.5 py-2 text-left text-[15px] font-medium transition-all duration-200 ${
                       isActive
                         ? "bg-[rgba(47,127,103,0.08)] text-[#2f7f67]"
                         : "text-[#3a5248] hover:bg-[rgba(47,127,103,0.04)] hover:text-[#205444]"
@@ -166,7 +166,7 @@ export function FAQSection() {
           </aside>
 
           <Reveal className="pt-1 md:pt-2" delay={0.06}>
-            <div className="lg:hidden -mx-4 rounded-xl border border-[rgba(123,187,167,0.18)] bg-white/60 px-4 py-3 shadow-[0_2px_8px_rgba(15,23,42,0.04)] sm:-mx-6 sm:px-6">
+            <div className="lg:hidden -mx-4 rounded-none border border-[rgba(123,187,167,0.18)] bg-white/60 px-4 py-3 shadow-[0_2px_8px_rgba(15,23,42,0.04)] sm:-mx-6 sm:px-6">
               <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#3a7866]">Sections</p>
               <div className="relative mt-3">
                 <div className="pointer-events-none absolute inset-y-0 left-0 w-6 bg-[linear-gradient(90deg,rgba(255,255,255,0.8)_0%,rgba(255,255,255,0)_100%)]" />
@@ -183,7 +183,7 @@ export function FAQSection() {
                         key={`line-${section.id}`}
                         type="button"
                         onClick={() => setActiveSectionId(section.id)}
-                        className={`snap-start whitespace-nowrap rounded-lg px-3 py-1.5 text-[12px] font-semibold transition-all duration-200 ${
+                        className={`snap-start whitespace-nowrap rounded-none px-3 py-1.5 text-[12px] font-semibold transition-all duration-200 ${
                           isActive
                             ? "text-[#2f7f67] bg-[rgba(47,127,103,0.1)]"
                             : "text-[#3a5248] hover:text-[#2f7f67]"
@@ -211,7 +211,7 @@ export function FAQSection() {
                   <AccordionTrigger className="group py-5 text-left text-[14px] font-semibold leading-[1.5] text-[#122720] transition-colors hover:text-[#2f7f68] [&>svg]:hidden sm:text-[15px] sm:leading-[1.6] md:text-[1.05rem]">
                     <span className="flex w-full items-center justify-between gap-4 sm:gap-6">
                       <span>{faq.question}</span>
-                      <span className="relative inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-[rgba(118,180,160,0.4)] text-[#4f7268] transition-all duration-200 group-data-[state=open]:border-[rgba(46,160,130,0.5)] group-data-[state=open]:bg-[rgba(46,160,130,0.08)] group-data-[state=open]:text-[#1f6c58] sm:h-8 sm:w-8">
+                      <span className="relative inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-none border border-[rgba(118,180,160,0.4)] text-[#4f7268] transition-all duration-200 group-data-[state=open]:border-[rgba(46,160,130,0.5)] group-data-[state=open]:bg-[rgba(46,160,130,0.08)] group-data-[state=open]:text-[#1f6c58] sm:h-8 sm:w-8">
                         <span className="absolute h-[1.5px] w-3 rounded-full bg-current" />
                         <span className="absolute h-3 w-[1.5px] rounded-full bg-current transition-all duration-200 group-data-[state=open]:scale-y-0 group-data-[state=open]:opacity-0" />
                       </span>
@@ -229,3 +229,4 @@ export function FAQSection() {
     </section>
   )
 }
+

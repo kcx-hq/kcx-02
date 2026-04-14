@@ -11,7 +11,7 @@ type HeroHeadlineProps = {
 export function HeroHeadline({ className }: HeroHeadlineProps) {
   return (
     <div className={cn("max-w-[60rem] text-center", className)}>
-      <div className="inline-flex items-center rounded-full border border-white/[0.12] bg-white/[0.06] px-5 py-2 backdrop-blur-md">
+      <div className="inline-flex items-center rounded-none border border-white/[0.12] bg-white/[0.06] px-5 py-2 backdrop-blur-md">
         <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/70">
           Cloud FinOps Platform
         </span>
@@ -22,7 +22,12 @@ export function HeroHeadline({ className }: HeroHeadlineProps) {
           Turn Cloud Billing Data
         </span>
         <span className="mt-1 block lg:mt-1.5">
-          <span className="text-white/90"> Into FinOps Action Across </span>
+          <span className="text-white/90"> Into </span>
+          <span className="bg-[linear-gradient(180deg,#9ee8d1_0%,#72d0b4_46%,#4fa58f_100%)] bg-clip-text text-transparent [text-shadow:0_0_22px_rgba(95,196,167,0.35)]">
+            {" "}
+            FinOps Action{" "}
+          </span>
+          <span className="text-white/90"> Across </span>
         </span>
         <span className="mt-1 block lg:mt-1.5">
           <span className="bg-[linear-gradient(180deg,#8ce4c8_0%,#4fa58f_100%)] bg-clip-text text-transparent [text-shadow:none]">
@@ -41,17 +46,13 @@ export function HeroHeadline({ className }: HeroHeadlineProps) {
         selected AWS actions executed from the same operational workspace.
       </p>
 
-      <p className="mx-auto mt-4 max-w-[49rem] text-[0.9rem] leading-[1.7] text-[rgba(203,223,216,0.74)] sm:text-[1rem] sm:leading-[1.75]">
-        Move beyond static cost reporting. KCX gives teams a structured path to onboard billing
-        data, normalises it into a warehouse-backed view of spend, investigate changes quickly, and
-        turn insight into accountable action.
-      </p>
+ 
 
       <div className="mx-auto mt-7 flex max-w-[56rem] flex-wrap items-center justify-center gap-2.5">
         {landingHeroHighlights.map((item) => (
           <div
             key={item.label}
-            className="inline-flex items-center gap-2 rounded-xl border border-white/[0.1] bg-white/[0.04] px-4 py-2 text-[0.85rem] text-white/80 backdrop-blur-sm sm:text-[0.9rem]"
+            className="inline-flex items-center gap-2 rounded-none border border-white/[0.1] bg-white/[0.04] px-4 py-2 text-[0.85rem] text-white/80 backdrop-blur-sm sm:text-[0.9rem]"
           >
             <item.icon className="h-3.5 w-3.5 text-[#6ec4ab]" />
             <span>{item.label}</span>
@@ -62,7 +63,7 @@ export function HeroHeadline({ className }: HeroHeadlineProps) {
       <div className="mt-9 flex items-center justify-center">
         <Button
           asChild
-          className="h-[3.25rem] rounded-xl bg-brand-primary px-8 text-[0.95rem] font-semibold text-white shadow-[0_20px_40px_-20px_rgba(31,128,104,0.7),inset_0_1px_0_rgba(255,255,255,0.14)] transition-all duration-300 hover:-translate-y-0.5 hover:bg-brand-primary-hover hover:shadow-[0_26px_48px_-20px_rgba(31,128,104,0.85)] focus-visible:ring-2 focus-visible:ring-white/40 focus-visible:ring-offset-2 focus-visible:ring-offset-[#09121a] sm:h-[3.5rem] sm:px-9 sm:text-[1rem]"
+          className="h-[3.25rem] !rounded-none [border-radius:0!important] bg-brand-primary px-8 text-[0.95rem] font-semibold text-white shadow-[0_20px_40px_-20px_rgba(31,128,104,0.7),inset_0_1px_0_rgba(255,255,255,0.14)] transition-all duration-300 hover:-translate-y-0.5 hover:bg-brand-primary-hover hover:shadow-[0_26px_48px_-20px_rgba(31,128,104,0.85)] focus-visible:ring-2 focus-visible:ring-white/40 focus-visible:ring-offset-2 focus-visible:ring-offset-[#09121a] sm:h-[3.5rem] sm:px-9 sm:text-[1rem]"
           >
             <a
               href="/schedule-demo"
@@ -77,18 +78,8 @@ export function HeroHeadline({ className }: HeroHeadlineProps) {
         See how KCX takes teams from onboarding to optimization action.
       </p>
 
-      <div className="mx-auto mt-4 flex max-w-[56rem] flex-wrap items-center justify-center gap-2.5">
-        {["Tenant-isolated workspace", "Validated cloud connections", "Action status tracking"].map(
-          (item) => (
-            <div
-              key={item}
-              className="inline-flex items-center gap-2 rounded-xl border border-white/[0.1] bg-white/[0.04] px-4 py-2 text-[0.78rem] text-white/76 backdrop-blur-sm sm:text-[0.82rem]"
-            >
-              <span>{item}</span>
-            </div>
-          )
-        )}
-      </div>
+     
     </div>
   )
 }
+

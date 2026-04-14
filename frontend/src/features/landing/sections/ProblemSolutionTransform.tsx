@@ -16,26 +16,26 @@ import { Reveal } from "@/components/motion/Reveal"
 import { landingSectionIds } from "@/features/landing/utils/landingSectionIds"
 
 const problems = [
-  { label: "Upload, S3, and cloud inputs live in disconnected flows", icon: Split },
-  { label: "Teams rely on static cost reports that are hard to operationalize", icon: ScanSearch },
-  { label: "Data confidence gaps slow governance decisions", icon: ShieldX },
-  { label: "Spend changes are slow to investigate and explain", icon: AlertTriangle },
-  { label: "Optimization work lacks clear prioritization", icon: Gauge },
+  { label: "Upload, S3, and cloud inputs remain disconnected", icon: Split },
+  { label: "Static cost reports are hard to operationalize", icon: ScanSearch },
+  { label: "Data confidence gaps slow governance", icon: ShieldX },
+  { label: "Spend changes are slow to investigate", icon: AlertTriangle },
+  { label: "Optimization lacks clear prioritization", icon: Gauge },
 ]
 
 const intelligence = [
-  { label: "Upload / Import / Connect onboarding paths", icon: Database },
-  { label: "Validate / Normalize / Aggregate processing", icon: ListChecks },
+  { label: "Upload, import, and connect onboarding paths", icon: Database },
+  { label: "Validate, normalize, and aggregate processing", icon: ListChecks },
   { label: "Warehouse-backed trusted analytics", icon: ShieldCheck },
   { label: "Budgets and anomaly detection in one layer", icon: ShieldCheck },
-  { label: "Optimization and action workflows with accountability", icon: TrendingUp },
+  { label: "Accountable optimization and action workflows", icon: TrendingUp },
 ]
 
 const outcomes = [
   { label: "Shared visibility for finance, FinOps, and platform teams", icon: CheckCircle2 },
   { label: "Faster investigation with trusted spend context", icon: TrendingUp },
   { label: "Clearer budget and anomaly operations", icon: ShieldCheck },
-  { label: "Prioritized optimization execution paths", icon: ScanSearch },
+  { label: "Prioritized optimization execution", icon: ScanSearch },
   { label: "More accountable FinOps governance", icon: ListChecks },
 ]
 
@@ -162,7 +162,7 @@ export function ProblemSolutionTransform() {
 
       <div className="kcx-container relative max-w-[1380px]">
         <Reveal className="mx-auto max-w-4xl text-center">
-          <p className="inline-flex items-center rounded-full border border-[rgba(99,153,135,0.28)] bg-[rgba(232,243,238,0.82)] px-4 py-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#327662] shadow-[0_1px_4px_rgba(15,23,42,0.04)]">
+          <p className="inline-flex items-center rounded-none border border-[rgba(99,153,135,0.28)] bg-[rgba(232,243,238,0.82)] px-4 py-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#327662] shadow-[0_1px_4px_rgba(15,23,42,0.04)]">
             Transformation Model
           </p>
 
@@ -171,17 +171,16 @@ export function ProblemSolutionTransform() {
           </h2>
 
           <p className="mx-auto mt-5 max-w-3xl text-[0.9rem] leading-[1.7] text-[#516b63] sm:text-[0.95rem] sm:leading-[1.75]">
-            KCX turns raw billing files, S3 imports, and guided cloud
-            connections into validated, warehouse-backed analytics that help
-            teams investigate spend, manage budgets, and prioritize action with
-            confidence.
+            KCX turns raw billing files, S3 imports, and guided cloud connections
+            into validated, warehouse-backed analytics for faster investigation,
+            clearer budgets, and confident action prioritization.
           </p>
         </Reveal>
 
         <div className="relative mt-14 overflow-visible sm:mt-16">
           <div className="relative z-10 grid gap-6 lg:grid-cols-[minmax(0,1.08fr)_auto_minmax(0,1.24fr)_auto_minmax(0,1.08fr)] lg:items-stretch lg:gap-4 xl:gap-5">
             <Reveal className="h-full">
-              <article className="group relative h-full overflow-hidden rounded-2xl border border-[rgba(145,195,176,0.36)] bg-[linear-gradient(160deg,rgba(248,252,250,0.98),rgba(240,248,244,0.94))] p-5 shadow-[0_2px_6px_rgba(15,23,42,0.04),0_16px_34px_-20px_rgba(33,74,62,0.18)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_4px_12px_rgba(15,23,42,0.06),0_24px_42px_-22px_rgba(33,74,62,0.25)] md:min-h-[26.5rem]">
+              <article className="group relative h-full overflow-hidden rounded-none border border-[rgba(145,195,176,0.36)] bg-[linear-gradient(160deg,rgba(248,252,250,0.98),rgba(240,248,244,0.94))] p-5 shadow-[0_2px_6px_rgba(15,23,42,0.04),0_16px_34px_-20px_rgba(33,74,62,0.18)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_4px_12px_rgba(15,23,42,0.06),0_24px_42px_-22px_rgba(33,74,62,0.25)] md:min-h-[26.5rem]">
               <div className="absolute inset-0 opacity-30 [background-image:radial-gradient(rgba(98,162,138,0.16)_0.8px,transparent_0.8px)] [background-size:12px_12px]" />
               <div className="absolute -left-8 top-8 h-24 w-24 rounded-full bg-[radial-gradient(circle,rgba(83,170,142,0.16)_0%,transparent_66%)] blur-xl" />
 
@@ -193,15 +192,15 @@ export function ProblemSolutionTransform() {
                   Cloud Cost Friction
                 </h3>
                 <p className="mt-2 text-[0.9rem] leading-[1.65] text-[#3C6457]">
-                  Billing inputs and analytics readiness are often fragmented,
-                  creating delay and misalignment across stakeholders.
+                  Billing inputs and analytics readiness are fragmented, creating
+                  delays and stakeholder misalignment.
                 </p>
 
                 <ul className="mt-4 space-y-2.5">
                   {problems.map((item) => (
                     <li
                       key={item.label}
-                      className="flex items-start gap-2.5 text-[0.9rem] leading-[1.6] text-[#3a5e51]"
+                      className="flex items-start gap-2.5 text-[0.89rem] leading-[1.55] text-[#3a5e51]"
                     >
                       <item.icon className="mt-0.5 h-4 w-4 shrink-0 text-[#2F7F68]" />
                       <span>{item.label}</span>
@@ -221,7 +220,7 @@ export function ProblemSolutionTransform() {
             </div>
 
             <Reveal delay={0.1} className="h-full">
-              <article className="group relative h-full overflow-hidden rounded-2xl border border-[rgba(116,186,164,0.36)] bg-[linear-gradient(118deg,rgba(7,12,17,0.97)_0%,rgba(10,18,24,0.94)_32%,rgba(14,28,36,0.92)_62%,rgba(19,36,44,0.88)_100%)] p-5 text-[#E8F5F2] shadow-[0_4px_12px_rgba(0,0,0,0.2),0_24px_46px_-22px_rgba(11,26,37,0.6)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_6px_16px_rgba(0,0,0,0.25),0_28px_48px_-20px_rgba(9,30,41,0.68)] md:min-h-[26.5rem]">
+              <article className="group relative h-full overflow-hidden rounded-none border border-[rgba(116,186,164,0.36)] bg-[linear-gradient(118deg,rgba(7,12,17,0.97)_0%,rgba(10,18,24,0.94)_32%,rgba(14,28,36,0.92)_62%,rgba(19,36,44,0.88)_100%)] p-5 text-[#E8F5F2] shadow-[0_4px_12px_rgba(0,0,0,0.2),0_24px_46px_-22px_rgba(11,26,37,0.6)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_6px_16px_rgba(0,0,0,0.25),0_28px_48px_-20px_rgba(9,30,41,0.68)] md:min-h-[26.5rem]">
               <div className="absolute inset-0 bg-[linear-gradient(112deg,rgba(22,44,56,0.14)_0%,rgba(29,101,83,0.1)_44%,rgba(34,72,97,0.08)_70%,rgba(10,20,28,0.06)_100%)]" />
               <div className="absolute -right-12 -top-12 h-36 w-36 rounded-full bg-[radial-gradient(circle,rgba(96,196,163,0.16)_0%,transparent_72%)] blur-2xl transition-opacity duration-300 group-hover:opacity-100" />
               <div className="absolute bottom-0 left-0 right-0 h-px bg-[linear-gradient(90deg,rgba(158,228,205,0)_0%,rgba(158,228,205,0.6)_52%,rgba(158,228,205,0)_100%)]" />
@@ -234,7 +233,7 @@ export function ProblemSolutionTransform() {
                   Trusted Cost Intelligence Layer
                 </h3>
                 <p className="mt-2 text-[0.9rem] leading-[1.65] text-[rgba(211,234,226,0.8)]">
-                  KCX creates a validated operational layer where ingestion,
+                  KCX provides a validated operating layer where ingestion,
                   normalization, and analytics become execution-ready.
                 </p>
 
@@ -242,7 +241,7 @@ export function ProblemSolutionTransform() {
                   {intelligence.map((item) => (
                     <li
                       key={item.label}
-                      className="flex items-start gap-2.5 text-[0.9rem] leading-[1.6] text-[rgba(220,238,232,0.85)]"
+                      className="flex items-start gap-2.5 text-[0.89rem] leading-[1.55] text-[rgba(220,238,232,0.85)]"
                     >
                       <item.icon className="mt-0.5 h-4 w-4 shrink-0 text-[rgba(145,221,195,0.9)]" />
                       <span>{item.label}</span>
@@ -262,7 +261,7 @@ export function ProblemSolutionTransform() {
             </div>
 
             <Reveal delay={0.2} className="h-full">
-              <article className="group relative h-full overflow-hidden rounded-2xl border border-[rgba(171,206,193,0.48)] bg-[linear-gradient(160deg,rgba(250,253,252,0.98),rgba(243,250,247,0.95))] p-5 shadow-[0_2px_6px_rgba(15,23,42,0.04),0_20px_38px_-22px_rgba(27,63,53,0.2)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_4px_12px_rgba(15,23,42,0.06),0_28px_44px_-24px_rgba(27,63,53,0.28)] md:min-h-[26.5rem]">
+              <article className="group relative h-full overflow-hidden rounded-none border border-[rgba(171,206,193,0.48)] bg-[linear-gradient(160deg,rgba(250,253,252,0.98),rgba(243,250,247,0.95))] p-5 shadow-[0_2px_6px_rgba(15,23,42,0.04),0_20px_38px_-22px_rgba(27,63,53,0.2)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_4px_12px_rgba(15,23,42,0.06),0_28px_44px_-24px_rgba(27,63,53,0.28)] md:min-h-[26.5rem]">
               <div className="relative">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#4A7F6F]">
                   Business Impact
@@ -272,14 +271,14 @@ export function ProblemSolutionTransform() {
                 </h3>
                 <p className="mt-2 text-[0.9rem] leading-[1.65] text-[#44675C]">
                   Teams move from visibility to accountable next steps with
-                  better governance and stronger operational cadence.
+                  stronger governance and operating cadence.
                 </p>
 
                 <ul className="mt-4 space-y-2.5">
                   {outcomes.map((item) => (
                     <li
                       key={item.label}
-                      className="flex items-start gap-2.5 text-[0.9rem] leading-[1.6] text-[#3a5e51]"
+                      className="flex items-start gap-2.5 text-[0.89rem] leading-[1.55] text-[#3a5e51]"
                     >
                       <item.icon className="mt-0.5 h-4 w-4 shrink-0 text-[#2B7D65]" />
                       <span>{item.label}</span>
@@ -295,3 +294,4 @@ export function ProblemSolutionTransform() {
     </section>
   )
 }
+

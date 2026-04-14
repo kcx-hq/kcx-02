@@ -114,7 +114,7 @@ function MockUIConnect({ tone }: { tone: StepConfig["tone"] }) {
             <div key={cloud} className="relative flex items-center justify-end">
               <motion.div 
                 initial={{ opacity: 0, x: -20 }} whileInView={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.15 + 0.2 }}
-                className="relative z-10 flex h-10 sm:h-12 w-full items-center justify-between px-3 sm:px-4 rounded-xl border border-white/10 bg-gradient-to-br from-slate-800/90 to-slate-900/90 shadow-lg backdrop-blur-md"
+                className="relative z-10 flex h-10 sm:h-12 w-full items-center justify-between px-3 sm:px-4 rounded-none border border-white/10 bg-gradient-to-br from-slate-800/90 to-slate-900/90 shadow-lg backdrop-blur-md"
               >
                 <span className="text-[10px] sm:text-xs font-bold tracking-widest text-slate-300">{cloud}</span>
                 <div className="h-2 w-2 rounded-full" style={{ backgroundColor: tone.activeIndicator, boxShadow: `0 0 10px ${tone.activeIndicator}` }} />
@@ -157,12 +157,12 @@ function MockUIConnect({ tone }: { tone: StepConfig["tone"] }) {
           />
           
           <motion.div 
-            className="relative z-10 flex h-20 w-20 sm:h-24 sm:w-24 shrink-0 flex-col items-center justify-center rounded-2xl border border-white/20 bg-gradient-to-br from-slate-800 to-slate-950 shadow-[0_0_40px_rgba(0,0,0,0.5)] backdrop-blur-xl"
+            className="relative z-10 flex h-20 w-20 sm:h-24 sm:w-24 shrink-0 flex-col items-center justify-center rounded-none border border-white/20 bg-gradient-to-br from-slate-800 to-slate-950 shadow-[0_0_40px_rgba(0,0,0,0.5)] backdrop-blur-xl"
             initial={{ scale: 0.8, opacity: 0 }} whileInView={{ scale: 1, opacity: 1 }} transition={{ type: "spring", bounce: 0.4 }}
           >
-          <div className="absolute inset-0 rounded-2xl animate-pulse opacity-30" style={{ backgroundColor: tone.glow }} />
+          <div className="absolute inset-0 rounded-none animate-pulse opacity-30" style={{ backgroundColor: tone.glow }} />
             <motion.div 
-              className="absolute inset-0 rounded-2xl border-2" style={{ borderColor: tone.activeIndicator }}
+              className="absolute inset-0 rounded-none border-2" style={{ borderColor: tone.activeIndicator }}
               animate={{ opacity: [0.3, 1, 0.3] }} transition={{ repeat: Infinity, duration: 2 }}
             />
             <div className="mb-1 rounded p-1.5" style={{ backgroundColor: `${tone.activeIndicator}20` }}>
@@ -182,7 +182,7 @@ function MockUIVisibility({ tone }: { tone: StepConfig["tone"] }) {
       {/* Floating Header Widget */}
       <motion.div 
         initial={{ opacity: 0, y: -10 }} whileInView={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}
-        className="flex items-center justify-between z-20 bg-slate-800/50 border border-white/5 rounded-xl p-2.5 sm:p-4 backdrop-blur-md shadow-lg"
+        className="flex items-center justify-between z-20 bg-slate-800/50 border border-white/5 rounded-none p-2.5 sm:p-4 backdrop-blur-md shadow-lg"
       >
         <div>
           <div className="text-[10px] sm:text-xs font-medium uppercase tracking-widest text-slate-400 mb-1">Records Validated</div>
@@ -244,7 +244,7 @@ function MockUIVisibility({ tone }: { tone: StepConfig["tone"] }) {
 
         {/* Floating Tooltip at the Data Point */}
         <motion.div 
-          className="absolute z-30 bg-slate-900 border border-white/10 rounded-lg p-1.5 sm:p-2 shadow-2xl backdrop-blur-md left-1/2 top-1 -translate-x-1/2 sm:-top-4 sm:-translate-y-full"
+          className="absolute z-30 bg-slate-900 border border-white/10 rounded-none p-1.5 sm:p-2 shadow-2xl backdrop-blur-md left-1/2 top-1 -translate-x-1/2 sm:-top-4 sm:-translate-y-full"
           initial={{ opacity: 0, y: 10, scale: 0.9 }} whileInView={{ opacity: 1, y: 0, scale: 1 }} transition={{ delay: 1.6, type: "spring" }}
         >
           <div className="text-[9px] text-slate-400 mb-0.5">Warehouse batch #214</div>
@@ -283,7 +283,7 @@ function MockUIAnomaly({ tone }: { tone: StepConfig["tone"] }) {
         
         {/* Mock Slack/Teams Alert Banner Sliding In */}
         <motion.div 
-          className="self-end max-w-[220px] sm:max-w-[240px] bg-slate-800/90 border border-white/10 rounded-xl p-2.5 sm:p-3 shadow-2xl backdrop-blur-xl flex gap-2.5 sm:gap-3 items-start"
+          className="self-end max-w-[220px] sm:max-w-[240px] bg-slate-800/90 border border-white/10 rounded-none p-2.5 sm:p-3 shadow-2xl backdrop-blur-xl flex gap-2.5 sm:gap-3 items-start"
           initial={{ opacity: 0, x: 50, y: -20 }} whileInView={{ opacity: 1, x: 0, y: 0 }} transition={{ delay: 1.5, type: "spring" }}
         >
           <div className="w-6 h-6 rounded bg-rose-500/20 flex items-center justify-center shrink-0 mt-0.5">
@@ -297,7 +297,7 @@ function MockUIAnomaly({ tone }: { tone: StepConfig["tone"] }) {
 
         {/* The Spike Graph */}
         <motion.div 
-          className="rounded-xl border border-white/10 bg-slate-900/60 p-2.5 sm:p-5 shadow-2xl backdrop-blur-md relative overflow-hidden"
+          className="rounded-none border border-white/10 bg-slate-900/60 p-2.5 sm:p-5 shadow-2xl backdrop-blur-md relative overflow-hidden"
           initial={{ y: 20, opacity: 0 }} whileInView={{ y: 0, opacity: 1 }} transition={{ delay: 0.3 }}
         >
           {/* Flashing Red Background on Spike */}
@@ -359,7 +359,7 @@ function MockUISavings({ tone }: { tone: StepConfig["tone"] }) {
         ].map((action, i) => (
           <motion.div 
             key={i}
-            className="group relative overflow-hidden rounded-xl border border-white/10 bg-slate-800/60 p-2 sm:p-4 hover:bg-slate-700/60 transition-colors duration-300 backdrop-blur-md cursor-pointer flex items-center justify-between"
+            className="group relative overflow-hidden rounded-none border border-white/10 bg-slate-800/60 p-2 sm:p-4 hover:bg-slate-700/60 transition-colors duration-300 backdrop-blur-md cursor-pointer flex items-center justify-between"
             initial={{ opacity: 0, x: 20 }} whileInView={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.15 + 0.4 }}
           >
             {/* Hover Glow Effect */}
@@ -373,7 +373,7 @@ function MockUISavings({ tone }: { tone: StepConfig["tone"] }) {
             <div className="relative z-10 flex items-center gap-2 sm:gap-4">
               <span className="font-mono text-[11px] sm:text-sm font-bold" style={{ color: tone.activeIndicator }}>{action.save}</span>
               {/* Mock Action Button */}
-              <div className="hidden sm:flex px-3 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-bold tracking-wide group-hover:bg-emerald-500 group-hover:text-white transition-all duration-300">
+              <div className="hidden sm:flex px-3 py-1.5 rounded-none bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-bold tracking-wide group-hover:bg-emerald-500 group-hover:text-white transition-all duration-300">
                 EXECUTE
               </div>
             </div>
@@ -403,7 +403,7 @@ function StackedCard({ step, index }: { step: StepConfig; index: number }) {
       }}
     >
       <motion.div 
-        className={`kcx-premium-card ${step.cssThemeClass} relative mx-auto w-full max-w-[70rem] overflow-hidden rounded-[18px] sm:rounded-[24px] border bg-[linear-gradient(180deg,rgba(15,23,34,0.96)_0%,rgba(9,14,20,0.98)_100%)] p-4 sm:p-7 lg:p-9 ring-1 ring-white/[0.04] backdrop-blur-2xl`}
+        className={`kcx-premium-card ${step.cssThemeClass} relative mx-auto w-full max-w-[70rem] overflow-hidden rounded-none sm:rounded-none border bg-[linear-gradient(180deg,rgba(15,23,34,0.96)_0%,rgba(9,14,20,0.98)_100%)] p-4 sm:p-7 lg:p-9 ring-1 ring-white/[0.04] backdrop-blur-2xl`}
         style={{ 
             borderColor: step.tone.border,
             scale: 1 - (index * 0.002)
@@ -438,7 +438,7 @@ function StackedCard({ step, index }: { step: StepConfig; index: number }) {
             </ul>
           </div>
 
-          <div className={`relative ${visualHeightClass} w-full overflow-hidden rounded-[14px] sm:rounded-[20px] border border-white/10 bg-[#0b1118] shadow-[inset_0_0_50px_rgba(0,0,0,0.5)] ${isLeft ? "lg:order-1" : "lg:order-2"}`}>
+          <div className={`relative ${visualHeightClass} w-full overflow-hidden rounded-none sm:rounded-none border border-white/10 bg-[#0b1118] shadow-[inset_0_0_50px_rgba(0,0,0,0.5)] ${isLeft ? "lg:order-1" : "lg:order-2"}`}>
              <div className="absolute inset-0 opacity-20 blur-[60px] transition-colors duration-700 pointer-events-none" style={{ backgroundColor: step.tone.glow }} />
              
              <div className={`relative z-10 h-full w-full ${visualScaleClass}`}>
@@ -581,3 +581,4 @@ export function HowKcxWorks() {
     </section>
   )
 }
+

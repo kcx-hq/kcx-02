@@ -224,7 +224,7 @@ export function ResetPasswordForm({ token }: { token: string | null }) {
           type="submit"
           disabled={!isValid || submitting || submitted}
           className={cn(
-            "mt-2 h-11 w-full rounded-xl bg-[#3E8A76] text-sm font-semibold text-white transition duration-200 hover:bg-[#357563] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(62,138,118,0.28)] focus-visible:ring-offset-2 focus-visible:ring-offset-white",
+            "mt-2 h-11 w-full rounded-none [border-radius:0!important] bg-[#3E8A76] text-sm font-semibold text-white transition duration-200 hover:bg-[#357563] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(62,138,118,0.28)] focus-visible:ring-offset-2 focus-visible:ring-offset-white",
             !isValid || submitting || submitted ? "cursor-not-allowed opacity-55 hover:bg-[#3E8A76]" : null
           )}
         >
@@ -264,7 +264,7 @@ export function ResetPasswordForm({ token }: { token: string | null }) {
           </div>
           <a
             href="/forgot-password"
-            className="inline-flex w-full items-center justify-center rounded-xl bg-[#3E8A76] px-4 py-3 text-sm font-semibold text-white transition duration-200 hover:bg-[#357563] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(62,138,118,0.28)] focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+            className="inline-flex w-full items-center justify-center rounded-none [border-radius:0!important] bg-[#3E8A76] px-4 py-3 text-sm font-semibold text-white transition duration-200 hover:bg-[#357563] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(62,138,118,0.28)] focus-visible:ring-offset-2 focus-visible:ring-offset-white"
           >
             Request reset link
           </a>
@@ -280,3 +280,4 @@ export function ResetPasswordForm({ token }: { token: string | null }) {
     </div>
   )
 }
+
