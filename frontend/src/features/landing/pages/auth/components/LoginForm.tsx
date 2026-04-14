@@ -12,7 +12,10 @@ type LoginTouched = Partial<Record<keyof LoginValues, boolean>>
 
 function FieldLabel({ htmlFor, children }: { htmlFor: string; children: string }) {
   return (
-    <label htmlFor={htmlFor} className="block text-xs font-semibold tracking-[-0.01em] text-[#0F1F1A]">
+    <label
+      htmlFor={htmlFor}
+      className="block text-sm font-semibold leading-none tracking-[-0.01em] text-[rgba(63,80,75,0.94)]"
+    >
       {children}
     </label>
   )
@@ -63,12 +66,11 @@ function TextField({
           aria-invalid={invalid ? "true" : "false"}
           aria-describedby={errorId}
           className={cn(
-            "h-11 w-full rounded-xl border px-3 text-sm text-[#0F1F1A]",
+            "h-11 w-full border-0 border-b px-2 text-base font-medium tracking-[-0.01em] text-[#1d3138]",
             invalid
-              ? "border-red-500/70 bg-white placeholder:text-[rgba(75,90,83,0.55)] focus-visible:border-red-500 focus-visible:ring-red-500/15"
-              : "border-[rgba(21,37,49,0.16)] bg-white placeholder:text-[rgba(75,90,83,0.55)]",
-            "shadow-[inset_0_1px_0_rgba(255,255,255,0.5)] transition duration-200",
-            "focus-visible:outline-none focus-visible:border-[rgba(62,138,118,0.55)] focus-visible:ring-2 focus-visible:ring-[rgba(62,138,118,0.22)]"
+              ? "border-red-500/70 bg-transparent placeholder:text-[rgba(111,127,133,0.72)] focus-visible:border-red-500 focus-visible:ring-red-500/15"
+              : "border-[rgba(140,158,166,0.6)] bg-transparent placeholder:text-[rgba(111,127,133,0.72)]",
+            "transition duration-200 focus-visible:outline-none focus-visible:border-[#3E8A76] focus-visible:ring-2 focus-visible:ring-[rgba(62,138,118,0.2)]"
           )}
         />
       </div>
@@ -176,15 +178,12 @@ export function LoginForm() {
 
   return (
     <div>
-      <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#3E8A76]">Login</p>
-      <h2 className="mt-3 text-balance text-[1.35rem] font-semibold leading-[1.1] tracking-[-0.03em] text-[#0F1F1A]">
-        Sign in to KCX
+      <h2 className="text-balance text-[1.7rem] font-semibold leading-[1.08] tracking-[-0.03em] text-[#13222a]">
+        Login
       </h2>
-      <p className="mt-3 text-sm leading-7 text-[rgba(75,90,83,0.9)]">
-        Enter your email and password to continue.
-      </p>
+      <p className="mt-3 text-sm leading-6 text-[rgba(82,99,106,0.9)]">Sign in to your KCX account.</p>
 
-      <form className="mt-6 space-y-4" onSubmit={onSubmit} aria-describedby={`${formId}__help`}>
+      <form className="mt-8 space-y-8" onSubmit={onSubmit} aria-describedby={`${formId}__help`}>
         <TextField
           id={`${formId}-email`}
           label="Email"
@@ -228,7 +227,7 @@ export function LoginForm() {
           type="password"
           autoComplete="current-password"
           required
-          placeholder="••••••••"
+          placeholder="Enter password"
           invalid={touched.password && Boolean(errors.password)}
           errorId={errors.password ? `${formId}-password__error` : undefined}
         />
@@ -267,13 +266,14 @@ export function LoginForm() {
         </p>
 
         {apiError ? (
-          <div role="status" className="rounded-xl border border-red-500/20 bg-red-500/5 px-4 py-3 text-sm text-[#0F1F1A]">
+          <div
+            role="status"
+            className="rounded-xl border border-red-500/20 bg-red-500/5 px-4 py-3 text-sm text-[#0F1F1A]"
+          >
             {apiError}
           </div>
         ) : null}
-
       </form>
     </div>
   )
 }
-

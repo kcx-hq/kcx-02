@@ -61,12 +61,11 @@ function TextField({
           aria-invalid={invalid ? "true" : "false"}
           aria-describedby={errorId}
           className={cn(
-            "h-11 w-full rounded-xl border px-3 text-sm text-[#0F1F1A]",
+            "h-11 w-full border-0 border-b px-2 text-base font-medium tracking-[-0.01em] text-[#1d3138]",
             invalid
-              ? "border-red-500/70 bg-white placeholder:text-[rgba(75,90,83,0.55)] focus-visible:border-red-500 focus-visible:ring-red-500/15"
-              : "border-[rgba(21,37,49,0.16)] bg-white placeholder:text-[rgba(75,90,83,0.55)]",
-            "shadow-[inset_0_1px_0_rgba(255,255,255,0.5)] transition duration-200",
-            "focus-visible:outline-none focus-visible:border-[rgba(62,138,118,0.55)] focus-visible:ring-2 focus-visible:ring-[rgba(62,138,118,0.22)]"
+              ? "border-red-500/70 bg-transparent placeholder:text-[rgba(111,127,133,0.72)] focus-visible:border-red-500 focus-visible:ring-red-500/15"
+              : "border-[rgba(140,158,166,0.6)] bg-transparent placeholder:text-[rgba(111,127,133,0.72)]",
+            "transition duration-200 focus-visible:outline-none focus-visible:border-[#3E8A76] focus-visible:ring-2 focus-visible:ring-[rgba(62,138,118,0.2)]"
           )}
         />
       </div>

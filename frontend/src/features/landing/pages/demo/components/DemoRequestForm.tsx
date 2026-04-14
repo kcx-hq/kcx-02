@@ -41,7 +41,10 @@ const DISCOVERY_OPTIONS = [
 
 function FieldLabel({ htmlFor, children }: { htmlFor: string; children: string }) {
   return (
-    <label htmlFor={htmlFor} className="block text-xs font-semibold tracking-[-0.01em]">
+    <label
+      htmlFor={htmlFor}
+      className="block text-sm font-semibold leading-none tracking-[-0.01em] text-[rgba(63,80,75,0.94)]"
+    >
       {children}
     </label>
   )
@@ -124,15 +127,15 @@ function TextField({
           aria-invalid={invalid ? "true" : "false"}
           aria-describedby={errorId}
           className={cn(
-            "h-11 w-full rounded-xl border px-3 text-sm transition duration-200 focus-visible:outline-none",
+            "h-11 w-full border-0 border-b px-2 text-base font-medium tracking-[-0.01em] transition duration-200 focus-visible:outline-none",
             isLight
-              ? "bg-white text-[#0F1F1A] placeholder:text-[rgba(75,90,83,0.55)]"
-              : "bg-[rgba(5,11,17,0.42)] text-white placeholder:text-[rgba(214,230,226,0.45)] backdrop-blur-sm",
+              ? "bg-transparent text-[#1d3138] placeholder:text-[rgba(111,127,133,0.72)]"
+              : "bg-transparent text-white placeholder:text-[rgba(214,230,226,0.45)]",
             invalid
               ? "border-red-500/70 focus-visible:border-red-500 focus-visible:ring-2 focus-visible:ring-red-500/15"
               : isLight
-                ? "border-[rgba(21,37,49,0.16)] focus-visible:border-[rgba(62,138,118,0.55)] focus-visible:ring-2 focus-visible:ring-[rgba(62,138,118,0.22)]"
-                : "border-[rgba(226,240,236,0.18)] focus-visible:border-[rgba(189,255,233,0.6)] focus-visible:ring-2 focus-visible:ring-[rgba(96,191,163,0.45)]"
+                ? "border-[rgba(140,158,166,0.6)] focus-visible:border-[#3E8A76] focus-visible:ring-2 focus-visible:ring-[rgba(62,138,118,0.2)]"
+                : "border-[rgba(226,240,236,0.26)] focus-visible:border-[rgba(189,255,233,0.6)] focus-visible:ring-2 focus-visible:ring-[rgba(96,191,163,0.45)]"
           )}
         />
       </div>
@@ -178,13 +181,13 @@ function SelectField({
           aria-invalid={invalid ? "true" : "false"}
           aria-describedby={errorId}
           className={cn(
-            "h-11 w-full appearance-none rounded-xl border px-3 pr-10 text-sm transition duration-200 focus-visible:outline-none",
-            isLight ? "bg-white text-[#0F1F1A]" : "bg-[rgba(5,11,17,0.42)] text-white backdrop-blur-sm",
+            "h-11 w-full appearance-none border-0 border-b px-2 pr-10 text-base font-medium tracking-[-0.01em] transition duration-200 focus-visible:outline-none",
+            isLight ? "bg-transparent text-[#1d3138]" : "bg-transparent text-white",
             invalid
               ? "border-red-500/70 focus-visible:border-red-500 focus-visible:ring-2 focus-visible:ring-red-500/15"
               : isLight
-                ? "border-[rgba(21,37,49,0.16)] focus-visible:border-[rgba(62,138,118,0.55)] focus-visible:ring-2 focus-visible:ring-[rgba(62,138,118,0.22)]"
-                : "border-[rgba(226,240,236,0.18)] focus-visible:border-[rgba(189,255,233,0.6)] focus-visible:ring-2 focus-visible:ring-[rgba(96,191,163,0.45)]"
+                ? "border-[rgba(140,158,166,0.6)] focus-visible:border-[#3E8A76] focus-visible:ring-2 focus-visible:ring-[rgba(62,138,118,0.2)]"
+                : "border-[rgba(226,240,236,0.26)] focus-visible:border-[rgba(189,255,233,0.6)] focus-visible:ring-2 focus-visible:ring-[rgba(96,191,163,0.45)]"
           )}
         >
           {options.map((option) => (
@@ -195,8 +198,8 @@ function SelectField({
         </select>
         <div
           className={cn(
-            "pointer-events-none relative -mt-11 flex h-11 items-center justify-end pr-3",
-            isLight ? "text-[rgba(75,90,83,0.7)]" : "text-[rgba(214,230,226,0.55)]"
+            "pointer-events-none relative -mt-12 flex h-12 items-center justify-end pr-2",
+            isLight ? "text-[rgba(63,80,75,0.86)]" : "text-[rgba(214,230,226,0.55)]"
           )}
         >
           <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
@@ -351,34 +354,26 @@ export function DemoRequestForm({
     <div className={chromeClassName}>
       {!submitted ? (
         <>
-          <p
-            className={cn(
-              "text-[11px] font-semibold uppercase tracking-[0.22em]",
-              isLight ? "text-[#3E8A76]" : "text-[rgba(170,225,207,0.92)]"
-            )}
-          >
-            Request demo
-          </p>
           <h2
             className={cn(
-              "mt-3 text-balance text-[1.35rem] font-semibold leading-[1.1] tracking-[-0.03em]",
-              isLight ? "text-[#0F1F1A]" : "text-white"
+              "text-balance text-[1.7rem] font-semibold leading-[1.08] tracking-[-0.03em]",
+              isLight ? "text-[#13222a]" : "text-white"
             )}
           >
-            Tell us a bit about you
+            Schedule Demo
           </h2>
           <p
             className={cn(
-              "mt-3 text-sm leading-7",
-              isLight ? "text-[rgba(75,90,83,0.9)]" : "text-[rgba(214,230,226,0.82)]"
+              "mt-3 text-sm leading-6",
+              isLight ? "text-[rgba(82,99,106,0.9)]" : "text-[rgba(214,230,226,0.82)]"
             )}
           >
-            We'll reach out to schedule a quick walkthrough.
+            Tell us a bit about you and pick a slot that works.
           </p>
         </>
       ) : null}
 
-      <form className="mt-6 space-y-4" onSubmit={onSubmit} noValidate>
+      <form className="mt-8 space-y-8" onSubmit={onSubmit} noValidate>
         {submitted ? (
           <div
             role="status"
@@ -404,7 +399,7 @@ export function DemoRequestForm({
           </div>
         ) : (
           <>
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid gap-8 sm:grid-cols-2">
               <div>
                 <TextField
                   id={`${formId}-firstName`}
@@ -568,20 +563,22 @@ export function DemoRequestForm({
               </div>
             ) : null}
 
-            <Button
-              type="button"
-              disabled={submitting || submitted}
-              onClick={openSlotPicker}
-              className={cn(
-                "mt-2 h-11 w-full rounded-none [border-radius:0!important] text-sm font-semibold transition duration-200",
-                isLight
-                  ? "bg-[#3E8A76] text-white hover:bg-[#357563] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(62,138,118,0.28)] focus-visible:ring-offset-2 focus-visible:ring-offset-white"
-                  : "border border-[rgba(189,255,233,0.55)] bg-[linear-gradient(135deg,rgba(96,191,163,0.95)_0%,rgba(79,165,142,0.9)_52%,rgba(70,142,188,0.8)_100%)] text-[#06111b] shadow-[0_16px_38px_rgba(72,169,145,0.18)] hover:-translate-y-0.5 hover:scale-[1.01] hover:shadow-[0_18px_48px_rgba(72,169,145,0.26)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(96,191,163,0.55)] focus-visible:ring-offset-2 focus-visible:ring-offset-[#06101a] motion-reduce:transform-none",
-                submitting || submitted ? "cursor-not-allowed opacity-55 hover:scale-100 hover:-translate-y-0" : null
-              )}
-            >
-              {submitted ? "Submitted" : submitting ? "Submitting..." : "Select Date & Time"}
-            </Button>
+            <div className="flex flex-wrap items-center justify-end gap-6 pt-2">
+              <Button
+                type="button"
+                disabled={submitting || submitted}
+                onClick={openSlotPicker}
+                className={cn(
+                  "h-11 min-w-[11rem] rounded-none [border-radius:0!important] px-5 text-sm font-semibold transition duration-200",
+                  isLight
+                    ? "bg-[#3E8A76] text-white hover:bg-[#357563] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(62,138,118,0.28)] focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+                    : "border border-[rgba(189,255,233,0.55)] bg-[linear-gradient(135deg,rgba(96,191,163,0.95)_0%,rgba(79,165,142,0.9)_52%,rgba(70,142,188,0.8)_100%)] text-[#06111b] shadow-[0_16px_38px_rgba(72,169,145,0.18)] hover:-translate-y-0.5 hover:scale-[1.01] hover:shadow-[0_18px_48px_rgba(72,169,145,0.26)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(96,191,163,0.55)] focus-visible:ring-offset-2 focus-visible:ring-offset-[#06101a] motion-reduce:transform-none",
+                  submitting || submitted ? "cursor-not-allowed opacity-55 hover:scale-100 hover:-translate-y-0" : null
+                )}
+              >
+                {submitted ? "Submitted" : submitting ? "Submitting..." : "Select Date & Time"}
+              </Button>
+            </div>
 
             <p
               className={cn(
