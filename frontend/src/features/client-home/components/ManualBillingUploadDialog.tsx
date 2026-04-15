@@ -52,6 +52,8 @@ type FailedKeyDetail = {
   reason?: string
 }
 
+const AWS_PROVIDER_CODE = "aws"
+
 function normalizePrefix(value: string) {
   return value.trim().replace(/\\/g, "/").replace(/^\/+/, "")
 }
@@ -180,7 +182,8 @@ export function ManualBillingUploadDialog({
       try {
         const nextProviders = await apiGet<CloudProvider[]>("/billing/cloud-providers")
         setProviders(nextProviders)
-        setSelectedProviderId((current) => current || nextProviders[0]?.id || "")
+        const awsProvider = nextProviders.find((provider) => provider.code.toLowerCase() === AWS_PROVIDER_CODE)
+        setSelectedProviderId((current) => current || awsProvider?.id || nextProviders[0]?.id || "")
       } catch (requestError) {
         if (requestError instanceof ApiError) {
           setLocalError(requestError.message || "Failed to load cloud providers")

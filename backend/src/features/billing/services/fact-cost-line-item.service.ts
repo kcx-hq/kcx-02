@@ -1,9 +1,10 @@
 /* eslint-disable @typescript-eslint/ban-ts-comment */
 // @ts-nocheck
 import { FactCostLineItems as FactCostLineItem } from "../../../models/index.js";
-import { mapFactCostLineItem } from "../mappers/raw_focus_to_dimensions.mapper.js";
+import { RAW_COLUMNS, mapFactCostLineItem } from "../mappers/raw_focus_to_dimensions.mapper.js";
 import { classifyFactInsertError } from "./numeric-validation.service.js";
 import { resolveDimensions, resolveDimensionsWithCache } from "./dimension-upsert.service.js";
+import { createTagDimensionCache, resolveFactTagId } from "./dim-tag.service.js";
 
 const isBlank = (value) =>
   value === null || value === undefined || (typeof value === "string" && value.trim() === "");
@@ -53,6 +54,14 @@ async function insertFactCostLineItem({
       cache: dimensionCache,
     });
 
+    const tagCache = createTagDimensionCache();
+    const tagId = await resolveFactTagId({
+      tenantId,
+      providerId,
+      rawTags: rawRow[RAW_COLUMNS.tags],
+      tagCache,
+    });
+
     const factPayload = mapFactCostLineItem({
       tenant_id: tenantId,
       billing_source_id: billingSourceId,
@@ -65,6 +74,7 @@ async function insertFactCostLineItem({
       resource_key: resourceKey,
       sku_key: skuKey,
       charge_key: chargeKey,
+      tag_id: tagId,
       usage_date_key: usageDateKey,
       billing_period_start_date_key: billingPeriodStartDateKey,
       billing_period_end_date_key: billingPeriodEndDateKey,
@@ -106,7 +116,7 @@ async function insertFactCostLineItem({
       savingsPlanType: factPayload.savings_plan_type,
       consumedQuantity: factPayload.consumed_quantity,
       pricingQuantity: factPayload.pricing_quantity,
-      tagsJson: factPayload.tags_json,
+      tagId: factPayload.tag_id,
     };
 
     const record = await FactCostLineItem.create(factCreatePayload);

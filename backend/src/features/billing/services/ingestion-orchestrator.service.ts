@@ -6,7 +6,7 @@ import env from "../../../config/env.js";
 import { NotFoundError } from "../../../errors/http-errors.js";
 import { RawBillingFile } from "../../../models/index.js";
 import { logger } from "../../../utils/logger.js";
-import { mapFactCostLineItem } from "../mappers/raw_focus_to_dimensions.mapper.js";
+import { RAW_COLUMNS, mapFactCostLineItem } from "../mappers/raw_focus_to_dimensions.mapper.js";
 import {
   syncAwsIdleRecommendationsAfterIngestion,
   syncAwsRightsizingRecommendationsAfterIngestion,
@@ -33,6 +33,8 @@ import {
   validateHeaders,
 } from "./schema-validator.service.js";
 import { upsertCostAggregationsForRun } from "./cost-aggregation.service.js";
+import { createTagDimensionCache, resolveFactTagId } from "./dim-tag.service.js";
+import { assertTagDimensionSchemaReady } from "./ingestion-schema-guard.service.js";
 
 const SUPPORTED_FORMATS = new Set(["csv", "parquet"]);
 const PROGRESS_BY_STAGE = {
@@ -278,6 +280,8 @@ async function processIngestionRun(ingestionRunId) {
   let rowsFailed = 0;
 
   try {
+    await assertTagDimensionSchemaReady();
+
     logger.info("Ingestion orchestrator: step=load_run:start", { ingestionRunId });
     run = await loadIngestionRunOrThrow(ingestionRunId);
     logger.info("Ingestion orchestrator: step=load_run:done", {
@@ -431,6 +435,7 @@ async function processIngestionRun(ingestionRunId) {
     latestProgressPercent = PROGRESS_BY_STAGE.upserting_dimensions;
 
     const dimensionCache = createIngestionDimensionCache();
+    const tagCache = createTagDimensionCache();
 
     let chunkIndex = 0;
     let movedToInsertStage = false;
@@ -533,6 +538,12 @@ async function processIngestionRun(ingestionRunId) {
             resource_key: resourceKey,
             sku_key: skuKey,
             charge_key: chargeKey,
+            tag_id: await resolveFactTagId({
+              tenantId: rawFile.tenantId,
+              providerId: rawFile.cloudProviderId,
+              rawTags: normalizedRow[RAW_COLUMNS.tags],
+              tagCache,
+            }),
             usage_date_key: usageDateKey,
             billing_period_start_date_key: billingPeriodStartDateKey,
             billing_period_end_date_key: billingPeriodEndDateKey,
@@ -577,7 +588,7 @@ async function processIngestionRun(ingestionRunId) {
               savingsPlanType: factPayload.savings_plan_type,
               consumedQuantity: factPayload.consumed_quantity,
               pricingQuantity: factPayload.pricing_quantity,
-              tagsJson: factPayload.tags_json,
+              tagId: factPayload.tag_id,
             },
           });
         } catch (err) {

@@ -317,7 +317,6 @@ const mapFactMeasures = (rawRow) =>
     reservation_arn: cleanStringOrNull(rawRow[RAW_COLUMNS.reservationArn]),
     savings_plan_arn: cleanStringOrNull(rawRow[RAW_COLUMNS.savingsPlanArn]),
     savings_plan_type: cleanStringOrNull(rawRow[RAW_COLUMNS.savingsPlanType]),
-    tags_json: toJsonOrNull(rawRow[RAW_COLUMNS.tags]),
   });
 
 /**
@@ -369,6 +368,7 @@ const mapFactCostLineItem = ({
   resource_key = null,
   sku_key = null,
   charge_key = null,
+  tag_id = null,
   usage_date_key = null,
   billing_period_start_date_key = null,
   billing_period_end_date_key = null,
@@ -385,6 +385,7 @@ const mapFactCostLineItem = ({
   resource_key,
   sku_key,
   charge_key,
+  tag_id,
   usage_date_key,
   billing_period_start_date_key,
   billing_period_end_date_key,
@@ -452,7 +453,7 @@ const RAW_TO_ANALYTICS_REFERENCE = Object.freeze({
     reservation_arn: "reservation_arn",
     savings_plan_arn: "savings_plan_arn",
     savings_plan_type: "savings_plan_type",
-    Tags: "tags_json",
+    Tags: "tag_id (via dim_tag)",
   },
 });
 

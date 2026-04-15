@@ -5,7 +5,7 @@ import env from "../../../config/env.js";
 import { logger } from "../../../utils/logger.js";
 import { downloadExportFile } from "../../cloud-connections/aws/infrastructure/aws-export-reader.service.js";
 import type { AwsParquetSchemaValidationResult } from "../../cloud-connections/aws/exports/aws-export-ingestion.types.js";
-import { mapFactCostLineItem } from "../mappers/raw_focus_to_dimensions.mapper.js";
+import { RAW_COLUMNS, mapFactCostLineItem } from "../mappers/raw_focus_to_dimensions.mapper.js";
 import {
   createIngestionDimensionCache,
   primeDimensionCacheForChunk,
@@ -26,6 +26,8 @@ import {
   syncAwsIdleRecommendationsAfterIngestion,
   syncAwsRightsizingRecommendationsAfterIngestion,
 } from "../../dashboard/optimization/recommendation-sync/sync.service.js";
+import { createTagDimensionCache, resolveFactTagId } from "./dim-tag.service.js";
+import { assertTagDimensionSchemaReady } from "./ingestion-schema-guard.service.js";
 
 const STAGE_MESSAGE = {
   validating_schema: "Validating manifest and parquet schema",
@@ -102,6 +104,8 @@ const buildSchemaResult = ({ rawBillingFileId, key, validation }) => ({
 });
 
 export async function processAwsExportParquetRun({ run }) {
+  await assertTagDimensionSchemaReady();
+
   const runId = String(run.id);
   const batchSize = env.billingIngestionBatchSize;
   const rowConcurrency = Math.max(1, env.billingIngestionRowConcurrency);
@@ -212,6 +216,7 @@ export async function processAwsExportParquetRun({ run }) {
     });
 
     const dimensionCache = createIngestionDimensionCache();
+    const tagCache = createTagDimensionCache();
     const failedReasonCounts = {};
     const allRowErrors = [];
 
@@ -312,6 +317,12 @@ export async function processAwsExportParquetRun({ run }) {
                   resource_key: dimensions.resourceKey,
                   sku_key: dimensions.skuKey,
                   charge_key: dimensions.chargeKey,
+                  tag_id: await resolveFactTagId({
+                    tenantId: rawFile.tenantId,
+                    providerId: rawFile.cloudProviderId,
+                    rawTags: normalizedRow[RAW_COLUMNS.tags],
+                    tagCache,
+                  }),
                   usage_date_key: dimensions.usageDateKey,
                   billing_period_start_date_key: dimensions.billingPeriodStartDateKey,
                   billing_period_end_date_key: dimensions.billingPeriodEndDateKey,
@@ -351,7 +362,7 @@ export async function processAwsExportParquetRun({ run }) {
                     taxCost: factPayload.tax_cost,
                     consumedQuantity: factPayload.consumed_quantity,
                     pricingQuantity: factPayload.pricing_quantity,
-                    tagsJson: factPayload.tags_json,
+                    tagId: factPayload.tag_id,
                   },
                 };
               } catch (error) {

@@ -114,6 +114,21 @@ function classifyFactInsertError(error) {
     };
   }
 
+  if (combined.includes("column") && combined.includes("tag_id") && combined.includes("does not exist")) {
+    return {
+      errorCode: "schema_mismatch_missing_tag_id",
+      errorMessage:
+        "database schema mismatch: fact_cost_line_items.tag_id is missing (run latest backend migrations)",
+    };
+  }
+
+  if (combined.includes("relation") && combined.includes("dim_tag") && combined.includes("does not exist")) {
+    return {
+      errorCode: "schema_mismatch_missing_dim_tag",
+      errorMessage: "database schema mismatch: dim_tag table is missing (run latest backend migrations)",
+    };
+  }
+
   return {
     errorCode: "fact_insert_error",
     errorMessage: message,
