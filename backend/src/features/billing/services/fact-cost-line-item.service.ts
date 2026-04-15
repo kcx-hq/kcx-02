@@ -1,16 +1,33 @@
 /* eslint-disable @typescript-eslint/ban-ts-comment */
 // @ts-nocheck
-import { FactCostLineItems as FactCostLineItem } from "../../../models/index.js";
+import { FactCostLineItemTags, FactCostLineItems as FactCostLineItem } from "../../../models/index.js";
 import { RAW_COLUMNS, mapFactCostLineItem } from "../mappers/raw_focus_to_dimensions.mapper.js";
 import { classifyFactInsertError } from "./numeric-validation.service.js";
 import { resolveDimensions, resolveDimensionsWithCache } from "./dimension-upsert.service.js";
-import { createTagDimensionCache, resolveFactTagId } from "./dim-tag.service.js";
+import { createTagDimensionCache, resolveFactPrimaryTagId, resolveFactTagIds } from "./dim-tag.service.js";
 
 const isBlank = (value) =>
   value === null || value === undefined || (typeof value === "string" && value.trim() === "");
 
 const isEmptyObject = (value) =>
   value && typeof value === "object" && !Array.isArray(value) && Object.keys(value).length === 0;
+
+async function attachFactTags({ factId, tenantId, providerId, tagIds }) {
+  if (!factId || !Array.isArray(tagIds) || tagIds.length === 0) return;
+
+  const uniqueTagIds = Array.from(new Set(tagIds.map((id) => String(id).trim()).filter(Boolean)));
+  if (uniqueTagIds.length === 0) return;
+
+  await FactCostLineItemTags.bulkCreate(
+    uniqueTagIds.map((tagId) => ({
+      factId,
+      tagId,
+      tenantId,
+      providerId,
+    })),
+    { ignoreDuplicates: true, returning: false },
+  );
+}
 
 async function insertFactCostLineItem({
   rawRow,
@@ -55,7 +72,13 @@ async function insertFactCostLineItem({
     });
 
     const tagCache = createTagDimensionCache();
-    const tagId = await resolveFactTagId({
+    const tagIds = await resolveFactTagIds({
+      tenantId,
+      providerId,
+      rawTags: rawRow[RAW_COLUMNS.tags],
+      tagCache,
+    });
+    const tagId = await resolveFactPrimaryTagId({
       tenantId,
       providerId,
       rawTags: rawRow[RAW_COLUMNS.tags],
@@ -120,6 +143,12 @@ async function insertFactCostLineItem({
     };
 
     const record = await FactCostLineItem.create(factCreatePayload);
+    await attachFactTags({
+      factId: record.id,
+      tenantId: factPayload.tenant_id,
+      providerId: factPayload.provider_id,
+      tagIds,
+    });
 
     return {
       success: true,
@@ -143,9 +172,35 @@ async function insertFactCostLineItemsBatch({ factRows, ingestionRunId }) {
   const createPayloads = factRows.map((entry) => entry.createPayload);
 
   try {
-    await FactCostLineItem.bulkCreate(createPayloads, {
-      returning: false,
+    const insertedRecords = await FactCostLineItem.bulkCreate(createPayloads, {
+      returning: ["id"],
     });
+
+    const tagLinkPayloads = [];
+    for (let index = 0; index < insertedRecords.length; index += 1) {
+      const record = insertedRecords[index];
+      const factRow = factRows[index];
+      const tagIds = Array.isArray(factRow?.tagIds) ? factRow.tagIds : [];
+      if (!record?.id || tagIds.length === 0) continue;
+
+      const uniqueTagIds = Array.from(new Set(tagIds.map((id) => String(id).trim()).filter(Boolean)));
+      for (const tagId of uniqueTagIds) {
+        tagLinkPayloads.push({
+          factId: record.id,
+          tagId,
+          tenantId: factRow.createPayload.tenantId,
+          providerId: factRow.createPayload.providerId,
+        });
+      }
+    }
+
+    if (tagLinkPayloads.length > 0) {
+      await FactCostLineItemTags.bulkCreate(tagLinkPayloads, {
+        ignoreDuplicates: true,
+        returning: false,
+      });
+    }
+
     return { insertedCount: createPayloads.length, failedRows: [] };
   } catch (bulkError) {
     const { errorCode: batchErrorCode, errorMessage: batchErrorMessage } = classifyFactInsertError(bulkError);
@@ -161,7 +216,13 @@ async function insertFactCostLineItemsBatch({ factRows, ingestionRunId }) {
 
     for (const [batchRowIndex, entry] of factRows.entries()) {
       try {
-        await FactCostLineItem.create(entry.createPayload);
+        const record = await FactCostLineItem.create(entry.createPayload);
+        await attachFactTags({
+          factId: record.id,
+          tenantId: entry.createPayload.tenantId,
+          providerId: entry.createPayload.providerId,
+          tagIds: entry.tagIds,
+        });
         insertedCount += 1;
       } catch (rowError) {
         const { errorCode, errorMessage } = classifyFactInsertError(rowError);

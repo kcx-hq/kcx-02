@@ -34,6 +34,7 @@ import createDimChargeModel from "./billing/dim_charge.js";
 import createDimDateModel from "./billing/dim_date.js";
 import createDimTagModel from "./billing/dim_tag.js";
 import createFactCostLineItemsModel from "./billing/fact_cost_line_items.js";
+import createFactCostLineItemTagsModel from "./billing/fact_cost_line_item_tags.js";
 import createBillingIngestionRowErrorModel from "./billing/billing_ingestion_row_error.js";
 import createResourceInventorySnapshotModel from "./billing/resource_inventory_snapshots.js";
 import createResourceUtilizationDailyModel from "./billing/resource_utilization_daily.js";
@@ -101,6 +102,7 @@ const DimCharge = createDimChargeModel(sequelize);
 const DimDate = createDimDateModel(sequelize);
 const DimTag = createDimTagModel(sequelize);
 const FactCostLineItems = createFactCostLineItemsModel(sequelize);
+const FactCostLineItemTags = createFactCostLineItemTagsModel(sequelize);
 const BillingIngestionRowError = createBillingIngestionRowErrorModel(sequelize);
 const ResourceInventorySnapshot = createResourceInventorySnapshotModel(sequelize);
 const ResourceUtilizationDaily = createResourceUtilizationDailyModel(sequelize);
@@ -230,6 +232,14 @@ DimCharge.hasMany(FactCostLineItems, { foreignKey: "chargeKey" });
 FactCostLineItems.belongsTo(DimCharge, { foreignKey: "chargeKey" });
 DimTag.hasMany(FactCostLineItems, { foreignKey: "tagId" });
 FactCostLineItems.belongsTo(DimTag, { foreignKey: "tagId" });
+FactCostLineItems.hasMany(FactCostLineItemTags, { foreignKey: "factId" });
+FactCostLineItemTags.belongsTo(FactCostLineItems, { foreignKey: "factId" });
+DimTag.hasMany(FactCostLineItemTags, { foreignKey: "tagId" });
+FactCostLineItemTags.belongsTo(DimTag, { foreignKey: "tagId" });
+Tenant.hasMany(FactCostLineItemTags, { foreignKey: "tenantId" });
+FactCostLineItemTags.belongsTo(Tenant, { foreignKey: "tenantId" });
+CloudProvider.hasMany(FactCostLineItemTags, { foreignKey: "providerId" });
+FactCostLineItemTags.belongsTo(CloudProvider, { foreignKey: "providerId" });
 
 DimDate.hasMany(FactCostLineItems, { foreignKey: "usageDateKey" });
 FactCostLineItems.belongsTo(DimDate, { foreignKey: "usageDateKey", as: "usageDate" });
@@ -425,6 +435,7 @@ export {
   DimDate,
   DimTag,
   FactCostLineItems,
+  FactCostLineItemTags,
   BillingIngestionRowError,
   ResourceInventorySnapshot,
   ResourceUtilizationDaily,

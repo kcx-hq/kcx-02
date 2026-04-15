@@ -119,6 +119,13 @@ type SelectedBusinessTag = {
   normalizedValue: string;
 };
 
+type NormalizedTagEntry = {
+  tagKey: string;
+  tagValue: string;
+  normalizedKey: string;
+  normalizedValue: string;
+};
+
 const selectPrimarySupportedBusinessTag = (value: unknown): SelectedBusinessTag | null => {
   const supported = extractSupportedBusinessTags(value);
 
@@ -140,10 +147,45 @@ const selectPrimarySupportedBusinessTag = (value: unknown): SelectedBusinessTag 
   return null;
 };
 
+const extractAllNormalizedTagEntries = (value: unknown): NormalizedTagEntry[] => {
+  const asObject = coerceTagsToObject(value);
+  if (!asObject) return [];
+
+  const dedup = new Map<string, NormalizedTagEntry>();
+
+  for (const [rawKey, rawValue] of Object.entries(asObject)) {
+    if (isBlank(rawKey) || isBlank(rawValue)) continue;
+
+    const canonicalKey = normalizeBusinessTagKey(String(rawKey));
+    const tagKey = String(canonicalKey).trim();
+    const tagValue = String(rawValue).trim();
+    if (!tagKey || !tagValue) continue;
+
+    const normalizedKey = normalizeTagKeyToken(tagKey);
+    const normalizedValue = normalizeTagValueToken(tagValue);
+    if (!normalizedKey || !normalizedValue) continue;
+
+    const key = `${normalizedKey}::${normalizedValue}`;
+    if (!dedup.has(key)) {
+      dedup.set(key, {
+        tagKey,
+        tagValue,
+        normalizedKey,
+        normalizedValue,
+      });
+    }
+  }
+
+  return Array.from(dedup.values());
+};
+
 export {
   SUPPORTED_BUSINESS_TAG_KEYS,
+  normalizeTagKeyToken,
+  normalizeTagValueToken,
   normalizeBusinessTagKey,
   normalizeAwsTagsJson,
   extractSupportedBusinessTags,
   selectPrimarySupportedBusinessTag,
+  extractAllNormalizedTagEntries,
 };

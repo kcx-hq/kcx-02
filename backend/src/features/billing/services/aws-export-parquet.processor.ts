@@ -26,7 +26,7 @@ import {
   syncAwsIdleRecommendationsAfterIngestion,
   syncAwsRightsizingRecommendationsAfterIngestion,
 } from "../../dashboard/optimization/recommendation-sync/sync.service.js";
-import { createTagDimensionCache, resolveFactTagId } from "./dim-tag.service.js";
+import { createTagDimensionCache, resolveFactPrimaryTagId, resolveFactTagIds } from "./dim-tag.service.js";
 import { assertTagDimensionSchemaReady } from "./ingestion-schema-guard.service.js";
 
 const STAGE_MESSAGE = {
@@ -305,6 +305,19 @@ export async function processAwsExportParquetRun({ run }) {
                   cache: dimensionCache,
                 });
 
+                const tagIds = await resolveFactTagIds({
+                  tenantId: rawFile.tenantId,
+                  providerId: rawFile.cloudProviderId,
+                  rawTags: normalizedRow[RAW_COLUMNS.tags],
+                  tagCache,
+                });
+                const primaryTagId = await resolveFactPrimaryTagId({
+                  tenantId: rawFile.tenantId,
+                  providerId: rawFile.cloudProviderId,
+                  rawTags: normalizedRow[RAW_COLUMNS.tags],
+                  tagCache,
+                });
+
                 const factPayload = mapFactCostLineItem({
                   tenant_id: rawFile.tenantId,
                   billing_source_id: rawFile.billingSourceId,
@@ -317,12 +330,7 @@ export async function processAwsExportParquetRun({ run }) {
                   resource_key: dimensions.resourceKey,
                   sku_key: dimensions.skuKey,
                   charge_key: dimensions.chargeKey,
-                  tag_id: await resolveFactTagId({
-                    tenantId: rawFile.tenantId,
-                    providerId: rawFile.cloudProviderId,
-                    rawTags: normalizedRow[RAW_COLUMNS.tags],
-                    tagCache,
-                  }),
+                  tag_id: primaryTagId,
                   usage_date_key: dimensions.usageDateKey,
                   billing_period_start_date_key: dimensions.billingPeriodStartDateKey,
                   billing_period_end_date_key: dimensions.billingPeriodEndDateKey,
@@ -364,6 +372,7 @@ export async function processAwsExportParquetRun({ run }) {
                     pricingQuantity: factPayload.pricing_quantity,
                     tagId: factPayload.tag_id,
                   },
+                  tagIds,
                 };
               } catch (error) {
                 return {

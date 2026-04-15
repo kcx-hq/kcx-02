@@ -11,9 +11,10 @@ async function assertTagDimensionSchemaReady() {
   if (isTagSchemaValidated) return;
 
   const queryInterface = sequelize.getQueryInterface();
-  const [factTable, dimTagTable] = await Promise.all([
+  const [factTable, dimTagTable, factTagsTable] = await Promise.all([
     queryInterface.describeTable("fact_cost_line_items"),
     queryInterface.describeTable("dim_tag"),
+    queryInterface.describeTable("fact_cost_line_item_tags"),
   ]);
 
   if (!hasColumn(factTable, "tag_id")) {
@@ -28,8 +29,13 @@ async function assertTagDimensionSchemaReady() {
     );
   }
 
+  if (!hasColumn(factTagsTable, "fact_id") || !hasColumn(factTagsTable, "tag_id")) {
+    throw new Error(
+      "Billing schema is outdated: fact_cost_line_item_tags table is missing. Run backend migrations before ingestion.",
+    );
+  }
+
   isTagSchemaValidated = true;
 }
 
 export { assertTagDimensionSchemaReady };
-

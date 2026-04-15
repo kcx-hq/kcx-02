@@ -33,7 +33,7 @@ import {
   validateHeaders,
 } from "./schema-validator.service.js";
 import { upsertCostAggregationsForRun } from "./cost-aggregation.service.js";
-import { createTagDimensionCache, resolveFactTagId } from "./dim-tag.service.js";
+import { createTagDimensionCache, resolveFactPrimaryTagId, resolveFactTagIds } from "./dim-tag.service.js";
 import { assertTagDimensionSchemaReady } from "./ingestion-schema-guard.service.js";
 
 const SUPPORTED_FORMATS = new Set(["csv", "parquet"]);
@@ -526,6 +526,19 @@ async function processIngestionRun(ingestionRunId) {
             cache: dimensionCache,
           });
 
+          const tagIds = await resolveFactTagIds({
+            tenantId: rawFile.tenantId,
+            providerId: rawFile.cloudProviderId,
+            rawTags: normalizedRow[RAW_COLUMNS.tags],
+            tagCache,
+          });
+          const primaryTagId = await resolveFactPrimaryTagId({
+            tenantId: rawFile.tenantId,
+            providerId: rawFile.cloudProviderId,
+            rawTags: normalizedRow[RAW_COLUMNS.tags],
+            tagCache,
+          });
+
           const factPayload = mapFactCostLineItem({
             tenant_id: rawFile.tenantId,
             billing_source_id: rawFile.billingSourceId,
@@ -538,12 +551,7 @@ async function processIngestionRun(ingestionRunId) {
             resource_key: resourceKey,
             sku_key: skuKey,
             charge_key: chargeKey,
-            tag_id: await resolveFactTagId({
-              tenantId: rawFile.tenantId,
-              providerId: rawFile.cloudProviderId,
-              rawTags: normalizedRow[RAW_COLUMNS.tags],
-              tagCache,
-            }),
+            tag_id: primaryTagId,
             usage_date_key: usageDateKey,
             billing_period_start_date_key: billingPeriodStartDateKey,
             billing_period_end_date_key: billingPeriodEndDateKey,
@@ -590,6 +598,7 @@ async function processIngestionRun(ingestionRunId) {
               pricingQuantity: factPayload.pricing_quantity,
               tagId: factPayload.tag_id,
             },
+            tagIds,
           });
         } catch (err) {
           rowsFailed += 1;

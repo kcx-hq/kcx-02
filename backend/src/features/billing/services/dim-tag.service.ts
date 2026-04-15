@@ -1,7 +1,10 @@
 /* eslint-disable @typescript-eslint/ban-ts-comment */
 // @ts-nocheck
 import { DimTag } from "../../../models/index.js";
-import { selectPrimarySupportedBusinessTag } from "./tag-normalization.service.js";
+import {
+  extractAllNormalizedTagEntries,
+  selectPrimarySupportedBusinessTag,
+} from "./tag-normalization.service.js";
 
 const toErrorMessage = (error) => {
   if (error instanceof Error && error.message.trim().length > 0) {
@@ -27,26 +30,18 @@ const serializeTagCacheKey = ({ tenantId, providerId, normalizedKey, normalizedV
 
 const createTagDimensionCache = () => new Map();
 
-const resolveFactTagId = async ({
-  tenantId,
-  providerId,
-  rawTags,
-  tagCache,
-}) => {
-  const selectedTag = selectPrimarySupportedBusinessTag(rawTags);
-  if (!selectedTag) return null;
-
+const resolveOrCreateDimTagId = async ({ tenantId, providerId, tagEntry, tagCache }) => {
   const where = {
     tenantId,
     providerId,
-    normalizedKey: selectedTag.normalizedKey,
-    normalizedValue: selectedTag.normalizedValue,
+    normalizedKey: tagEntry.normalizedKey,
+    normalizedValue: tagEntry.normalizedValue,
   };
   const cacheKey = serializeTagCacheKey({
     tenantId,
     providerId,
-    normalizedKey: selectedTag.normalizedKey,
-    normalizedValue: selectedTag.normalizedValue,
+    normalizedKey: tagEntry.normalizedKey,
+    normalizedValue: tagEntry.normalizedValue,
   });
 
   if (tagCache?.has(cacheKey)) {
@@ -63,10 +58,10 @@ const resolveFactTagId = async ({
     const created = await DimTag.create({
       tenantId,
       providerId,
-      tagKey: selectedTag.tagKey,
-      tagValue: selectedTag.tagValue,
-      normalizedKey: selectedTag.normalizedKey,
-      normalizedValue: selectedTag.normalizedValue,
+      tagKey: tagEntry.tagKey,
+      tagValue: tagEntry.tagValue,
+      normalizedKey: tagEntry.normalizedKey,
+      normalizedValue: tagEntry.normalizedValue,
     });
     tagCache?.set(cacheKey, created.id);
     return created.id;
@@ -82,5 +77,46 @@ const resolveFactTagId = async ({
   }
 };
 
-export { createTagDimensionCache, resolveFactTagId };
+const resolveFactTagIds = async ({ tenantId, providerId, rawTags, tagCache }) => {
+  const tagEntries = extractAllNormalizedTagEntries(rawTags);
+  if (tagEntries.length === 0) return [];
 
+  const tagIds = [];
+  for (const tagEntry of tagEntries) {
+    const tagId = await resolveOrCreateDimTagId({
+      tenantId,
+      providerId,
+      tagEntry,
+      tagCache,
+    });
+    if (tagId !== null && tagId !== undefined) {
+      tagIds.push(tagId);
+    }
+  }
+
+  return Array.from(new Set(tagIds.map((id) => String(id))));
+};
+
+const resolveFactPrimaryTagId = async ({
+  tenantId,
+  providerId,
+  rawTags,
+  tagCache,
+}) => {
+  const selectedTag = selectPrimarySupportedBusinessTag(rawTags);
+  if (!selectedTag) return null;
+
+  return resolveOrCreateDimTagId({
+    tenantId,
+    providerId,
+    tagEntry: {
+      tagKey: selectedTag.tagKey,
+      tagValue: selectedTag.tagValue,
+      normalizedKey: selectedTag.normalizedKey,
+      normalizedValue: selectedTag.normalizedValue,
+    },
+    tagCache,
+  });
+};
+
+export { createTagDimensionCache, resolveFactPrimaryTagId, resolveFactTagIds };
