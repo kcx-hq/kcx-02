@@ -7,6 +7,9 @@ This document explains the current automatic AWS cloud-connection backend flow, 
 
 CloudFormation template internals are intentionally excluded.
 
+For CloudFormation module wiring and deployment commands, see:
+- `backend/docs/aws-action-role-modules.md`
+
 ## Routes
 
 Source: `backend/src/features/cloud-connections/aws/auto-connection/cloud-connections.routes.ts`

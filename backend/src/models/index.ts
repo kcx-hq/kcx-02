@@ -49,6 +49,10 @@ import createBudgetAlertsModel from "./billing/budget_alerts.js";
 import createAggCostHourlyModel from "./billing/agg_cost_hourly.js";
 import createAggCostDailyModel from "./billing/agg_cost_daily.js";
 import createAggCostMonthlyModel from "./billing/agg_cost_monthly.js";
+import createEc2InstanceInventorySnapshotModel from "./ec2/ec2_instance_inventory_snapshots.js";
+import createEc2InstanceUtilizationHourlyModel from "./ec2/ec2_instance_utilization_hourly.js";
+import createEc2InstanceUtilizationDailyModel from "./ec2/ec2_instance_utilization_daily.js";
+import createScheduledJobModel from "./ec2/scheduled_jobs.js";
 
 const dbUrl = new URL(env.dbUrl);
 if (!dbUrl.searchParams.has("sslmode")) {
@@ -115,6 +119,10 @@ const BudgetAlerts = createBudgetAlertsModel(sequelize);
 const AggCostHourly = createAggCostHourlyModel(sequelize);
 const AggCostDaily = createAggCostDailyModel(sequelize);
 const AggCostMonthly = createAggCostMonthlyModel(sequelize);
+const Ec2InstanceInventorySnapshot = createEc2InstanceInventorySnapshotModel(sequelize);
+const Ec2InstanceUtilizationHourly = createEc2InstanceUtilizationHourlyModel(sequelize);
+const Ec2InstanceUtilizationDaily = createEc2InstanceUtilizationDailyModel(sequelize);
+const ScheduledJob = createScheduledJobModel(sequelize);
 
 User.hasMany(DemoRequest, { foreignKey: "userId" });
 DemoRequest.belongsTo(User, { foreignKey: "userId" });
@@ -271,6 +279,54 @@ DimRegion.hasMany(ResourceUtilizationDaily, { foreignKey: "regionKey" });
 ResourceUtilizationDaily.belongsTo(DimRegion, { foreignKey: "regionKey" });
 DimSubAccount.hasMany(ResourceUtilizationDaily, { foreignKey: "subAccountKey" });
 ResourceUtilizationDaily.belongsTo(DimSubAccount, { foreignKey: "subAccountKey" });
+
+Tenant.hasMany(Ec2InstanceInventorySnapshot, { foreignKey: "tenantId" });
+Ec2InstanceInventorySnapshot.belongsTo(Tenant, { foreignKey: "tenantId" });
+CloudConnectionV2.hasMany(Ec2InstanceInventorySnapshot, { foreignKey: "cloudConnectionId" });
+Ec2InstanceInventorySnapshot.belongsTo(CloudConnectionV2, { foreignKey: "cloudConnectionId" });
+CloudProvider.hasMany(Ec2InstanceInventorySnapshot, { foreignKey: "providerId" });
+Ec2InstanceInventorySnapshot.belongsTo(CloudProvider, { foreignKey: "providerId" });
+DimResource.hasMany(Ec2InstanceInventorySnapshot, { foreignKey: "resourceKey" });
+Ec2InstanceInventorySnapshot.belongsTo(DimResource, { foreignKey: "resourceKey" });
+DimRegion.hasMany(Ec2InstanceInventorySnapshot, { foreignKey: "regionKey" });
+Ec2InstanceInventorySnapshot.belongsTo(DimRegion, { foreignKey: "regionKey" });
+DimSubAccount.hasMany(Ec2InstanceInventorySnapshot, { foreignKey: "subAccountKey" });
+Ec2InstanceInventorySnapshot.belongsTo(DimSubAccount, { foreignKey: "subAccountKey" });
+
+Tenant.hasMany(Ec2InstanceUtilizationHourly, { foreignKey: "tenantId" });
+Ec2InstanceUtilizationHourly.belongsTo(Tenant, { foreignKey: "tenantId" });
+CloudConnectionV2.hasMany(Ec2InstanceUtilizationHourly, { foreignKey: "cloudConnectionId" });
+Ec2InstanceUtilizationHourly.belongsTo(CloudConnectionV2, { foreignKey: "cloudConnectionId" });
+CloudProvider.hasMany(Ec2InstanceUtilizationHourly, { foreignKey: "providerId" });
+Ec2InstanceUtilizationHourly.belongsTo(CloudProvider, { foreignKey: "providerId" });
+DimResource.hasMany(Ec2InstanceUtilizationHourly, { foreignKey: "resourceKey" });
+Ec2InstanceUtilizationHourly.belongsTo(DimResource, { foreignKey: "resourceKey" });
+DimRegion.hasMany(Ec2InstanceUtilizationHourly, { foreignKey: "regionKey" });
+Ec2InstanceUtilizationHourly.belongsTo(DimRegion, { foreignKey: "regionKey" });
+DimSubAccount.hasMany(Ec2InstanceUtilizationHourly, { foreignKey: "subAccountKey" });
+Ec2InstanceUtilizationHourly.belongsTo(DimSubAccount, { foreignKey: "subAccountKey" });
+
+Tenant.hasMany(Ec2InstanceUtilizationDaily, { foreignKey: "tenantId" });
+Ec2InstanceUtilizationDaily.belongsTo(Tenant, { foreignKey: "tenantId" });
+CloudConnectionV2.hasMany(Ec2InstanceUtilizationDaily, { foreignKey: "cloudConnectionId" });
+Ec2InstanceUtilizationDaily.belongsTo(CloudConnectionV2, { foreignKey: "cloudConnectionId" });
+CloudProvider.hasMany(Ec2InstanceUtilizationDaily, { foreignKey: "providerId" });
+Ec2InstanceUtilizationDaily.belongsTo(CloudProvider, { foreignKey: "providerId" });
+DimResource.hasMany(Ec2InstanceUtilizationDaily, { foreignKey: "resourceKey" });
+Ec2InstanceUtilizationDaily.belongsTo(DimResource, { foreignKey: "resourceKey" });
+DimRegion.hasMany(Ec2InstanceUtilizationDaily, { foreignKey: "regionKey" });
+Ec2InstanceUtilizationDaily.belongsTo(DimRegion, { foreignKey: "regionKey" });
+DimSubAccount.hasMany(Ec2InstanceUtilizationDaily, { foreignKey: "subAccountKey" });
+Ec2InstanceUtilizationDaily.belongsTo(DimSubAccount, { foreignKey: "subAccountKey" });
+
+Tenant.hasMany(ScheduledJob, { foreignKey: "tenantId" });
+ScheduledJob.belongsTo(Tenant, { foreignKey: "tenantId" });
+CloudConnectionV2.hasMany(ScheduledJob, { foreignKey: "cloudConnectionId" });
+ScheduledJob.belongsTo(CloudConnectionV2, { foreignKey: "cloudConnectionId" });
+BillingSource.hasMany(ScheduledJob, { foreignKey: "billingSourceId" });
+ScheduledJob.belongsTo(BillingSource, { foreignKey: "billingSourceId" });
+CloudProvider.hasMany(ScheduledJob, { foreignKey: "providerId" });
+ScheduledJob.belongsTo(CloudProvider, { foreignKey: "providerId" });
 
 Tenant.hasMany(FactAnomalies, { foreignKey: "tenantId" });
 FactAnomalies.belongsTo(Tenant, { foreignKey: "tenantId" });
@@ -431,4 +487,8 @@ export {
   AggCostHourly,
   AggCostDaily,
   AggCostMonthly,
+  Ec2InstanceInventorySnapshot,
+  Ec2InstanceUtilizationHourly,
+  Ec2InstanceUtilizationDaily,
+  ScheduledJob,
 };

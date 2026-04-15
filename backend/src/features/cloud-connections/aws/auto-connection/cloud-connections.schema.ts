@@ -90,6 +90,7 @@ export const generateAwsCloudFormationSetupSchema = z.object({
   cloudTrailName: z.string().trim().min(1, "cloudTrailName cannot be empty").optional(),
   enableActionRole: z.boolean().optional().default(true),
   enableEC2Module: z.boolean().optional().default(true),
+  enableCloudWatchModule: z.boolean().optional().default(true),
   useTagScopedAccess: z.boolean().optional().default(false),
   resourceTagKey: z.string().trim().min(1, "resourceTagKey cannot be empty").optional(),
   resourceTagValue: z.string().trim().min(1, "resourceTagValue cannot be empty").optional(),

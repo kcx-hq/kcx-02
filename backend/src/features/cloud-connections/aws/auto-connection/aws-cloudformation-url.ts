@@ -14,6 +14,7 @@ export type AwsCloudFormationUrlInput = {
   cloudTrailName?: string;
   enableActionRole?: boolean;
   enableEC2Module?: boolean;
+  enableCloudWatchModule?: boolean;
   useTagScopedAccess?: boolean;
   resourceTagKey?: string;
   resourceTagValue?: string;
@@ -37,6 +38,7 @@ export function buildAwsCloudFormationCreateStackUrl({
   cloudTrailName,
   enableActionRole = true,
   enableEC2Module = true,
+  enableCloudWatchModule = true,
   useTagScopedAccess = false,
   resourceTagKey,
   resourceTagValue,
@@ -49,12 +51,13 @@ export function buildAwsCloudFormationCreateStackUrl({
   const cloudTrailTemplateUrl = process.env.AWS_CLOUDTRAIL_TEMPLATE_URL?.trim();
   const actionRoleTemplateUrl = process.env.AWS_ACTION_ROLE_TEMPLATE_URL?.trim();
   const ec2ModuleTemplateUrl = process.env.AWS_EC2_MODULE_TEMPLATE_URL?.trim();
+  const cloudWatchModuleTemplateUrl = process.env.AWS_CLOUDWATCH_MODULE_TEMPLATE_URL?.trim();
   const fileEventCallbackUrl =  process.env.AWS_FILE_EVENT_CALLBACK_URL?.trim();
   const kcxPrincipalArn =
     process.env.AWS_KCX_PRINCIPAL_ARN?.trim() ||
     "arn:aws:iam::275017715736:root";
   const effectiveEnableBillingExport = true;
-  const effectiveEnableActionRole = enableActionRole || enableEC2Module;
+  const effectiveEnableActionRole = enableActionRole || enableEC2Module || enableCloudWatchModule;
   const requiresCallbacks = effectiveEnableBillingExport || enableCloudTrail;
 
   if (!parentTemplateUrl) {
@@ -75,6 +78,10 @@ export function buildAwsCloudFormationCreateStackUrl({
 
   if (enableEC2Module && !ec2ModuleTemplateUrl) {
     throw new Error("AWS_EC2_MODULE_TEMPLATE_URL is not configured");
+  }
+
+  if (enableCloudWatchModule && !cloudWatchModuleTemplateUrl) {
+    throw new Error("AWS_CLOUDWATCH_MODULE_TEMPLATE_URL is not configured");
   }
 
   if (requiresCallbacks && !callbackUrl?.trim()) {
@@ -99,6 +106,7 @@ export function buildAwsCloudFormationCreateStackUrl({
     ["param_EnableCloudTrail", enableCloudTrail ? "true" : "false"],
     ["param_EnableActionRole", effectiveEnableActionRole ? "true" : "false"],
     ["param_EnableEC2Module", enableEC2Module ? "true" : "false"],
+    ["param_EnableCloudWatchModule", enableCloudWatchModule ? "true" : "false"],
     ["param_UseTagScopedAccess", useTagScopedAccess ? "true" : "false"],
     ["region", region],
   ];
@@ -117,6 +125,10 @@ export function buildAwsCloudFormationCreateStackUrl({
 
   if (ec2ModuleTemplateUrl) {
     queryItems.push(["param_Ec2ModuleTemplateUrl", ec2ModuleTemplateUrl]);
+  }
+
+  if (cloudWatchModuleTemplateUrl) {
+    queryItems.push(["param_CloudwatchModuleTemplateUrl", cloudWatchModuleTemplateUrl]);
   }
 
   if (requiresCallbacks && callbackUrl?.trim()) {
