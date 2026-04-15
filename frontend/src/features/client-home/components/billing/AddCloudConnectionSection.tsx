@@ -126,7 +126,7 @@ export function AddCloudConnectionSection({
   ]
 
   return (
-    <section className="rounded-[14px] border border-[color:var(--border-light)] bg-white px-5 py-5 shadow-sm-custom">
+    <section className="rounded-[14px] border border-[color:var(--border-light)] bg-[#f7fbfb] px-5 py-5 shadow-sm-custom">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="text-[2rem] font-semibold leading-tight text-text-primary">Cloud Integrations</h2>
