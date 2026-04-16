@@ -436,7 +436,7 @@ export type DashboardOverviewResponse = {
 };
 
 export type CostExplorerGranularity = "hourly" | "daily" | "monthly";
-export type CostExplorerGroupBy = "none" | "service" | "service-category" | "resource" | "region" | "account";
+export type CostExplorerGroupBy = "none" | "service" | "service-category" | "resource" | "region" | "account" | `tag:${string}`;
 export type CostExplorerMetric = "billed" | "effective" | "list";
 export type CostExplorerCompareKey = "previous-month" | "budget" | "forecast";
 
@@ -445,6 +445,12 @@ export type CostExplorerFiltersQuery = {
   groupBy?: CostExplorerGroupBy;
   metric?: CostExplorerMetric;
   compareKey?: CostExplorerCompareKey | null;
+};
+
+export type CostExplorerGroupOptionsResponse = {
+  baseOptions: Array<{ key: "none" | "service" | "service-category" | "resource" | "region" | "account"; label: string }>;
+  tagKeyOptions: Array<{ key: `tag:${string}`; normalizedKey: string; count: number }>;
+  tagValueOptions: Array<{ key: string; normalizedValue: string; count: number }>;
 };
 
 export type CostExplorerChartLabel = {

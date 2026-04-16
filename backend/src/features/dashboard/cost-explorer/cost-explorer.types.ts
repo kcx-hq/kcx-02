@@ -1,7 +1,9 @@
 import type { DashboardScope } from "../dashboard.types.js";
 
 export type CostExplorerGranularity = "hourly" | "daily" | "monthly";
-export type CostExplorerGroupBy = "none" | "service" | "service-category" | "resource" | "region" | "account";
+export type CostExplorerBaseGroupBy = "none" | "service" | "service-category" | "resource" | "region" | "account";
+export type CostExplorerTagGroupBy = `tag:${string}`;
+export type CostExplorerGroupBy = CostExplorerBaseGroupBy | CostExplorerTagGroupBy;
 export type CostExplorerMetric = "billed" | "effective" | "list";
 export type CostExplorerCompareKey = "previous-month" | "budget" | "forecast";
 
@@ -73,4 +75,22 @@ export type CostExplorerResponse = {
     account: CostExplorerBreakdownRow[];
     region: CostExplorerBreakdownRow[];
   };
+};
+
+export type CostExplorerTagGroupKeyOption = {
+  key: string;
+  normalizedKey: string;
+  count: number;
+};
+
+export type CostExplorerTagValueOption = {
+  key: string;
+  normalizedValue: string;
+  count: number;
+};
+
+export type CostExplorerGroupOptionsResponse = {
+  baseOptions: Array<{ key: CostExplorerBaseGroupBy; label: string }>;
+  tagKeyOptions: CostExplorerTagGroupKeyOption[];
+  tagValueOptions: CostExplorerTagValueOption[];
 };

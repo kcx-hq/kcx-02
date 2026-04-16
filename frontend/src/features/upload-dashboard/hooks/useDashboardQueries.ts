@@ -71,6 +71,16 @@ export function useCostExplorerQuery(filters?: CostExplorerFiltersQuery, enabled
   });
 }
 
+export function useCostExplorerGroupOptionsQuery(tagKey?: string | null) {
+  const { scope } = useDashboardScope();
+  return useQuery({
+    queryKey: ["dashboard", "cost-explorer", "group-options", scope, tagKey ?? null],
+    queryFn: () => dashboardApi.getCostExplorerGroupOptions(assertScope(scope), tagKey ?? null),
+    enabled: Boolean(scope),
+    staleTime: 30_000,
+  });
+}
+
 export function useResourcesQuery() {
   const { scope } = useDashboardScope();
   return useQuery({

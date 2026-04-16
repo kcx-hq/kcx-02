@@ -2,11 +2,19 @@ import type { Request } from "express";
 import { z } from "zod";
 
 import { parseWithSchema } from "../../_shared/validation/zod-validate.js";
-import type { CostExplorerFilters } from "./cost-explorer.types.js";
+import type { CostExplorerFilters, CostExplorerGroupBy } from "./cost-explorer.types.js";
+
+const BASE_GROUP_BY = ["none", "service", "service-category", "resource", "region", "account"] as const;
+
+const isValidGroupBy = (value: string): value is CostExplorerGroupBy =>
+  BASE_GROUP_BY.includes(value as (typeof BASE_GROUP_BY)[number]) || /^tag:[a-z0-9]+$/.test(value);
 
 const costExplorerFiltersSchema = z.object({
   granularity: z.enum(["hourly", "daily", "monthly"]),
-  groupBy: z.enum(["none", "service", "service-category", "resource", "region", "account"]),
+  groupBy: z.string().refine(
+    (value) => isValidGroupBy(value),
+    "groupBy must be a known dimension or tag:<normalized_key>",
+  ).transform((value) => value as CostExplorerGroupBy),
   metric: z.enum(["billed", "effective", "list"]),
   compareKey: z.enum(["previous-month", "budget", "forecast"]).nullable(),
 });
@@ -33,4 +41,14 @@ export function buildCostExplorerFilters(req: Request): CostExplorerFilters {
     metric,
     compareKey,
   });
+}
+
+const costExplorerGroupOptionsSchema = z.object({
+  tagKey: z.string().trim().regex(/^[a-z0-9]+$/).nullable(),
+});
+
+export function buildCostExplorerGroupOptionsFilters(req: Request): { tagKey: string | null } {
+  const tagKeyRaw = firstQueryValue(req.query.tagKey) ?? null;
+  const tagKey = tagKeyRaw && tagKeyRaw.trim().length > 0 ? tagKeyRaw.trim().toLowerCase() : null;
+  return parseWithSchema(costExplorerGroupOptionsSchema, { tagKey });
 }

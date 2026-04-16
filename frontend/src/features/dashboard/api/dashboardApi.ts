@@ -7,6 +7,7 @@ import type {
   BudgetUpsertPayload,
   BudgetActualForecastPoint,
   CostExplorerFiltersQuery,
+  CostExplorerGroupOptionsResponse,
   CostExplorerResponse,
   CostBreakdownItem,
   DashboardOverviewResponse,
@@ -93,6 +94,19 @@ function withCostExplorerFilters(
     params.delete("compareKey");
   }
 
+  const query = params.toString();
+  return query.length > 0 ? `${path}?${query}` : path;
+}
+
+function withCostExplorerGroupOptions(
+  path: string,
+  scope: DashboardResolvedScope,
+  tagKey?: string | null,
+): string {
+  const params = new URLSearchParams(buildDashboardQueryParams(scope));
+  if (tagKey && tagKey.trim().length > 0) {
+    params.set("tagKey", tagKey.trim().toLowerCase());
+  }
   const query = params.toString();
   return query.length > 0 ? `${path}?${query}` : path;
 }
@@ -217,6 +231,12 @@ export const dashboardApi = {
 
   getCostExplorer(scope: DashboardResolvedScope, filters?: CostExplorerFiltersQuery) {
     return apiGet<CostExplorerResponse>(withCostExplorerFilters("/dashboard/cost-explorer", scope, filters));
+  },
+
+  getCostExplorerGroupOptions(scope: DashboardResolvedScope, tagKey?: string | null) {
+    return apiGet<CostExplorerGroupOptionsResponse>(
+      withCostExplorerGroupOptions("/dashboard/cost-explorer/group-options", scope, tagKey),
+    );
   },
 
   getResources(scope: DashboardResolvedScope) {

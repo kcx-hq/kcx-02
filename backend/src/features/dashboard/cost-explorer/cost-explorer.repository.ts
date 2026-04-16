@@ -8,6 +8,7 @@ import type {
   CostExplorerEffectiveFilters,
   CostExplorerGranularity,
   CostExplorerGroupBy,
+  CostExplorerGroupOptionsResponse,
   CostExplorerMetric,
   CostExplorerSeries,
 } from "./cost-explorer.types.js";
@@ -68,6 +69,10 @@ type GroupDimensionSql = {
   groupByColumns: string;
   keyType: "number" | "string";
 };
+
+type TagGroupContext =
+  | { isTagGroup: false; normalizedKey: null }
+  | { isTagGroup: true; normalizedKey: string };
 
 const toNumber = (value: number | string | null | undefined): number => {
   if (typeof value === "number") {
@@ -217,12 +222,28 @@ const toBucketStartIso = (value: string | Date): string => {
 };
 
 export class CostExplorerRepository {
+  private parseTagGroupBy(groupBy?: CostExplorerGroupBy): TagGroupContext {
+    if (!groupBy || !groupBy.startsWith("tag:")) {
+      return { isTagGroup: false, normalizedKey: null };
+    }
+    const normalizedKey = groupBy.slice(4).trim().toLowerCase();
+    if (!normalizedKey || !/^[a-z0-9]+$/.test(normalizedKey)) {
+      return { isTagGroup: false, normalizedKey: null };
+    }
+    return { isTagGroup: true, normalizedKey };
+  }
+
   private getSourceConfig(
     scope: DashboardScope,
     effectiveGranularity: CostExplorerGranularity,
     groupBy?: Exclude<CostExplorerGroupBy, "none">,
   ): SourceConfig {
+    const tagGroup = this.parseTagGroupBy(groupBy);
     if (scope.scopeType === "upload") {
+      return factConfigByGranularity[effectiveGranularity];
+    }
+
+    if (tagGroup.isTagGroup) {
       return factConfigByGranularity[effectiveGranularity];
     }
 
@@ -284,8 +305,10 @@ export class CostExplorerRepository {
     if (typeof scope.providerId === "number") {
       pushEq(`${config.alias}.provider_id`, scope.providerId);
     }
-    if (Array.isArray(scope.billingSourceIds) && scope.billingSourceIds.length > 0) {
-      pushAnyArray(`${config.alias}.billing_source_id`, scope.billingSourceIds);
+    const billingSourceIds =
+      "billingSourceIds" in scope ? (scope as { billingSourceIds?: number[] }).billingSourceIds : undefined;
+    if (Array.isArray(billingSourceIds) && billingSourceIds.length > 0) {
+      pushAnyArray(`${config.alias}.billing_source_id`, billingSourceIds);
     }
     if (typeof scope.subAccountKey === "number") {
       pushEq(`${config.alias}.sub_account_key`, scope.subAccountKey);
@@ -616,6 +639,21 @@ export class CostExplorerRepository {
   }
 
   private getDimensionSql(groupBy: Exclude<CostExplorerGroupBy, "none">, alias: string): GroupDimensionSql {
+    const tagGroup = this.parseTagGroupBy(groupBy);
+    if (tagGroup.isTagGroup) {
+      const normalizedKeyEscaped = tagGroup.normalizedKey.replace(/'/g, "''");
+      return {
+        keyColumn: "dt.normalized_value",
+        joinClause: `
+          LEFT JOIN fact_cost_line_item_tags flt ON flt.fact_id = ${alias}.id
+          LEFT JOIN dim_tag dt ON dt.id = flt.tag_id AND dt.normalized_key = '${normalizedKeyEscaped}'
+        `,
+        nameExpression: "COALESCE(MIN(dt.tag_value), 'Unspecified')",
+        groupByColumns: "dt.normalized_value",
+        keyType: "string",
+      };
+    }
+
     if (groupBy === "service") {
       return {
         keyColumn: `${alias}.service_key`,
@@ -665,6 +703,86 @@ export class CostExplorerRepository {
       nameExpression: "COALESCE(dr.region_name, 'Unspecified')",
       groupByColumns: `${alias}.region_key, dr.region_name`,
       keyType: "number",
+    };
+  }
+
+  async getGroupOptions(
+    scope: DashboardScope,
+    from: string,
+    to: string,
+    tagKey: string | null,
+  ): Promise<CostExplorerGroupOptionsResponse> {
+    const config = factConfigByGranularity.daily;
+    const where = this.buildScopeWhereClause(scope, config, from, to);
+
+    const tagKeyRows = await sequelize.query<
+      { normalized_key: string | null; display_key: string | null; tag_count: number | string | null }
+    >(
+      `
+        SELECT
+          dt.normalized_key,
+          COALESCE(MIN(dt.tag_key), dt.normalized_key) AS display_key,
+          COUNT(*)::double precision AS tag_count
+        FROM ${config.tableName} ${config.alias}
+        JOIN fact_cost_line_item_tags flt ON flt.fact_id = ${config.alias}.id
+        JOIN dim_tag dt ON dt.id = flt.tag_id
+        WHERE ${where.whereClause}
+        GROUP BY dt.normalized_key
+        ORDER BY COUNT(*) DESC, dt.normalized_key ASC;
+      `,
+      { bind: where.params, type: QueryTypes.SELECT },
+    );
+
+    const tagKeyOptions = tagKeyRows
+      .filter((row) => typeof row.normalized_key === "string" && row.normalized_key.trim().length > 0)
+      .map((row) => ({
+        key: `tag:${String(row.normalized_key)}`,
+        normalizedKey: String(row.normalized_key),
+        count: toNumber(row.tag_count),
+        label: String(row.display_key ?? row.normalized_key),
+      }));
+
+    const tagValueOptions =
+      tagKey && /^[a-z0-9]+$/.test(tagKey)
+        ? await sequelize.query<{ normalized_value: string | null; display_value: string | null; tag_count: number | string | null }>(
+            `
+              SELECT
+                dt.normalized_value,
+                COALESCE(MIN(dt.tag_value), dt.normalized_value) AS display_value,
+                COUNT(*)::double precision AS tag_count
+              FROM ${config.tableName} ${config.alias}
+              JOIN fact_cost_line_item_tags flt ON flt.fact_id = ${config.alias}.id
+              JOIN dim_tag dt ON dt.id = flt.tag_id
+              WHERE ${where.whereClause}
+                AND dt.normalized_key = $${where.nextIndex}
+              GROUP BY dt.normalized_value
+              ORDER BY COUNT(*) DESC, dt.normalized_value ASC;
+            `,
+            { bind: [...where.params, tagKey], type: QueryTypes.SELECT },
+          )
+        : [];
+
+    return {
+      baseOptions: [
+        { key: "none", label: "None" },
+        { key: "service", label: "Service" },
+        { key: "service-category", label: "Service Category" },
+        { key: "resource", label: "Resource" },
+        { key: "region", label: "Region" },
+        { key: "account", label: "Account" },
+      ],
+      tagKeyOptions: tagKeyOptions.map((entry) => ({
+        key: entry.key,
+        normalizedKey: entry.normalizedKey,
+        count: entry.count,
+      })),
+      tagValueOptions: tagValueOptions
+        .filter((row) => typeof row.normalized_value === "string" && row.normalized_value.trim().length > 0)
+        .map((row) => ({
+          key: String(row.display_value ?? row.normalized_value),
+          normalizedValue: String(row.normalized_value),
+          count: toNumber(row.tag_count),
+        })),
     };
   }
 

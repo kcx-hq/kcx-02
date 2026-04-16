@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { EChartsOption } from "echarts";
 
-import { useCostExplorerQuery } from "../../hooks/useDashboardQueries";
+import { useCostExplorerGroupOptionsQuery, useCostExplorerQuery } from "../../hooks/useDashboardQueries";
 import { useDashboardScope } from "../../hooks/useDashboardScope";
 import {
   COMPARE_OPTIONS,
@@ -60,6 +60,8 @@ export default function CostExplorerPage() {
   const [chartMode, setChartMode] = useState<ChartMode>("line");
   const [rowsPerPage, setRowsPerPage] = useState<RowsPerPage>(5);
   const [breakdownPage, setBreakdownPage] = useState(1);
+  const activeTagKey = groupBy.startsWith("tag:") ? groupBy.slice(4) : null;
+  const groupOptionsQuery = useCostExplorerGroupOptionsQuery(activeTagKey);
 
   const multiMetricMode = selectedMetrics.length > 1;
   const activeGroupBy: GroupBy = multiMetricMode ? "none" : groupBy;
@@ -106,6 +108,21 @@ export default function CostExplorerPage() {
 
   const effectiveGranularity = (primaryQuery.data?.filtersApplied.effectiveGranularity ??
     (granularity === "hourly" && days > 14 ? "daily" : granularity)) as Granularity;
+
+  const dynamicGroupOptions = useMemo<Array<{ key: GroupBy; label: string }>>(() => {
+    const base = GROUP_BY_OPTIONS.map((item) => ({ key: item.key as GroupBy, label: item.label }));
+    const noneOption = base.find((item) => item.key === "none") ?? { key: "none" as GroupBy, label: "None" };
+    const baseWithoutNone = base.filter((item) => item.key !== "none");
+    const tags =
+      groupOptionsQuery.data?.tagKeyOptions.map((option) => ({
+        key: option.key as GroupBy,
+        label:
+          option.normalizedKey.length > 0
+            ? `Tag: ${option.normalizedKey[0].toUpperCase() + option.normalizedKey.slice(1)}`
+            : option.normalizedKey,
+      })) ?? [];
+    return [noneOption, ...tags, ...baseWithoutNone];
+  }, [groupOptionsQuery.data?.tagKeyOptions]);
 
   const labels = primaryQuery.data?.chart.labels ?? [];
   const primarySeries = (primaryQuery.data?.chart.series ?? []) as ChartSeries[];
@@ -485,7 +502,7 @@ export default function CostExplorerPage() {
     {
       key: "group",
       label: "Group",
-      value: GROUP_BY_OPTIONS.find((item) => item.key === activeGroupBy)?.label ?? "None",
+      value: dynamicGroupOptions.find((item) => item.key === activeGroupBy)?.label ?? "None",
     },
     {
       key: "compare",
@@ -602,6 +619,8 @@ export default function CostExplorerPage() {
           groupRef={groupRef}
           compareRef={compareRef}
           metricRef={metricRef}
+          groupOptions={dynamicGroupOptions}
+          tagValueOptions={groupBy.startsWith("tag:") ? (groupOptionsQuery.data?.tagValueOptions ?? []) : []}
         />
 
         <div className="cost-explorer-unified-shell__divider" aria-hidden="true" />

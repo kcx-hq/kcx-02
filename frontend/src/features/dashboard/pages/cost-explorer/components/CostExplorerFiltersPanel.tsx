@@ -30,6 +30,8 @@ type CostExplorerFiltersPanelProps = {
   groupRef: RefObject<HTMLButtonElement | null>;
   compareRef: RefObject<HTMLButtonElement | null>;
   metricRef: RefObject<HTMLButtonElement | null>;
+  groupOptions?: Array<{ key: GroupBy; label: string }>;
+  tagValueOptions?: Array<{ key: string; count: number }>;
 };
 
 type FilterPopoverKey = CostExplorerChip["key"];
@@ -57,6 +59,8 @@ export function CostExplorerFiltersPanel({
   groupRef,
   compareRef,
   metricRef,
+  groupOptions,
+  tagValueOptions,
 }: CostExplorerFiltersPanelProps) {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const [activePopover, setActivePopover] = useState<FilterPopoverKey | null>(null);
@@ -94,7 +98,19 @@ export function CostExplorerFiltersPanel({
   }, []);
 
   const granularityLabel = `${effectiveGranularity[0].toUpperCase()}${effectiveGranularity.slice(1)}`;
-  const groupLabel = GROUP_BY_OPTIONS.find((item) => item.key === groupBy)?.label ?? "None";
+  const resolvedGroupOptions = useMemo<Array<FilterOption<GroupBy>>>(
+    () =>
+      (groupOptions?.length
+        ? groupOptions
+        : GROUP_BY_OPTIONS.map((item) => ({ key: item.key, label: item.label }))
+      ).map((item) => ({
+        key: item.key,
+        label: item.label,
+      })),
+    [groupOptions],
+  );
+
+  const groupLabel = resolvedGroupOptions.find((item) => item.key === groupBy)?.label ?? "None";
   const metricLabel = selectedMetrics.length
     ? selectedMetrics
         .map((key) => METRIC_OPTIONS.find((item) => item.key === key)?.label ?? key)
@@ -157,15 +173,6 @@ export function CostExplorerFiltersPanel({
     [days],
   );
 
-  const groupOptions = useMemo<Array<FilterOption<GroupBy>>>(
-    () =>
-      GROUP_BY_OPTIONS.map((item) => ({
-        key: item.key,
-        label: item.label,
-      })),
-    [],
-  );
-
   const metricOptions = useMemo<Array<FilterOption<Metric>>>(
     () =>
       METRIC_OPTIONS.map((item) => ({
@@ -185,7 +192,7 @@ export function CostExplorerFiltersPanel({
   );
 
   const filteredGranularityOptions = filterOptions(granularityOptions, searchByPopover.granularity);
-  const filteredGroupOptions = filterOptions(groupOptions, searchByPopover.group);
+  const filteredGroupOptions = filterOptions(resolvedGroupOptions, searchByPopover.group);
   const filteredMetricOptions = filterOptions(metricOptions, searchByPopover.metric);
   const filteredCompareOptions = filterOptions(compareOptions, searchByPopover.compare);
 
@@ -328,6 +335,21 @@ export function CostExplorerFiltersPanel({
                 onSelect: onSelectGroupBy,
                 emptyLabel: "No group dimensions found.",
               })}
+              {groupBy.startsWith("tag:") && (tagValueOptions?.length ?? 0) > 0 ? (
+                <>
+                  <p className="cost-explorer-filter-popover__title" style={{ marginTop: 12 }}>Tag Values</p>
+                  <div className="cost-explorer-filter-popover__list" role="listbox" aria-label="Tag values">
+                    {tagValueOptions?.map((value) => (
+                      <div key={value.key} className="cost-explorer-filter-option">
+                        <span className="cost-explorer-filter-option__content">
+                          <span className="cost-explorer-filter-option__label">{value.key}</span>
+                        </span>
+                        <span className="cost-explorer-filter-option__label">{value.count}</span>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              ) : null}
             </div>
           ) : null}
         </div>

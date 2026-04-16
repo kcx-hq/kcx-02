@@ -1,6 +1,7 @@
 export type DatePreset = "last-7d" | "last-30d" | "mtd" | "qtd" | "ytd" | "custom";
 export type Granularity = "hourly" | "daily" | "monthly";
-export type GroupBy = "none" | "service" | "service-category" | "resource" | "region" | "account";
+export type BaseGroupBy = "none" | "service" | "service-category" | "resource" | "region" | "account";
+export type GroupBy = BaseGroupBy | `tag:${string}`;
 export type CompareKey = "previous-month" | "budget" | "forecast";
 export type Metric = "billed" | "effective" | "list";
 export type SeriesKind = "primary" | "group" | "comparison";
@@ -34,7 +35,7 @@ export const DATE_PRESETS: Array<{ key: DatePreset; label: string }> = [
   { key: "custom", label: "Custom" },
 ];
 
-export const GROUP_BY_OPTIONS: Array<{ key: GroupBy; label: string }> = [
+export const GROUP_BY_OPTIONS: Array<{ key: BaseGroupBy; label: string }> = [
   { key: "none", label: "None" },
   { key: "service", label: "Service" },
   { key: "service-category", label: "Service Category" },
