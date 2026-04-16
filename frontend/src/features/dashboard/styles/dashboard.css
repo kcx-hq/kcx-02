@@ -195,12 +195,64 @@
   white-space: nowrap;
 }
 
+.dashboard-nav-item--group {
+  width: 100%;
+  background: transparent;
+  cursor: pointer;
+}
+
+.dashboard-nav-group__chevron {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.9;
+}
+
+.dashboard-nav-group__chevron-icon {
+  width: 16px;
+  height: 16px;
+  transition: transform 140ms ease;
+}
+
+.dashboard-nav-group__chevron-icon--open {
+  transform: rotate(90deg);
+}
+
+.dashboard-nav-submenu {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-left: 6px;
+  padding-left: 10px;
+  border-left: 1px solid var(--dashboard-sidebar-separator);
+}
+
+.dashboard-nav-item--sub {
+  min-height: 30px;
+  padding-left: 26px;
+  font-size: 0.76rem;
+}
+
+.dashboard-nav-item--sub .dashboard-nav-item__icon {
+  width: 16px;
+  height: 16px;
+}
+
 .dashboard-sidebar[data-collapsed="true"] .dashboard-nav-item {
   justify-content: center;
   width: 44px;
   min-height: 34px;
   padding: 0;
   margin: 0 auto;
+}
+
+.dashboard-sidebar[data-collapsed="true"] .dashboard-nav-group__chevron {
+  display: none;
+}
+
+.dashboard-sidebar[data-collapsed="true"] .dashboard-nav-submenu {
+  display: none;
 }
 
 .dashboard-sidebar[data-collapsed="true"] .dashboard-nav-item::before {

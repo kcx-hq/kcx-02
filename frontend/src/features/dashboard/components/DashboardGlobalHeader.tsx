@@ -2,7 +2,7 @@ import { Bell, CalendarDays, Check, ChevronDown } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useTenantUploadHistory } from "@/features/client-home/hooks/useTenantUploadHistory";
-import { dashboardNavItems } from "../common/navigation";
+import { dashboardNavLinks } from "../common/navigation";
 import { useDashboardFiltersQuery } from "../hooks/useDashboardQueries";
 import { useDashboardScope } from "../hooks/useDashboardScope";
 
@@ -212,8 +212,8 @@ export function DashboardGlobalHeader() {
   const uploadHistoryQuery = useTenantUploadHistory(scope?.scopeType === "upload");
 
   const currentLabel = useMemo(() => {
-    const match = dashboardNavItems.find((item) => location.pathname.startsWith(item.path));
-    return match?.label ?? "Overview";
+    const match = dashboardNavLinks.find((item) => location.pathname.startsWith(item.path));
+    return match?.label ?? "Overview Dashboard";
   }, [location.pathname]);
 
   const uploadedFileLabel = useMemo(() => {

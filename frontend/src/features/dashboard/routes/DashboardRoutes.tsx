@@ -31,6 +31,7 @@ export default function DashboardRoutes() {
       <Route path="/dashboard" element={<DashboardLayout />}>
         <Route index element={<DashboardOverviewRedirect />} />
         <Route path="overview" element={<OverviewPage />} />
+        <Route path="cfo-dashboard" element={<OverviewPage />} />
         <Route path="cost-explorer" element={<CostExplorerPage />} />
         <Route path="resources" element={<ResourcesPage />} />
         <Route path="allocation" element={<AllocationPage />} />
