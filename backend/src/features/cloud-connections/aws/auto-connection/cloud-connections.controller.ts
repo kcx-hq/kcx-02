@@ -1192,7 +1192,9 @@ export async function handleGetAwsCloudFormationSetupUrl(req: Request, res: Resp
   const enableBillingExport = true;
   const enableCloudTrail = postPayload?.enableCloudTrail ?? false;
   const enableEC2Module = postPayload?.enableEC2Module ?? true;
-  const enableActionRole = enableEC2Module ? true : (postPayload?.enableActionRole ?? false);
+  const enableCloudWatchModule = postPayload?.enableCloudWatchModule ?? true;
+  const enableActionRole =
+    enableEC2Module || enableCloudWatchModule ? true : (postPayload?.enableActionRole ?? false);
   const useTagScopedAccess = postPayload?.useTagScopedAccess ?? false;
 
   const exportPrefix = normalizeOptional(postPayload?.exportPrefix) ?? DEFAULT_AWS_EXPORT_PREFIX;
@@ -1254,6 +1256,7 @@ export async function handleGetAwsCloudFormationSetupUrl(req: Request, res: Resp
     cloudTrailName,
     enableActionRole,
     enableEC2Module,
+    enableCloudWatchModule,
     useTagScopedAccess,
     resourceTagKey,
     resourceTagValue,

@@ -6,6 +6,7 @@ import { startIdleActionProcessor } from "./src/features/dashboard/optimization/
 import { startIdleRecommendationScheduler } from "./src/features/dashboard/optimization/recommendation-sync/idle-scheduler.service.js";
 import { startRightsizingActionProcessor } from "./src/features/dashboard/optimization/recommendation-sync/rightsizing-action-processor.service.js";
 import { startRightsizingRecommendationScheduler } from "./src/features/dashboard/optimization/recommendation-sync/rightsizing-scheduler.service.js";
+import { startEc2ScheduledJobsScheduler } from "./src/features/ec2/scheduled-jobs/scheduled-jobs.scheduler.service.js";
 import { sequelize } from "./src/models/index.js";
 import { logger } from "./src/utils/logger.js";
 
@@ -19,6 +20,7 @@ let stopIdleActionProcessor: (() => void) | null = null;
 let stopRightsizingScheduler: (() => void) | null = null;
 let stopCommitmentScheduler: (() => void) | null = null;
 let stopRightsizingActionProcessor: (() => void) | null = null;
+let stopEc2ScheduledJobsScheduler: (() => void) | null = null;
 
 const shutdown = (signal: string): void => {
   if (isShuttingDown) {
@@ -40,6 +42,10 @@ const shutdown = (signal: string): void => {
     if (stopCommitmentScheduler) {
       stopCommitmentScheduler();
       stopCommitmentScheduler = null;
+    }
+    if (stopEc2ScheduledJobsScheduler) {
+      stopEc2ScheduledJobsScheduler();
+      stopEc2ScheduledJobsScheduler = null;
     }
     if (stopIdleScheduler) {
       stopIdleScheduler();
@@ -72,6 +78,10 @@ const shutdown = (signal: string): void => {
     if (stopCommitmentScheduler) {
       stopCommitmentScheduler();
       stopCommitmentScheduler = null;
+    }
+    if (stopEc2ScheduledJobsScheduler) {
+      stopEc2ScheduledJobsScheduler();
+      stopEc2ScheduledJobsScheduler = null;
     }
     clearTimeout(forceExitTimer);
     if (stopIdleScheduler) {
@@ -113,6 +123,7 @@ const startServer = async (): Promise<void> => {
   stopCommitmentScheduler = startCommitmentRecommendationScheduler();
   stopIdleScheduler = startIdleRecommendationScheduler();
   stopRightsizingScheduler = startRightsizingRecommendationScheduler();
+  stopEc2ScheduledJobsScheduler = startEc2ScheduledJobsScheduler();
 
   server.listen(PORT, () => {
     logger.info("Server running", {

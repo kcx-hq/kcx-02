@@ -1,0 +1,40 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: KCX CloudWatch read action permissions module
+
+Parameters:
+  ConnectionName:
+    Type: String
+    Description: Friendly connection name from KCX
+    AllowedPattern: '^[a-z0-9-]+$'
+    ConstraintDescription: ConnectionName must contain only lowercase letters, numbers, and hyphens.
+
+  ActionRoleName:
+    Type: String
+    Description: Name of the IAM role to attach CloudWatch read permissions to
+
+Resources:
+  KCXCloudWatchModulePolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: !Sub kcx-cloudwatch-module-${ConnectionName}
+      Roles:
+        - !Ref ActionRoleName
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: CloudWatchReadMetrics
+            Effect: Allow
+            Action:
+              - cloudwatch:GetMetricData
+              - cloudwatch:ListMetrics
+              - cloudwatch:GetMetricStatistics
+            Resource: "*"
+
+Outputs:
+  ModuleName:
+    Description: Name of the enabled module
+    Value: cloudwatch
+
+  AttachedRoleName:
+    Description: Name of the IAM role this module attached to
+    Value: !Ref ActionRoleName

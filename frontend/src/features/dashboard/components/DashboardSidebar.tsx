@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import kcxLogo from "@/assets/logos/kcx-logo.svg";
-import { dashboardNavItems } from "../common/navigation";
+import { dashboardNav, dashboardNavLinks } from "../common/navigation";
 import { DashboardIcon } from "./DashboardIcon";
 
 export function DashboardSidebar() {
   const [expanded, setExpanded] = useState(false);
+  const [dashboardsOpen, setDashboardsOpen] = useState(true);
   const [desktop, setDesktop] = useState(() =>
     typeof window === "undefined" ? true : window.matchMedia("(min-width: 961px)").matches,
   );
@@ -28,9 +29,22 @@ export function DashboardSidebar() {
     return () => mediaQuery.removeEventListener("change", handleMediaChange);
   }, []);
 
+  const dashboardsGroup = useMemo(() => dashboardNav.find((node) => node.kind === "group"), []);
+
+  const isDashboardsGroupActive = useMemo(() => {
+    if (!dashboardsGroup || dashboardsGroup.kind !== "group") return false;
+    return dashboardsGroup.items.some((item) => location.pathname.startsWith(item.path));
+  }, [dashboardsGroup, location.pathname]);
+
+  useEffect(() => {
+    if (isDashboardsGroupActive) {
+      setDashboardsOpen(true);
+    }
+  }, [isDashboardsGroupActive]);
+
   const activeLabel = useMemo(() => {
-    const match = dashboardNavItems.find((item) => location.pathname.startsWith(item.path));
-    return match?.label ?? "Overview";
+    const match = dashboardNavLinks.find((item) => location.pathname.startsWith(item.path));
+    return match?.label ?? "Overview Dashboard";
   }, [location.pathname]);
 
   return (
@@ -75,20 +89,65 @@ export function DashboardSidebar() {
       <div className="dashboard-sidebar__divider" />
 
       <nav className="dashboard-sidebar__nav" aria-label="Dashboard Navigation">
-        {dashboardNavItems.map((item) => (
-          <NavLink
-            key={item.path}
-            to={{ pathname: item.path, search: location.search }}
-            className={({ isActive }) =>
-              `dashboard-nav-item ${isActive ? "dashboard-nav-item--active" : ""}`
-            }
-            title={collapsed ? item.label : undefined}
-            end
-          >
-            <DashboardIcon name={item.icon} className="dashboard-nav-item__icon" />
-            <span className="dashboard-nav-item__label">{item.label}</span>
-          </NavLink>
-        ))}
+        {dashboardNav.map((node) => {
+          if (node.kind === "group") {
+            return (
+              <div key={node.label} className="dashboard-nav-group">
+                <button
+                  type="button"
+                  className={`dashboard-nav-item dashboard-nav-item--group ${isDashboardsGroupActive ? "dashboard-nav-item--active" : ""}`}
+                  title={collapsed ? node.label : undefined}
+                  aria-expanded={dashboardsOpen}
+                  aria-controls="dashboard-nav-group-dashboards"
+                  onClick={() => setDashboardsOpen((open) => !open)}
+                >
+                  <DashboardIcon name={node.icon} className="dashboard-nav-item__icon" />
+                  <span className="dashboard-nav-item__label">{node.label}</span>
+                  <span className="dashboard-nav-group__chevron" aria-hidden="true">
+                    <DashboardIcon
+                      name="chevron-right"
+                      className={`dashboard-nav-group__chevron-icon ${dashboardsOpen ? "dashboard-nav-group__chevron-icon--open" : ""}`}
+                    />
+                  </span>
+                </button>
+
+                {dashboardsOpen ? (
+                  <div id="dashboard-nav-group-dashboards" className="dashboard-nav-submenu">
+                    {node.items.map((item) => (
+                      <NavLink
+                        key={item.path}
+                        to={{ pathname: item.path, search: location.search }}
+                        className={({ isActive }) =>
+                          `dashboard-nav-item dashboard-nav-item--sub ${isActive ? "dashboard-nav-item--active" : ""}`
+                        }
+                        title={collapsed ? item.label : undefined}
+                        end
+                      >
+                        <DashboardIcon name={item.icon} className="dashboard-nav-item__icon" />
+                        <span className="dashboard-nav-item__label">{item.label}</span>
+                      </NavLink>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            );
+          }
+
+          return (
+            <NavLink
+              key={node.path}
+              to={{ pathname: node.path, search: location.search }}
+              className={({ isActive }) =>
+                `dashboard-nav-item ${isActive ? "dashboard-nav-item--active" : ""}`
+              }
+              title={collapsed ? node.label : undefined}
+              end
+            >
+              <DashboardIcon name={node.icon} className="dashboard-nav-item__icon" />
+              <span className="dashboard-nav-item__label">{node.label}</span>
+            </NavLink>
+          );
+        })}
       </nav>
 
       <div className="dashboard-sidebar__footer">

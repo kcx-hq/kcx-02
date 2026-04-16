@@ -182,6 +182,14 @@ const env = {
     optionalPositiveInteger(process.env.OPTIMIZATION_COMMITMENT_SCHEDULER_STARTUP_DELAY_MS) ?? 45_000,
   optimizationCommitmentSyncFreshnessMinutes:
     optionalPositiveInteger(process.env.OPTIMIZATION_COMMITMENT_SYNC_FRESHNESS_MINUTES) ?? 360,
+  ec2ScheduledJobsSchedulerEnabled:
+    optionalBoolean(process.env.EC2_SCHEDULED_JOBS_SCHEDULER_ENABLED) ?? true,
+  ec2ScheduledJobsPollIntervalMs:
+    optionalPositiveInteger(process.env.EC2_SCHEDULED_JOBS_POLL_INTERVAL_MS) ?? 60_000,
+  ec2ScheduledJobsBatchSize:
+    optionalPositiveInteger(process.env.EC2_SCHEDULED_JOBS_BATCH_SIZE) ?? 10,
+  ec2ScheduledJobsMaxBatchesPerPoll:
+    optionalPositiveInteger(process.env.EC2_SCHEDULED_JOBS_MAX_BATCHES_PER_POLL) ?? 5,
 };
 
 export default env;
