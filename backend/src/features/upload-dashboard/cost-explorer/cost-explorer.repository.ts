@@ -74,6 +74,11 @@ type TagGroupContext =
   | { isTagGroup: false; normalizedKey: null }
   | { isTagGroup: true; normalizedKey: string };
 
+type TagFilterContext = {
+  normalizedKey: string;
+  normalizedValue: string | null;
+};
+
 const toNumber = (value: number | string | null | undefined): number => {
   if (typeof value === "number") {
     return Number.isFinite(value) ? value : 0;
@@ -222,6 +227,19 @@ const toBucketStartIso = (value: string | Date): string => {
 };
 
 export class CostExplorerRepository {
+  private parseTagFilter(tagKey?: string | null, tagValue?: string | null): TagFilterContext | null {
+    const normalizedKey = (tagKey ?? "").trim().toLowerCase();
+    if (!normalizedKey || !/^[a-z0-9]+$/.test(normalizedKey)) {
+      return null;
+    }
+    const normalizedValueCandidate = (tagValue ?? "").trim().toLowerCase();
+    const normalizedValue =
+      normalizedValueCandidate.length > 0 && /^[a-z0-9._:@/-]+$/.test(normalizedValueCandidate)
+        ? normalizedValueCandidate
+        : null;
+    return { normalizedKey, normalizedValue };
+  }
+
   private parseTagGroupBy(groupBy?: CostExplorerGroupBy): TagGroupContext {
     if (!groupBy || !groupBy.startsWith("tag:")) {
       return { isTagGroup: false, normalizedKey: null };
@@ -237,9 +255,14 @@ export class CostExplorerRepository {
     scope: DashboardScope,
     effectiveGranularity: CostExplorerGranularity,
     groupBy?: Exclude<CostExplorerGroupBy, "none">,
+    tagFilter?: TagFilterContext | null,
   ): SourceConfig {
     const tagGroup = this.parseTagGroupBy(groupBy);
     if (scope.scopeType === "upload") {
+      return factConfigByGranularity[effectiveGranularity];
+    }
+
+    if (tagFilter) {
       return factConfigByGranularity[effectiveGranularity];
     }
 
@@ -259,6 +282,7 @@ export class CostExplorerRepository {
     from: string,
     to: string,
     startIndex: number = 1,
+    tagFilter?: TagFilterContext | null,
   ): SqlFilterBuild {
     const conditions: string[] = [];
     const params: unknown[] = [];
@@ -287,6 +311,28 @@ export class CostExplorerRepository {
         pushRange(config.dateFilterExpression, getMonthStart(from), getMonthStart(to));
       } else {
         pushRange(config.dateFilterExpression, from, to);
+      }
+      if (tagFilter) {
+        params.push(tagFilter.normalizedKey);
+        const keyIndex = startIndex + params.length - 1;
+        let existsClause = `
+          EXISTS (
+            SELECT 1
+            FROM fact_cost_line_item_tags flt_filter
+            JOIN dim_tag dt_filter ON dt_filter.id = flt_filter.tag_id
+            WHERE flt_filter.fact_id = ${config.alias}.id
+              AND dt_filter.normalized_key = $${keyIndex}
+          )
+        `;
+        if (tagFilter.normalizedValue) {
+          params.push(tagFilter.normalizedValue);
+          const valueIndex = startIndex + params.length - 1;
+          existsClause = existsClause.replace(
+            "\n          )",
+            `\n              AND dt_filter.normalized_value = $${valueIndex}\n          )`,
+          );
+        }
+        conditions.push(existsClause);
       }
       return {
         whereClause: conditions.join("\n      AND "),
@@ -320,6 +366,29 @@ export class CostExplorerRepository {
       pushEq(`${config.alias}.region_key`, scope.regionKey);
     }
 
+    if (tagFilter) {
+      params.push(tagFilter.normalizedKey);
+      const keyIndex = startIndex + params.length - 1;
+      let existsClause = `
+        EXISTS (
+          SELECT 1
+          FROM fact_cost_line_item_tags flt_filter
+          JOIN dim_tag dt_filter ON dt_filter.id = flt_filter.tag_id
+          WHERE flt_filter.fact_id = ${config.alias}.id
+            AND dt_filter.normalized_key = $${keyIndex}
+        )
+      `;
+      if (tagFilter.normalizedValue) {
+        params.push(tagFilter.normalizedValue);
+        const valueIndex = startIndex + params.length - 1;
+        existsClause = existsClause.replace(
+          "\n        )",
+          `\n            AND dt_filter.normalized_value = $${valueIndex}\n        )`,
+        );
+      }
+      conditions.push(existsClause);
+    }
+
     return {
       whereClause: conditions.join("\n      AND "),
       params,
@@ -333,9 +402,10 @@ export class CostExplorerRepository {
     metric: CostExplorerMetric,
     from: string,
     to: string,
+    tagFilter?: TagFilterContext | null,
   ): Promise<Array<{ bucketStart: string; value: number }>> {
-    const config = this.getSourceConfig(scope, effectiveGranularity);
-    const where = this.buildScopeWhereClause(scope, config, from, to);
+    const config = this.getSourceConfig(scope, effectiveGranularity, undefined, tagFilter);
+    const where = this.buildScopeWhereClause(scope, config, from, to, 1, tagFilter);
     const metricColumn = resolveMetricColumn(metric);
 
     const rows = await sequelize.query<BucketValueRow>(
@@ -365,9 +435,10 @@ export class CostExplorerRepository {
     to: string,
     groupBy: Exclude<CostExplorerGroupBy, "none">,
     limit: number,
+    tagFilter?: TagFilterContext | null,
   ): Promise<Array<{ key: GroupDimensionKey; name: string }>> {
-    const config = this.getSourceConfig(scope, effectiveGranularity, groupBy);
-    const where = this.buildScopeWhereClause(scope, config, from, to);
+    const config = this.getSourceConfig(scope, effectiveGranularity, groupBy, tagFilter);
+    const where = this.buildScopeWhereClause(scope, config, from, to, 1, tagFilter);
     const metricColumn = resolveMetricColumn(metric);
 
     const dimension = this.getDimensionSql(groupBy, config.alias);
@@ -412,11 +483,12 @@ export class CostExplorerRepository {
     to: string,
     groupBy: Exclude<CostExplorerGroupBy, "none">,
     groupKeys: GroupDimensionKey[],
+    tagFilter?: TagFilterContext | null,
   ): Promise<Array<{ bucketStart: string; key: GroupDimensionKey; value: number }>> {
     if (!groupKeys.length) return [];
 
-    const config = this.getSourceConfig(scope, effectiveGranularity, groupBy);
-    const where = this.buildScopeWhereClause(scope, config, from, to);
+    const config = this.getSourceConfig(scope, effectiveGranularity, groupBy, tagFilter);
+    const where = this.buildScopeWhereClause(scope, config, from, to, 1, tagFilter);
     const metricColumn = resolveMetricColumn(metric);
     const dimension = this.getDimensionSql(groupBy, config.alias);
     const keyArrayCast = dimension.keyType === "string" ? "text[]" : "bigint[]";
@@ -525,9 +597,10 @@ export class CostExplorerRepository {
       return new Map();
     }
 
-    const config = this.getSourceConfig(scope, filters.effectiveGranularity, "service-category");
+    const tagFilter = this.parseTagFilter(filters.tagKey, filters.tagValue);
+    const config = this.getSourceConfig(scope, filters.effectiveGranularity, "service-category", tagFilter);
     const metricColumn = resolveMetricColumn(filters.metric);
-    const where = this.buildScopeWhereClause(scope, config, filters.from, filters.to);
+    const where = this.buildScopeWhereClause(scope, config, filters.from, filters.to, 1, tagFilter);
 
     const rows = await sequelize.query<CategoryServiceRow>(
       `
@@ -581,9 +654,10 @@ export class CostExplorerRepository {
       return new Map();
     }
 
-    const config = this.getSourceConfig(scope, filters.effectiveGranularity, "resource");
+    const tagFilter = this.parseTagFilter(filters.tagKey, filters.tagValue);
+    const config = this.getSourceConfig(scope, filters.effectiveGranularity, "resource", tagFilter);
     const metricColumn = resolveMetricColumn(filters.metric);
-    const where = this.buildScopeWhereClause(scope, config, filters.from, filters.to);
+    const where = this.buildScopeWhereClause(scope, config, filters.from, filters.to, 1, tagFilter);
 
     const rows = await sequelize.query<ResourceDetailRow>(
       `
@@ -795,12 +869,17 @@ export class CostExplorerRepository {
     periodSpend: number;
     previousPeriodSpend: number;
   }> {
+    const effectiveTagFilter = this.parseTagFilter(
+      filters.tagKey ?? (filters.groupBy.startsWith("tag:") ? filters.groupBy.slice(4) : null),
+      filters.tagValue,
+    );
     const currentTotals = await this.getTotalsByBucket(
       scope,
       filters.effectiveGranularity,
       filters.metric,
       filters.from,
       filters.to,
+      effectiveTagFilter,
     );
 
     const labels = currentTotals.map((entry) => {
@@ -835,6 +914,7 @@ export class CostExplorerRepository {
         filters.to,
         filters.groupBy,
         chartGroupLimit,
+        effectiveTagFilter,
       );
 
       const byBucket = await this.getGroupedValuesByBucket(
@@ -845,6 +925,7 @@ export class CostExplorerRepository {
         filters.to,
         filters.groupBy,
         topGroups.map((entry) => entry.key),
+        effectiveTagFilter,
       );
 
       const bucketIndexByStart = new Map(labels.map((label, index) => [label.bucketStart, index]));
@@ -877,6 +958,7 @@ export class CostExplorerRepository {
       filters.metric,
       previousRange.from,
       previousRange.to,
+      effectiveTagFilter,
     );
     const previousPeriodSpend = previousTotals.reduce((sum, row) => sum + row.value, 0);
 
@@ -923,11 +1005,22 @@ export class CostExplorerRepository {
     dimension: Exclude<CostExplorerGroupBy, "none">,
     limit: number,
   ): Promise<CostExplorerBreakdownRow[]> {
-    const config = this.getSourceConfig(scope, filters.effectiveGranularity, dimension);
+    const effectiveTagFilter = this.parseTagFilter(
+      filters.tagKey ?? (filters.groupBy.startsWith("tag:") ? filters.groupBy.slice(4) : null),
+      filters.tagValue,
+    );
+    const config = this.getSourceConfig(scope, filters.effectiveGranularity, dimension, effectiveTagFilter);
     const metricColumn = resolveMetricColumn(filters.metric);
-    const currentWhere = this.buildScopeWhereClause(scope, config, filters.from, filters.to);
+    const currentWhere = this.buildScopeWhereClause(scope, config, filters.from, filters.to, 1, effectiveTagFilter);
     const previous = buildPreviousPeriod(filters.from, filters.to);
-    const previousWhere = this.buildScopeWhereClause(scope, config, previous.from, previous.to);
+    const previousWhere = this.buildScopeWhereClause(
+      scope,
+      config,
+      previous.from,
+      previous.to,
+      1,
+      effectiveTagFilter,
+    );
     const dim = this.getDimensionSql(dimension, config.alias);
 
     const currentRows = await sequelize.query<GroupTotalRow>(

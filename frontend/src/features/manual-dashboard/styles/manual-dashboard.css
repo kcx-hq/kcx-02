@@ -3605,6 +3605,21 @@
   animation: cost-explorer-popover-in 150ms ease;
 }
 
+.cost-explorer-filter-popover__split {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(200px, 1fr);
+  width: min(560px, calc(100vw - 34px));
+  max-width: min(560px, calc(100vw - 34px));
+}
+
+.cost-explorer-filter-popover__split-pane {
+  min-width: 0;
+}
+
+.cost-explorer-filter-popover__split-pane--right {
+  border-left: 1px solid color-mix(in srgb, var(--dashboard-border-light) 78%, var(--dashboard-white-strong) 22%);
+}
+
 .cost-explorer-filter-popover--right {
   left: auto;
   right: 0;
@@ -4789,6 +4804,17 @@
     left: 0;
     right: 0;
     max-width: none;
+  }
+
+  .cost-explorer-filter-popover__split {
+    grid-template-columns: 1fr;
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .cost-explorer-filter-popover__split-pane--right {
+    border-left: 0;
+    border-top: 1px solid color-mix(in srgb, var(--dashboard-border-light) 78%, var(--dashboard-white-strong) 22%);
   }
 
   .cost-explorer-chart-panel__header {

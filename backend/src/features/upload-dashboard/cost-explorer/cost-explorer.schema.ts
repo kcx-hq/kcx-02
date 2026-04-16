@@ -17,6 +17,8 @@ const costExplorerFiltersSchema = z.object({
   ).transform((value) => value as CostExplorerGroupBy),
   metric: z.enum(["billed", "effective", "list"]),
   compareKey: z.enum(["previous-month", "budget", "forecast"]).nullable(),
+  tagKey: z.string().trim().regex(/^[a-z0-9]+$/).nullable(),
+  tagValue: z.string().trim().regex(/^[a-z0-9._:@/-]+$/).nullable(),
 });
 
 const firstQueryValue = (value: unknown): string | undefined => {
@@ -33,13 +35,19 @@ export function buildCostExplorerFilters(req: Request): CostExplorerFilters {
   const groupBy = firstQueryValue(req.query.groupBy) ?? "none";
   const metric = firstQueryValue(req.query.metric) ?? "billed";
   const compareRaw = firstQueryValue(req.query.compareKey) ?? firstQueryValue(req.query.compare) ?? null;
+  const tagKeyRaw = firstQueryValue(req.query.tagKey) ?? null;
+  const tagValueRaw = firstQueryValue(req.query.tagValue) ?? null;
   const compareKey = compareRaw && compareRaw.trim().length > 0 ? compareRaw : null;
+  const tagKey = tagKeyRaw && tagKeyRaw.trim().length > 0 ? tagKeyRaw.trim().toLowerCase() : null;
+  const tagValue = tagValueRaw && tagValueRaw.trim().length > 0 ? tagValueRaw.trim().toLowerCase() : null;
 
   return parseWithSchema(costExplorerFiltersSchema, {
     granularity,
     groupBy,
     metric,
     compareKey,
+    tagKey,
+    tagValue,
   });
 }
 

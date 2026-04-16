@@ -3,6 +3,7 @@ import type {
   AnomaliesFiltersQuery,
   AnomaliesListResponse,
   CostExplorerFiltersQuery,
+  CostExplorerGroupOptionsResponse,
   CostExplorerResponse,
   DashboardOverviewResponse,
 } from "./dashboardTypes";
@@ -34,6 +35,12 @@ function withUploadDashboardQuery(path: string, filters?: UploadDashboardFilters
   if ((filters as CostExplorerFiltersQuery | undefined)?.compareKey) {
     params.set("compareKey", (filters as CostExplorerFiltersQuery).compareKey as string);
   }
+  if ((filters as CostExplorerFiltersQuery | undefined)?.tagKey) {
+    params.set("tagKey", ((filters as CostExplorerFiltersQuery).tagKey as string).trim().toLowerCase());
+  }
+  if ((filters as CostExplorerFiltersQuery | undefined)?.tagValue) {
+    params.set("tagValue", ((filters as CostExplorerFiltersQuery).tagValue as string).trim().toLowerCase());
+  }
   if (typeof (filters as AnomaliesFiltersQuery | undefined)?.billing_source_id === "number") {
     params.set("billing_source_id", String((filters as AnomaliesFiltersQuery).billing_source_id));
   }
@@ -63,6 +70,28 @@ function withUploadDashboardQuery(path: string, filters?: UploadDashboardFilters
   return query.length > 0 ? `${path}?${query}` : path;
 }
 
+function withUploadDashboardGroupOptionsQuery(
+  path: string,
+  filters?: UploadDashboardFiltersQuery & { tagKey?: string | null },
+): string {
+  const params = new URLSearchParams();
+
+  if (filters?.rawBillingFileIds && filters.rawBillingFileIds.length > 0) {
+    params.set("rawBillingFileIds", filters.rawBillingFileIds.join(","));
+  }
+  if (filters?.billingPeriodStart) params.set("billingPeriodStart", filters.billingPeriodStart);
+  if (filters?.billingPeriodEnd) params.set("billingPeriodEnd", filters.billingPeriodEnd);
+  if (filters?.subAccountKey) params.set("subAccountKey", filters.subAccountKey);
+  if (filters?.serviceKey) params.set("serviceKey", filters.serviceKey);
+  if (filters?.regionKey) params.set("regionKey", filters.regionKey);
+  if (filters?.tagKey && filters.tagKey.trim().length > 0) {
+    params.set("tagKey", filters.tagKey.trim().toLowerCase());
+  }
+
+  const query = params.toString();
+  return query.length > 0 ? `${path}?${query}` : path;
+}
+
 export const uploadDashboardApi = {
   getOverview(filters?: UploadDashboardFiltersQuery) {
     return apiGet<DashboardOverviewResponse>(withUploadDashboardQuery("/upload-dashboard/overview", filters));
@@ -70,6 +99,12 @@ export const uploadDashboardApi = {
 
   getCostExplorer(filters?: UploadDashboardFiltersQuery & CostExplorerFiltersQuery) {
     return apiGet<CostExplorerResponse>(withUploadDashboardQuery("/upload-dashboard/cost-explorer", filters));
+  },
+
+  getCostExplorerGroupOptions(filters?: UploadDashboardFiltersQuery & { tagKey?: string | null }) {
+    return apiGet<CostExplorerGroupOptionsResponse>(
+      withUploadDashboardGroupOptionsQuery("/upload-dashboard/cost-explorer/group-options", filters),
+    );
   },
 
   getAnomaliesAlerts(filters?: UploadDashboardFiltersQuery & AnomaliesFiltersQuery) {

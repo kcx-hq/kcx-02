@@ -12,6 +12,8 @@ export type CostExplorerFilters = {
   groupBy: CostExplorerGroupBy;
   metric: CostExplorerMetric;
   compareKey: CostExplorerCompareKey | null;
+  tagKey: string | null;
+  tagValue: string | null;
 };
 
 export type CostExplorerEffectiveFilters = CostExplorerFilters & {
@@ -56,6 +58,8 @@ export type CostExplorerResponse = {
     groupBy: CostExplorerGroupBy;
     metric: CostExplorerMetric;
     compareKey: CostExplorerCompareKey | null;
+    tagKey: string | null;
+    tagValue: string | null;
     scopeType: DashboardScope["scopeType"];
   };
   kpis: {

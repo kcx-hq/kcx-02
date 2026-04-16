@@ -118,7 +118,7 @@ export default function CostExplorerPage() {
         key: option.key as GroupBy,
         label:
           option.normalizedKey.length > 0
-            ? `Tag: ${option.normalizedKey[0].toUpperCase() + option.normalizedKey.slice(1)}`
+            ? option.normalizedKey[0].toUpperCase() + option.normalizedKey.slice(1)
             : option.normalizedKey,
       })) ?? [];
     return [noneOption, ...tags, ...baseWithoutNone];

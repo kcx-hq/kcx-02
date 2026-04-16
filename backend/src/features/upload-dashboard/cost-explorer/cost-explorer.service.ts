@@ -50,6 +50,8 @@ export class CostExplorerService {
         groupBy: filters.groupBy,
         metric: filters.metric,
         compareKey: filters.compareKey,
+        tagKey: filters.tagKey,
+        tagValue: filters.tagValue,
         scopeType: scope.scopeType,
       },
       kpis: {
