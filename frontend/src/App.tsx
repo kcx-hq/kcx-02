@@ -16,6 +16,7 @@ import {
   ClientTicketsPage,
 } from "@/features/client-home"
 import { DashboardRoutes } from "@/features/dashboard"
+import CloudCostAnomalyReportStandalonePage from "@/features/dashboard/pages/report/CloudCostAnomalyReportStandalonePage"
 import { ManualDashboardRoutes } from "@/features/manual-dashboard"
 import {
   AwsIntegrationPage,
@@ -69,6 +70,7 @@ const CLIENT_WORKSPACE_ROUTES = new Set([
   "/client/organization/users",
   "/client/actions",
   "/client/profile",
+  "/reports/cloud-cost-anomaly",
 ])
 const AWS_CONNECTION_SETUP_ROUTE_REGEX = /^\/client\/billing\/(?:connect-cloud|connections)\/aws\/setup\/[0-9a-fA-F-]{36}$/
 const CLOUD_PROVIDER_ROUTE_REGEX = /^\/client\/billing\/(?:connect-cloud|connections)\/(aws|azure|gcp|oracle-cloud)$/
@@ -79,6 +81,7 @@ const DASHBOARD_ROUTE_REGEX =
   /^\/dashboard(?:\/(?:overview|cost-explorer|resources|allocation|optimization|anomalies-alerts|budget|report))?$/
 const MANUAL_DASHBOARD_ROUTE_REGEX =
   /^\/uploads-dashboard(?:\/(?:overview|cost-explorer|anomalies-alerts))?$/
+const REPORT_STANDALONE_ROUTE_REGEX = /^\/reports\/cloud-cost-anomaly\/?$/
 const TEAM_ACCESS_ROUTE_SET = new Set([
   "/client/users",
   "/client/organization/users",
@@ -91,7 +94,8 @@ function isClientWorkspaceRoute(route: string) {
     AWS_CONNECTION_SETUP_ROUTE_REGEX.test(route) ||
     CLOUD_PROVIDER_ROUTE_REGEX.test(route) ||
     AWS_MANUAL_EXPLORER_ROUTE_REGEX.test(route) ||
-    AWS_MANUAL_SUCCESS_ROUTE_REGEX.test(route)
+    AWS_MANUAL_SUCCESS_ROUTE_REGEX.test(route) ||
+    REPORT_STANDALONE_ROUTE_REGEX.test(route)
   )
 }
 
@@ -112,7 +116,8 @@ export function App() {
     !AWS_MANUAL_EXPLORER_ROUTE_REGEX.test(route) &&
     !AWS_MANUAL_SUCCESS_ROUTE_REGEX.test(route) &&
     !DASHBOARD_ROUTE_REGEX.test(route) &&
-    !MANUAL_DASHBOARD_ROUTE_REGEX.test(route)
+    !MANUAL_DASHBOARD_ROUTE_REGEX.test(route) &&
+    !REPORT_STANDALONE_ROUTE_REGEX.test(route)
 
   useEffect(() => {
     if (!storedAuthenticated) {
@@ -199,6 +204,7 @@ export function App() {
       {route === "/resources/documentation" ? <DocumentationPage /> : null}
       {DASHBOARD_ROUTE_REGEX.test(route) ? <DashboardRoutes /> : null}
       {MANUAL_DASHBOARD_ROUTE_REGEX.test(route) ? <ManualDashboardRoutes /> : null}
+      {REPORT_STANDALONE_ROUTE_REGEX.test(route) ? <CloudCostAnomalyReportStandalonePage /> : null}
       {route === "/client/overview" ? (
         <ClientLayout>
           <ClientOverviewPage />

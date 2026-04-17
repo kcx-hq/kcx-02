@@ -1,7 +1,5 @@
-import { useReportQuery } from "../../hooks/useDashboardQueries";
-import { DashboardSectionPage } from "../shared/DashboardSectionPage";
+import { CloudCostAnomalyReportContent } from "./CloudCostAnomalyReportContent"
 
 export default function ReportPage() {
-  const query = useReportQuery();
-  return <DashboardSectionPage title="Report" query={query} />;
+  return <CloudCostAnomalyReportContent />
 }
