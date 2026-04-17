@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import kcxLogo from "@/assets/logos/kcx-logo.svg";
+import { handleAppLinkClick } from "@/lib/navigation";
 import { dashboardNav, dashboardNavLinks } from "../common/navigation";
 import type { DashboardNavGroup } from "../common/navigation";
 import { DashboardIcon } from "./DashboardIcon";
@@ -173,6 +174,15 @@ export function DashboardSidebar() {
       </nav>
 
       <div className="dashboard-sidebar__footer">
+        <a
+          href="/client/overview"
+          onClick={(event) => handleAppLinkClick(event, "/client/overview")}
+          className="dashboard-sidebar__client-home-btn"
+          title={collapsed ? "Client Home" : undefined}
+        >
+          <DashboardIcon name="house" className="dashboard-sidebar__client-home-btn-icon" />
+          <span className="dashboard-sidebar__client-home-btn-label">Client Home</span>
+        </a>
         <p className="dashboard-sidebar__hint">Current View: {activeLabel}</p>
       </div>
     </aside>

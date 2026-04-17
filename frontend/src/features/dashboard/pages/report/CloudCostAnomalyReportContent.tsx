@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
+import { useLocation, useNavigate } from "react-router-dom"
 import {
   CartesianGrid,
   Cell,
@@ -53,6 +54,11 @@ function readInitialQuery(): CloudCostReportQuery {
   }
 }
 
+function parseQueryDate(value: string | null) {
+  if (!value) return null
+  return /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : null
+}
+
 function isPdfRenderMode() {
   if (typeof window === "undefined") return false
   const params = new URLSearchParams(window.location.search)
@@ -91,13 +97,14 @@ function buildTrendChartData(report: CloudCostAnomalyReport | undefined) {
 
 function SummaryCards({ report }: { report: CloudCostAnomalyReport }) {
   return (
-    <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
-      <article className="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+    <section className="border-y border-slate-200">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4">
+      <article className="border-b border-slate-200 px-4 py-4 xl:border-b-0 xl:border-r xl:border-slate-200">
         <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Total Cost</p>
         <p className="mt-2 text-2xl font-semibold text-slate-900">{formatCurrency(report.summary.totalCost)}</p>
       </article>
 
-      <article className="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+      <article className="border-b border-slate-200 px-4 py-4 xl:border-b-0 xl:border-r xl:border-slate-200">
         <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Cost Change</p>
         <p
           className={`mt-2 text-2xl font-semibold ${
@@ -109,35 +116,45 @@ function SummaryCards({ report }: { report: CloudCostAnomalyReport }) {
         <p className="mt-1 text-xs text-slate-500">vs Last Month</p>
       </article>
 
-      <article className="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+      <article className="border-b border-slate-200 px-4 py-4 xl:border-b-0 xl:border-r xl:border-slate-200">
         <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Anomalies Detected</p>
         <p className="mt-2 text-2xl font-semibold text-slate-900">{report.summary.anomalyCount}</p>
       </article>
 
-      <article className="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+      <article className="px-4 py-4">
         <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Top Service</p>
         <p className="mt-2 text-2xl font-semibold text-slate-900">{report.summary.topService}</p>
         <p className="mt-1 text-xs text-slate-500">{formatPercent(report.summary.topServicePercentage)} of Cost</p>
       </article>
-    </div>
+      </div>
+    </section>
   )
 }
 
 export function CloudCostAnomalyReportContent({ standalone = false }: CloudCostAnomalyReportContentProps) {
+  const location = useLocation()
+  const navigate = useNavigate()
   const initialQuery = useMemo(() => readInitialQuery(), [])
-  const [startDate, setStartDate] = useState(initialQuery.startDate)
-  const [endDate, setEndDate] = useState(initialQuery.endDate)
-  const [billingSourceId, setBillingSourceId] = useState<number | undefined>(initialQuery.billingSourceId)
+  const queryParams = useMemo(() => new URLSearchParams(location.search), [location.search])
   const [isDownloading, setIsDownloading] = useState(false)
   const hideControlsForPdf = isPdfRenderMode()
+
+  const startDate = parseQueryDate(queryParams.get("billingPeriodStart") ?? queryParams.get("from")) ?? initialQuery.startDate
+  const endDate = parseQueryDate(queryParams.get("billingPeriodEnd") ?? queryParams.get("to")) ?? initialQuery.endDate
+  const billingSourceIdRaw = queryParams.get("billingSourceId")
+  const billingSourceId = billingSourceIdRaw ? Number(billingSourceIdRaw) : undefined
+  const normalizedBillingSourceId =
+    typeof billingSourceId === "number" && Number.isInteger(billingSourceId) && billingSourceId > 0
+      ? billingSourceId
+      : undefined
 
   const query = useMemo<CloudCostReportQuery>(
     () => ({
       startDate,
       endDate,
-      ...(typeof billingSourceId === "number" ? { billingSourceId } : {}),
+      ...(typeof normalizedBillingSourceId === "number" ? { billingSourceId: normalizedBillingSourceId } : {}),
     }),
-    [startDate, endDate, billingSourceId],
+    [startDate, endDate, normalizedBillingSourceId],
   )
 
   const reportQuery = useQuery({
@@ -164,6 +181,19 @@ export function CloudCostAnomalyReportContent({ standalone = false }: CloudCostA
     }
   }
 
+  function handleBillingSourceChange(value: string) {
+    const nextValue = Number(value)
+    const nextBillingSourceId = Number.isInteger(nextValue) && nextValue > 0 ? nextValue : undefined
+    const nextParams = new URLSearchParams(location.search)
+    if (typeof nextBillingSourceId === "number") {
+      nextParams.set("billingSourceId", String(nextBillingSourceId))
+    } else {
+      nextParams.delete("billingSourceId")
+    }
+
+    navigate({ pathname: location.pathname, search: nextParams.toString() }, { replace: true })
+  }
+
   return (
     <section className={`${standalone ? "min-h-screen bg-slate-100 py-10" : "py-2"} text-slate-900`}>
       <div
@@ -171,62 +201,6 @@ export function CloudCostAnomalyReportContent({ standalone = false }: CloudCostA
         data-report-ready={report && !reportQuery.isFetching ? "true" : "false"}
         id="cloud-cost-anomaly-report-ready"
       >
-        {!hideControlsForPdf ? (
-          <div className="mb-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm print:hidden">
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
-                  Start Date
-                  <input
-                    type="date"
-                    value={startDate}
-                    onChange={(event) => setStartDate(event.target.value)}
-                    className="rounded-md border border-slate-300 px-3 py-2 text-sm"
-                  />
-                </label>
-
-                <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
-                  End Date
-                  <input
-                    type="date"
-                    value={endDate}
-                    onChange={(event) => setEndDate(event.target.value)}
-                    className="rounded-md border border-slate-300 px-3 py-2 text-sm"
-                  />
-                </label>
-
-                <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
-                  Billing Source
-                  <select
-                    value={typeof billingSourceId === "number" ? String(billingSourceId) : ""}
-                    onChange={(event) => {
-                      const next = Number(event.target.value)
-                      setBillingSourceId(Number.isInteger(next) && next > 0 ? next : undefined)
-                    }}
-                    className="rounded-md border border-slate-300 px-3 py-2 text-sm"
-                  >
-                    <option value="">All Sources</option>
-                    {(report?.billingSources ?? []).map((source) => (
-                      <option key={source.id} value={source.id}>
-                        {source.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-
-              <button
-                type="button"
-                onClick={handleDownloadPdf}
-                disabled={isDownloading || reportQuery.isLoading}
-                className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {isDownloading ? "Generating PDF..." : "Download PDF"}
-              </button>
-            </div>
-          </div>
-        ) : null}
-
         <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:p-8 print:rounded-none print:border-none print:p-0 print:shadow-none">
           {reportQuery.isLoading ? (
             <div className="space-y-3">
@@ -251,6 +225,37 @@ export function CloudCostAnomalyReportContent({ standalone = false }: CloudCostA
                   <p>Period: {report.period}</p>
                   <p>Generated: {generatedAt}</p>
                 </div>
+                {!hideControlsForPdf ? (
+                  <div className="border-b border-slate-200 py-4 print:hidden">
+                    <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-1">
+                        <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
+                          <select
+                            value={typeof normalizedBillingSourceId === "number" ? String(normalizedBillingSourceId) : ""}
+                            onChange={(event) => handleBillingSourceChange(event.target.value)}
+                            className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+                          >
+                            <option value="">All Sources</option>
+                            {(report?.billingSources ?? []).map((source) => (
+                              <option key={source.id} value={source.id}>
+                                {source.name}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={handleDownloadPdf}
+                        disabled={isDownloading || reportQuery.isLoading}
+                        className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {isDownloading ? "Generating PDF..." : "Download PDF"}
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
               </header>
 
               <SummaryCards report={report} />

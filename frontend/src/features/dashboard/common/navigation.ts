@@ -18,7 +18,7 @@ export const dashboardNav: DashboardNavNode[] = [
   {
     kind: "group",
     label: "Dashboards",
-    icon: "layout-dashboard",
+    icon: "pie-chart",
     items: [
       {
         kind: "link",
@@ -26,18 +26,12 @@ export const dashboardNav: DashboardNavNode[] = [
         path: "/dashboard/overview",
         icon: "layout-dashboard",
       },
-      {
-        kind: "link",
-        label: "CFO Dashboard",
-        path: "/dashboard/cfo-dashboard",
-        icon: "pie-chart",
-      },
     ],
   },
   {
     kind: "group",
     label: "Cost",
-    icon: "line-chart",
+    icon: "boxes",
     items: [
       {
         kind: "link",
@@ -56,7 +50,7 @@ export const dashboardNav: DashboardNavNode[] = [
   { kind: "link", label: "Optimization", path: "/dashboard/optimization", icon: "gauge" },
   {
     kind: "link",
-    label: "Anomalies & Alerts",
+    label: "Anomalies",
     path: "/dashboard/anomalies-alerts",
     icon: "triangle-alert",
   },
