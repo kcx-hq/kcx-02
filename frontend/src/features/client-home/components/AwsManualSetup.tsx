@@ -203,27 +203,6 @@ exports.handler = async (event) => {
 `
 }
 
-function CopyButton({
-  onCopy,
-  copied,
-  disabled,
-}: {
-  onCopy: () => void
-  copied: boolean
-  disabled?: boolean
-}) {
-  return (
-    <Button type="button" size="sm" variant="outline" className="h-8 rounded-md" disabled={disabled} onClick={onCopy}>
-      {copied ? "Copied" : (
-        <span className="inline-flex items-center gap-1.5">
-          <Copy className="h-3.5 w-3.5" />
-          Copy
-        </span>
-      )}
-    </Button>
-  )
-}
-
 function SetupStepper({
   currentStep,
   onStepChange,
@@ -282,32 +261,6 @@ function SetupStepper({
     </div>
   )
 }
-function ValueCard({
-  label,
-  value,
-  copyKey,
-  copiedKey,
-  onCopy,
-}: {
-  label: string
-  value: string
-  copyKey: string
-  copiedKey: string | null
-  onCopy: (copyKey: string, value: string) => void
-}) {
-  return (
-    <div className="rounded-[8px] border border-[color:var(--border-light)] bg-white p-2.5">
-      <div className="mb-2 flex items-center justify-between gap-2">
-        <p className={LABEL_CLASS}>{label}</p>
-        <CopyButton onCopy={() => onCopy(copyKey, value)} copied={copiedKey === copyKey} disabled={!value.trim()} />
-      </div>
-      <p className="break-all rounded-md bg-[color:var(--bg-surface)] px-2.5 py-2 text-sm text-text-primary">
-        {value || "-"}
-      </p>
-    </div>
-  )
-}
-
 type AwsConsoleLinkProps = {
   label: string
   url: string
