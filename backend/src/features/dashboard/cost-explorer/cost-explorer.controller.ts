@@ -15,6 +15,18 @@ export async function handleGetCostExplorerDashboard(req: Request, res: Response
   validateDashboardRequest(dashboardRequest);
   const scope = await scopeResolver.resolve(dashboardRequest);
   const filters = buildCostExplorerFilters(req);
+  console.info("[COST-EXPLORER][REQUEST]", {
+    path: req.path,
+    scopeType: scope.scopeType,
+    tenantId: scope.tenantId,
+    from: scope.from,
+    to: scope.to,
+    groupBy: filters.groupBy,
+    tagKey: filters.tagKey,
+    tagValue: filters.tagValue,
+    metric: filters.metric,
+    granularity: filters.granularity,
+  });
   const data = await costExplorerService.getCostExplorer(scope, filters);
 
   sendSuccess({
@@ -37,14 +49,16 @@ export async function handleGetCostExplorerGroupOptions(req: Request, res: Respo
     tenantId: scope.tenantId,
     from: scope.from,
     to: scope.to,
+    groupBy: filters.groupBy,
     tagKey: filters.tagKey,
     rawBillingFileIds:
       scope.scopeType === "upload" ? scope.rawBillingFileIds?.slice(0, 10) ?? [] : [],
   });
-  const data = await costExplorerService.getGroupOptions(scope, filters.tagKey);
+  const data = await costExplorerService.getGroupOptions(scope, filters.groupBy, filters.tagKey);
   console.info("[COST-EXPLORER][GROUP-OPTIONS][RESPONSE]", {
     scopeType: scope.scopeType,
     tenantId: scope.tenantId,
+    groupBy: filters.groupBy,
     tagKey: filters.tagKey,
     tagKeyCount: data.tagKeyOptions.length,
     tagValueCount: data.tagValueOptions.length,

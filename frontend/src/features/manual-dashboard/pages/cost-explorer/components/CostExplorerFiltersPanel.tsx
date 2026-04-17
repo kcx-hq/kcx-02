@@ -206,6 +206,10 @@ export function CostExplorerFiltersPanel({
   const filteredGroupOptions = filterOptions(resolvedGroupOptions, searchByPopover.group);
   const filteredMetricOptions = filterOptions(metricOptions, searchByPopover.metric);
   const filteredCompareOptions = filterOptions(compareOptions, searchByPopover.compare);
+  const showTagValuesPane = groupBy.startsWith("tag:");
+  const groupPopoverClassName = showTagValuesPane
+    ? "cost-explorer-filter-popover cost-explorer-filter-popover--split cost-explorer-filter-popover--group-split"
+    : "cost-explorer-filter-popover cost-explorer-filter-popover--group-single";
 
   const renderPopoverSearch = (key: FilterPopoverKey, placeholder: string) => (
     <label className="cost-explorer-filter-popover__search-wrap">
@@ -225,13 +229,14 @@ export function CostExplorerFiltersPanel({
     selected: T | null;
     onSelect: (value: T) => void;
     emptyLabel: string;
+    listClassName?: string;
   }) => {
     if (!params.options.length) {
       return <p className="cost-explorer-filter-popover__empty">{params.emptyLabel}</p>;
     }
 
     return (
-      <div className="cost-explorer-filter-popover__list" role="listbox">
+      <div className={`cost-explorer-filter-popover__list${params.listClassName ? ` ${params.listClassName}` : ""}`} role="listbox">
         {params.options.map((option) => {
           const selected = params.selected === option.key;
           return (
@@ -337,7 +342,7 @@ export function CostExplorerFiltersPanel({
             </span>
           </button>
           {activePopover === "group" ? (
-            <div className="cost-explorer-filter-popover" role="dialog" aria-label="Group options">
+            <div className={groupPopoverClassName} role="dialog" aria-label="Group options">
               <div className="cost-explorer-filter-popover__split">
                 <div className="cost-explorer-filter-popover__split-pane">
                   <p className="cost-explorer-filter-popover__title">Group By</p>
@@ -347,16 +352,21 @@ export function CostExplorerFiltersPanel({
                     selected: groupBy,
                     onSelect: onSelectGroupBy,
                     emptyLabel: "No group dimensions found.",
+                    listClassName: "cost-explorer-filter-popover__list--group-dimensions",
                   })}
                 </div>
-                {groupBy.startsWith("tag:") ? (
+                {showTagValuesPane ? (
                   <div className="cost-explorer-filter-popover__split-pane cost-explorer-filter-popover__split-pane--right">
                     <p className="cost-explorer-filter-popover__title">Values</p>
                     {(tagValueOptions?.length ?? 0) > 0 ? (
-                      <div className="cost-explorer-filter-popover__list" role="listbox" aria-label="Tag values">
+                      <div
+                        className="cost-explorer-filter-popover__list cost-explorer-filter-popover__list--value-boxes"
+                        role="listbox"
+                        aria-label="Tag values"
+                      >
                         <button
                           type="button"
-                          className={`cost-explorer-filter-option${!selectedTagValue ? " is-active" : ""}`}
+                          className={`cost-explorer-filter-option cost-explorer-filter-option--tile${!selectedTagValue ? " is-active" : ""}`}
                           onClick={() => onChooseTagValue(null)}
                           role="option"
                           aria-selected={!selectedTagValue}
@@ -374,7 +384,7 @@ export function CostExplorerFiltersPanel({
                             <button
                               key={value.normalizedValue}
                               type="button"
-                              className={`cost-explorer-filter-option${selected ? " is-active" : ""}`}
+                              className={`cost-explorer-filter-option cost-explorer-filter-option--tile${selected ? " is-active" : ""}`}
                               onClick={() => onChooseTagValue(value.normalizedValue)}
                               role="option"
                               aria-selected={selected}

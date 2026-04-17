@@ -391,6 +391,7 @@ export async function processAwsExportParquetRun({ run }) {
                 rowNumber: result.rowNumber,
                 rawRow: result.rawRow,
                 createPayload: result.createPayload,
+                tagIds: result.tagIds,
               });
               continue;
             }

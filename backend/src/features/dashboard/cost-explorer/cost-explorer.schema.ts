@@ -17,6 +17,9 @@ const costExplorerFiltersSchema = z.object({
   ).transform((value) => value as CostExplorerGroupBy),
   metric: z.enum(["billed", "effective", "list"]),
   compareKey: z.enum(["previous-month", "budget", "forecast"]).nullable(),
+  tagKey: z.string().trim().regex(/^[a-z0-9]+$/).nullable(),
+  tagValue: z.string().trim().regex(/^[a-z0-9._:@/-]+$/).nullable(),
+  groupValues: z.array(z.string().trim().min(1)).max(50),
 });
 
 const firstQueryValue = (value: unknown): string | undefined => {
@@ -33,22 +36,43 @@ export function buildCostExplorerFilters(req: Request): CostExplorerFilters {
   const groupBy = firstQueryValue(req.query.groupBy) ?? "none";
   const metric = firstQueryValue(req.query.metric) ?? "billed";
   const compareRaw = firstQueryValue(req.query.compareKey) ?? firstQueryValue(req.query.compare) ?? null;
+  const tagKeyRaw = firstQueryValue(req.query.tagKey) ?? null;
+  const tagValueRaw = firstQueryValue(req.query.tagValue) ?? null;
+  const groupValuesRaw = firstQueryValue(req.query.groupValues) ?? null;
   const compareKey = compareRaw && compareRaw.trim().length > 0 ? compareRaw : null;
+  const tagKey = tagKeyRaw && tagKeyRaw.trim().length > 0 ? tagKeyRaw.trim().toLowerCase() : null;
+  const tagValue = tagValueRaw && tagValueRaw.trim().length > 0 ? tagValueRaw.trim().toLowerCase() : null;
+  const groupValues = (groupValuesRaw ?? "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0)
+    .slice(0, 50);
 
   return parseWithSchema(costExplorerFiltersSchema, {
     granularity,
     groupBy,
     metric,
     compareKey,
+    tagKey,
+    tagValue,
+    groupValues,
   });
 }
 
 const costExplorerGroupOptionsSchema = z.object({
+  groupBy: z.string().refine(
+    (value) => isValidGroupBy(value),
+    "groupBy must be a known dimension or tag:<normalized_key>",
+  ).transform((value) => value as CostExplorerGroupBy),
   tagKey: z.string().trim().regex(/^[a-z0-9]+$/).nullable(),
 });
 
-export function buildCostExplorerGroupOptionsFilters(req: Request): { tagKey: string | null } {
+export function buildCostExplorerGroupOptionsFilters(req: Request): {
+  groupBy: CostExplorerGroupBy;
+  tagKey: string | null;
+} {
+  const groupBy = firstQueryValue(req.query.groupBy) ?? "none";
   const tagKeyRaw = firstQueryValue(req.query.tagKey) ?? null;
   const tagKey = tagKeyRaw && tagKeyRaw.trim().length > 0 ? tagKeyRaw.trim().toLowerCase() : null;
-  return parseWithSchema(costExplorerGroupOptionsSchema, { tagKey });
+  return parseWithSchema(costExplorerGroupOptionsSchema, { groupBy, tagKey });
 }

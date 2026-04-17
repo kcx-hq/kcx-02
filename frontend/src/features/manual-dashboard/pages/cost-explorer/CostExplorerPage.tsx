@@ -330,7 +330,7 @@ export default function CostExplorerPage() {
               ? { color: seriesColor, opacity: 0.08 }
               : undefined,
           barMaxWidth: isBar ? 22 : undefined,
-          itemStyle: isBar ? { color: seriesColor, borderRadius: [4, 4, 0, 0] } : { color: seriesColor },
+          itemStyle: isBar ? { color: seriesColor, borderRadius: 0 } : { color: seriesColor },
           data: item.values.map((value) => Number(value ?? 0)),
           z: isComparison ? 2 : 3,
         };

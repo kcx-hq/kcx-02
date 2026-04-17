@@ -42,6 +42,7 @@ type CostExplorerChartSectionProps = {
   onBreakdownPageChange: (page: number) => void;
   onRetry: () => void;
   onReset: () => void;
+  showApplySkeleton?: boolean;
 };
 
 export function CostExplorerChartSection({
@@ -61,12 +62,13 @@ export function CostExplorerChartSection({
   onBreakdownPageChange,
   onRetry,
   onReset,
+  showApplySkeleton = false,
 }: CostExplorerChartSectionProps) {
   const modeMenuRef = useRef<HTMLDivElement | null>(null);
   const rowsMenuRef = useRef<HTMLDivElement | null>(null);
   const [modeMenuOpen, setModeMenuOpen] = useState(false);
   const [rowsMenuOpen, setRowsMenuOpen] = useState(false);
-  const showRefreshSkeleton = isFetching && !isLoading && chartReady;
+  const showRefreshSkeleton = (showApplySkeleton || isFetching) && !isLoading && chartReady;
 
   useEffect(() => {
     const handlePointerDown = (event: MouseEvent) => {
@@ -101,15 +103,13 @@ export function CostExplorerChartSection({
   return (
     <section className="cost-explorer-chart-panel" aria-label="Cost vs time chart">
       <div className="cost-explorer-chart-panel__header">
-        <div>
-          <div className="cost-explorer-chart-panel__kpis" aria-label="Chart key metrics">
-            {kpis.map((kpi) => (
-              <span key={kpi.label} className={`cost-explorer-chart-kpi${kpi.tone ? ` is-${kpi.tone}` : ""}`}>
-                <span className="cost-explorer-chart-kpi__label">{kpi.label}</span>
-                <span className="cost-explorer-chart-kpi__value">{kpi.value}</span>
-              </span>
-            ))}
-          </div>
+        <div className="cost-explorer-chart-insights" aria-label="Chart key metrics">
+          {kpis.map((kpi) => (
+            <article key={kpi.label} className={`cost-explorer-insight-tile${kpi.tone ? ` is-${kpi.tone}` : ""}`}>
+              <p className="cost-explorer-insight-tile__label">{kpi.label}</p>
+              <p className="cost-explorer-insight-tile__value">{kpi.value}</p>
+            </article>
+          ))}
         </div>
         <div className="cost-explorer-chart-panel__header-actions">
           <div className="cost-explorer-chart-mode" ref={modeMenuRef}>
@@ -147,7 +147,11 @@ export function CostExplorerChartSection({
               </div>
             ) : null}
           </div>
-          {isFetching && !isLoading ? <span className="cost-explorer-chart-panel__status">Refreshing data...</span> : null}
+          {showRefreshSkeleton ? (
+            <span className="cost-explorer-chart-panel__status">
+              {showApplySkeleton ? "Applying filters..." : "Refreshing data..."}
+            </span>
+          ) : null}
         </div>
       </div>
 

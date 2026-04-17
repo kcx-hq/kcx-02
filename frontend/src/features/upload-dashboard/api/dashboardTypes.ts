@@ -445,12 +445,14 @@ export type CostExplorerFiltersQuery = {
   groupBy?: CostExplorerGroupBy;
   metric?: CostExplorerMetric;
   compareKey?: CostExplorerCompareKey | null;
+  groupValues?: string[];
 };
 
 export type CostExplorerGroupOptionsResponse = {
   baseOptions: Array<{ key: "none" | "service" | "service-category" | "resource" | "region" | "account"; label: string }>;
   tagKeyOptions: Array<{ key: `tag:${string}`; normalizedKey: string; count: number }>;
   tagValueOptions: Array<{ key: string; normalizedValue: string; count: number }>;
+  groupValueOptions: Array<{ key: string; label: string; count: number }>;
 };
 
 export type CostExplorerChartLabel = {
@@ -487,6 +489,7 @@ export type CostExplorerResponse = {
     groupBy: CostExplorerGroupBy;
     metric: CostExplorerMetric;
     compareKey: CostExplorerCompareKey | null;
+    groupValues?: string[];
     scopeType: DashboardResolvedScope["scopeType"];
   };
   kpis: {

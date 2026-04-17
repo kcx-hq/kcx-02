@@ -76,7 +76,7 @@ const NON_AWS_PROVIDER_ROUTE_REGEX = /^\/client\/billing\/(?:connect-cloud|conne
 const AWS_MANUAL_EXPLORER_ROUTE_REGEX = /^\/client\/billing\/(?:connect-cloud|connections)\/aws\/manual\/explorer(?:\/|$)/
 const AWS_MANUAL_SUCCESS_ROUTE_REGEX = /^\/client\/billing\/(?:connect-cloud|connections)\/aws\/manual\/success(?:\/|$)/
 const DASHBOARD_ROUTE_REGEX =
-  /^\/dashboard(?:\/(?:overview|cost-explorer|resources|allocation|optimization|anomalies-alerts|budget|report))?$/
+  /^\/dashboard(?:\/(?:overview|cfo-dashboard|cost(?:\/(?:explorer|history))?|cost-explorer|resources|allocation|optimization|anomalies-alerts|budget|report))?$/
 const MANUAL_DASHBOARD_ROUTE_REGEX =
   /^\/uploads-dashboard(?:\/(?:overview|cost-explorer|anomalies-alerts))?$/
 const TEAM_ACCESS_ROUTE_SET = new Set([

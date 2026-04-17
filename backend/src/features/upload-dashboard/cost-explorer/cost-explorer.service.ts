@@ -52,6 +52,7 @@ export class CostExplorerService {
         compareKey: filters.compareKey,
         tagKey: filters.tagKey,
         tagValue: filters.tagValue,
+        groupValues: filters.groupValues,
         scopeType: scope.scopeType,
       },
       kpis: {
@@ -74,7 +75,11 @@ export class CostExplorerService {
     };
   }
 
-  async getGroupOptions(scope: DashboardScope, tagKey: string | null): Promise<CostExplorerGroupOptionsResponse> {
-    return this.repository.getGroupOptions(scope, scope.from, scope.to, tagKey);
+  async getGroupOptions(
+    scope: DashboardScope,
+    groupBy: CostExplorerFilters["groupBy"],
+    tagKey: string | null,
+  ): Promise<CostExplorerGroupOptionsResponse> {
+    return this.repository.getGroupOptions(scope, scope.from, scope.to, groupBy, tagKey);
   }
 }

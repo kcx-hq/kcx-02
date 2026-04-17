@@ -34,7 +34,25 @@ export const dashboardNav: DashboardNavNode[] = [
       },
     ],
   },
-  { kind: "link", label: "Cost Explorer", path: "/dashboard/cost-explorer", icon: "line-chart" },
+  {
+    kind: "group",
+    label: "Cost",
+    icon: "line-chart",
+    items: [
+      {
+        kind: "link",
+        label: "Explorer",
+        path: "/dashboard/cost/explorer",
+        icon: "line-chart",
+      },
+      {
+        kind: "link",
+        label: "History",
+        path: "/dashboard/cost/history",
+        icon: "activity",
+      },
+    ],
+  },
   { kind: "link", label: "Optimization", path: "/dashboard/optimization", icon: "gauge" },
   {
     kind: "link",

@@ -74,6 +74,17 @@ type TagGroupContext =
   | { isTagGroup: false; normalizedKey: null }
   | { isTagGroup: true; normalizedKey: string };
 
+type TagFilterContext = {
+  normalizedKey: string;
+  normalizedValues: string[];
+};
+
+type GroupValueFilterContext =
+  | { kind: "none" }
+  | { kind: "tag"; normalizedKey: string; normalizedValues: string[] }
+  | { kind: "numeric"; column: string; values: number[] }
+  | { kind: "text"; expression: string; values: string[] };
+
 const toNumber = (value: number | string | null | undefined): number => {
   if (typeof value === "number") {
     return Number.isFinite(value) ? value : 0;
@@ -222,6 +233,76 @@ const toBucketStartIso = (value: string | Date): string => {
 };
 
 export class CostExplorerRepository {
+  private parseTagFilter(
+    tagKey?: string | null,
+    tagValue?: string | null,
+    groupValues?: string[],
+  ): TagFilterContext | null {
+    const normalizedKey = (tagKey ?? "").trim().toLowerCase();
+    if (!normalizedKey || !/^[a-z0-9]+$/.test(normalizedKey)) {
+      return null;
+    }
+    const normalizedValues = Array.from(
+      new Set(
+        [
+          ...(Array.isArray(groupValues) ? groupValues : []),
+          ...(tagValue && tagValue.trim().length > 0 ? [tagValue] : []),
+        ]
+          .map((value) => value.trim().toLowerCase())
+          .filter((value) => value.length > 0 && /^[a-z0-9._:@/-]+$/.test(value)),
+      ),
+    );
+    return { normalizedKey, normalizedValues };
+  }
+
+  private parseGroupValueFilter(
+    groupBy: CostExplorerGroupBy,
+    groupValues?: string[],
+  ): GroupValueFilterContext {
+    const normalizedValues = Array.isArray(groupValues)
+      ? Array.from(new Set(groupValues.map((value) => String(value).trim()).filter((value) => value.length > 0)))
+      : [];
+    if (normalizedValues.length === 0 || groupBy === "none") {
+      return { kind: "none" };
+    }
+
+    const tagGroup = this.parseTagGroupBy(groupBy);
+    if (tagGroup.isTagGroup) {
+      return {
+        kind: "tag",
+        normalizedKey: tagGroup.normalizedKey,
+        normalizedValues: normalizedValues
+          .map((value) => value.toLowerCase())
+          .filter((value) => /^[a-z0-9._:@/-]+$/.test(value)),
+      };
+    }
+
+    if (groupBy === "service") {
+      const values = normalizedValues.map((value) => Number(value)).filter((value) => Number.isFinite(value));
+      return values.length > 0 ? { kind: "numeric", column: "service_key", values } : { kind: "none" };
+    }
+    if (groupBy === "resource") {
+      const values = normalizedValues.map((value) => Number(value)).filter((value) => Number.isFinite(value));
+      return values.length > 0 ? { kind: "numeric", column: "resource_key", values } : { kind: "none" };
+    }
+    if (groupBy === "region") {
+      const values = normalizedValues.map((value) => Number(value)).filter((value) => Number.isFinite(value));
+      return values.length > 0 ? { kind: "numeric", column: "region_key", values } : { kind: "none" };
+    }
+    if (groupBy === "account") {
+      const values = normalizedValues.map((value) => Number(value)).filter((value) => Number.isFinite(value));
+      return values.length > 0 ? { kind: "numeric", column: "sub_account_key", values } : { kind: "none" };
+    }
+    if (groupBy === "service-category") {
+      const values = normalizedValues.map((value) => value.trim()).filter((value) => value.length > 0);
+      return values.length > 0
+        ? { kind: "text", expression: "COALESCE(ds.service_category, 'Unspecified')", values }
+        : { kind: "none" };
+    }
+
+    return { kind: "none" };
+  }
+
   private parseTagGroupBy(groupBy?: CostExplorerGroupBy): TagGroupContext {
     if (!groupBy || !groupBy.startsWith("tag:")) {
       return { isTagGroup: false, normalizedKey: null };
@@ -237,9 +318,14 @@ export class CostExplorerRepository {
     scope: DashboardScope,
     effectiveGranularity: CostExplorerGranularity,
     groupBy?: Exclude<CostExplorerGroupBy, "none">,
+    tagFilter?: TagFilterContext | null,
   ): SourceConfig {
     const tagGroup = this.parseTagGroupBy(groupBy);
     if (scope.scopeType === "upload") {
+      return factConfigByGranularity[effectiveGranularity];
+    }
+
+    if (tagFilter) {
       return factConfigByGranularity[effectiveGranularity];
     }
 
@@ -259,6 +345,8 @@ export class CostExplorerRepository {
     from: string,
     to: string,
     startIndex: number = 1,
+    tagFilter?: TagFilterContext | null,
+    groupValueFilter?: GroupValueFilterContext,
   ): SqlFilterBuild {
     const conditions: string[] = [];
     const params: unknown[] = [];
@@ -287,6 +375,71 @@ export class CostExplorerRepository {
         pushRange(config.dateFilterExpression, getMonthStart(from), getMonthStart(to));
       } else {
         pushRange(config.dateFilterExpression, from, to);
+      }
+      if (tagFilter) {
+        params.push(tagFilter.normalizedKey);
+        const keyIndex = startIndex + params.length - 1;
+        const hasTagValues = Array.isArray(tagFilter.normalizedValues) && tagFilter.normalizedValues.length > 0;
+        const valueClause = hasTagValues
+          ? (() => {
+              params.push(tagFilter.normalizedValues);
+              const valueIndex = startIndex + params.length - 1;
+              return `\n              AND dt_filter.normalized_value = ANY($${valueIndex}::text[])`;
+            })()
+          : "";
+        const existsClause = `
+          EXISTS (
+            SELECT 1
+            FROM (
+              SELECT flt_filter.tag_id
+              FROM fact_cost_line_item_tags flt_filter
+              WHERE flt_filter.fact_id = ${config.alias}.id
+              UNION
+              SELECT ${config.alias}.tag_id
+              WHERE ${config.alias}.tag_id IS NOT NULL
+            ) tag_links
+            JOIN dim_tag dt_filter ON dt_filter.id = tag_links.tag_id
+            WHERE 1=1
+              AND dt_filter.normalized_key = $${keyIndex}
+              ${valueClause}
+          )
+        `;
+        conditions.push(existsClause);
+      }
+
+      if (groupValueFilter?.kind === "tag" && groupValueFilter.normalizedValues.length > 0) {
+        params.push(groupValueFilter.normalizedKey);
+        const keyIndex = startIndex + params.length - 1;
+        params.push(groupValueFilter.normalizedValues);
+        const valuesIndex = startIndex + params.length - 1;
+        conditions.push(`
+          EXISTS (
+            SELECT 1
+            FROM (
+              SELECT flt_filter.tag_id
+              FROM fact_cost_line_item_tags flt_filter
+              WHERE flt_filter.fact_id = ${config.alias}.id
+              UNION
+              SELECT ${config.alias}.tag_id
+              WHERE ${config.alias}.tag_id IS NOT NULL
+            ) tag_links
+            JOIN dim_tag dt_filter ON dt_filter.id = tag_links.tag_id
+            WHERE dt_filter.normalized_key = $${keyIndex}
+              AND dt_filter.normalized_value = ANY($${valuesIndex}::text[])
+          )
+        `);
+      } else if (groupValueFilter?.kind === "numeric" && groupValueFilter.values.length > 0) {
+        params.push(groupValueFilter.values);
+        const valuesIndex = startIndex + params.length - 1;
+        conditions.push(`${config.alias}.${groupValueFilter.column} = ANY($${valuesIndex}::bigint[])`);
+      } else if (groupValueFilter?.kind === "text" && groupValueFilter.values.length > 0) {
+        params.push(groupValueFilter.values);
+        const valuesIndex = startIndex + params.length - 1;
+        if (groupValueFilter.expression === "COALESCE(ds.service_category, 'Unspecified')") {
+          conditions.push(
+            `COALESCE((SELECT ds_filter.service_category FROM dim_service ds_filter WHERE ds_filter.id = ${config.alias}.service_key), 'Unspecified') = ANY($${valuesIndex}::text[])`,
+          );
+        }
       }
       return {
         whereClause: conditions.join("\n      AND "),
@@ -320,6 +473,72 @@ export class CostExplorerRepository {
       pushEq(`${config.alias}.region_key`, scope.regionKey);
     }
 
+    if (tagFilter) {
+      params.push(tagFilter.normalizedKey);
+      const keyIndex = startIndex + params.length - 1;
+      const hasTagValues = Array.isArray(tagFilter.normalizedValues) && tagFilter.normalizedValues.length > 0;
+      const valueClause = hasTagValues
+        ? (() => {
+            params.push(tagFilter.normalizedValues);
+            const valueIndex = startIndex + params.length - 1;
+            return `\n            AND dt_filter.normalized_value = ANY($${valueIndex}::text[])`;
+          })()
+        : "";
+      const existsClause = `
+        EXISTS (
+          SELECT 1
+          FROM (
+            SELECT flt_filter.tag_id
+            FROM fact_cost_line_item_tags flt_filter
+            WHERE flt_filter.fact_id = ${config.alias}.id
+            UNION
+            SELECT ${config.alias}.tag_id
+            WHERE ${config.alias}.tag_id IS NOT NULL
+          ) tag_links
+          JOIN dim_tag dt_filter ON dt_filter.id = tag_links.tag_id
+          WHERE 1=1
+            AND dt_filter.normalized_key = $${keyIndex}
+            ${valueClause}
+        )
+      `;
+      conditions.push(existsClause);
+    }
+
+    if (groupValueFilter?.kind === "tag" && groupValueFilter.normalizedValues.length > 0) {
+      params.push(groupValueFilter.normalizedKey);
+      const keyIndex = startIndex + params.length - 1;
+      params.push(groupValueFilter.normalizedValues);
+      const valuesIndex = startIndex + params.length - 1;
+      conditions.push(`
+        EXISTS (
+          SELECT 1
+          FROM (
+            SELECT flt_filter.tag_id
+            FROM fact_cost_line_item_tags flt_filter
+            WHERE flt_filter.fact_id = ${config.alias}.id
+            UNION
+            SELECT ${config.alias}.tag_id
+            WHERE ${config.alias}.tag_id IS NOT NULL
+          ) tag_links
+          JOIN dim_tag dt_filter ON dt_filter.id = tag_links.tag_id
+          WHERE dt_filter.normalized_key = $${keyIndex}
+            AND dt_filter.normalized_value = ANY($${valuesIndex}::text[])
+        )
+      `);
+    } else if (groupValueFilter?.kind === "numeric" && groupValueFilter.values.length > 0) {
+      params.push(groupValueFilter.values);
+      const valuesIndex = startIndex + params.length - 1;
+      conditions.push(`${config.alias}.${groupValueFilter.column} = ANY($${valuesIndex}::bigint[])`);
+    } else if (groupValueFilter?.kind === "text" && groupValueFilter.values.length > 0) {
+      params.push(groupValueFilter.values);
+      const valuesIndex = startIndex + params.length - 1;
+      if (groupValueFilter.expression === "COALESCE(ds.service_category, 'Unspecified')") {
+        conditions.push(
+          `COALESCE((SELECT ds_filter.service_category FROM dim_service ds_filter WHERE ds_filter.id = ${config.alias}.service_key), 'Unspecified') = ANY($${valuesIndex}::text[])`,
+        );
+      }
+    }
+
     return {
       whereClause: conditions.join("\n      AND "),
       params,
@@ -333,9 +552,11 @@ export class CostExplorerRepository {
     metric: CostExplorerMetric,
     from: string,
     to: string,
+    tagFilter?: TagFilterContext | null,
+    groupValueFilter?: GroupValueFilterContext,
   ): Promise<Array<{ bucketStart: string; value: number }>> {
-    const config = this.getSourceConfig(scope, effectiveGranularity);
-    const where = this.buildScopeWhereClause(scope, config, from, to);
+    const config = this.getSourceConfig(scope, effectiveGranularity, undefined, tagFilter);
+    const where = this.buildScopeWhereClause(scope, config, from, to, 1, tagFilter, groupValueFilter);
     const metricColumn = resolveMetricColumn(metric);
 
     const rows = await sequelize.query<BucketValueRow>(
@@ -365,9 +586,11 @@ export class CostExplorerRepository {
     to: string,
     groupBy: Exclude<CostExplorerGroupBy, "none">,
     limit: number,
+    tagFilter?: TagFilterContext | null,
+    groupValueFilter?: GroupValueFilterContext,
   ): Promise<Array<{ key: GroupDimensionKey; name: string }>> {
-    const config = this.getSourceConfig(scope, effectiveGranularity, groupBy);
-    const where = this.buildScopeWhereClause(scope, config, from, to);
+    const config = this.getSourceConfig(scope, effectiveGranularity, groupBy, tagFilter);
+    const where = this.buildScopeWhereClause(scope, config, from, to, 1, tagFilter, groupValueFilter);
     const metricColumn = resolveMetricColumn(metric);
 
     const dimension = this.getDimensionSql(groupBy, config.alias);
@@ -412,11 +635,13 @@ export class CostExplorerRepository {
     to: string,
     groupBy: Exclude<CostExplorerGroupBy, "none">,
     groupKeys: GroupDimensionKey[],
+    tagFilter?: TagFilterContext | null,
+    groupValueFilter?: GroupValueFilterContext,
   ): Promise<Array<{ bucketStart: string; key: GroupDimensionKey; value: number }>> {
     if (!groupKeys.length) return [];
 
-    const config = this.getSourceConfig(scope, effectiveGranularity, groupBy);
-    const where = this.buildScopeWhereClause(scope, config, from, to);
+    const config = this.getSourceConfig(scope, effectiveGranularity, groupBy, tagFilter);
+    const where = this.buildScopeWhereClause(scope, config, from, to, 1, tagFilter, groupValueFilter);
     const metricColumn = resolveMetricColumn(metric);
     const dimension = this.getDimensionSql(groupBy, config.alias);
     const keyArrayCast = dimension.keyType === "string" ? "text[]" : "bigint[]";
@@ -525,9 +750,11 @@ export class CostExplorerRepository {
       return new Map();
     }
 
-    const config = this.getSourceConfig(scope, filters.effectiveGranularity, "service-category");
+    const tagFilter = this.parseTagFilter(filters.tagKey, filters.tagValue, filters.groupValues);
+    const groupValueFilter = this.parseGroupValueFilter(filters.groupBy, filters.groupValues);
+    const config = this.getSourceConfig(scope, filters.effectiveGranularity, "service-category", tagFilter);
     const metricColumn = resolveMetricColumn(filters.metric);
-    const where = this.buildScopeWhereClause(scope, config, filters.from, filters.to);
+    const where = this.buildScopeWhereClause(scope, config, filters.from, filters.to, 1, tagFilter, groupValueFilter);
 
     const rows = await sequelize.query<CategoryServiceRow>(
       `
@@ -581,9 +808,11 @@ export class CostExplorerRepository {
       return new Map();
     }
 
-    const config = this.getSourceConfig(scope, filters.effectiveGranularity, "resource");
+    const tagFilter = this.parseTagFilter(filters.tagKey, filters.tagValue, filters.groupValues);
+    const groupValueFilter = this.parseGroupValueFilter(filters.groupBy, filters.groupValues);
+    const config = this.getSourceConfig(scope, filters.effectiveGranularity, "resource", tagFilter);
     const metricColumn = resolveMetricColumn(filters.metric);
-    const where = this.buildScopeWhereClause(scope, config, filters.from, filters.to);
+    const where = this.buildScopeWhereClause(scope, config, filters.from, filters.to, 1, tagFilter, groupValueFilter);
 
     const rows = await sequelize.query<ResourceDetailRow>(
       `
@@ -645,8 +874,15 @@ export class CostExplorerRepository {
       return {
         keyColumn: "dt.normalized_value",
         joinClause: `
-          LEFT JOIN fact_cost_line_item_tags flt ON flt.fact_id = ${alias}.id
-          LEFT JOIN dim_tag dt ON dt.id = flt.tag_id AND dt.normalized_key = '${normalizedKeyEscaped}'
+          LEFT JOIN LATERAL (
+            SELECT flt.tag_id
+            FROM fact_cost_line_item_tags flt
+            WHERE flt.fact_id = ${alias}.id
+            UNION
+            SELECT ${alias}.tag_id
+            WHERE ${alias}.tag_id IS NOT NULL
+          ) fact_tags ON TRUE
+          LEFT JOIN dim_tag dt ON dt.id = fact_tags.tag_id AND dt.normalized_key = '${normalizedKeyEscaped}'
         `,
         nameExpression: "COALESCE(MIN(dt.tag_value), 'Unspecified')",
         groupByColumns: "dt.normalized_value",
@@ -710,10 +946,37 @@ export class CostExplorerRepository {
     scope: DashboardScope,
     from: string,
     to: string,
+    groupBy: CostExplorerGroupBy,
     tagKey: string | null,
   ): Promise<CostExplorerGroupOptionsResponse> {
     const config = factConfigByGranularity.daily;
     const where = this.buildScopeWhereClause(scope, config, from, to);
+    const providerIdFromScope =
+      scope && typeof scope === "object" && "providerId" in scope && typeof scope.providerId === "number"
+        ? scope.providerId
+        : null;
+    const queryFallbackTagValues = async (normalizedKey: string) =>
+      sequelize.query<{ normalized_value: string | null; display_value: string | null; tag_count: number | string | null }>(
+        `
+          SELECT
+            dt.normalized_value,
+            COALESCE(MIN(dt.tag_value), dt.normalized_value) AS display_value,
+            COUNT(*)::double precision AS tag_count
+          FROM dim_tag dt
+          WHERE dt.tenant_id = $1
+            ${providerIdFromScope !== null ? "AND dt.provider_id = $2" : ""}
+            AND dt.normalized_key = $${providerIdFromScope !== null ? 3 : 2}
+          GROUP BY dt.normalized_value
+          ORDER BY COUNT(*) DESC, dt.normalized_value ASC;
+        `,
+        {
+          bind:
+            providerIdFromScope !== null
+              ? [scope.tenantId, providerIdFromScope, normalizedKey]
+              : [scope.tenantId, normalizedKey],
+          type: QueryTypes.SELECT,
+        },
+      );
 
     const tagKeyRows = await sequelize.query<
       { normalized_key: string | null; display_key: string | null; tag_count: number | string | null }
@@ -724,8 +987,15 @@ export class CostExplorerRepository {
           COALESCE(MIN(dt.tag_key), dt.normalized_key) AS display_key,
           COUNT(*)::double precision AS tag_count
         FROM ${config.tableName} ${config.alias}
-        JOIN fact_cost_line_item_tags flt ON flt.fact_id = ${config.alias}.id
-        JOIN dim_tag dt ON dt.id = flt.tag_id
+        JOIN LATERAL (
+          SELECT flt.tag_id
+          FROM fact_cost_line_item_tags flt
+          WHERE flt.fact_id = ${config.alias}.id
+          UNION
+          SELECT ${config.alias}.tag_id
+          WHERE ${config.alias}.tag_id IS NOT NULL
+        ) fact_tags ON TRUE
+        JOIN dim_tag dt ON dt.id = fact_tags.tag_id
         WHERE ${where.whereClause}
         GROUP BY dt.normalized_key
         ORDER BY COUNT(*) DESC, dt.normalized_key ASC;
@@ -733,14 +1003,58 @@ export class CostExplorerRepository {
       { bind: where.params, type: QueryTypes.SELECT },
     );
 
-    const tagKeyOptions = tagKeyRows
+    const fallbackTagKeyRows = await sequelize.query<
+      { normalized_key: string | null; display_key: string | null; tag_count: number | string | null }
+    >(
+      `
+        SELECT
+          dt.normalized_key,
+          COALESCE(MIN(dt.tag_key), dt.normalized_key) AS display_key,
+          COUNT(*)::double precision AS tag_count
+        FROM dim_tag dt
+        WHERE dt.tenant_id = $1
+          ${providerIdFromScope !== null ? "AND dt.provider_id = $2" : ""}
+        GROUP BY dt.normalized_key
+        ORDER BY COUNT(*) DESC, dt.normalized_key ASC;
+      `,
+      {
+        bind: providerIdFromScope !== null ? [scope.tenantId, providerIdFromScope] : [scope.tenantId],
+        type: QueryTypes.SELECT,
+      },
+    );
+
+    const mergedTagKeyOptions = new Map<
+      string,
+      { key: string; normalizedKey: string; count: number; label: string }
+    >();
+
+    fallbackTagKeyRows
       .filter((row) => typeof row.normalized_key === "string" && row.normalized_key.trim().length > 0)
-      .map((row) => ({
-        key: `tag:${String(row.normalized_key)}`,
-        normalizedKey: String(row.normalized_key),
-        count: toNumber(row.tag_count),
-        label: String(row.display_key ?? row.normalized_key),
-      }));
+      .forEach((row) => {
+        const normalizedKey = String(row.normalized_key);
+        mergedTagKeyOptions.set(normalizedKey, {
+          key: `tag:${normalizedKey}`,
+          normalizedKey,
+          count: toNumber(row.tag_count),
+          label: String(row.display_key ?? row.normalized_key),
+        });
+      });
+
+    tagKeyRows
+      .filter((row) => typeof row.normalized_key === "string" && row.normalized_key.trim().length > 0)
+      .forEach((row) => {
+        const normalizedKey = String(row.normalized_key);
+        mergedTagKeyOptions.set(normalizedKey, {
+          key: `tag:${normalizedKey}`,
+          normalizedKey,
+          count: toNumber(row.tag_count),
+          label: String(row.display_key ?? row.normalized_key),
+        });
+      });
+
+    const tagKeyOptions = Array.from(mergedTagKeyOptions.values()).sort(
+      (a, b) => b.count - a.count || a.normalizedKey.localeCompare(b.normalizedKey),
+    );
 
     const tagValueOptions =
       tagKey && /^[a-z0-9]+$/.test(tagKey)
@@ -751,16 +1065,183 @@ export class CostExplorerRepository {
                 COALESCE(MIN(dt.tag_value), dt.normalized_value) AS display_value,
                 COUNT(*)::double precision AS tag_count
               FROM ${config.tableName} ${config.alias}
-              JOIN fact_cost_line_item_tags flt ON flt.fact_id = ${config.alias}.id
-              JOIN dim_tag dt ON dt.id = flt.tag_id
+              JOIN LATERAL (
+                SELECT flt.tag_id
+                FROM fact_cost_line_item_tags flt
+                WHERE flt.fact_id = ${config.alias}.id
+                UNION
+                SELECT ${config.alias}.tag_id
+                WHERE ${config.alias}.tag_id IS NOT NULL
+              ) fact_tags ON TRUE
+              JOIN dim_tag dt ON dt.id = fact_tags.tag_id
               WHERE ${where.whereClause}
                 AND dt.normalized_key = $${where.nextIndex}
               GROUP BY dt.normalized_value
               ORDER BY COUNT(*) DESC, dt.normalized_value ASC;
             `,
             { bind: [...where.params, tagKey], type: QueryTypes.SELECT },
-          )
+          ).then(async (rows) => (rows.length > 0 ? rows : queryFallbackTagValues(tagKey)))
         : [];
+
+    const dimensionValueQueryByGroupBy = async (): Promise<CostExplorerGroupOptionsResponse["groupValueOptions"]> => {
+      if (groupBy === "none") return [];
+
+      if (groupBy.startsWith("tag:")) {
+        const normalizedKey = groupBy.slice(4).trim().toLowerCase();
+        if (!/^[a-z0-9]+$/.test(normalizedKey)) return [];
+
+        const rows = await sequelize.query<
+          { value_key: string | null; value_label: string | null; value_count: number | string | null }
+        >(
+          `
+            SELECT
+              dt.normalized_value AS value_key,
+              COALESCE(MIN(dt.tag_value), dt.normalized_value) AS value_label,
+              COUNT(*)::double precision AS value_count
+            FROM ${config.tableName} ${config.alias}
+            JOIN LATERAL (
+              SELECT flt.tag_id
+              FROM fact_cost_line_item_tags flt
+              WHERE flt.fact_id = ${config.alias}.id
+              UNION
+              SELECT ${config.alias}.tag_id
+              WHERE ${config.alias}.tag_id IS NOT NULL
+            ) fact_tags ON TRUE
+            JOIN dim_tag dt ON dt.id = fact_tags.tag_id
+            WHERE ${where.whereClause}
+              AND dt.normalized_key = $${where.nextIndex}
+            GROUP BY dt.normalized_value
+            ORDER BY COUNT(*) DESC, dt.normalized_value ASC;
+          `,
+          { bind: [...where.params, normalizedKey], type: QueryTypes.SELECT },
+        ).then(async (result) => {
+          if (result.length > 0) {
+            return result;
+          }
+          const fallbackRows = await queryFallbackTagValues(normalizedKey);
+          return fallbackRows.map((row) => ({
+            value_key: row.normalized_value,
+            value_label: row.display_value,
+            value_count: row.tag_count,
+          }));
+        });
+
+        return rows
+          .filter((row) => typeof row.value_key === "string" && row.value_key.trim().length > 0)
+          .map((row) => ({
+            key: String(row.value_key),
+            label: String(row.value_label ?? row.value_key),
+            count: toNumber(row.value_count),
+          }));
+      }
+
+      if (groupBy === "service") {
+        const rows = await sequelize.query<{ value_key: number | string | null; value_label: string | null; value_count: number | string | null }>(
+          `
+            SELECT
+              ${config.alias}.service_key AS value_key,
+              COALESCE(ds.service_name, 'Unspecified') AS value_label,
+              COUNT(*)::double precision AS value_count
+            FROM ${config.tableName} ${config.alias}
+            LEFT JOIN dim_service ds ON ds.id = ${config.alias}.service_key
+            WHERE ${where.whereClause}
+              AND ${config.alias}.service_key IS NOT NULL
+            GROUP BY ${config.alias}.service_key, ds.service_name
+            ORDER BY COUNT(*) DESC, ${config.alias}.service_key ASC;
+          `,
+          { bind: where.params, type: QueryTypes.SELECT },
+        );
+        return rows
+          .filter((row) => row.value_key !== null)
+          .map((row) => ({ key: String(row.value_key), label: row.value_label ?? "Unspecified", count: toNumber(row.value_count) }));
+      }
+
+      if (groupBy === "service-category") {
+        const rows = await sequelize.query<{ value_key: string | null; value_label: string | null; value_count: number | string | null }>(
+          `
+            SELECT
+              COALESCE(ds.service_category, 'Unspecified') AS value_key,
+              COALESCE(ds.service_category, 'Unspecified') AS value_label,
+              COUNT(*)::double precision AS value_count
+            FROM ${config.tableName} ${config.alias}
+            LEFT JOIN dim_service ds ON ds.id = ${config.alias}.service_key
+            WHERE ${where.whereClause}
+            GROUP BY COALESCE(ds.service_category, 'Unspecified')
+            ORDER BY COUNT(*) DESC, COALESCE(ds.service_category, 'Unspecified') ASC;
+          `,
+          { bind: where.params, type: QueryTypes.SELECT },
+        );
+        return rows
+          .filter((row) => typeof row.value_key === "string" && row.value_key.trim().length > 0)
+          .map((row) => ({ key: String(row.value_key), label: String(row.value_label ?? row.value_key), count: toNumber(row.value_count) }));
+      }
+
+      if (groupBy === "resource") {
+        const rows = await sequelize.query<{ value_key: number | string | null; value_label: string | null; value_count: number | string | null }>(
+          `
+            SELECT
+              ${config.alias}.resource_key AS value_key,
+              COALESCE(dres.resource_name, dres.resource_id, 'Unspecified') AS value_label,
+              COUNT(*)::double precision AS value_count
+            FROM ${config.tableName} ${config.alias}
+            LEFT JOIN dim_resource dres ON dres.id = ${config.alias}.resource_key
+            WHERE ${where.whereClause}
+              AND ${config.alias}.resource_key IS NOT NULL
+            GROUP BY ${config.alias}.resource_key, dres.resource_name, dres.resource_id
+            ORDER BY COUNT(*) DESC, ${config.alias}.resource_key ASC;
+          `,
+          { bind: where.params, type: QueryTypes.SELECT },
+        );
+        return rows
+          .filter((row) => row.value_key !== null)
+          .map((row) => ({ key: String(row.value_key), label: row.value_label ?? "Unspecified", count: toNumber(row.value_count) }));
+      }
+
+      if (groupBy === "region") {
+        const rows = await sequelize.query<{ value_key: number | string | null; value_label: string | null; value_count: number | string | null }>(
+          `
+            SELECT
+              ${config.alias}.region_key AS value_key,
+              COALESCE(dr.region_name, 'Unspecified') AS value_label,
+              COUNT(*)::double precision AS value_count
+            FROM ${config.tableName} ${config.alias}
+            LEFT JOIN dim_region dr ON dr.id = ${config.alias}.region_key
+            WHERE ${where.whereClause}
+              AND ${config.alias}.region_key IS NOT NULL
+            GROUP BY ${config.alias}.region_key, dr.region_name
+            ORDER BY COUNT(*) DESC, ${config.alias}.region_key ASC;
+          `,
+          { bind: where.params, type: QueryTypes.SELECT },
+        );
+        return rows
+          .filter((row) => row.value_key !== null)
+          .map((row) => ({ key: String(row.value_key), label: row.value_label ?? "Unspecified", count: toNumber(row.value_count) }));
+      }
+
+      if (groupBy === "account") {
+        const rows = await sequelize.query<{ value_key: number | string | null; value_label: string | null; value_count: number | string | null }>(
+          `
+            SELECT
+              ${config.alias}.sub_account_key AS value_key,
+              COALESCE(dsa.sub_account_name, dsa.sub_account_id, 'Unspecified') AS value_label,
+              COUNT(*)::double precision AS value_count
+            FROM ${config.tableName} ${config.alias}
+            LEFT JOIN dim_sub_account dsa ON dsa.id = ${config.alias}.sub_account_key
+            WHERE ${where.whereClause}
+              AND ${config.alias}.sub_account_key IS NOT NULL
+            GROUP BY ${config.alias}.sub_account_key, dsa.sub_account_name, dsa.sub_account_id
+            ORDER BY COUNT(*) DESC, ${config.alias}.sub_account_key ASC;
+          `,
+          { bind: where.params, type: QueryTypes.SELECT },
+        );
+        return rows
+          .filter((row) => row.value_key !== null)
+          .map((row) => ({ key: String(row.value_key), label: row.value_label ?? "Unspecified", count: toNumber(row.value_count) }));
+      }
+
+      return [];
+    };
+    const groupValueOptions = await dimensionValueQueryByGroupBy();
 
     return {
       baseOptions: [
@@ -783,6 +1264,7 @@ export class CostExplorerRepository {
           normalizedValue: String(row.normalized_value),
           count: toNumber(row.tag_count),
         })),
+      groupValueOptions,
     };
   }
 
@@ -795,12 +1277,16 @@ export class CostExplorerRepository {
     periodSpend: number;
     previousPeriodSpend: number;
   }> {
+    const effectiveTagFilter = this.parseTagFilter(filters.tagKey, filters.tagValue, filters.groupValues);
+    const groupValueFilter = this.parseGroupValueFilter(filters.groupBy, filters.groupValues);
     const currentTotals = await this.getTotalsByBucket(
       scope,
       filters.effectiveGranularity,
       filters.metric,
       filters.from,
       filters.to,
+      effectiveTagFilter,
+      groupValueFilter,
     );
 
     const labels = currentTotals.map((entry) => {
@@ -835,6 +1321,8 @@ export class CostExplorerRepository {
         filters.to,
         filters.groupBy,
         chartGroupLimit,
+        effectiveTagFilter,
+        groupValueFilter,
       );
 
       const byBucket = await this.getGroupedValuesByBucket(
@@ -845,6 +1333,8 @@ export class CostExplorerRepository {
         filters.to,
         filters.groupBy,
         topGroups.map((entry) => entry.key),
+        effectiveTagFilter,
+        groupValueFilter,
       );
 
       const bucketIndexByStart = new Map(labels.map((label, index) => [label.bucketStart, index]));
@@ -877,6 +1367,8 @@ export class CostExplorerRepository {
       filters.metric,
       previousRange.from,
       previousRange.to,
+      effectiveTagFilter,
+      groupValueFilter,
     );
     const previousPeriodSpend = previousTotals.reduce((sum, row) => sum + row.value, 0);
 
@@ -923,11 +1415,29 @@ export class CostExplorerRepository {
     dimension: Exclude<CostExplorerGroupBy, "none">,
     limit: number,
   ): Promise<CostExplorerBreakdownRow[]> {
-    const config = this.getSourceConfig(scope, filters.effectiveGranularity, dimension);
+    const effectiveTagFilter = this.parseTagFilter(filters.tagKey, filters.tagValue, filters.groupValues);
+    const groupValueFilter = this.parseGroupValueFilter(filters.groupBy, filters.groupValues);
+    const config = this.getSourceConfig(scope, filters.effectiveGranularity, dimension, effectiveTagFilter);
     const metricColumn = resolveMetricColumn(filters.metric);
-    const currentWhere = this.buildScopeWhereClause(scope, config, filters.from, filters.to);
+    const currentWhere = this.buildScopeWhereClause(
+      scope,
+      config,
+      filters.from,
+      filters.to,
+      1,
+      effectiveTagFilter,
+      groupValueFilter,
+    );
     const previous = buildPreviousPeriod(filters.from, filters.to);
-    const previousWhere = this.buildScopeWhereClause(scope, config, previous.from, previous.to);
+    const previousWhere = this.buildScopeWhereClause(
+      scope,
+      config,
+      previous.from,
+      previous.to,
+      1,
+      effectiveTagFilter,
+      groupValueFilter,
+    );
     const dim = this.getDimensionSql(dimension, config.alias);
 
     const currentRows = await sequelize.query<GroupTotalRow>(
@@ -1052,3 +1562,4 @@ export const computeEffectiveGranularity = (
   const dayDiff = Math.floor((toDate.getTime() - fromDate.getTime()) / 86_400_000) + 1;
   return dayDiff > 14 ? "daily" : "hourly";
 };
+

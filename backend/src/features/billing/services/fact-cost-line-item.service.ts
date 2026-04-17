@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/ban-ts-comment */
 // @ts-nocheck
-import { FactCostLineItemTags, FactCostLineItems as FactCostLineItem } from "../../../models/index.js";
+import { FactCostLineItemTags, FactCostLineItems as FactCostLineItem, sequelize } from "../../../models/index.js";
 import { RAW_COLUMNS, mapFactCostLineItem } from "../mappers/raw_focus_to_dimensions.mapper.js";
 import { classifyFactInsertError } from "./numeric-validation.service.js";
 import { resolveDimensions, resolveDimensionsWithCache } from "./dimension-upsert.service.js";
@@ -28,6 +28,19 @@ async function attachFactTags({ factId, tenantId, providerId, tagIds }) {
     { ignoreDuplicates: true, returning: false },
   );
 }
+
+const resolveBridgeTagIds = ({ tagIds, primaryTagId }) => {
+  const normalized = Array.isArray(tagIds)
+    ? Array.from(new Set(tagIds.map((id) => String(id).trim()).filter(Boolean)))
+    : [];
+  if (normalized.length > 0) return normalized;
+
+  if (primaryTagId !== null && primaryTagId !== undefined && String(primaryTagId).trim().length > 0) {
+    return [String(primaryTagId).trim()];
+  }
+
+  return [];
+};
 
 async function insertFactCostLineItem({
   rawRow,
@@ -147,7 +160,7 @@ async function insertFactCostLineItem({
       factId: record.id,
       tenantId: factPayload.tenant_id,
       providerId: factPayload.provider_id,
-      tagIds,
+      tagIds: resolveBridgeTagIds({ tagIds, primaryTagId: tagId }),
     });
 
     return {
@@ -172,34 +185,45 @@ async function insertFactCostLineItemsBatch({ factRows, ingestionRunId }) {
   const createPayloads = factRows.map((entry) => entry.createPayload);
 
   try {
-    const insertedRecords = await FactCostLineItem.bulkCreate(createPayloads, {
-      returning: ["id"],
-    });
+    await sequelize.transaction(async (transaction) => {
+      const insertedRecords = await FactCostLineItem.bulkCreate(createPayloads, {
+        returning: true,
+        transaction,
+      });
 
-    const tagLinkPayloads = [];
-    for (let index = 0; index < insertedRecords.length; index += 1) {
-      const record = insertedRecords[index];
-      const factRow = factRows[index];
-      const tagIds = Array.isArray(factRow?.tagIds) ? factRow.tagIds : [];
-      if (!record?.id || tagIds.length === 0) continue;
+      const requiresTagLinks = factRows.some((entry) => Array.isArray(entry?.tagIds) && entry.tagIds.length > 0);
+      if (requiresTagLinks && insertedRecords.some((record) => !record?.id)) {
+        throw new Error("Bulk insert did not return fact IDs required for tag bridge linking");
+      }
 
-      const uniqueTagIds = Array.from(new Set(tagIds.map((id) => String(id).trim()).filter(Boolean)));
-      for (const tagId of uniqueTagIds) {
-        tagLinkPayloads.push({
-          factId: record.id,
-          tagId,
-          tenantId: factRow.createPayload.tenantId,
-          providerId: factRow.createPayload.providerId,
+      const tagLinkPayloads = [];
+      for (let index = 0; index < insertedRecords.length; index += 1) {
+        const record = insertedRecords[index];
+        const factRow = factRows[index];
+        const tagIds = resolveBridgeTagIds({
+          tagIds: factRow?.tagIds,
+          primaryTagId: factRow?.createPayload?.tagId,
+        });
+        if (!record?.id || tagIds.length === 0) continue;
+
+        for (const tagId of tagIds) {
+          tagLinkPayloads.push({
+            factId: record.id,
+            tagId,
+            tenantId: factRow.createPayload.tenantId,
+            providerId: factRow.createPayload.providerId,
+          });
+        }
+      }
+
+      if (tagLinkPayloads.length > 0) {
+        await FactCostLineItemTags.bulkCreate(tagLinkPayloads, {
+          ignoreDuplicates: true,
+          returning: false,
+          transaction,
         });
       }
-    }
-
-    if (tagLinkPayloads.length > 0) {
-      await FactCostLineItemTags.bulkCreate(tagLinkPayloads, {
-        ignoreDuplicates: true,
-        returning: false,
-      });
-    }
+    });
 
     return { insertedCount: createPayloads.length, failedRows: [] };
   } catch (bulkError) {
@@ -221,7 +245,10 @@ async function insertFactCostLineItemsBatch({ factRows, ingestionRunId }) {
           factId: record.id,
           tenantId: entry.createPayload.tenantId,
           providerId: entry.createPayload.providerId,
-          tagIds: entry.tagIds,
+          tagIds: resolveBridgeTagIds({
+            tagIds: entry.tagIds,
+            primaryTagId: entry?.createPayload?.tagId,
+          }),
         });
         insertedCount += 1;
       } catch (rowError) {
