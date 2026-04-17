@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -74,6 +74,8 @@ export function S3ImportConnectionsSection() {
   const [loadingConnections, setLoadingConnections] = useState(false)
   const [connectionsError, setConnectionsError] = useState<string | null>(null)
   const [isConnectDialogOpen, setIsConnectDialogOpen] = useState(false)
+  const [isExplorerDialogOpen, setIsExplorerDialogOpen] = useState(false)
+  const didAutoOpenConnectionRef = useRef(false)
 
   const [roleArn, setRoleArn] = useState("")
   const [bucketName, setBucketName] = useState("")
@@ -129,6 +131,46 @@ export function S3ImportConnectionsSection() {
     void loadConnections()
   }, [])
 
+  useEffect(() => {
+    if (didAutoOpenConnectionRef.current) return
+    if (loadingConnections) return
+    if (activeConnectionId) {
+      didAutoOpenConnectionRef.current = true
+      return
+    }
+    if (typeof window === "undefined") return
+
+    const params = new URLSearchParams(window.location.search)
+    const connectionId = params.get("connectionId")
+    if (!connectionId) return
+
+    const connection = connections.find((row) => row.id === connectionId)
+    if (!connection) return
+
+    didAutoOpenConnectionRef.current = true
+    void openConnectionExplorer(connection)
+  }, [activeConnectionId, connections, loadingConnections])
+
+  function resetExplorerState() {
+    setActiveConnectionId(null)
+    setSessionId(null)
+    setSessionBucket("")
+    setSessionRootPrefix("")
+    setSessionCurrentPrefix("")
+    setSessionExpiresAt(null)
+    setItems([])
+    setSelectedKeys([])
+    setExplorerError(null)
+    setImportError(null)
+  }
+
+  function handleExplorerDialogOpenChange(open: boolean) {
+    setIsExplorerDialogOpen(open)
+    if (!open) {
+      resetExplorerState()
+    }
+  }
+
   async function loadListing(nextSessionId: string, nextPrefix: string) {
     setExplorerLoading(true)
     setExplorerError(null)
@@ -148,6 +190,7 @@ export function S3ImportConnectionsSection() {
   }
 
   async function openConnectionExplorer(connection: S3UploadConnection) {
+    setIsExplorerDialogOpen(true)
     setActiveConnectionId(connection.id)
     setSelectedKeys([])
     setImportError(null)
@@ -199,6 +242,7 @@ export function S3ImportConnectionsSection() {
       setPrefix("")
       setExternalId("")
 
+      setIsExplorerDialogOpen(true)
       setActiveConnectionId(nextConnection.id)
       setSessionId(response.session.sessionId)
       setSessionBucket(response.session.bucket)
@@ -316,102 +360,122 @@ export function S3ImportConnectionsSection() {
 
       {connectionsError ? <p className="text-sm text-rose-600">{connectionsError}</p> : null}
 
-      {activeConnection ? (
-        <div className="space-y-4 rounded-md border border-[color:var(--border-light)] bg-white p-4">
-          <div className="rounded-md border border-[color:var(--border-light)] bg-[color:var(--bg-surface)] px-3 py-2 text-xs text-text-secondary">
-            <p><span className="font-medium text-text-primary">Bucket:</span> {sessionBucket || activeConnection.bucket}</p>
-            <p><span className="font-medium text-text-primary">Scoped Prefix:</span> {sessionRootPrefix || "/"}</p>
-            <p><span className="font-medium text-text-primary">Current Path:</span> {sessionCurrentPrefix || "/"}</p>
-            <p><span className="font-medium text-text-primary">Session Expires:</span> {formatDateTime(sessionExpiresAt)}</p>
-          </div>
+      <Dialog open={isExplorerDialogOpen} onOpenChange={handleExplorerDialogOpenChange}>
+        <DialogContent className="w-[min(96vw,1100px)] max-w-none rounded-none border border-[color:var(--border-light)] p-0">
+          <div className="flex max-h-[90vh] flex-col overflow-hidden">
+            <DialogHeader className="border-b border-[color:var(--border-light)] px-5 py-4">
+              <DialogTitle>S3 Bucket Explorer</DialogTitle>
+              <DialogDescription>
+                {activeConnection ? (
+                  <span className="text-text-secondary">
+                    {sessionBucket || activeConnection.bucket}
+                    {sessionRootPrefix ? ` • ${sessionRootPrefix}` : ""}
+                  </span>
+                ) : (
+                  <span className="text-text-secondary">Opening connection...</span>
+                )}
+              </DialogDescription>
+            </DialogHeader>
 
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-sm text-text-secondary">
-              Selected files: <span className="font-medium text-text-primary">{selectedKeys.length}</span>
-            </p>
-            <Button
-              variant="outline"
-              className="h-9 rounded-md"
-              onClick={() => {
-                if (!sessionId) return
-                void loadListing(sessionId, sessionCurrentPrefix)
-              }}
-              disabled={explorerLoading || !sessionId}
-            >
-              Refresh
-            </Button>
-          </div>
+            <div className="space-y-4 overflow-auto px-5 py-4">
+             
 
-          {explorerError ? <p className="text-sm text-rose-600">{explorerError}</p> : null}
-          {importError ? <p className="text-sm text-rose-600">{importError}</p> : null}
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-sm text-text-secondary">
+                  Selected files: <span className="font-medium text-text-primary">{selectedKeys.length}</span>
+                </p>
+                <Button
+                  variant="outline"
+                  className="h-9 rounded-md"
+                  onClick={() => {
+                    if (!sessionId) return
+                    void loadListing(sessionId, sessionCurrentPrefix)
+                  }}
+                  disabled={explorerLoading || !sessionId}
+                >
+                  Refresh
+                </Button>
+              </div>
 
-          {explorerLoading ? (
-            <div className="rounded-md border border-[color:var(--border-light)] bg-[color:var(--bg-surface)] px-4 py-5 text-sm text-text-secondary">
-              Loading file directory...
+              {explorerError ? <p className="text-sm text-rose-600">{explorerError}</p> : null}
+              {importError ? <p className="text-sm text-rose-600">{importError}</p> : null}
+
+              {explorerLoading ? (
+                <div className="space-y-3 rounded-md border border-[color:var(--border-light)] bg-white p-4">
+                  <div className="h-4 w-56 animate-pulse rounded bg-[color:var(--bg-surface)]" />
+                  <div className="space-y-2">
+                    <div className="h-10 animate-pulse rounded bg-[color:var(--bg-surface)]" />
+                    <div className="h-10 animate-pulse rounded bg-[color:var(--bg-surface)]" />
+                    <div className="h-10 animate-pulse rounded bg-[color:var(--bg-surface)]" />
+                  </div>
+                </div>
+              ) : (
+                <div className="max-h-80 overflow-auto rounded-md border border-[color:var(--border-light)] bg-white">
+                  <table className="w-full text-sm">
+                    <thead className="bg-[color:var(--bg-surface)] text-left text-xs uppercase tracking-[0.08em] text-text-muted">
+                      <tr>
+                        <th className="px-3 py-2">Select</th>
+                        <th className="px-3 py-2">Name</th>
+                        <th className="px-3 py-2">Type</th>
+                        <th className="px-3 py-2">Size</th>
+                        <th className="px-3 py-2">Modified</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {items.length === 0 ? (
+                        <tr><td className="px-3 py-3 text-text-secondary" colSpan={5}>No files found in this location.</td></tr>
+                      ) : null}
+                      {items.map((item) => (
+                        <tr key={item.key} className="border-t border-[color:var(--border-light)]">
+                          <td className="px-3 py-2">
+                            {item.type === "file" ? (
+                              <input
+                                type="checkbox"
+                                checked={selectedKeys.includes(item.key)}
+                                onChange={() => toggleFile(item)}
+                                className="h-4 w-4 accent-[color:var(--brand-primary)]"
+                              />
+                            ) : null}
+                          </td>
+                          <td className="px-3 py-2">
+                            {item.type === "folder" ? (
+                              <button
+                                type="button"
+                                className="text-brand-primary hover:underline"
+                                onClick={() => {
+                                  if (!sessionId) return
+                                  void loadListing(sessionId, item.path)
+                                }}
+                              >
+                                {item.name}
+                              </button>
+                            ) : (
+                              <span className="text-text-primary">{item.name}</span>
+                            )}
+                          </td>
+                          <td className="px-3 py-2 text-text-secondary">{item.type === "folder" ? "Folder" : "File"}</td>
+                          <td className="px-3 py-2 text-text-secondary">{formatFileSize(item.size)}</td>
+                          <td className="px-3 py-2 text-text-secondary">{formatDateTime(item.lastModified)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              <div className="flex justify-end gap-2">
+                <Button
+                  className="h-10 rounded-md"
+                  onClick={() => void handleImportSelected()}
+                  disabled={selectedKeys.length === 0 || importing || explorerLoading || !sessionId}
+                >
+                  {importing ? "Importing..." : "Import Selected Files"}
+                </Button>
+              </div>
             </div>
-          ) : null}
-
-          {!explorerLoading ? (
-            <div className="max-h-80 overflow-auto rounded-md border border-[color:var(--border-light)]">
-              <table className="w-full text-sm">
-                <thead className="bg-[color:var(--bg-surface)] text-left text-xs uppercase tracking-[0.08em] text-text-muted">
-                  <tr>
-                    <th className="px-3 py-2">Select</th>
-                    <th className="px-3 py-2">Name</th>
-                    <th className="px-3 py-2">Type</th>
-                    <th className="px-3 py-2">Size</th>
-                    <th className="px-3 py-2">Modified</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {items.length === 0 ? (
-                    <tr><td className="px-3 py-3 text-text-secondary" colSpan={5}>No files found in this location.</td></tr>
-                  ) : null}
-                  {items.map((item) => (
-                    <tr key={item.key} className="border-t border-[color:var(--border-light)]">
-                      <td className="px-3 py-2">
-                        {item.type === "file" ? (
-                          <input
-                            type="checkbox"
-                            checked={selectedKeys.includes(item.key)}
-                            onChange={() => toggleFile(item)}
-                            className="h-4 w-4 accent-[color:var(--brand-primary)]"
-                          />
-                        ) : null}
-                      </td>
-                      <td className="px-3 py-2">
-                        {item.type === "folder" ? (
-                          <button
-                            type="button"
-                            className="text-brand-primary hover:underline"
-                            onClick={() => {
-                              if (!sessionId) return
-                              void loadListing(sessionId, item.path)
-                            }}
-                          >
-                            {item.name}
-                          </button>
-                        ) : (
-                          <span className="text-text-primary">{item.name}</span>
-                        )}
-                      </td>
-                      <td className="px-3 py-2 text-text-secondary">{item.type === "folder" ? "Folder" : "File"}</td>
-                      <td className="px-3 py-2 text-text-secondary">{formatFileSize(item.size)}</td>
-                      <td className="px-3 py-2 text-text-secondary">{formatDateTime(item.lastModified)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : null}
-
-          <div className="flex justify-end gap-2">
-            <Button className="h-10 rounded-md" onClick={() => void handleImportSelected()} disabled={selectedKeys.length === 0 || importing}>
-              {importing ? "Importing..." : "Import Selected Files"}
-            </Button>
           </div>
-        </div>
-      ) : null}
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={isConnectDialogOpen} onOpenChange={setIsConnectDialogOpen}>
         <DialogContent className="max-w-xl">

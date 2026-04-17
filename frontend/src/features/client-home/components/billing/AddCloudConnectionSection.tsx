@@ -73,6 +73,15 @@ export function AddCloudConnectionSection({
   const [connectingS3, setConnectingS3] = useState(false)
   const [connectS3Error, setConnectS3Error] = useState<string | null>(null)
 
+  function openS3ConnectionExplorer(connection: S3UploadConnection) {
+    const params = new URLSearchParams()
+    params.set("connectionId", connection.id)
+
+    const nextUrl = `/client/billing/import-s3?${params.toString()}`
+    window.history.pushState({}, "", nextUrl)
+    window.dispatchEvent(new PopStateEvent("popstate"))
+  }
+
   function handleOpenAddConnectionPanel() {
     setIsAddConnectionPanelOpen(true)
   }
@@ -299,8 +308,23 @@ export function AddCloudConnectionSection({
                   </tr>
                 ) : null}
                 {!s3ConnectionsLoading ? paginatedS3Connections.map((connection) => (
-                  <tr key={connection.id} className="border-b border-[color:var(--border-light)] last:border-b-0">
-                    <td className="px-3 py-4 text-sm text-text-primary">{connection.bucket}</td>
+                  <tr
+                    key={connection.id}
+                    className="cursor-pointer border-b border-[color:var(--border-light)] transition-colors hover:bg-[color:var(--bg-surface)] last:border-b-0"
+                    onClick={() => openS3ConnectionExplorer(connection)}
+                  >
+                    <td className="px-3 py-4 text-sm">
+                      <button
+                        type="button"
+                        className="text-brand-primary hover:underline"
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          openS3ConnectionExplorer(connection)
+                        }}
+                      >
+                        {connection.bucket}
+                      </button>
+                    </td>
                     <td className="px-3 py-4 text-sm text-text-secondary">{connection.basePrefix || "/"}</td>
                     <td className="px-3 py-4 text-sm text-text-secondary">{connection.awsAccountId || "-"}</td>
                     <td className="px-3 py-4 text-sm text-text-secondary">{connection.resolvedRegion || "-"}</td>

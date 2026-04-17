@@ -47,7 +47,7 @@ TRUNCATE TABLE agg_cost_monthly;
       ingestionRunId: run.id,
       tenantId: rawFile.tenantId,
       providerId: rawFile.cloudProviderId,
-      billingSourceId: rawFile.billingSourceId,
+      billingSourceId: run.billingSourceId,
       uploadedBy: rawFile.uploadedBy,
     });
 
