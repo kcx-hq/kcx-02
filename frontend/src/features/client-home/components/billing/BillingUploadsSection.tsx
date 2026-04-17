@@ -71,7 +71,7 @@ export function BillingUploadsSection({
   ] as const
 
   return (
-    <section className="rounded-[14px] border border-[color:var(--border-light)] bg-white px-5 py-5 shadow-sm-custom">
+    <section className="rounded-[14px] border border-[color:var(--border-light)] bg-[#f7fbfb] px-5 py-5 shadow-sm-custom">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="space-y-2">
             <h1 className="text-[2rem] font-semibold leading-tight text-text-primary">Upload Files</h1>
@@ -111,10 +111,6 @@ export function BillingUploadsSection({
                       </p>
                       <p className={`mt-2 truncate text-[2rem] font-semibold leading-none ${item.tone}`}>
                         {item.value}
-                      </p>
-                      <p className={`mt-2 inline-flex items-center gap-1 text-xs ${item.tone === "text-text-primary" ? "text-text-secondary" : item.tone}`}>
-                        <Icon className="h-3.5 w-3.5" />
-                        {item.meta}
                       </p>
                     </div>
                   </div>

@@ -29,7 +29,7 @@ export function TablePagination({
         <Button
           variant="outline"
           size="sm"
-          className="h-8 rounded-md"
+          className="h-8 rounded-none border-[color:var(--border-light)] bg-transparent text-text-primary hover:bg-transparent disabled:bg-transparent disabled:text-text-muted disabled:opacity-100"
           disabled={currentPage <= 1}
           onClick={onPrevious}
         >
@@ -41,7 +41,7 @@ export function TablePagination({
         <Button
           variant="outline"
           size="sm"
-          className="h-8 rounded-md"
+          className="h-8 rounded-none border-[color:var(--border-light)] bg-transparent text-text-primary hover:bg-transparent disabled:bg-transparent disabled:text-text-muted disabled:opacity-100"
           disabled={currentPage >= totalPages}
           onClick={onNext}
         >
@@ -51,4 +51,3 @@ export function TablePagination({
     </div>
   )
 }
-

@@ -266,7 +266,7 @@ export function S3ImportConnectionsSection() {
   }
 
   return (
-    <section className="space-y-4">
+    <section className="space-y-4 rounded-[14px] border border-[color:var(--border-light)] bg-[#f7fbfb] px-5 py-5 shadow-sm-custom">
       <div className="flex items-start justify-between gap-3">
         <div>
           <h2 className="text-[2rem] font-semibold leading-tight text-text-primary">Import From S3</h2>

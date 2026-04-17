@@ -178,6 +178,25 @@
     -moz-osx-font-smoothing: grayscale;
   }
 
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(138, 154, 148, 0.75) transparent;
+  }
+
+  *::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background-color: rgba(138, 154, 148, 0.75);
+    border: 1px solid transparent;
+  }
+
   #root {
     @apply min-h-screen;
     isolation: isolate;
