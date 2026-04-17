@@ -1678,9 +1678,9 @@
 }
 
 .dashboard-metric-badge--negative {
-  color: #9f4752;
-  background: color-mix(in srgb, #9f4752 12%, var(--dashboard-surface-card) 88%);
-  border-color: color-mix(in srgb, #9f4752 24%, var(--dashboard-border-light) 76%);
+  color: #e15b66;
+  background: color-mix(in srgb, #e15b66 12%, var(--dashboard-surface-card) 88%);
+  border-color: color-mix(in srgb, #e15b66 24%, var(--dashboard-border-light) 76%);
 }
 
 .dashboard-metric-badge--accent {
@@ -2896,7 +2896,7 @@
 
 .overview-threat-row {
   display: grid;
-  grid-template-columns: minmax(88px, 118px) minmax(0, 1fr) auto;
+  grid-template-columns: minmax(88px, 118px) minmax(0, 1fr);
   align-items: center;
   gap: 7px;
 }

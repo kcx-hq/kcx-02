@@ -320,7 +320,7 @@ export async function processAwsExportParquetRun({ run }) {
 
                 const factPayload = mapFactCostLineItem({
                   tenant_id: rawFile.tenantId,
-                  billing_source_id: rawFile.billingSourceId,
+                  billing_source_id: source.id,
                   ingestion_run_id: runId,
                   provider_id: rawFile.cloudProviderId,
                   billing_account_key: dimensions.billingAccountKey,

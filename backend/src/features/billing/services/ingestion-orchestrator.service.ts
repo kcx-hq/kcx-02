@@ -541,7 +541,7 @@ async function processIngestionRun(ingestionRunId) {
 
           const factPayload = mapFactCostLineItem({
             tenant_id: rawFile.tenantId,
-            billing_source_id: rawFile.billingSourceId,
+            billing_source_id: run.billingSourceId,
             ingestion_run_id: run.id,
             provider_id: rawFile.cloudProviderId,
             billing_account_key: billingAccountKey,
@@ -759,15 +759,12 @@ async function processIngestionRun(ingestionRunId) {
         ingestionRunId: run.id,
         tenantId: rawFile.tenantId,
         providerId: rawFile.cloudProviderId,
-        billingSourceId: rawFile.billingSourceId,
+        billingSourceId: run.billingSourceId,
         uploadedBy: rawFile.uploadedBy,
       });
 
       const tenantIdForSync = typeof rawFile.tenantId === "string" ? rawFile.tenantId.trim() : "";
-      const billingSourceIdForSync =
-        typeof rawFile.billingSourceId === "string" || typeof rawFile.billingSourceId === "number"
-          ? String(rawFile.billingSourceId)
-          : "";
+      const billingSourceIdForSync = run?.billingSourceId ? String(run.billingSourceId) : "";
 
       if (tenantIdForSync && billingSourceIdForSync) {
         try {
