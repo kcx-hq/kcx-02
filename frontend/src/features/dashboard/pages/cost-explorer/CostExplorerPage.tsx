@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { EChartsOption } from "echarts";
+import { useLocation } from "react-router-dom";
 
 import { useCostExplorerGroupOptionsQuery, useCostExplorerQuery } from "../../hooks/useDashboardQueries";
 import { useDashboardScope } from "../../hooks/useDashboardScope";
@@ -56,8 +57,25 @@ const haveSameStringItems = (left: string[], right: string[]): boolean => {
   return left.every((item) => rightSet.has(item));
 };
 
+const parseOptionalBoolean = (value: string | null): boolean | undefined => {
+  if (!value) return undefined;
+  const normalized = value.trim().toLowerCase();
+  if (["true", "1", "on", "enabled", "yes"].includes(normalized)) return true;
+  if (["false", "0", "off", "disabled", "no", "none"].includes(normalized)) return false;
+  return undefined;
+};
+
 export default function CostExplorerPage() {
   const { scope } = useDashboardScope();
+  const location = useLocation();
+  const searchParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
+  const forecastingEnabled = parseOptionalBoolean(
+    searchParams.get("forecastingEnabled") ??
+      searchParams.get("forecasting") ??
+      searchParams.get("forecastEnabled") ??
+      searchParams.get("forecastFilter") ??
+      searchParams.get("forecastingFilter"),
+  );
 
   const [draftGroupBy, setDraftGroupBy] = useState<GroupBy>("none");
   const [appliedGroupBy, setAppliedGroupBy] = useState<GroupBy>("none");
@@ -83,6 +101,7 @@ export default function CostExplorerPage() {
       groupBy: activeGroupBy,
       metric: "billed",
       compareKey: activeCompareKey,
+      ...(typeof forecastingEnabled === "boolean" ? { forecastingEnabled } : {}),
       groupValues: activeGroupValues,
     },
     selectedMetrics.includes("billed"),
@@ -93,6 +112,7 @@ export default function CostExplorerPage() {
       groupBy: activeGroupBy,
       metric: "effective",
       compareKey: activeCompareKey,
+      ...(typeof forecastingEnabled === "boolean" ? { forecastingEnabled } : {}),
       groupValues: activeGroupValues,
     },
     selectedMetrics.includes("effective"),
@@ -103,6 +123,7 @@ export default function CostExplorerPage() {
       groupBy: activeGroupBy,
       metric: "list",
       compareKey: activeCompareKey,
+      ...(typeof forecastingEnabled === "boolean" ? { forecastingEnabled } : {}),
       groupValues: activeGroupValues,
     },
     selectedMetrics.includes("list"),

@@ -31,11 +31,51 @@ const firstQueryValue = (value: unknown): string | undefined => {
   return typeof value === "string" ? value : undefined;
 };
 
+const parseForecastingCompareKey = (value: unknown): string | null | undefined => {
+  const raw = firstQueryValue(value);
+  if (typeof raw === "undefined") {
+    return undefined;
+  }
+
+  const normalized = raw.trim().toLowerCase();
+  if (normalized.length === 0) {
+    return null;
+  }
+
+  if (normalized === "forecast") {
+    return "forecast";
+  }
+  if (normalized === "budget") {
+    return "budget";
+  }
+  if (normalized === "previous-month" || normalized === "previous_month") {
+    return "previous-month";
+  }
+  if (["true", "1", "on", "enabled", "yes"].includes(normalized)) {
+    return "forecast";
+  }
+  if (["false", "0", "off", "disabled", "none", "no"].includes(normalized)) {
+    return null;
+  }
+
+  return undefined;
+};
+
 export function buildCostExplorerFilters(req: Request): CostExplorerFilters {
   const granularity = firstQueryValue(req.query.granularity) ?? "daily";
   const groupBy = firstQueryValue(req.query.groupBy) ?? "none";
   const metric = firstQueryValue(req.query.metric) ?? "billed";
-  const compareRaw = firstQueryValue(req.query.compareKey) ?? firstQueryValue(req.query.compare) ?? null;
+  const compareRaw =
+    firstQueryValue(req.query.compareKey) ??
+    firstQueryValue(req.query.compare) ??
+    parseForecastingCompareKey(
+      req.query.forecasting ??
+        req.query.forecastingEnabled ??
+        req.query.forecastEnabled ??
+        req.query.forecastFilter ??
+        req.query.forecastingFilter,
+    ) ??
+    null;
   const tagKeyRaw = firstQueryValue(req.query.tagKey) ?? null;
   const tagValueRaw = firstQueryValue(req.query.tagValue) ?? null;
   const groupValuesRaw = firstQueryValue(req.query.groupValues) ?? null;

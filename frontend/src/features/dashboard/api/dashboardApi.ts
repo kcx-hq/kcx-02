@@ -62,6 +62,9 @@ function withOverviewFilters(
 
   if (filters?.billingPeriodStart) params.set("billingPeriodStart", filters.billingPeriodStart);
   if (filters?.billingPeriodEnd) params.set("billingPeriodEnd", filters.billingPeriodEnd);
+  if (typeof filters?.forecastingEnabled === "boolean") {
+    params.set("forecastingEnabled", String(filters.forecastingEnabled));
+  }
   if (typeof filters?.page === "number") params.set("page", String(filters.page));
   if (typeof filters?.pageSize === "number") params.set("pageSize", String(filters.pageSize));
   if (filters?.sortBy) params.set("sortBy", filters.sortBy);
@@ -87,6 +90,9 @@ function withCostExplorerFilters(
   if (filters?.granularity) params.set("granularity", filters.granularity);
   if (filters?.groupBy) params.set("groupBy", filters.groupBy);
   if (filters?.metric) params.set("metric", filters.metric);
+  if (typeof filters?.forecastingEnabled === "boolean") {
+    params.set("forecastingEnabled", String(filters.forecastingEnabled));
+  }
   if (Array.isArray(filters?.groupValues) && filters.groupValues.length > 0) {
     params.set("groupValues", filters.groupValues.join(","));
   }

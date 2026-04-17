@@ -360,6 +360,7 @@ export type OverviewSortOrder = "asc" | "desc";
 export type OverviewFiltersQuery = {
   billingPeriodStart?: string;
   billingPeriodEnd?: string;
+  forecastingEnabled?: boolean;
   accountKeys?: number[];
   serviceKeys?: number[];
   regionKeys?: number[];
@@ -533,6 +534,7 @@ export type DashboardOverviewResponse = {
   filtersApplied: {
     billingPeriodStart: string;
     billingPeriodEnd: string;
+    forecastingEnabled?: boolean;
     accountKeys?: number[];
     serviceKeys?: number[];
     regionKeys?: number[];
@@ -569,6 +571,7 @@ export type CostExplorerFiltersQuery = {
   groupBy?: CostExplorerGroupBy;
   metric?: CostExplorerMetric;
   compareKey?: CostExplorerCompareKey | null;
+  forecastingEnabled?: boolean;
   groupValues?: string[];
 };
 

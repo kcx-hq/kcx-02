@@ -35,6 +35,7 @@ const STAGE_OPTIONS = [
   { value: "RESOLVED", label: "Resolved" },
   { value: "CLOSED", label: "Closed" },
 ]
+const ISSUE_TABLE_PAGE_SIZE = 10
 
 const formatDate = (value?: string | null) => {
   if (!value) return "-"
@@ -142,6 +143,7 @@ export function IssueManagementPage() {
   const [clearingChatId, setClearingChatId] = useState<string | null>(null)
   const [search, setSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState("ALL")
+  const [tablePage, setTablePage] = useState(1)
   const [error, setError] = useState<string | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [detail, setDetail] = useState<ClientIssueTicket | null>(null)
@@ -220,6 +222,20 @@ export function IssueManagementPage() {
       return matchesQuery && matchesFilter
     })
   }, [search, statusFilter, tickets])
+
+  const totalPages = Math.max(1, Math.ceil(filteredTickets.length / ISSUE_TABLE_PAGE_SIZE))
+  const pagedTickets = useMemo(() => {
+    const start = (tablePage - 1) * ISSUE_TABLE_PAGE_SIZE
+    return filteredTickets.slice(start, start + ISSUE_TABLE_PAGE_SIZE)
+  }, [filteredTickets, tablePage])
+
+  useEffect(() => {
+    setTablePage(1)
+  }, [search, statusFilter])
+
+  useEffect(() => {
+    if (tablePage > totalPages) setTablePage(totalPages)
+  }, [tablePage, totalPages])
 
   const hasNewClientUpdate = (ticket: ClientIssueTicket) => {
     const seenAt = getAdminTicketSeenAt(ticket.id)
@@ -418,7 +434,7 @@ export function IssueManagementPage() {
             </div>
           </div>
 
-          <div className="overflow-auto px-5 py-4">
+          <div className="kcx-admin-table-scroll overflow-auto px-5 py-4">
             <table className="min-w-[1650px] w-full border-collapse text-sm">
               <thead className="sticky top-0 bg-white">
                 <tr className="text-left text-[11px] font-semibold uppercase tracking-[0.12em] text-[color:rgba(15,23,42,0.55)]">
@@ -446,7 +462,7 @@ export function IssueManagementPage() {
                     <td className="px-3 py-6 text-muted-foreground" colSpan={12}>No tickets found.</td>
                   </tr>
                 ) : (
-                  filteredTickets.map((ticket) => (
+                  pagedTickets.map((ticket) => (
                     <tr key={ticket.id} className="border-b border-[color:rgba(15,23,42,0.12)]">
                       <td className="px-3 py-3">
                         <div className="flex items-center gap-2">
@@ -543,6 +559,29 @@ export function IssueManagementPage() {
                 )}
               </tbody>
             </table>
+          </div>
+          <div className="flex flex-wrap items-center justify-between gap-3 px-5 pb-4">
+            <div className="text-sm text-[color:rgba(15,23,42,0.70)]">
+              Page {tablePage} of {totalPages} - {filteredTickets.length} total
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={tablePage <= 1 || loading}
+                onClick={() => setTablePage((previous) => previous - 1)}
+              >
+                Previous
+              </Button>
+              <Button
+                size="sm"
+                variant="secondary"
+                disabled={loading || tablePage >= totalPages}
+                onClick={() => setTablePage((previous) => previous + 1)}
+              >
+                Next
+              </Button>
+            </div>
           </div>
         </CardContent>
       </Card>
