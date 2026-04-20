@@ -20,6 +20,7 @@ class FactCostLineItems extends Model<InferAttributes<FactCostLineItems>, InferC
   declare resourceKey: CreationOptional<string | null>;
   declare skuKey: CreationOptional<string | null>;
   declare chargeKey: CreationOptional<string | null>;
+  declare tagId: CreationOptional<string | null>;
   declare usageDateKey: CreationOptional<string | null>;
   declare billingPeriodStartDateKey: CreationOptional<string | null>;
   declare billingPeriodEndDateKey: CreationOptional<string | null>;
@@ -44,7 +45,6 @@ class FactCostLineItems extends Model<InferAttributes<FactCostLineItems>, InferC
   declare savingsPlanArn: CreationOptional<string | null>;
   declare savingsPlanType: CreationOptional<string | null>;
   declare ingestedAt: CreationOptional<Date>;
-  declare tagsJson: CreationOptional<Record<string, unknown> | null>;
   declare createdAt: CreationOptional<Date>;
 }
 
@@ -63,6 +63,7 @@ const createFactCostLineItemsModel = (sequelize: Sequelize): typeof FactCostLine
       resourceKey: { type: DataTypes.BIGINT, allowNull: true, field: "resource_key" },
       skuKey: { type: DataTypes.BIGINT, allowNull: true, field: "sku_key" },
       chargeKey: { type: DataTypes.BIGINT, allowNull: true, field: "charge_key" },
+      tagId: { type: DataTypes.BIGINT, allowNull: true, field: "tag_id" },
       usageDateKey: { type: DataTypes.BIGINT, allowNull: true, field: "usage_date_key" },
       billingPeriodStartDateKey: { type: DataTypes.BIGINT, allowNull: true, field: "billing_period_start_date_key" },
       billingPeriodEndDateKey: { type: DataTypes.BIGINT, allowNull: true, field: "billing_period_end_date_key" },
@@ -87,7 +88,6 @@ const createFactCostLineItemsModel = (sequelize: Sequelize): typeof FactCostLine
       savingsPlanArn: { type: DataTypes.TEXT, allowNull: true, field: "savings_plan_arn" },
       savingsPlanType: { type: DataTypes.TEXT, allowNull: true, field: "savings_plan_type" },
       ingestedAt: { type: DataTypes.DATE, allowNull: false, defaultValue: sequelize.literal("NOW()"), field: "ingested_at" },
-      tagsJson: { type: DataTypes.JSONB, allowNull: true, field: "tags_json" },
       createdAt: { type: DataTypes.DATE, allowNull: false, defaultValue: sequelize.literal("NOW()"), field: "created_at" },
     },
     {

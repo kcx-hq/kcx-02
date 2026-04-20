@@ -5,6 +5,7 @@ import {
   ChevronRight,
   FileText,
   Gauge,
+  House,
   LayoutDashboard,
   LineChart,
   PieChart,
@@ -25,6 +26,7 @@ const iconMap: Record<string, LucideIcon> = {
   "triangle-alert": TriangleAlert,
   wallet: Wallet,
   "shield-check": ShieldCheck,
+  house: House,
   "chevron-left": ChevronLeft,
   "chevron-right": ChevronRight,
 };

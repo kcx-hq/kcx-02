@@ -319,7 +319,10 @@ const fetchMetricDataAll = async (input: {
   return results;
 };
 
-const floorTimestampToUtcHourIso = (date: Date): string => floorToUtcHour(date).toISOString();
+const toHourStartIsoForDatapoint = (timestamp: Date): string => {
+  const shifted = new Date(timestamp.getTime() - PERIOD_SECONDS * 1000);
+  return floorToUtcHour(shifted).toISOString();
+};
 
 const recordPointsByHour = (target: MetricValueByHour, timestamps: Date[] | undefined, values: number[] | undefined): void => {
   if (!timestamps || !values || timestamps.length === 0 || values.length === 0) return;
@@ -328,7 +331,7 @@ const recordPointsByHour = (target: MetricValueByHour, timestamps: Date[] | unde
     const ts = timestamps[i];
     const value = values[i];
     if (!(ts instanceof Date) || !Number.isFinite(value)) continue;
-    const hourIso = floorTimestampToUtcHourIso(ts);
+    const hourIso = toHourStartIsoForDatapoint(ts);
     if (!target.has(hourIso)) target.set(hourIso, []);
     target.get(hourIso)?.push(value);
   }
@@ -493,6 +496,7 @@ const mergeInstanceHourMaps = (
 const applyCloudWatchResultsToInstanceRows = (input: {
   results: MetricDataResult[];
   targetsById: Map<string, QueryTarget>;
+  allowedHourIsos?: Set<string>;
 }): Map<string, Map<string, Partial<Record<MetricField, number>>>> => {
   const out = new Map<string, Map<string, Partial<Record<MetricField, number>>>>();
 
@@ -513,6 +517,7 @@ const applyCloudWatchResultsToInstanceRows = (input: {
     recordPointsByHour(byHour, result.Timestamps, result.Values);
 
     for (const [hourIso, values] of byHour.entries()) {
+      if (input.allowedHourIsos && !input.allowedHourIsos.has(hourIso)) continue;
       const aggregated = aggregateValues(values, target.agg);
       if (aggregated === null) continue;
       const row = ensure(target.instanceId, hourIso);
@@ -526,6 +531,7 @@ const applyCloudWatchResultsToInstanceRows = (input: {
 const applyCloudWatchResultsToVolumeRows = (input: {
   results: MetricDataResult[];
   targetsById: Map<string, QueryTarget>;
+  allowedHourIsos?: Set<string>;
 }): Map<string, Map<string, Partial<Record<MetricField, number>>>> => {
   const out = new Map<string, Map<string, Partial<Record<MetricField, number>>>>();
 
@@ -546,6 +552,7 @@ const applyCloudWatchResultsToVolumeRows = (input: {
     recordPointsByHour(byHour, result.Timestamps, result.Values);
 
     for (const [hourIso, values] of byHour.entries()) {
+      if (input.allowedHourIsos && !input.allowedHourIsos.has(hourIso)) continue;
       const aggregated = aggregateValues(values, target.agg);
       if (aggregated === null) continue;
       const row = ensure(target.volumeId, hourIso);
@@ -646,6 +653,27 @@ const buildUtilizationRows = (input: {
       usageDate: formatUsageDateUtc(hourStart),
       metricSource: "cloudwatch",
       sampleCount: 1,
+      cpuAvg: null,
+      cpuMax: null,
+      cpuMin: null,
+      networkInBytes: null,
+      networkOutBytes: null,
+      networkPacketsIn: null,
+      networkPacketsOut: null,
+      diskReadBytes: null,
+      diskWriteBytes: null,
+      diskReadOps: null,
+      diskWriteOps: null,
+      statusCheckFailedMax: null,
+      statusCheckFailedInstanceMax: null,
+      statusCheckFailedSystemMax: null,
+      ebsReadBytes: null,
+      ebsWriteBytes: null,
+      ebsReadOps: null,
+      ebsWriteOps: null,
+      ebsQueueLengthMax: null,
+      ebsIdleTimeAvg: null,
+      ebsBurstBalanceAvg: null,
       createdAt: input.now,
       updatedAt: input.now,
     };
@@ -670,8 +698,14 @@ export async function syncEc2MetricsForScheduledJob(job: ScheduledJob): Promise<
       : DEFAULT_LOOKBACK_HOURS;
 
   const now = new Date();
-  const endTime = floorToUtcHour(now);
+  const endTime = floorToUtcHour(now); // end is exclusive; only completed hours will be represented.
   const startTime = new Date(endTime.getTime() - lookbackHours * 60 * 60 * 1000);
+  const hourIsos: string[] = [];
+  for (let i = 0; i < lookbackHours; i += 1) {
+    const hourStart = new Date(startTime.getTime() + i * 60 * 60 * 1000);
+    hourIsos.push(hourStart.toISOString());
+  }
+  const allowedHourIsos = new Set(hourIsos);
 
   const context = await resolveAwsConnectionContextForJob(job);
 
@@ -683,6 +717,7 @@ export async function syncEc2MetricsForScheduledJob(job: ScheduledJob): Promise<
     lookbackHours,
     startTime: startTime.toISOString(),
     endTime: endTime.toISOString(),
+    windowHours: hourIsos.length,
   });
 
   const credentials = await assumeRole(context.actionRoleArn, context.externalId);
@@ -729,26 +764,44 @@ export async function syncEc2MetricsForScheduledJob(job: ScheduledJob): Promise<
 
       let regionUpserted = 0;
       let cwBatchCount = 0;
+      let regionResultsReturned = 0;
+      let regionResultsWithValues = 0;
+      let regionInstanceHourWithAnyMetric = 0;
+      let regionInstanceHourEmpty = 0;
 
       for (const instanceBatch of instanceBatches) {
         totalInstancesProcessed += instanceBatch.length;
+
+        const metricsByInstanceHour = new Map<string, Map<string, Partial<Record<MetricField, number>>>>();
+        for (const instanceId of instanceBatch) {
+          const hourMap = new Map<string, Partial<Record<MetricField, number>>>();
+          for (const hourIso of hourIsos) {
+            hourMap.set(hourIso, {});
+          }
+          metricsByInstanceHour.set(instanceId, hourMap);
+        }
 
         const ec2QueryPack = buildEc2MetricQueries(instanceBatch);
         if (ec2QueryPack.queries.length > CW_MAX_QUERIES) {
           throw new Error(`EC2 metric query batch too large: ${ec2QueryPack.queries.length} queries`);
         }
 
-        const ec2MetricsByInstanceHour: Map<string, Map<string, Partial<Record<MetricField, number>>>> = new Map();
         for (const q of splitQueriesByLimit(ec2QueryPack.queries, CW_TARGET_QUERIES)) {
           cwBatchCount += 1;
           const results = await fetchMetricDataAll({ client: cwClient, startTime, endTime, queries: q });
-          const applied = applyCloudWatchResultsToInstanceRows({ results, targetsById: ec2QueryPack.targets });
-          mergeInstanceHourMaps(ec2MetricsByInstanceHour, applied);
+          regionResultsReturned += results.length;
+          regionResultsWithValues += results.filter((r) => Array.isArray(r.Values) && r.Values.length > 0).length;
+
+          const applied = applyCloudWatchResultsToInstanceRows({
+            results,
+            targetsById: ec2QueryPack.targets,
+            allowedHourIsos,
+          });
+          mergeInstanceHourMaps(metricsByInstanceHour, applied);
         }
 
         const volumes = dedupe(instanceBatch.flatMap((instanceId) => instanceVolumeMap.get(instanceId) ?? []));
 
-        const ebsMetricsByInstanceHour: Map<string, Map<string, Partial<Record<MetricField, number>>>> = new Map();
         if (volumes.length > 0) {
           const ebsQueryPack = buildEbsMetricQueries(volumes);
 
@@ -756,7 +809,14 @@ export async function syncEc2MetricsForScheduledJob(job: ScheduledJob): Promise<
           for (const q of splitQueriesByLimit(ebsQueryPack.queries, CW_TARGET_QUERIES)) {
             cwBatchCount += 1;
             const results = await fetchMetricDataAll({ client: cwClient, startTime, endTime, queries: q });
-            const applied = applyCloudWatchResultsToVolumeRows({ results, targetsById: ebsQueryPack.targets });
+            regionResultsReturned += results.length;
+            regionResultsWithValues += results.filter((r) => Array.isArray(r.Values) && r.Values.length > 0).length;
+
+            const applied = applyCloudWatchResultsToVolumeRows({
+              results,
+              targetsById: ebsQueryPack.targets,
+              allowedHourIsos,
+            });
 
             for (const [volumeId, hours] of applied.entries()) {
               if (!volumeMetricsAll.has(volumeId)) volumeMetricsAll.set(volumeId, new Map());
@@ -777,32 +837,50 @@ export async function syncEc2MetricsForScheduledJob(job: ScheduledJob): Promise<
           }
 
           const rolled = rollupEbsToInstances({ instanceToVolumes, volumeMetrics: volumeMetricsAll });
-          mergeInstanceHourMaps(ebsMetricsByInstanceHour, rolled);
+          mergeInstanceHourMaps(metricsByInstanceHour, rolled);
         }
 
         const rowsToUpsert: UtilizationHourlyRow[] = [];
         for (const instanceId of instanceBatch) {
-          const merged = new Map<string, Partial<Record<MetricField, number>>>();
-
-          const ec2Hours = ec2MetricsByInstanceHour.get(instanceId);
-          if (ec2Hours) {
-            for (const [hourIso, metrics] of ec2Hours.entries()) {
-              merged.set(hourIso, { ...(merged.get(hourIso) ?? {}), ...metrics });
-            }
-          }
-
-          const ebsHours = ebsMetricsByInstanceHour.get(instanceId);
-          if (ebsHours) {
-            for (const [hourIso, metrics] of ebsHours.entries()) {
-              merged.set(hourIso, { ...(merged.get(hourIso) ?? {}), ...metrics });
-            }
-          }
-
-          const rows = buildUtilizationRows({ context, instanceId, mergedByHour: merged, now });
+          const hours = metricsByInstanceHour.get(instanceId) ?? new Map<string, Partial<Record<MetricField, number>>>();
+          const rows = buildUtilizationRows({ context, instanceId, mergedByHour: hours, now });
           rowsToUpsert.push(...rows);
         }
 
         if (rowsToUpsert.length > 0) {
+          let emptyCount = 0;
+          let anyMetricCount = 0;
+          for (const instanceId of instanceBatch) {
+            const hours = metricsByInstanceHour.get(instanceId);
+            if (!hours) continue;
+            for (const metrics of hours.values()) {
+              const hasAny = Object.keys(metrics).length > 0;
+              if (hasAny) anyMetricCount += 1;
+              else emptyCount += 1;
+            }
+          }
+          regionInstanceHourWithAnyMetric += anyMetricCount;
+          regionInstanceHourEmpty += emptyCount;
+
+          logger.debug("EC2 metrics sync batch prepared", {
+            connectionId: context.connectionId,
+            region,
+            instances: instanceBatch.length,
+            windowHours: hourIsos.length,
+            instanceHoursWithAnyMetric: anyMetricCount,
+            instanceHoursEmpty: emptyCount,
+            rowsToUpsert: rowsToUpsert.length,
+            sampleRow: rowsToUpsert[0]
+              ? {
+                  instanceId: rowsToUpsert[0].instanceId,
+                  hourStart: rowsToUpsert[0].hourStart.toISOString(),
+                  cpuAvg: rowsToUpsert[0].cpuAvg,
+                  networkInBytes: rowsToUpsert[0].networkInBytes,
+                  ebsReadBytes: rowsToUpsert[0].ebsReadBytes,
+                }
+              : null,
+          });
+
           const upserted = await utilizationRepository.upsertMany(rowsToUpsert);
           regionUpserted += upserted;
           totalUpserted += upserted;
@@ -814,6 +892,10 @@ export async function syncEc2MetricsForScheduledJob(job: ScheduledJob): Promise<
         region,
         instances: instanceIds.length,
         cloudWatchBatches: cwBatchCount,
+        metricDataResultsReturned: regionResultsReturned,
+        metricDataResultsWithValues: regionResultsWithValues,
+        instanceHoursWithAnyMetric: regionInstanceHourWithAnyMetric,
+        instanceHoursEmpty: regionInstanceHourEmpty,
         hourlyRowsUpserted: regionUpserted,
       });
     } catch (error) {

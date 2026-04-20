@@ -1,14 +1,63 @@
-export type DashboardNavItem = {
+export type DashboardNavLink = {
+  kind: "link";
   label: string;
   path: string;
   icon: string;
 };
 
-export const dashboardNavItems: DashboardNavItem[] = [
-  { label: "Overview", path: "/dashboard/overview", icon: "layout-dashboard" },
-  { label: "Cost Explorer", path: "/dashboard/cost-explorer", icon: "line-chart" },
-  { label: "Optimization", path: "/dashboard/optimization", icon: "gauge" },
-  { label: "Anomalies & Alerts", path: "/dashboard/anomalies-alerts", icon: "triangle-alert" },
-  { label: "Budget", path: "/dashboard/budget", icon: "wallet" },
-  { label: "Report", path: "/dashboard/report", icon: "file-text" },
+export type DashboardNavGroup = {
+  kind: "group";
+  label: string;
+  icon: string;
+  items: DashboardNavLink[];
+};
+
+export type DashboardNavNode = DashboardNavLink | DashboardNavGroup;
+
+export const dashboardNav: DashboardNavNode[] = [
+  {
+    kind: "group",
+    label: "Dashboards",
+    icon: "pie-chart",
+    items: [
+      {
+        kind: "link",
+        label: "Overview Dashboard",
+        path: "/dashboard/overview",
+        icon: "layout-dashboard",
+      },
+    ],
+  },
+  {
+    kind: "group",
+    label: "Cost",
+    icon: "boxes",
+    items: [
+      {
+        kind: "link",
+        label: "Explorer",
+        path: "/dashboard/cost/explorer",
+        icon: "line-chart",
+      },
+      {
+        kind: "link",
+        label: "History",
+        path: "/dashboard/cost/history",
+        icon: "activity",
+      },
+    ],
+  },
+  { kind: "link", label: "Optimization", path: "/dashboard/optimization", icon: "gauge" },
+  {
+    kind: "link",
+    label: "Anomalies",
+    path: "/dashboard/anomalies-alerts",
+    icon: "triangle-alert",
+  },
+  { kind: "link", label: "Budget", path: "/dashboard/budget", icon: "wallet" },
+  { kind: "link", label: "Report", path: "/dashboard/report", icon: "file-text" },
 ];
+
+export const dashboardNavLinks: DashboardNavLink[] = dashboardNav.flatMap((node) =>
+  node.kind === "group" ? node.items : [node],
+);

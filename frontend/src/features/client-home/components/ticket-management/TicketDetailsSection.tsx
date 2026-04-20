@@ -23,21 +23,21 @@ type TicketDetailsSectionProps = {
 
 function statusPillClass(status: string) {
   if (status === "Under Review") {
-    return "border-[rgba(48,114,191,0.26)] bg-[rgba(66,123,179,0.14)] text-[color:#1f5b9c]"
+    return "border-[rgba(48,114,191,0.26)] bg-transparent text-[color:#1f5b9c]"
   }
 
   if (status === "Open") {
-    return "border-[rgba(180,120,24,0.26)] bg-[rgba(214,135,26,0.14)] text-[color:#925208]"
+    return "border-[rgba(180,120,24,0.26)] bg-transparent text-[color:#925208]"
   }
 
   if (status === "Resolved") {
-    return "border-[rgba(55,145,116,0.26)] bg-[rgba(55,145,116,0.14)] text-[color:#1f7d60]"
+    return "border-[rgba(55,145,116,0.26)] bg-transparent text-[color:#1f7d60]"
   }
   if (status === "Cancelled by Client") {
-    return "border-[rgba(217,93,85,0.3)] bg-[rgba(217,93,85,0.12)] text-[color:#9b2f28]"
+    return "border-[rgba(217,93,85,0.3)] bg-transparent text-[color:#9b2f28]"
   }
 
-  return "border-[rgba(92,105,117,0.26)] bg-[rgba(92,105,117,0.12)] text-[color:#445362]"
+  return "border-[rgba(92,105,117,0.26)] bg-transparent text-[color:#445362]"
 }
 
 function displayStatus(ticket: TicketItem) {
@@ -121,7 +121,7 @@ export function TicketDetailsSection({
               value={searchQuery}
               onChange={(event) => onSearchQueryChange(event.target.value)}
               placeholder="Search tickets..."
-              className="h-10 w-full rounded-md border border-[color:var(--border-light)] bg-[color:var(--bg-surface)] pl-9 pr-3 text-sm text-text-primary outline-none transition-colors focus:border-[color:var(--kcx-border-strong)]"
+              className="h-10 w-full rounded-none border-0 border-b border-[color:var(--border-light)] bg-transparent pl-9 pr-3 text-sm text-text-primary outline-none transition-colors focus:border-[color:var(--kcx-border-strong)]"
             />
           </span>
 
@@ -134,7 +134,7 @@ export function TicketDetailsSection({
             onChange={(event) =>
               onStatusFilterChange(event.target.value as "ALL" | "OPEN" | "UNDER_REVIEW" | "RESOLVED" | "CLOSED" | "CANCELLED_BY_CLIENT")
             }
-            className="h-10 min-w-[190px] rounded-md border border-[color:var(--border-light)] bg-[color:var(--bg-surface)] px-3 text-sm text-text-primary outline-none transition-colors focus:border-[color:var(--kcx-border-strong)]"
+            className="h-10 min-w-[190px] rounded-none border-0 border-b border-[color:var(--border-light)] bg-transparent px-3 text-sm text-text-primary outline-none transition-colors focus:border-[color:var(--kcx-border-strong)]"
           >
             <option value="ALL">All Statuses</option>
             <option value="OPEN">Open</option>
@@ -146,7 +146,7 @@ export function TicketDetailsSection({
           <button
             type="button"
             onClick={onRefresh}
-            className="inline-flex h-10 w-10 items-center justify-center rounded-md border border-[color:var(--border-light)] bg-[color:var(--bg-surface)] text-text-secondary transition-colors hover:bg-[color:var(--bg-soft)]"
+            className="inline-flex h-10 w-10 items-center justify-center rounded-none border-0 border-b border-[color:var(--border-light)] bg-transparent text-text-secondary transition-colors hover:text-text-primary"
             aria-label="Refresh tickets"
           >
             <RefreshCw className="h-4 w-4" />
@@ -198,13 +198,13 @@ export function TicketDetailsSection({
                     </span>
                   </td>
                   <td className="px-3 py-4">
-                    <span className="inline-flex items-center gap-1 rounded-full border border-[color:var(--border-light)] bg-[color:var(--bg-surface)] px-2 py-1 text-xs text-text-secondary">
+                    <span className="inline-flex items-center gap-1 rounded-full border border-[color:var(--border-light)] bg-transparent px-2 py-1 text-xs text-text-secondary">
                       <Tag className="h-3 w-3" />
                       {ticket.category}
                     </span>
                   </td>
                   <td className="px-3 py-4">
-                    <span className="inline-flex items-center gap-1 rounded-full border border-[color:var(--border-light)] bg-[color:var(--bg-surface)] px-2 py-1 text-xs text-text-secondary">
+                    <span className="inline-flex items-center gap-1 rounded-full border border-[color:var(--border-light)] bg-transparent px-2 py-1 text-xs text-text-secondary">
                       <CircleDot className="h-3 w-3" />
                       {ticket.priority}
                     </span>

@@ -1,15 +1,46 @@
 /* eslint-disable @typescript-eslint/ban-ts-comment */
 // @ts-nocheck
-import { FactCostLineItems as FactCostLineItem } from "../../../models/index.js";
-import { mapFactCostLineItem } from "../mappers/raw_focus_to_dimensions.mapper.js";
+import { FactCostLineItemTags, FactCostLineItems as FactCostLineItem, sequelize } from "../../../models/index.js";
+import { RAW_COLUMNS, mapFactCostLineItem } from "../mappers/raw_focus_to_dimensions.mapper.js";
 import { classifyFactInsertError } from "./numeric-validation.service.js";
 import { resolveDimensions, resolveDimensionsWithCache } from "./dimension-upsert.service.js";
+import { createTagDimensionCache, resolveFactPrimaryTagId, resolveFactTagIds } from "./dim-tag.service.js";
 
 const isBlank = (value) =>
   value === null || value === undefined || (typeof value === "string" && value.trim() === "");
 
 const isEmptyObject = (value) =>
   value && typeof value === "object" && !Array.isArray(value) && Object.keys(value).length === 0;
+
+async function attachFactTags({ factId, tenantId, providerId, tagIds }) {
+  if (!factId || !Array.isArray(tagIds) || tagIds.length === 0) return;
+
+  const uniqueTagIds = Array.from(new Set(tagIds.map((id) => String(id).trim()).filter(Boolean)));
+  if (uniqueTagIds.length === 0) return;
+
+  await FactCostLineItemTags.bulkCreate(
+    uniqueTagIds.map((tagId) => ({
+      factId,
+      tagId,
+      tenantId,
+      providerId,
+    })),
+    { ignoreDuplicates: true, returning: false },
+  );
+}
+
+const resolveBridgeTagIds = ({ tagIds, primaryTagId }) => {
+  const normalized = Array.isArray(tagIds)
+    ? Array.from(new Set(tagIds.map((id) => String(id).trim()).filter(Boolean)))
+    : [];
+  if (normalized.length > 0) return normalized;
+
+  if (primaryTagId !== null && primaryTagId !== undefined && String(primaryTagId).trim().length > 0) {
+    return [String(primaryTagId).trim()];
+  }
+
+  return [];
+};
 
 async function insertFactCostLineItem({
   rawRow,
@@ -53,6 +84,20 @@ async function insertFactCostLineItem({
       cache: dimensionCache,
     });
 
+    const tagCache = createTagDimensionCache();
+    const tagIds = await resolveFactTagIds({
+      tenantId,
+      providerId,
+      rawTags: rawRow[RAW_COLUMNS.tags],
+      tagCache,
+    });
+    const tagId = await resolveFactPrimaryTagId({
+      tenantId,
+      providerId,
+      rawTags: rawRow[RAW_COLUMNS.tags],
+      tagCache,
+    });
+
     const factPayload = mapFactCostLineItem({
       tenant_id: tenantId,
       billing_source_id: billingSourceId,
@@ -65,6 +110,7 @@ async function insertFactCostLineItem({
       resource_key: resourceKey,
       sku_key: skuKey,
       charge_key: chargeKey,
+      tag_id: tagId,
       usage_date_key: usageDateKey,
       billing_period_start_date_key: billingPeriodStartDateKey,
       billing_period_end_date_key: billingPeriodEndDateKey,
@@ -106,10 +152,16 @@ async function insertFactCostLineItem({
       savingsPlanType: factPayload.savings_plan_type,
       consumedQuantity: factPayload.consumed_quantity,
       pricingQuantity: factPayload.pricing_quantity,
-      tagsJson: factPayload.tags_json,
+      tagId: factPayload.tag_id,
     };
 
     const record = await FactCostLineItem.create(factCreatePayload);
+    await attachFactTags({
+      factId: record.id,
+      tenantId: factPayload.tenant_id,
+      providerId: factPayload.provider_id,
+      tagIds: resolveBridgeTagIds({ tagIds, primaryTagId: tagId }),
+    });
 
     return {
       success: true,
@@ -133,9 +185,46 @@ async function insertFactCostLineItemsBatch({ factRows, ingestionRunId }) {
   const createPayloads = factRows.map((entry) => entry.createPayload);
 
   try {
-    await FactCostLineItem.bulkCreate(createPayloads, {
-      returning: false,
+    await sequelize.transaction(async (transaction) => {
+      const insertedRecords = await FactCostLineItem.bulkCreate(createPayloads, {
+        returning: true,
+        transaction,
+      });
+
+      const requiresTagLinks = factRows.some((entry) => Array.isArray(entry?.tagIds) && entry.tagIds.length > 0);
+      if (requiresTagLinks && insertedRecords.some((record) => !record?.id)) {
+        throw new Error("Bulk insert did not return fact IDs required for tag bridge linking");
+      }
+
+      const tagLinkPayloads = [];
+      for (let index = 0; index < insertedRecords.length; index += 1) {
+        const record = insertedRecords[index];
+        const factRow = factRows[index];
+        const tagIds = resolveBridgeTagIds({
+          tagIds: factRow?.tagIds,
+          primaryTagId: factRow?.createPayload?.tagId,
+        });
+        if (!record?.id || tagIds.length === 0) continue;
+
+        for (const tagId of tagIds) {
+          tagLinkPayloads.push({
+            factId: record.id,
+            tagId,
+            tenantId: factRow.createPayload.tenantId,
+            providerId: factRow.createPayload.providerId,
+          });
+        }
+      }
+
+      if (tagLinkPayloads.length > 0) {
+        await FactCostLineItemTags.bulkCreate(tagLinkPayloads, {
+          ignoreDuplicates: true,
+          returning: false,
+          transaction,
+        });
+      }
     });
+
     return { insertedCount: createPayloads.length, failedRows: [] };
   } catch (bulkError) {
     const { errorCode: batchErrorCode, errorMessage: batchErrorMessage } = classifyFactInsertError(bulkError);
@@ -151,7 +240,16 @@ async function insertFactCostLineItemsBatch({ factRows, ingestionRunId }) {
 
     for (const [batchRowIndex, entry] of factRows.entries()) {
       try {
-        await FactCostLineItem.create(entry.createPayload);
+        const record = await FactCostLineItem.create(entry.createPayload);
+        await attachFactTags({
+          factId: record.id,
+          tenantId: entry.createPayload.tenantId,
+          providerId: entry.createPayload.providerId,
+          tagIds: resolveBridgeTagIds({
+            tagIds: entry.tagIds,
+            primaryTagId: entry?.createPayload?.tagId,
+          }),
+        });
         insertedCount += 1;
       } catch (rowError) {
         const { errorCode, errorMessage } = classifyFactInsertError(rowError);

@@ -193,6 +193,15 @@ export async function handleGetBillingUploadHistory(req: Request, res: Response)
 export async function handleGetBillingCloudProviders(req: Request, res: Response): Promise<void> {
   requireTenantId(req);
 
+  await CloudProvider.findOrCreate({
+    where: { code: "aws" },
+    defaults: {
+      code: "aws",
+      name: "Amazon Web Services",
+      status: "active",
+    },
+  });
+
   const providers = await CloudProvider.findAll({
     attributes: ["id", "code", "name", "status"],
     where: { status: "active" },

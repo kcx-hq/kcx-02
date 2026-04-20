@@ -190,7 +190,7 @@ export function TicketManagementSection() {
 
   return (
     <section className="space-y-4">
-      <section className="rounded-[14px] border border-[color:var(--border-light)] bg-white px-5 py-5">
+      <section className="rounded-[14px] border border-[color:var(--border-light)] bg-[#f7fbfb] px-5 py-5">
         <TicketManagementHero onCreateTicket={() => setIsCreateTicketOpen(true)} />
 
         <div className="mt-4 border-t border-[color:var(--border-light)] pt-4">

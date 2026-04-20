@@ -426,12 +426,11 @@ export function ClientBillingPage() {
         ) : isS3ImportsRoute ? (
           <S3ImportConnectionsSection />
         ) : (
-          <div className="rounded-md border-[color:var(--border-light)] bg-white shadow-sm-custom">
+          <div className="rounded-md border-[color:var(--border-light)] bg-[#f7fbfb] shadow-sm-custom">
             <div className="space-y-6 p-6">
               {isAddCloudConnectionRoute ? (
               <AddCloudConnectionSection
                 onOpenProviderSetup={(provider) => navigateTo(`/client/billing/connect-cloud/${provider}`)}
-                onOpenS3Connection={() => navigateTo("/client/billing/import-s3")}
                 cloudOverviewRows={cloudOverviewRows}
                 filteredCloudOverviewRows={filteredCloudOverviewRows}
                 isCloudIntegrationsLoading={isCloudIntegrationsLoading}

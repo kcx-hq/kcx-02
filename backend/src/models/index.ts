@@ -32,7 +32,9 @@ import createDimResourceModel from "./billing/dim_resource.js";
 import createDimSkuModel from "./billing/dim_sku.js";
 import createDimChargeModel from "./billing/dim_charge.js";
 import createDimDateModel from "./billing/dim_date.js";
+import createDimTagModel from "./billing/dim_tag.js";
 import createFactCostLineItemsModel from "./billing/fact_cost_line_items.js";
+import createFactCostLineItemTagsModel from "./billing/fact_cost_line_item_tags.js";
 import createBillingIngestionRowErrorModel from "./billing/billing_ingestion_row_error.js";
 import createResourceInventorySnapshotModel from "./billing/resource_inventory_snapshots.js";
 import createResourceUtilizationDailyModel from "./billing/resource_utilization_daily.js";
@@ -102,7 +104,9 @@ const DimResource = createDimResourceModel(sequelize);
 const DimSku = createDimSkuModel(sequelize);
 const DimCharge = createDimChargeModel(sequelize);
 const DimDate = createDimDateModel(sequelize);
+const DimTag = createDimTagModel(sequelize);
 const FactCostLineItems = createFactCostLineItemsModel(sequelize);
+const FactCostLineItemTags = createFactCostLineItemTagsModel(sequelize);
 const BillingIngestionRowError = createBillingIngestionRowErrorModel(sequelize);
 const ResourceInventorySnapshot = createResourceInventorySnapshotModel(sequelize);
 const ResourceUtilizationDaily = createResourceUtilizationDailyModel(sequelize);
@@ -215,6 +219,11 @@ DimResource.belongsTo(CloudProvider, { foreignKey: "providerId" });
 CloudProvider.hasMany(DimSku, { foreignKey: "providerId" });
 DimSku.belongsTo(CloudProvider, { foreignKey: "providerId" });
 
+Tenant.hasMany(DimTag, { foreignKey: "tenantId" });
+DimTag.belongsTo(Tenant, { foreignKey: "tenantId" });
+CloudProvider.hasMany(DimTag, { foreignKey: "providerId" });
+DimTag.belongsTo(CloudProvider, { foreignKey: "providerId" });
+
 DimBillingAccount.hasMany(FactCostLineItems, { foreignKey: "billingAccountKey" });
 FactCostLineItems.belongsTo(DimBillingAccount, { foreignKey: "billingAccountKey" });
 DimSubAccount.hasMany(FactCostLineItems, { foreignKey: "subAccountKey" });
@@ -229,6 +238,16 @@ DimSku.hasMany(FactCostLineItems, { foreignKey: "skuKey" });
 FactCostLineItems.belongsTo(DimSku, { foreignKey: "skuKey" });
 DimCharge.hasMany(FactCostLineItems, { foreignKey: "chargeKey" });
 FactCostLineItems.belongsTo(DimCharge, { foreignKey: "chargeKey" });
+DimTag.hasMany(FactCostLineItems, { foreignKey: "tagId" });
+FactCostLineItems.belongsTo(DimTag, { foreignKey: "tagId" });
+FactCostLineItems.hasMany(FactCostLineItemTags, { foreignKey: "factId" });
+FactCostLineItemTags.belongsTo(FactCostLineItems, { foreignKey: "factId" });
+DimTag.hasMany(FactCostLineItemTags, { foreignKey: "tagId" });
+FactCostLineItemTags.belongsTo(DimTag, { foreignKey: "tagId" });
+Tenant.hasMany(FactCostLineItemTags, { foreignKey: "tenantId" });
+FactCostLineItemTags.belongsTo(Tenant, { foreignKey: "tenantId" });
+CloudProvider.hasMany(FactCostLineItemTags, { foreignKey: "providerId" });
+FactCostLineItemTags.belongsTo(CloudProvider, { foreignKey: "providerId" });
 
 DimDate.hasMany(FactCostLineItems, { foreignKey: "usageDateKey" });
 FactCostLineItems.belongsTo(DimDate, { foreignKey: "usageDateKey", as: "usageDate" });
@@ -470,7 +489,9 @@ export {
   DimSku,
   DimCharge,
   DimDate,
+  DimTag,
   FactCostLineItems,
+  FactCostLineItemTags,
   BillingIngestionRowError,
   ResourceInventorySnapshot,
   ResourceUtilizationDaily,

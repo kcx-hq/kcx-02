@@ -1,8 +1,9 @@
 import { useMemo, useState } from "react";
 import type { ColDef } from "ag-grid-community";
-import { AlertTriangle, BellRing, RefreshCw } from "lucide-react";
+import { AlertTriangle, RefreshCw } from "lucide-react";
+import { useLocation } from "react-router-dom";
 
-import { EmptyStateBlock, KpiCard, KpiGrid, MetricBadge, PageSection } from "../../common/components";
+import { EmptyStateBlock, KpiCard, MetricBadge, PageSection } from "../../common/components";
 import { BaseDataTable, currencyFormatter } from "../../common/tables/BaseDataTable";
 import { TableShell } from "../../common/tables/TableShell";
 import type { AnomaliesFiltersQuery, AnomalyRecord } from "../../api/dashboardApi";
@@ -52,30 +53,24 @@ const formatPercent = (value: number | string | null | undefined): string => {
   return `${normalized.toFixed(1)}%`;
 };
 
-const PAGE_SIZE_OPTIONS = [25, 50, 100];
+const PAGE_SIZE = 10;
 
 export default function AnomaliesAlertsPage() {
-  const [billingSourceIdInput, setBillingSourceIdInput] = useState("");
-  const [status, setStatus] = useState<"" | "open" | "resolved" | "ignored">("");
-  const [severity, setSeverity] = useState<"" | "low" | "medium" | "high">("");
-  const [anomalyType, setAnomalyType] = useState("");
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
-  const [limit, setLimit] = useState(25);
+  const location = useLocation();
+  const [limit] = useState(PAGE_SIZE);
   const [offset, setOffset] = useState(0);
+  const searchParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
+  const globalDateFrom = searchParams.get("billingPeriodStart") ?? searchParams.get("from") ?? "";
+  const globalDateTo = searchParams.get("billingPeriodEnd") ?? searchParams.get("to") ?? "";
 
   const queryFilters = useMemo<AnomaliesFiltersQuery>(
     () => ({
-      ...(billingSourceIdInput.trim() ? { billing_source_id: Number(billingSourceIdInput) } : {}),
-      ...(status ? { status } : {}),
-      ...(severity ? { severity } : {}),
-      ...(anomalyType.trim() ? { anomaly_type: anomalyType.trim() } : {}),
-      ...(dateFrom ? { date_from: dateFrom } : {}),
-      ...(dateTo ? { date_to: dateTo } : {}),
+      ...(globalDateFrom ? { date_from: globalDateFrom } : {}),
+      ...(globalDateTo ? { date_to: globalDateTo } : {}),
       limit,
       offset,
     }),
-    [anomalyType, billingSourceIdInput, dateFrom, dateTo, limit, offset, severity, status],
+    [globalDateFrom, globalDateTo, limit, offset],
   );
 
   const query = useAnomaliesQuery(queryFilters);
@@ -86,11 +81,21 @@ export default function AnomaliesAlertsPage() {
     () => rows.filter((item) => String(item.status ?? "").toLowerCase() === "open").length,
     [rows],
   );
-  const highSeverity = useMemo(
-    () => rows.filter((item) => String(item.severity ?? "").toLowerCase() === "high").length,
+  const highSeverityOpen = useMemo(
+    () =>
+      rows.filter(
+        (item) =>
+          String(item.severity ?? "").toLowerCase() === "high" &&
+          String(item.status ?? "").toLowerCase() === "open",
+      ).length,
     [rows],
   );
   const totalDelta = useMemo(() => rows.reduce((sum, item) => sum + Math.abs(toNumber(item.delta_cost)), 0), [rows]);
+  const resolutionRate = useMemo(() => {
+    if (!rows.length) return 0;
+    const resolved = rows.filter((item) => String(item.status ?? "").toLowerCase() === "resolved").length;
+    return (resolved / rows.length) * 100;
+  }, [rows]);
 
   const anomalyColumns = useMemo<ColDef<AnomalyRecord>[]>(
     () => [
@@ -173,233 +178,103 @@ export default function AnomaliesAlertsPage() {
   const endRow = pagination ? Math.min(pagination.offset + pagination.limit, pagination.total) : 0;
   const totalRows = pagination?.total ?? 0;
 
-  const resetFilters = () => {
-    setBillingSourceIdInput("");
-    setStatus("");
-    setSeverity("");
-    setAnomalyType("");
-    setDateFrom("");
-    setDateTo("");
-    setLimit(25);
-    setOffset(0);
-  };
-
   return (
     <div className="dashboard-page anomalies-alerts-page">
-      <section className="anomalies-alerts-banner">
-        <div>
-          <h2 className="anomalies-alerts-banner__title">Anomalies</h2>
-          <p className="anomalies-alerts-banner__subtitle">
-            Review detected cost spikes by source, severity, and status using the latest anomaly stream.
-          </p>
+      <PageSection>
+        <div className="overview-kpi-row overview-kpi-row--report anomalies-kpi-row">
+          <KpiCard
+            label="Open Anomalies"
+            value={String(activeAlerts)}
+            delta={`${rows.length} total in range`}
+            deltaTone="negative"
+            meta="Status: Open"
+          />
+          <KpiCard
+            label="High Severity Open"
+            value={String(highSeverityOpen)}
+            delta={highSeverityOpen > 0 ? "Needs attention" : "No critical open anomalies"}
+            deltaTone={highSeverityOpen > 0 ? "negative" : "positive"}
+            meta="Severity: High + Open"
+          />
+          <KpiCard
+            label="Anomaly Cost Impact"
+            value={compactCurrencyFormatter.format(totalDelta)}
+            delta="Absolute delta cost"
+            deltaTone="accent"
+            meta="Current date range"
+          />
+          <KpiCard
+            label="Resolution Rate"
+            value={`${resolutionRate.toFixed(1)}%`}
+            delta={`${rows.length} anomalies evaluated`}
+            deltaTone={resolutionRate >= 70 ? "positive" : resolutionRate >= 40 ? "accent" : "negative"}
+            meta="Resolved / Total"
+          />
         </div>
-        <MetricBadge tone="negative">
-          <BellRing size={12} />
-          Watch Active
-        </MetricBadge>
-      </section>
+      </PageSection>
 
-      <PageSection
-        title="Filters"
-        description="Refine anomaly results by billing source, date range, severity, and lifecycle status."
-        className="anomalies-filter-section"
+      <TableShell
+        title="Anomaly Records"
+        subtitle={`Showing ${startRow}-${endRow} of ${totalRows}`}
         actions={
-          <button type="button" className="anomalies-filter-reset" onClick={resetFilters}>
-            Reset Filters
-          </button>
+          <div className="anomalies-table-actions">
+            <MetricBadge tone="negative">
+              <AlertTriangle size={12} />
+              High Severity Open {highSeverityOpen}
+            </MetricBadge>
+            <button type="button" className="anomalies-refresh-button" onClick={() => void query.refetch()}>
+              <RefreshCw size={12} />
+              Refresh
+            </button>
+          </div>
         }
       >
-        <div className="anomalies-filter-grid">
-          <label className="dashboard-header-field">
-            <span className="dashboard-header-field__label">Billing Source ID</span>
-            <input
-              className="dashboard-header-field__control"
-              inputMode="numeric"
-              placeholder="e.g. 123"
-              value={billingSourceIdInput}
-              onChange={(event) => {
-                setBillingSourceIdInput(event.target.value.replace(/[^\d]/g, ""));
-                setOffset(0);
-              }}
-            />
-          </label>
-          <label className="dashboard-header-field">
-            <span className="dashboard-header-field__label">Status</span>
-            <select
-              className="dashboard-header-field__control"
-              value={status}
-              onChange={(event) => {
-                setStatus(event.target.value as typeof status);
-                setOffset(0);
-              }}
-            >
-              <option value="">All</option>
-              <option value="open">Open</option>
-              <option value="resolved">Resolved</option>
-              <option value="ignored">Ignored</option>
-            </select>
-          </label>
-          <label className="dashboard-header-field">
-            <span className="dashboard-header-field__label">Severity</span>
-            <select
-              className="dashboard-header-field__control"
-              value={severity}
-              onChange={(event) => {
-                setSeverity(event.target.value as typeof severity);
-                setOffset(0);
-              }}
-            >
-              <option value="">All</option>
-              <option value="high">High</option>
-              <option value="medium">Medium</option>
-              <option value="low">Low</option>
-            </select>
-          </label>
-          <label className="dashboard-header-field">
-            <span className="dashboard-header-field__label">Anomaly Type</span>
-            <input
-              className="dashboard-header-field__control"
-              placeholder="cost_spike"
-              value={anomalyType}
-              onChange={(event) => {
-                setAnomalyType(event.target.value);
-                setOffset(0);
-              }}
-            />
-          </label>
-          <label className="dashboard-header-field">
-            <span className="dashboard-header-field__label">Date From</span>
-            <input
-              className="dashboard-header-field__control"
-              type="date"
-              value={dateFrom}
-              onChange={(event) => {
-                setDateFrom(event.target.value);
-                setOffset(0);
-              }}
-            />
-          </label>
-          <label className="dashboard-header-field">
-            <span className="dashboard-header-field__label">Date To</span>
-            <input
-              className="dashboard-header-field__control"
-              type="date"
-              value={dateTo}
-              onChange={(event) => {
-                setDateTo(event.target.value);
-                setOffset(0);
-              }}
-            />
-          </label>
-        </div>
-      </PageSection>
-
-      <PageSection>
-        <KpiGrid>
-          <KpiCard
-            label="Total Active Alerts"
-            value={String(activeAlerts)}
-            delta={`${rows.length} detected records`}
-            deltaTone="negative"
-            meta="Current scope"
-          />
-          <KpiCard
-            label="High Severity Anomalies"
-            value={String(highSeverity)}
-            delta={highSeverity > 0 ? "Needs attention" : "No high severity"}
-            deltaTone={highSeverity > 0 ? "negative" : "positive"}
-            meta="Based on anomaly severity"
-          />
-          <KpiCard
-            label="Total Cost Delta"
-            value={compactCurrencyFormatter.format(totalDelta)}
-            delta="Absolute impact"
-            deltaTone="accent"
-            meta="Across listed anomalies"
-          />
-        </KpiGrid>
-      </PageSection>
-
-      <PageSection title="Anomaly Workbench" description="Daily cost spike anomalies from fact_anomalies.">
-        <TableShell
-          title="Anomaly Records"
-          subtitle={`Showing ${startRow}-${endRow} of ${totalRows}`}
-          actions={
-            <div className="anomalies-table-actions">
-              <MetricBadge tone="negative">
-                <AlertTriangle size={12} />
-                High Severity {highSeverity}
-              </MetricBadge>
+        {query.isLoading ? <div className="anomalies-list-skeleton" aria-hidden="true" /> : null}
+        {query.isError ? (
+          <EmptyStateBlock
+            title="Failed to load anomalies"
+            message={query.error.message}
+            actions={
               <button type="button" className="anomalies-refresh-button" onClick={() => void query.refetch()}>
-                <RefreshCw size={12} />
-                Refresh
+                Retry
               </button>
-            </div>
-          }
-        >
-          {query.isLoading ? <div className="anomalies-list-skeleton" aria-hidden="true" /> : null}
-          {query.isError ? (
-            <EmptyStateBlock
-              title="Failed to load anomalies"
-              message={query.error.message}
-              actions={
-                <button type="button" className="anomalies-refresh-button" onClick={() => void query.refetch()}>
-                  Retry
-                </button>
-              }
+            }
+          />
+        ) : null}
+        {!query.isLoading && !query.isError ? (
+          <>
+            <BaseDataTable
+              columnDefs={anomalyColumns}
+              rowData={rows}
+              height={420}
+              emptyMessage="No anomalies found for the selected filters."
             />
-          ) : null}
-          {!query.isLoading && !query.isError ? (
-            <>
-              <BaseDataTable
-                columnDefs={anomalyColumns}
-                rowData={rows}
-                height={420}
-                emptyMessage="No anomalies found for the selected filters."
-              />
-              <div className="anomalies-pagination">
-                <p className="anomalies-pagination__meta">
-                  Showing {startRow}-{endRow} of {totalRows}
-                </p>
-                <div className="anomalies-pagination__actions">
-                  <label className="anomalies-pagination__limit">
-                    <span>Rows</span>
-                    <select
-                      value={limit}
-                      onChange={(event) => {
-                        setLimit(Number(event.target.value));
-                        setOffset(0);
-                      }}
-                    >
-                      {PAGE_SIZE_OPTIONS.map((option) => (
-                        <option key={option} value={option}>
-                          {option}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <button
-                    type="button"
-                    className="anomalies-pagination__btn"
-                    disabled={!canGoPrevious}
-                    onClick={() => setOffset((current) => Math.max(0, current - limit))}
-                  >
-                    Previous
-                  </button>
-                  <button
-                    type="button"
-                    className="anomalies-pagination__btn"
-                    disabled={!canGoNext}
-                    onClick={() => setOffset((current) => current + limit)}
-                  >
-                    Next
-                  </button>
-                </div>
+            <div className="anomalies-pagination">
+              <p className="anomalies-pagination__meta">
+                Showing {startRow}-{endRow} of {totalRows}
+              </p>
+              <div className="anomalies-pagination__actions">
+                <button
+                  type="button"
+                  className="anomalies-pagination__btn"
+                  disabled={!canGoPrevious}
+                  onClick={() => setOffset((current) => Math.max(0, current - limit))}
+                >
+                  Previous
+                </button>
+                <button
+                  type="button"
+                  className="anomalies-pagination__btn"
+                  disabled={!canGoNext}
+                  onClick={() => setOffset((current) => current + limit)}
+                >
+                  Next
+                </button>
               </div>
-            </>
-          ) : null}
-        </TableShell>
-      </PageSection>
+            </div>
+          </>
+        ) : null}
+      </TableShell>
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { Banknote, Building2, Headset, PlaySquare, type LucideIcon } from "lucide-react"
+import { Banknote, Building2, Headset, type LucideIcon } from "lucide-react"
 
 export type ClientSidebarSubmenuItem = {
   label: string
@@ -36,13 +36,6 @@ export const CLIENT_SIDEBAR_MENU: ClientSidebarMenuItem[] = [
         activeMatches: ["/client/billing/uploads", "/client/billing/upload-files"],
       },
     ],
-  },
-  {
-    id: "actions",
-    label: "Actions",
-    href: "/client/actions",
-    icon: PlaySquare,
-    activeMatches: ["/client/actions"],
   },
   {
     id: "support",
@@ -99,9 +92,18 @@ export function routeMatches(route: string, patterns: string[]) {
 export const CLIENT_BREADCRUMB_ROOT = "Client Home"
 
 export function getClientBreadcrumbLabel(route: string) {
-  if (route === "/client/overview") return "Overview"
+  if (route === "/client/overview") return ""
   if (route === "/client/profile") return "Profile"
   if (route === "/client/billing") return "Billing / Ingestion"
+  if (routeMatches(route, ["/client/billing/cloud-integration", "/client/billing/connect-cloud", "/client/billing/connections"])) {
+    return "Billing / Cloud Integration"
+  }
+  if (routeMatches(route, ["/client/billing/uploads", "/client/billing/upload-files", "/client/billing/import-s3"])) {
+    return "Billing / Upload Files"
+  }
+  if (routeMatches(route, ["/client/users", "/client/organization/users"])) {
+    return "Team & Access / Users"
+  }
   if (routeMatches(route, ["/client/support/schedule-call", "/client/support/meetings"])) {
     return "Support / Meetings"
   }

@@ -9,7 +9,10 @@ import {
   handleUpdateBudgetStatus,
 } from "./budget/budget.controller.js";
 import { handleGetDashboardScope, handleGetDashboardTestTotalSpend } from "./dashboard.controller.js";
-import { handleGetCostExplorerDashboard } from "./cost-explorer/cost-explorer.controller.js";
+import {
+  handleGetCostExplorerDashboard,
+  handleGetCostExplorerGroupOptions,
+} from "./cost-explorer/cost-explorer.controller.js";
 import {
   handleExecuteIdleRecommendation,
   handleExecuteRightsizingRecommendation,
@@ -67,6 +70,7 @@ router.get("/dashboard/overview/anomalies", asyncHandler(handleGetOverviewAnomal
 router.get("/dashboard/overview/recommendations", asyncHandler(handleGetOverviewRecommendations));
 router.get("/dashboard/filters", asyncHandler(handleGetDashboardFilters));
 router.get("/dashboard/cost-explorer", asyncHandler(handleGetCostExplorerDashboard));
+router.get("/dashboard/cost-explorer/group-options", asyncHandler(handleGetCostExplorerGroupOptions));
 router.get("/dashboard/resources", asyncHandler(handleGetResourcesDashboard));
 router.get("/dashboard/allocation", asyncHandler(handleGetAllocationDashboard));
 router.get("/dashboard/optimization", asyncHandler(handleGetOptimizationDashboard));
