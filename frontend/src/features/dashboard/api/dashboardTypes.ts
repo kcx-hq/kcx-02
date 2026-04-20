@@ -572,6 +572,8 @@ export type CostExplorerFiltersQuery = {
   metric?: CostExplorerMetric;
   compareKey?: CostExplorerCompareKey | null;
   forecastingEnabled?: boolean;
+  tagKey?: string | null;
+  tagValue?: string | null;
   groupValues?: string[];
 };
 

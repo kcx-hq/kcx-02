@@ -93,6 +93,12 @@ function withCostExplorerFilters(
   if (typeof filters?.forecastingEnabled === "boolean") {
     params.set("forecastingEnabled", String(filters.forecastingEnabled));
   }
+  if (typeof filters?.tagKey === "string" && filters.tagKey.trim().length > 0) {
+    params.set("tagKey", filters.tagKey.trim().toLowerCase());
+  }
+  if (typeof filters?.tagValue === "string" && filters.tagValue.trim().length > 0) {
+    params.set("tagValue", filters.tagValue.trim().toLowerCase());
+  }
   if (Array.isArray(filters?.groupValues) && filters.groupValues.length > 0) {
     params.set("groupValues", filters.groupValues.join(","));
   }

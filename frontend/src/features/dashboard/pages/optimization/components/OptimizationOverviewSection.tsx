@@ -71,37 +71,57 @@ function OptimizationOverviewWidget() {
 
   const totalPotential = useMemo(() => insights.reduce((sum, item) => sum + item.potential, 0), [insights]);
   const donutGradient = useMemo(() => buildDonutGradient(insights), [insights]);
+  const showSkeleton = isLoading && !isError;
 
   return (
     <WidgetShell title="Potential Saving" subtitle="Potential saving insights overview">
-      {isLoading ? <p className="dashboard-note">Loading optimization overview insights...</p> : null}
       {isError ? <p className="dashboard-note">{errorMessage}</p> : null}
       <div className="optimization-overview-surface">
         <div className="optimization-overview-donut-panel">
-          <div className="optimization-overview-donut" style={{ backgroundImage: donutGradient }}>
-            <div className="optimization-overview-donut__center">
-              <p className="optimization-overview-donut__value">{compactCurrencyFormatter.format(totalPotential)}</p>
-              <p className="optimization-overview-donut__label">Potential / month</p>
+          {showSkeleton ? (
+            <div className="optimization-overview-donut optimization-overview-donut--skeleton" aria-hidden="true">
+              <div className="optimization-overview-donut__center">
+                <span className="optimization-overview-skeleton-bar optimization-overview-skeleton-bar--lg" />
+                <span className="optimization-overview-skeleton-bar optimization-overview-skeleton-bar--sm" />
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className="optimization-overview-donut" style={{ backgroundImage: donutGradient }}>
+              <div className="optimization-overview-donut__center">
+                <p className="optimization-overview-donut__value">{compactCurrencyFormatter.format(totalPotential)}</p>
+                <p className="optimization-overview-donut__label">Potential / month</p>
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="optimization-overview-insight-list">
-          {insights.map((item) => {
-            const shareOfTotal = totalPotential > 0 ? Math.round((item.potential / totalPotential) * 100) : 0;
-            return (
-              <article key={item.key} className="optimization-overview-insight-item">
-                <div className="optimization-overview-insight-item__head">
-                  <span className="optimization-overview-insight-item__dot" style={{ backgroundColor: item.color }} />
-                  <p className="optimization-overview-insight-item__title">{item.label}</p>
-                </div>
-                <p className="optimization-overview-insight-item__value">{compactCurrencyFormatter.format(item.potential)}</p>
-                <p className="optimization-overview-insight-item__meta">
-                  {item.recommendations} recommendations - {shareOfTotal}% of total potential
-                </p>
-              </article>
-            );
-          })}
+          {showSkeleton
+            ? Array.from({ length: 3 }).map((_, index) => (
+                <article key={`overview-skeleton-${index}`} className="optimization-overview-insight-item optimization-overview-insight-item--skeleton" aria-hidden="true">
+                  <div className="optimization-overview-insight-item__head">
+                    <span className="optimization-overview-insight-item__dot optimization-overview-insight-item__dot--skeleton" />
+                    <span className="optimization-overview-skeleton-bar optimization-overview-skeleton-bar--title" />
+                  </div>
+                  <span className="optimization-overview-skeleton-bar optimization-overview-skeleton-bar--value" />
+                  <span className="optimization-overview-skeleton-bar optimization-overview-skeleton-bar--meta" />
+                </article>
+              ))
+            : insights.map((item) => {
+                const shareOfTotal = totalPotential > 0 ? Math.round((item.potential / totalPotential) * 100) : 0;
+                return (
+                  <article key={item.key} className="optimization-overview-insight-item">
+                    <div className="optimization-overview-insight-item__head">
+                      <span className="optimization-overview-insight-item__dot" style={{ backgroundColor: item.color }} />
+                      <p className="optimization-overview-insight-item__title">{item.label}</p>
+                    </div>
+                    <p className="optimization-overview-insight-item__value">{compactCurrencyFormatter.format(item.potential)}</p>
+                    <p className="optimization-overview-insight-item__meta">
+                      {item.recommendations} recommendations - {shareOfTotal}% of total potential
+                    </p>
+                  </article>
+                );
+              })}
         </div>
       </div>
     </WidgetShell>
@@ -166,6 +186,7 @@ function VerifiedSavingWidget() {
   const isLoading =
     rightsizingAppliedQuery.isLoading || idleAppliedQuery.isLoading || commitmentAppliedQuery.isLoading;
   const isError = rightsizingAppliedQuery.isError || idleAppliedQuery.isError || commitmentAppliedQuery.isError;
+  const showSkeleton = isLoading && !isError;
   const errorMessage =
     rightsizingAppliedQuery.error?.message ||
     idleAppliedQuery.error?.message ||
@@ -174,27 +195,41 @@ function VerifiedSavingWidget() {
 
   return (
     <WidgetShell title="Verified Saving" subtitle="Applied recommendations verified across all optimization sections">
-      {isLoading ? <p className="dashboard-note">Loading verified savings...</p> : null}
       {isError ? <p className="dashboard-note">{errorMessage}</p> : null}
       <div className="optimization-verified-surface">
         <article className="optimization-verified-total">
           <p className="optimization-verified-total__label">Total Verified Saving / month</p>
-          <p className="optimization-verified-total__value">{compactCurrencyFormatter.format(totalVerified)}</p>
+          {showSkeleton ? (
+            <span className="optimization-overview-skeleton-bar optimization-overview-skeleton-bar--verified-total" aria-hidden="true" />
+          ) : (
+            <p className="optimization-verified-total__value">{compactCurrencyFormatter.format(totalVerified)}</p>
+          )}
         </article>
 
         <div className="optimization-verified-grid">
-          {verifiedInsights.map((item) => (
-            <article key={item.key} className="optimization-verified-item">
-              <div className="optimization-verified-item__head">
-                <span className="optimization-overview-insight-item__dot" style={{ backgroundColor: item.color }} />
-                <p className="optimization-overview-insight-item__title">{item.label}</p>
-              </div>
-              <p className="optimization-overview-insight-item__value">{compactCurrencyFormatter.format(item.saving)}</p>
-              <p className="optimization-overview-insight-item__meta">
-                {item.count} applied recommendations
-              </p>
-            </article>
-          ))}
+          {showSkeleton
+            ? Array.from({ length: 3 }).map((_, index) => (
+                <article key={`verified-skeleton-${index}`} className="optimization-verified-item optimization-overview-insight-item--skeleton" aria-hidden="true">
+                  <div className="optimization-verified-item__head">
+                    <span className="optimization-overview-insight-item__dot optimization-overview-insight-item__dot--skeleton" />
+                    <span className="optimization-overview-skeleton-bar optimization-overview-skeleton-bar--title" />
+                  </div>
+                  <span className="optimization-overview-skeleton-bar optimization-overview-skeleton-bar--value" />
+                  <span className="optimization-overview-skeleton-bar optimization-overview-skeleton-bar--meta" />
+                </article>
+              ))
+            : verifiedInsights.map((item) => (
+                <article key={item.key} className="optimization-verified-item">
+                  <div className="optimization-verified-item__head">
+                    <span className="optimization-overview-insight-item__dot" style={{ backgroundColor: item.color }} />
+                    <p className="optimization-overview-insight-item__title">{item.label}</p>
+                  </div>
+                  <p className="optimization-overview-insight-item__value">{compactCurrencyFormatter.format(item.saving)}</p>
+                  <p className="optimization-overview-insight-item__meta">
+                    {item.count} applied recommendations
+                  </p>
+                </article>
+              ))}
         </div>
       </div>
     </WidgetShell>

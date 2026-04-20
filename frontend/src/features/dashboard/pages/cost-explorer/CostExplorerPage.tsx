@@ -93,6 +93,8 @@ export default function CostExplorerPage() {
   const multiMetricMode = selectedMetrics.length > 1;
   const activeGroupBy: GroupBy = multiMetricMode ? "none" : appliedGroupBy;
   const activeGroupValues = activeGroupBy !== "none" ? appliedGroupValues : [];
+  const activeTagKey = activeGroupBy.startsWith("tag:") ? activeGroupBy.slice(4) : null;
+  const activeTagValue = activeTagKey && activeGroupValues.length === 1 ? activeGroupValues[0] : null;
   const activeCompareKey: CompareKey | null = multiMetricMode ? null : (compare[0] ?? null);
 
   const billedQuery = useCostExplorerQuery(
@@ -102,6 +104,8 @@ export default function CostExplorerPage() {
       metric: "billed",
       compareKey: activeCompareKey,
       ...(typeof forecastingEnabled === "boolean" ? { forecastingEnabled } : {}),
+      ...(activeTagKey ? { tagKey: activeTagKey } : {}),
+      ...(activeTagValue ? { tagValue: activeTagValue } : {}),
       groupValues: activeGroupValues,
     },
     selectedMetrics.includes("billed"),
@@ -113,6 +117,8 @@ export default function CostExplorerPage() {
       metric: "effective",
       compareKey: activeCompareKey,
       ...(typeof forecastingEnabled === "boolean" ? { forecastingEnabled } : {}),
+      ...(activeTagKey ? { tagKey: activeTagKey } : {}),
+      ...(activeTagValue ? { tagValue: activeTagValue } : {}),
       groupValues: activeGroupValues,
     },
     selectedMetrics.includes("effective"),
@@ -124,6 +130,8 @@ export default function CostExplorerPage() {
       metric: "list",
       compareKey: activeCompareKey,
       ...(typeof forecastingEnabled === "boolean" ? { forecastingEnabled } : {}),
+      ...(activeTagKey ? { tagKey: activeTagKey } : {}),
+      ...(activeTagValue ? { tagValue: activeTagValue } : {}),
       groupValues: activeGroupValues,
     },
     selectedMetrics.includes("list"),
