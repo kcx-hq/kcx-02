@@ -11,6 +11,7 @@ import BudgetPage from "../pages/budget/BudgetPage";
 import ReportPage from "../pages/report/ReportPage";
 import EC2CostPage from "../pages/ec2/EC2CostPage";
 import EC2UsagePage from "../pages/ec2/EC2UsagePage";
+import EC2UsageHoursPage from "../pages/ec2/EC2UsageHoursPage";
 import "../styles/tokens.css";
 import "../styles/dashboard.css";
 
@@ -70,6 +71,7 @@ export default function DashboardRoutes() {
         <Route path="ec2" element={<DashboardEC2Redirect />} />
         <Route path="ec2/cost" element={<EC2CostPage />} />
         <Route path="ec2/usage" element={<EC2UsagePage />} />
+        <Route path="ec2/instance-hours" element={<EC2UsageHoursPage />} />
         <Route path="resources" element={<ResourcesPage />} />
         <Route path="allocation" element={<AllocationPage />} />
         <Route path="optimization" element={<OptimizationPage />} />

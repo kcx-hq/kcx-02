@@ -20,7 +20,7 @@ type XAxis = "short" | "long" | "iso-date";
 type YAxis = "instance-count" | "cumulative";
 type Metric = "instance-count" | "moving-average";
 type ChartType = "bar" | "line";
-type Category = "none" | "region" | "instance_type";
+type Category = "none" | "region" | "instance_type" | "reservation_type";
 
 type UsageItem = {
   date: string;
@@ -32,6 +32,16 @@ const CATEGORY_LABEL: Record<Category, string> = {
   none: "No Grouping",
   region: "Region",
   instance_type: "Instance Type",
+  reservation_type: "Reservation Type",
+};
+
+const RESERVATION_SERIES_ORDER = ["on_demand", "reserved", "savings_plan", "spot"] as const;
+
+const RESERVATION_SERIES_LABEL: Record<(typeof RESERVATION_SERIES_ORDER)[number], string> = {
+  on_demand: "On-Demand",
+  reserved: "Reserved",
+  savings_plan: "Savings Plan",
+  spot: "Spot",
 };
 
 const SERIES_PALETTE = [
@@ -107,7 +117,13 @@ export default function EC2UsagePage() {
     baseItems.forEach((item) => {
       const bucket = toBucket(item.date);
       bucketKeys.add(bucket);
-      const seriesName = category === "none" ? "Instance Count" : item.category ?? "Unspecified";
+      const seriesName =
+        category === "none"
+          ? "Instance Count"
+          : category === "reservation_type"
+            ? RESERVATION_SERIES_LABEL[(item.category ?? "on_demand") as keyof typeof RESERVATION_SERIES_LABEL] ??
+              RESERVATION_SERIES_LABEL.on_demand
+            : item.category ?? "Unspecified";
       if (!seriesByName.has(seriesName)) {
         seriesByName.set(seriesName, new Map<string, number>());
       }
@@ -127,10 +143,23 @@ export default function EC2UsagePage() {
       return { name, values };
     });
 
+    const reservationSeries =
+      category === "reservation_type"
+        ? RESERVATION_SERIES_ORDER.map((key) => {
+            const name = RESERVATION_SERIES_LABEL[key];
+            return allSeries.find((seriesItem) => seriesItem.name === name) ?? {
+              name,
+              values: Array(labels.length).fill(0),
+            };
+          })
+        : allSeries;
+
     const series =
       category === "none"
-        ? allSeries.slice(0, 1)
-        : allSeries.sort((left, right) => left.name.localeCompare(right.name));
+        ? reservationSeries.slice(0, 1)
+        : category === "reservation_type"
+          ? reservationSeries
+          : reservationSeries.sort((left, right) => left.name.localeCompare(right.name));
 
     return { labels, series };
   }, [baseItems, category, granularity, metric, yAxis]);
@@ -218,11 +247,6 @@ export default function EC2UsagePage() {
     [category, chartType, granularity, labels, series, xAxis, yAxis],
   );
 
-  const flatValues = series.flatMap((item) => item.values);
-  const totalValue = flatValues.reduce((sum, value) => sum + value, 0);
-  const avgValue = flatValues.length > 0 ? totalValue / flatValues.length : 0;
-  const peakValue = flatValues.reduce((peak, value) => Math.max(peak, value), 0);
-
   const activeFilters = [
     `Granularity: ${granularity}`,
     `xAxis: ${xAxis}`,
@@ -272,6 +296,7 @@ export default function EC2UsagePage() {
               <option value="none">No Grouping</option>
               <option value="region">Region</option>
               <option value="instance_type">Instance Type</option>
+              <option value="reservation_type">Reservation Type</option>
             </select>
           </div>
           <div className="optimization-rightsizing-filter-field">
@@ -344,20 +369,6 @@ export default function EC2UsagePage() {
 
         {chartReady ? (
           <>
-            <div className="dashboard-list">
-              <article className="dashboard-list__item">
-                <p className="dashboard-list__title">Total</p>
-                <p className="dashboard-list__meta">{integerFormatter.format(totalValue)}</p>
-              </article>
-              <article className="dashboard-list__item">
-                <p className="dashboard-list__title">Average</p>
-                <p className="dashboard-list__meta">{decimalFormatter.format(avgValue)}</p>
-              </article>
-              <article className="dashboard-list__item">
-                <p className="dashboard-list__title">Peak</p>
-                <p className="dashboard-list__meta">{integerFormatter.format(peakValue)}</p>
-              </article>
-            </div>
             <BaseEChart option={chartOption} height={420} />
           </>
         ) : null}

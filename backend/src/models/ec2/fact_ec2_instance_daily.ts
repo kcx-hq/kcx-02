@@ -17,9 +17,14 @@ class FactEc2InstanceDaily extends Model<InferAttributes<FactEc2InstanceDaily>, 
   declare resourceKey: CreationOptional<string | null>;
   declare regionKey: CreationOptional<string | null>;
   declare subAccountKey: CreationOptional<string | null>;
+  declare instanceName: CreationOptional<string | null>;
   declare instanceType: CreationOptional<string | null>;
+  declare availabilityZone: CreationOptional<string | null>;
+  declare isSpot: CreationOptional<boolean>;
   declare state: CreationOptional<string | null>;
   declare isRunning: boolean;
+  declare totalHours: CreationOptional<string>;
+  declare computeCost: CreationOptional<string>;
   declare launchTime: CreationOptional<Date | null>;
   declare deletedAt: CreationOptional<Date | null>;
   declare source: CreationOptional<string | null>;
@@ -39,9 +44,14 @@ const createFactEc2InstanceDailyModel = (sequelize: Sequelize): typeof FactEc2In
       resourceKey: { type: DataTypes.BIGINT, allowNull: true, field: "resource_key" },
       regionKey: { type: DataTypes.BIGINT, allowNull: true, field: "region_key" },
       subAccountKey: { type: DataTypes.BIGINT, allowNull: true, field: "sub_account_key" },
+      instanceName: { type: DataTypes.TEXT, allowNull: true, field: "instance_name" },
       instanceType: { type: DataTypes.TEXT, allowNull: true, field: "instance_type" },
+      availabilityZone: { type: DataTypes.TEXT, allowNull: true, field: "availability_zone" },
+      isSpot: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false, field: "is_spot" },
       state: { type: DataTypes.TEXT, allowNull: true },
       isRunning: { type: DataTypes.BOOLEAN, allowNull: false, field: "is_running" },
+      totalHours: { type: DataTypes.DECIMAL(18, 6), allowNull: false, defaultValue: 0, field: "total_hours" },
+      computeCost: { type: DataTypes.DECIMAL(18, 6), allowNull: false, defaultValue: 0, field: "compute_cost" },
       launchTime: { type: DataTypes.DATE, allowNull: true, field: "launch_time" },
       deletedAt: { type: DataTypes.DATE, allowNull: true, field: "deleted_at" },
       source: { type: DataTypes.STRING(50), allowNull: true },

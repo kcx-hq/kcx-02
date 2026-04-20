@@ -5,7 +5,7 @@ export type Ec2InstanceUsageQuery = {
   cloudConnectionId: string | null;
   subAccountKey: number | null;
   regionKey: number | null;
-  category: "none" | "region" | "instance_type";
+  category: "none" | "region" | "instance_type" | "reservation_type";
 };
 
 export type Ec2InstanceUsageItem = {
@@ -25,7 +25,7 @@ export type Ec2InstanceUsageResponse = {
     cloudConnectionId: string | null;
     subAccountKey: number | null;
     regionKey: number | null;
-    category: "none" | "region" | "instance_type";
+    category: "none" | "region" | "instance_type" | "reservation_type";
     interval: "daily";
     chartType: "bar";
   };

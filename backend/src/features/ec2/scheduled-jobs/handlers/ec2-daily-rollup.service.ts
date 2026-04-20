@@ -88,6 +88,15 @@ export async function rollupEc2DailyUtilizationForScheduledJob(job: ScheduledJob
   });
 
   const dailyStateRepository = new Ec2InstanceDailyStateRepository();
+  const dailyUsageResult = await dailyStateRepository.populateUsageFromUtilizationDaily({
+    cloudConnectionId,
+    tenantId,
+    providerId,
+    startDate: window.startDate,
+    endDate: window.endDate,
+    source: "ec2_utilization_daily",
+  });
+
   const dailyStateResult = await dailyStateRepository.populateFromInventorySnapshots({
     cloudConnectionId,
     tenantId,
@@ -95,6 +104,15 @@ export async function rollupEc2DailyUtilizationForScheduledJob(job: ScheduledJob
     startDate: window.startDate,
     endDate: window.endDate,
     source: "ec2_inventory_sync",
+  });
+
+  const dailyCostResult = await dailyStateRepository.populateUsageFromCostHistory({
+    cloudConnectionId,
+    tenantId,
+    providerId,
+    startDate: window.startDate,
+    endDate: window.endDate,
+    source: "ec2_cost_history",
   });
 
   logger.info("EC2 daily rollup completed", {
@@ -106,8 +124,12 @@ export async function rollupEc2DailyUtilizationForScheduledJob(job: ScheduledJob
     endDate: window.endDate,
     hourlySourceRows: result.hourlySourceRows,
     dailyRowsUpserted: result.dailyRowsUpserted,
+    usageSourceRows: dailyUsageResult.usageSourceRows,
+    factUsageRowsUpserted: dailyUsageResult.factRowsUpserted,
     inventorySourceRows: dailyStateResult.inventorySourceRows,
     factRowsUpserted: dailyStateResult.factRowsUpserted,
+    costSourceRows: dailyCostResult.costSourceRows,
+    factCostRowsUpserted: dailyCostResult.factRowsUpserted,
     durationMs: Date.now() - startedAt,
   });
 }

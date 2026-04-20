@@ -31,11 +31,19 @@ const EC2_RELATED_FILTER_SQL = `
   LOWER(COALESCE(ds.service_name, '')) LIKE '%amazon ec2%'
   OR LOWER(COALESCE(ds.service_name, '')) LIKE '%elastic compute cloud%'
   OR LOWER(COALESCE(ds.service_name, '')) LIKE '%ebs%'
+  OR LOWER(COALESCE(ds.service_name, '')) LIKE '%ec2%'
   OR LOWER(COALESCE(f.usage_type, '')) LIKE '%ec2%'
   OR LOWER(COALESCE(f.usage_type, '')) LIKE '%ebs%'
+  OR LOWER(COALESCE(f.usage_type, '')) LIKE '%boxusage%'
+  OR LOWER(COALESCE(f.usage_type, '')) LIKE '%spotusage%'
+  OR LOWER(COALESCE(f.usage_type, '')) LIKE '%dedicatedusage%'
   OR LOWER(COALESCE(f.operation, '')) LIKE '%ec2%'
   OR LOWER(COALESCE(f.operation, '')) LIKE '%runinstances%'
   OR LOWER(COALESCE(f.operation, '')) LIKE '%datatransfer%'
+  OR dres.resource_id ~ '^i-[a-z0-9]+$'
+  OR dres.resource_name ~ '^i-[a-z0-9]+$'
+  OR LOWER(COALESCE(dres.resource_id, '')) LIKE '%:instance/%'
+  OR LOWER(COALESCE(dres.resource_name, '')) LIKE '%:instance/%'
 )
 `;
 
@@ -312,8 +320,52 @@ SELECT
   NOW(),
   NOW()
 FROM (
+  WITH ranked_facts AS (
+    SELECT
+      f.*,
+      COALESCE(
+        dd_usage.full_date,
+        DATE(COALESCE(f.usage_start_time, f.usage_end_time))
+      ) AS effective_usage_date,
+      ROW_NUMBER() OVER (
+        PARTITION BY
+          f.tenant_id,
+          f.provider_id,
+          f.billing_source_id,
+          COALESCE(dd_usage.full_date, DATE(COALESCE(f.usage_start_time, f.usage_end_time))),
+          COALESCE(f.service_key, -1),
+          COALESCE(f.sub_account_key, -1),
+          COALESCE(f.region_key, -1),
+          COALESCE(f.resource_key, -1),
+          COALESCE(f.billing_account_key, -1),
+          COALESCE(f.usage_type, ''),
+          COALESCE(f.operation, ''),
+          COALESCE(f.line_item_type, ''),
+          COALESCE(f.pricing_term, ''),
+          COALESCE(f.purchase_option, ''),
+          COALESCE(f.reservation_arn, ''),
+          COALESCE(f.savings_plan_arn, ''),
+          COALESCE(f.savings_plan_type, ''),
+          COALESCE(f.billed_cost, 0),
+          COALESCE(f.effective_cost, 0),
+          COALESCE(f.list_cost, 0),
+          COALESCE(f.consumed_quantity, 0),
+          COALESCE(f.usage_start_time, f.usage_end_time)
+        ORDER BY
+          f.ingestion_run_id DESC NULLS LAST,
+          f.id DESC
+      ) AS dedupe_rank
+    FROM fact_cost_line_items f
+    LEFT JOIN dim_date dd_usage
+      ON dd_usage.id = f.usage_date_key
+    WHERE f.tenant_id = CAST(:tenantId AS UUID)
+      AND f.provider_id = CAST(:providerId AS BIGINT)
+      AND f.billing_source_id = CAST(:billingSourceId AS BIGINT)
+      AND COALESCE(dd_usage.full_date, DATE(COALESCE(f.usage_start_time, f.usage_end_time))) >= CAST(:monthStart AS DATE)
+      AND COALESCE(dd_usage.full_date, DATE(COALESCE(f.usage_start_time, f.usage_end_time))) < (CAST(:monthStart AS DATE) + INTERVAL '1 month')
+  )
   SELECT
-    ${EFFECTIVE_USAGE_DATE_SQL} AS usage_date,
+    f.effective_usage_date AS usage_date,
     f.tenant_id,
     f.provider_id,
     f.billing_source_id,
@@ -340,9 +392,7 @@ FROM (
     COALESCE(f.list_cost, 0) AS list_cost,
     COALESCE(f.consumed_quantity, 0) AS usage_quantity,
     COALESCE(NULLIF(dba.billing_currency, ''), 'USD') AS currency_code
-  FROM fact_cost_line_items f
-  LEFT JOIN dim_date dd_usage
-    ON dd_usage.id = f.usage_date_key
+  FROM ranked_facts f
   LEFT JOIN dim_service ds
     ON ds.id = f.service_key
   LEFT JOIN dim_resource dres
@@ -369,11 +419,7 @@ FROM (
     ORDER BY eis.is_current DESC, eis.discovered_at DESC, eis.updated_at DESC
     LIMIT 1
   ) inv ON TRUE
-  WHERE f.tenant_id = CAST(:tenantId AS UUID)
-    AND f.provider_id = CAST(:providerId AS BIGINT)
-    AND f.billing_source_id = CAST(:billingSourceId AS BIGINT)
-    AND ${EFFECTIVE_USAGE_DATE_SQL} >= CAST(:monthStart AS DATE)
-    AND ${EFFECTIVE_USAGE_DATE_SQL} < (CAST(:monthStart AS DATE) + INTERVAL '1 month')
+  WHERE f.dedupe_rank = 1
     AND ${EC2_RELATED_FILTER_SQL}
 ) x
 GROUP BY

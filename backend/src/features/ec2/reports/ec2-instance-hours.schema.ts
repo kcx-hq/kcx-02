@@ -3,7 +3,7 @@ import { z } from "zod";
 
 import { parseWithSchema } from "../../_shared/validation/zod-validate.js";
 import { resolveDashboardTenantId } from "../../dashboard/shared/dashboard-request-builder.js";
-import type { Ec2InstanceUsageQuery } from "./ec2-instance-usage.types.js";
+import type { Ec2InstanceHoursQuery } from "./ec2-instance-hours.types.js";
 
 const DATE_ONLY_REGEX = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -22,7 +22,7 @@ const parseOptionalInteger = (value: string | undefined): number | null => {
   return Number.isInteger(parsed) ? parsed : Number.NaN;
 };
 
-const ec2InstanceUsageSchema = z
+const ec2InstanceHoursSchema = z
   .object({
     tenantId: z.string().trim().min(1, "tenantId is required"),
     startDate: z.string().regex(DATE_ONLY_REGEX, "start_date must be YYYY-MM-DD"),
@@ -30,7 +30,6 @@ const ec2InstanceUsageSchema = z
     cloudConnectionId: z.string().trim().uuid("cloud_connection_id must be a valid UUID").nullable(),
     subAccountKey: z.number().int("sub_account_key must be an integer").nullable(),
     regionKey: z.number().int("region_key must be an integer").nullable(),
-    category: z.enum(["none", "region", "instance_type", "reservation_type"]).default("none"),
   })
   .superRefine((value, ctx) => {
     if (value.startDate > value.endDate) {
@@ -42,7 +41,7 @@ const ec2InstanceUsageSchema = z
     }
   });
 
-export function buildEc2InstanceUsageQuery(req: Request): Ec2InstanceUsageQuery {
+export function buildEc2InstanceHoursQuery(req: Request): Ec2InstanceHoursQuery {
   const startDate =
     firstQueryValue(req.query.start_date) ??
     firstQueryValue(req.query.startDate) ??
@@ -65,17 +64,17 @@ export function buildEc2InstanceUsageQuery(req: Request): Ec2InstanceUsageQuery 
     firstQueryValue(req.query.region_key) ??
     firstQueryValue(req.query.regionKey) ??
     null;
-  const categoryRaw = firstQueryValue(req.query.category) ?? "none";
+
   const subAccountKey = parseOptionalInteger(subAccountKeyRaw ?? undefined);
   const regionKey = parseOptionalInteger(regionKeyRaw ?? undefined);
 
-  return parseWithSchema(ec2InstanceUsageSchema, {
+  return parseWithSchema(ec2InstanceHoursSchema, {
     tenantId: resolveDashboardTenantId(req),
     startDate,
     endDate,
     cloudConnectionId: cloudConnectionId && cloudConnectionId.trim().length > 0 ? cloudConnectionId.trim() : null,
     subAccountKey,
     regionKey,
-    category: categoryRaw,
   });
 }
+

@@ -13,6 +13,7 @@
     "anomalies:test:backfill": "npm run build && node dist/scripts/test-billing-anomaly-detection-from-parquet.js",
     "backfill:cost-aggregations": "npm run build && node dist/scripts/backfill-cost-aggregations.js",
     "backfill:ec2-cost-history": "npm run build && node dist/scripts/backfill-ec2-cost-history.js",
+    "backfill:ec2-instance-daily": "npm run build && node dist/scripts/backfill-ec2-instance-daily.js",
     "diagnose:billing:parquet": "node scripts/diagnose-billing-parquet.mjs",
     "lint": "eslint . --ext .ts",
     "lint:fix": "eslint . --ext .ts --fix",

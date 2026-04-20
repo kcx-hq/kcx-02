@@ -64,6 +64,12 @@ export const dashboardNav: DashboardNavNode[] = [
         path: "/dashboard/ec2/usage",
         icon: "activity",
       },
+      {
+        kind: "link",
+        label: "EC2 Instance Hours",
+        path: "/dashboard/ec2/instance-hours",
+        icon: "activity",
+      },
     ],
   },
   { kind: "link", label: "Optimization", path: "/dashboard/optimization", icon: "gauge" },

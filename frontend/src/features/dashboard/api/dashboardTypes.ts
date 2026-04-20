@@ -53,7 +53,7 @@ export type Ec2InstanceUsageFiltersQuery = {
   cloudConnectionId?: string;
   subAccountKey?: number;
   regionKey?: number;
-  category?: "none" | "region" | "instance_type";
+  category?: "none" | "region" | "instance_type" | "reservation_type";
 };
 
 export type Ec2InstanceUsageResponse = {
@@ -67,7 +67,7 @@ export type Ec2InstanceUsageResponse = {
     cloudConnectionId: string | null;
     subAccountKey: number | null;
     regionKey: number | null;
-    category: "none" | "region" | "instance_type";
+    category: "none" | "region" | "instance_type" | "reservation_type";
     interval: "daily";
     chartType: "bar";
   };
@@ -94,6 +94,36 @@ export type Ec2InstanceUsageResponse = {
     avgDailyInstances: number;
     peakDailyInstances: number;
   };
+};
+
+export type Ec2InstanceHoursFiltersQuery = {
+  cloudConnectionId?: string;
+  subAccountKey?: number;
+  regionKey?: number;
+};
+
+export type Ec2InstanceHoursResponse = {
+  section: "ec2-instance-hours";
+  title: "EC2 Instance Hours";
+  message: string;
+  filtersApplied: {
+    tenantId: string;
+    startDate: string;
+    endDate: string;
+    cloudConnectionId: string | null;
+    subAccountKey: number | null;
+    regionKey: number | null;
+  };
+  items: Array<{
+    accountName: string;
+    instanceId: string;
+    instanceName: string | null;
+    instanceType: string | null;
+    availabilityZone: string | null;
+    isSpot: boolean;
+    totalHours: number;
+    computeCost: number;
+  }>;
 };
 
 export type OptimizationRightsizingOverview = {

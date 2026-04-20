@@ -13,6 +13,7 @@ const STATIC_ROUTES = [
   "/dashboard/ec2",
   "/dashboard/ec2/cost",
   "/dashboard/ec2/usage",
+  "/dashboard/ec2/instance-hours",
   "/dashboard/resources",
   "/dashboard/allocation",
   "/dashboard/optimization",
