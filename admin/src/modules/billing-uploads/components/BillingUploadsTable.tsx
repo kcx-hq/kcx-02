@@ -22,8 +22,8 @@ export function BillingUploadsTable({
   onView,
 }: BillingUploadsTableProps) {
   return (
-    <div className="overflow-auto rounded-xl ring-1 ring-[color:rgba(15,23,42,0.08)]">
-      <table className="min-w-[1040px] w-full border-separate border-spacing-0 text-sm">
+    <div className="kcx-admin-table-scroll overflow-auto">
+      <table className="min-w-[1040px] w-full border-collapse text-sm">
         <thead className="sticky top-0 bg-white">
           <tr className="text-left text-[11px] font-semibold uppercase tracking-[0.12em] text-[color:rgba(15,23,42,0.55)]">
             <th className="w-20 px-3 py-3 text-center">Sr. No.</th>
@@ -69,7 +69,7 @@ export function BillingUploadsTable({
                 <tr
                   key={item.runId}
                   tabIndex={0}
-                  className="cursor-pointer border-t border-[color:rgba(15,23,42,0.06)] transition-colors hover:bg-[color:rgba(15,23,42,0.03)] focus-visible:bg-[color:rgba(15,23,42,0.03)] focus-visible:outline-none"
+                  className="cursor-pointer border-b border-[color:rgba(15,23,42,0.12)] transition-colors hover:bg-[color:rgba(15,23,42,0.03)] focus-visible:bg-[color:rgba(15,23,42,0.03)] focus-visible:outline-none"
                   onClick={() => onView(item.runId)}
                   onKeyDown={(event) => {
                     if (event.key === "Enter" || event.key === " ") {

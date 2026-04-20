@@ -1,6 +1,7 @@
 import type { ScheduledJob } from "../../../../models/ec2/scheduled_jobs.js";
 import { logger } from "../../../../utils/logger.js";
 import { Ec2InstanceUtilizationDailyRepository } from "./ec2-instance-utilization-daily.repository.js";
+import { Ec2InstanceDailyStateRepository } from "./ec2-instance-daily-state.repository.js";
 
 type RollupWindow = {
   startDate: string; // YYYY-MM-DD (UTC)
@@ -86,6 +87,34 @@ export async function rollupEc2DailyUtilizationForScheduledJob(job: ScheduledJob
     endDate: window.endDate,
   });
 
+  const dailyStateRepository = new Ec2InstanceDailyStateRepository();
+  const dailyUsageResult = await dailyStateRepository.populateUsageFromUtilizationDaily({
+    cloudConnectionId,
+    tenantId,
+    providerId,
+    startDate: window.startDate,
+    endDate: window.endDate,
+    source: "ec2_utilization_daily",
+  });
+
+  const dailyStateResult = await dailyStateRepository.populateFromInventorySnapshots({
+    cloudConnectionId,
+    tenantId,
+    providerId,
+    startDate: window.startDate,
+    endDate: window.endDate,
+    source: "ec2_inventory_sync",
+  });
+
+  const dailyCostResult = await dailyStateRepository.populateUsageFromCostHistory({
+    cloudConnectionId,
+    tenantId,
+    providerId,
+    startDate: window.startDate,
+    endDate: window.endDate,
+    source: "ec2_cost_history",
+  });
+
   logger.info("EC2 daily rollup completed", {
     jobId,
     tenantId,
@@ -95,6 +124,12 @@ export async function rollupEc2DailyUtilizationForScheduledJob(job: ScheduledJob
     endDate: window.endDate,
     hourlySourceRows: result.hourlySourceRows,
     dailyRowsUpserted: result.dailyRowsUpserted,
+    usageSourceRows: dailyUsageResult.usageSourceRows,
+    factUsageRowsUpserted: dailyUsageResult.factRowsUpserted,
+    inventorySourceRows: dailyStateResult.inventorySourceRows,
+    factRowsUpserted: dailyStateResult.factRowsUpserted,
+    costSourceRows: dailyCostResult.costSourceRows,
+    factCostRowsUpserted: dailyCostResult.factRowsUpserted,
     durationMs: Date.now() - startedAt,
   });
 }

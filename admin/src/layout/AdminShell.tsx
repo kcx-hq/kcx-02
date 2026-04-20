@@ -61,7 +61,7 @@ export function AdminShell() {
           <Dialog.Content className="fixed left-0 top-0 z-50 h-full w-[320px] max-w-[88vw] outline-none">
             <Dialog.Title className="sr-only">KCX Admin navigation</Dialog.Title>
             <Dialog.Description className="sr-only">Primary navigation for the KCX internal admin console.</Dialog.Description>
-            <div className="h-full bg-[color:rgba(11,27,43,0.96)] backdrop-blur-2xl">
+            <div className="h-full border-r border-[rgba(132,165,157,0.24)] bg-[linear-gradient(180deg,#0f1a24_0%,#122432_100%)] backdrop-blur-2xl">
               <div className="flex items-center justify-between px-4 py-3">
                 <div className="flex min-w-0 items-center gap-2.5">
                   <img src={kcxLogo} alt="KCX" className="h-8 w-auto object-contain" />
@@ -88,7 +88,7 @@ export function AdminShell() {
 
         <header className="fixed left-0 right-0 top-0 z-40 h-16">
           <div className="flex h-full w-full">
-            <div className="hidden w-[240px] items-center gap-3 border-b border-white/10 bg-[#0B1B2B] px-4 text-white lg:flex">
+            <div className="hidden w-[240px] items-center gap-3 border-b border-white/10 bg-[linear-gradient(180deg,#0f1a24_0%,#122432_100%)] px-4 text-white lg:flex">
               <img src={kcxLogo} alt="KCX" className="h-8 w-auto object-contain" />
               <span className="leading-none">
                 <span className="block text-[1.18rem] font-semibold tracking-[-0.02em]">

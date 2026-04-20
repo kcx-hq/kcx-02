@@ -10,6 +10,14 @@ import {
 } from "./components";
 import { parseDateValue, parseOptionalInt } from "./utils/overviewFormatters";
 
+const parseOptionalBoolean = (value: string | null): boolean | undefined => {
+  if (!value) return undefined;
+  const normalized = value.trim().toLowerCase();
+  if (["true", "1", "on", "enabled", "yes"].includes(normalized)) return true;
+  if (["false", "0", "off", "disabled", "no", "none"].includes(normalized)) return false;
+  return undefined;
+};
+
 export default function OverviewPage() {
   const { scope } = useDashboardScope();
   const location = useLocation();
@@ -21,6 +29,13 @@ export default function OverviewPage() {
   const selectedAccountKey = parseOptionalInt(searchParams.get("subAccountKey") ?? searchParams.get("billingAccountKey"));
   const selectedServiceKey = parseOptionalInt(searchParams.get("serviceKey"));
   const selectedRegionKey = parseOptionalInt(searchParams.get("regionKey"));
+  const forecastingEnabled = parseOptionalBoolean(
+    searchParams.get("forecastingEnabled") ??
+      searchParams.get("forecasting") ??
+      searchParams.get("forecastEnabled") ??
+      searchParams.get("forecastFilter") ??
+      searchParams.get("forecastingFilter"),
+  );
 
   const billingStart = urlBillingStart ?? scope?.from ?? undefined;
   const billingEnd = urlBillingEnd ?? scope?.to ?? undefined;
@@ -29,11 +44,12 @@ export default function OverviewPage() {
     () => ({
       ...(billingStart ? { billingPeriodStart: billingStart } : {}),
       ...(billingEnd ? { billingPeriodEnd: billingEnd } : {}),
+      ...(typeof forecastingEnabled === "boolean" ? { forecastingEnabled } : {}),
       ...(selectedAccountKey ? { accountKeys: [selectedAccountKey] } : {}),
       ...(selectedServiceKey ? { serviceKeys: [selectedServiceKey] } : {}),
       ...(selectedRegionKey ? { regionKeys: [selectedRegionKey] } : {}),
     }),
-    [billingEnd, billingStart, selectedAccountKey, selectedRegionKey, selectedServiceKey],
+    [billingEnd, billingStart, forecastingEnabled, selectedAccountKey, selectedRegionKey, selectedServiceKey],
   );
 
   const overviewQuery = useOverviewQuery({

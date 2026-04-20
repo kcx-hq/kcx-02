@@ -11,6 +11,7 @@ import {
   syncAwsIdleRecommendationsAfterIngestion,
   syncAwsRightsizingRecommendationsAfterIngestion,
 } from "../../dashboard/optimization/recommendation-sync/sync.service.js";
+import { syncEc2CostHistoryForIngestionRun } from "./ec2-cost-history.service.js";
 import { processAwsExportParquetRun } from "./aws-export-parquet.processor.js";
 import {
   createIngestionDimensionCache,
@@ -761,6 +762,12 @@ async function processIngestionRun(ingestionRunId) {
         providerId: rawFile.cloudProviderId,
         billingSourceId: run.billingSourceId,
         uploadedBy: rawFile.uploadedBy,
+      });
+      await syncEc2CostHistoryForIngestionRun({
+        ingestionRunId: run.id,
+        tenantId: rawFile.tenantId,
+        providerId: rawFile.cloudProviderId,
+        billingSourceId: run.billingSourceId,
       });
 
       const tenantIdForSync = typeof rawFile.tenantId === "string" ? rawFile.tenantId.trim() : "";

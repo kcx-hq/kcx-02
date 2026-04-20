@@ -57,6 +57,26 @@ export const dashboardNav: DashboardNavNode[] = [
         label: "AWS",
         path: "/dashboard/inventory/aws",
         icon: "boxes",
+    label: "EC2",
+    icon: "boxes",
+    items: [
+      {
+        kind: "link",
+        label: "Cost",
+        path: "/dashboard/ec2/cost",
+        icon: "line-chart",
+      },
+      {
+        kind: "link",
+        label: "Usage",
+        path: "/dashboard/ec2/usage",
+        icon: "activity",
+      },
+      {
+        kind: "link",
+        label: "EC2 Instance Hours",
+        path: "/dashboard/ec2/instance-hours",
+        icon: "activity",
       },
     ],
   },

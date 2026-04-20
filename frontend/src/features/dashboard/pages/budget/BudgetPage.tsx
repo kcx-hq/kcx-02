@@ -74,6 +74,7 @@ export default function BudgetPage() {
   const [form, setForm] = useState<BudgetFormState>(createInitialFormState);
   const [selectedBudgetId, setSelectedBudgetId] = useState<string | null>(null);
   const [isBudgetModalOpen, setIsBudgetModalOpen] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const rowsPerPage = 10;
   const budgets = budgetQuery.data?.items ?? [];
@@ -129,9 +130,18 @@ export default function BudgetPage() {
     form.startMonth.trim().length > 0 &&
     (form.ongoing || form.endMonth.trim().length > 0);
 
+  const validateForm = () => {
+    if (form.budgetName.trim().length === 0) return "Budget name is required.";
+    if (!(Number(form.budgetAmount) > 0)) return "Budget amount must be greater than 0.";
+    if (form.startMonth.trim().length === 0) return "Start month is required.";
+    if (!form.ongoing && form.endMonth.trim().length === 0) return "End month is required when ongoing is off.";
+    return null;
+  };
+
   const onReset = () => {
     setForm(createInitialFormState());
     setSelectedBudgetId(null);
+    setFormError(null);
   };
 
   const buildBudgetPayload = (): BudgetUpsertPayload => ({
@@ -147,12 +157,23 @@ export default function BudgetPage() {
   });
 
   const onSaveBudget = async () => {
-    if (!formCanSubmit) return;
+    const validationError = validateForm();
+    if (validationError) {
+      setFormError(validationError);
+      return;
+    }
+    setFormError(null);
     await createBudgetMutation.mutateAsync(buildBudgetPayload());
   };
 
   const onUpdateBudget = async () => {
-    if (!selectedBudgetId || !formCanSubmit) return;
+    if (!selectedBudgetId) return;
+    const validationError = validateForm();
+    if (validationError) {
+      setFormError(validationError);
+      return;
+    }
+    setFormError(null);
     await updateBudgetMutation.mutateAsync({
       budgetId: selectedBudgetId,
       payload: buildBudgetPayload(),
@@ -170,6 +191,7 @@ export default function BudgetPage() {
       ongoing: budget.ongoing,
       status: budget.status,
     });
+    setFormError(null);
     setIsBudgetModalOpen(true);
   };
 
@@ -335,7 +357,7 @@ export default function BudgetPage() {
                 </div>
               </section>
 
-              <div className="budget-actions">
+              <div className={`budget-actions${selectedBudgetId ? "" : " budget-actions--create"}`}>
                 {selectedBudgetId ? (
                   <>
                     <button
@@ -351,7 +373,7 @@ export default function BudgetPage() {
                     <button
                       className="budget-action-button budget-action-button--primary"
                       type="submit"
-                      disabled={!formCanSubmit || isSubmitting}
+                      disabled={isSubmitting}
                     >
                       Save Changes
                     </button>
@@ -362,15 +384,16 @@ export default function BudgetPage() {
                       Clear Form
                     </button>
                     <button
-                      className="budget-action-button budget-action-button--primary"
+                      className="budget-action-button budget-action-button--primary budget-action-button--create"
                       type="submit"
-                      disabled={!formCanSubmit || isSubmitting}
+                      disabled={isSubmitting}
                     >
                       Create Budget
                     </button>
                   </>
                 )}
               </div>
+              {formError ? <p className="budget-form-error">{formError}</p> : null}
             </form>
           </DialogContent>
         </Dialog>

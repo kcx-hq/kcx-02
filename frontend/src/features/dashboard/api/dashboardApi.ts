@@ -20,6 +20,10 @@ import type {
   DashboardResolvedScope,
   DashboardScopeInput,
   DashboardSectionData,
+  Ec2InstanceHoursFiltersQuery,
+  Ec2InstanceHoursResponse,
+  Ec2InstanceUsageFiltersQuery,
+  Ec2InstanceUsageResponse,
   OptimizationIdleOverview,
   OptimizationCommitmentOverview,
   OptimizationIdleRecommendationsResponse,
@@ -62,6 +66,9 @@ function withOverviewFilters(
 
   if (filters?.billingPeriodStart) params.set("billingPeriodStart", filters.billingPeriodStart);
   if (filters?.billingPeriodEnd) params.set("billingPeriodEnd", filters.billingPeriodEnd);
+  if (typeof filters?.forecastingEnabled === "boolean") {
+    params.set("forecastingEnabled", String(filters.forecastingEnabled));
+  }
   if (typeof filters?.page === "number") params.set("page", String(filters.page));
   if (typeof filters?.pageSize === "number") params.set("pageSize", String(filters.pageSize));
   if (filters?.sortBy) params.set("sortBy", filters.sortBy);
@@ -87,6 +94,15 @@ function withCostExplorerFilters(
   if (filters?.granularity) params.set("granularity", filters.granularity);
   if (filters?.groupBy) params.set("groupBy", filters.groupBy);
   if (filters?.metric) params.set("metric", filters.metric);
+  if (typeof filters?.forecastingEnabled === "boolean") {
+    params.set("forecastingEnabled", String(filters.forecastingEnabled));
+  }
+  if (typeof filters?.tagKey === "string" && filters.tagKey.trim().length > 0) {
+    params.set("tagKey", filters.tagKey.trim().toLowerCase());
+  }
+  if (typeof filters?.tagValue === "string" && filters.tagValue.trim().length > 0) {
+    params.set("tagValue", filters.tagValue.trim().toLowerCase());
+  }
   if (Array.isArray(filters?.groupValues) && filters.groupValues.length > 0) {
     params.set("groupValues", filters.groupValues.join(","));
   }
@@ -182,6 +198,35 @@ function withAnomaliesAlertsFilters(
   if (filters?.date_to) params.set("date_to", filters.date_to);
   if (typeof filters?.limit === "number") params.set("limit", String(filters.limit));
   if (typeof filters?.offset === "number") params.set("offset", String(filters.offset));
+
+  const query = params.toString();
+  return query.length > 0 ? `${path}?${query}` : path;
+}
+
+function withEc2InstanceUsageFilters(
+  path: string,
+  scope: DashboardResolvedScope,
+  filters?: Ec2InstanceUsageFiltersQuery,
+): string {
+  const params = new URLSearchParams(buildDashboardQueryParams(scope));
+  if (filters?.cloudConnectionId) params.set("cloud_connection_id", filters.cloudConnectionId);
+  if (typeof filters?.subAccountKey === "number") params.set("sub_account_key", String(filters.subAccountKey));
+  if (typeof filters?.regionKey === "number") params.set("region_key", String(filters.regionKey));
+  if (filters?.category) params.set("category", filters.category);
+
+  const query = params.toString();
+  return query.length > 0 ? `${path}?${query}` : path;
+}
+
+function withEc2InstanceHoursFilters(
+  path: string,
+  scope: DashboardResolvedScope,
+  filters?: Ec2InstanceHoursFiltersQuery,
+): string {
+  const params = new URLSearchParams(buildDashboardQueryParams(scope));
+  if (filters?.cloudConnectionId) params.set("cloud_connection_id", filters.cloudConnectionId);
+  if (typeof filters?.subAccountKey === "number") params.set("sub_account_key", String(filters.subAccountKey));
+  if (typeof filters?.regionKey === "number") params.set("region_key", String(filters.regionKey));
 
   const query = params.toString();
   return query.length > 0 ? `${path}?${query}` : path;
@@ -400,6 +445,13 @@ export const dashboardApi = {
   getReport(scope: DashboardResolvedScope) {
     return apiGet<DashboardSectionData>(withDashboardQuery("/dashboard/report", scope));
   },
+
+  getEc2InstanceUsage(scope: DashboardResolvedScope, filters?: Ec2InstanceUsageFiltersQuery) {
+    return apiGet<Ec2InstanceUsageResponse>(withEc2InstanceUsageFilters("/dashboard/ec2/instance-usage", scope, filters));
+  },
+  getEc2InstanceHours(scope: DashboardResolvedScope, filters?: Ec2InstanceHoursFiltersQuery) {
+    return apiGet<Ec2InstanceHoursResponse>(withEc2InstanceHoursFilters("/dashboard/ec2/instance-hours", scope, filters));
+  },
 };
 
 export type {
@@ -433,6 +485,10 @@ export type {
   DashboardResolvedScope,
   DashboardScopeInput,
   DashboardSectionData,
+  Ec2InstanceHoursFiltersQuery,
+  Ec2InstanceHoursResponse,
+  Ec2InstanceUsageFiltersQuery,
+  Ec2InstanceUsageResponse,
   OptimizationIdleOverview,
   OptimizationCommitmentOverview,
   OptimizationIdleRecommendationsResponse,

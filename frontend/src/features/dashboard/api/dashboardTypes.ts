@@ -49,6 +49,83 @@ export type DashboardSectionData = {
   summary: DashboardSummaryItem[];
 };
 
+export type Ec2InstanceUsageFiltersQuery = {
+  cloudConnectionId?: string;
+  subAccountKey?: number;
+  regionKey?: number;
+  category?: "none" | "region" | "instance_type" | "reservation_type";
+};
+
+export type Ec2InstanceUsageResponse = {
+  section: "ec2-instance-usage";
+  title: "EC2 Instance Usage";
+  message: string;
+  filtersApplied: {
+    tenantId: string;
+    startDate: string;
+    endDate: string;
+    cloudConnectionId: string | null;
+    subAccountKey: number | null;
+    regionKey: number | null;
+    category: "none" | "region" | "instance_type" | "reservation_type";
+    interval: "daily";
+    chartType: "bar";
+  };
+  metric: "instance_count";
+  items: Array<{
+    date: string;
+    category: string | null;
+    value: number;
+  }>;
+  chart: {
+    labels: Array<{
+      usageDate: string;
+      short: string;
+      long: string;
+    }>;
+    series: Array<{
+      name: string;
+      kind: "primary";
+      values: number[];
+    }>;
+  };
+  summary: {
+    totalInstanceDays: number;
+    avgDailyInstances: number;
+    peakDailyInstances: number;
+  };
+};
+
+export type Ec2InstanceHoursFiltersQuery = {
+  cloudConnectionId?: string;
+  subAccountKey?: number;
+  regionKey?: number;
+};
+
+export type Ec2InstanceHoursResponse = {
+  section: "ec2-instance-hours";
+  title: "EC2 Instance Hours";
+  message: string;
+  filtersApplied: {
+    tenantId: string;
+    startDate: string;
+    endDate: string;
+    cloudConnectionId: string | null;
+    subAccountKey: number | null;
+    regionKey: number | null;
+  };
+  items: Array<{
+    accountName: string;
+    instanceId: string;
+    instanceName: string | null;
+    instanceType: string | null;
+    availabilityZone: string | null;
+    isSpot: boolean;
+    totalHours: number;
+    computeCost: number;
+  }>;
+};
+
 export type OptimizationRightsizingOverview = {
   category: "RIGHTSIZING";
   totalPotentialSavings: number;
@@ -360,6 +437,7 @@ export type OverviewSortOrder = "asc" | "desc";
 export type OverviewFiltersQuery = {
   billingPeriodStart?: string;
   billingPeriodEnd?: string;
+  forecastingEnabled?: boolean;
   accountKeys?: number[];
   serviceKeys?: number[];
   regionKeys?: number[];
@@ -533,6 +611,7 @@ export type DashboardOverviewResponse = {
   filtersApplied: {
     billingPeriodStart: string;
     billingPeriodEnd: string;
+    forecastingEnabled?: boolean;
     accountKeys?: number[];
     serviceKeys?: number[];
     regionKeys?: number[];
@@ -569,6 +648,9 @@ export type CostExplorerFiltersQuery = {
   groupBy?: CostExplorerGroupBy;
   metric?: CostExplorerMetric;
   compareKey?: CostExplorerCompareKey | null;
+  forecastingEnabled?: boolean;
+  tagKey?: string | null;
+  tagValue?: string | null;
   groupValues?: string[];
 };
 

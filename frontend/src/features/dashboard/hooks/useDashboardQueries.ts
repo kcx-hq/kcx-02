@@ -5,6 +5,10 @@ import {
   type AnomaliesListResponse,
   type CostExplorerFiltersQuery,
   type DashboardResolvedScope,
+  type Ec2InstanceUsageFiltersQuery,
+  type Ec2InstanceHoursFiltersQuery,
+  type Ec2InstanceHoursResponse,
+  type Ec2InstanceUsageResponse,
   type OptimizationIdleOverview,
   type OptimizationCommitmentOverview,
   type OptimizationIdleRecommendationDetail,
@@ -241,6 +245,24 @@ export function useReportQuery() {
   return useQuery({
     queryKey: ["dashboard", "report", scope],
     queryFn: () => dashboardApi.getReport(assertScope(scope)),
+    enabled: Boolean(scope),
+  });
+}
+
+export function useEc2InstanceUsageQuery(filters?: Ec2InstanceUsageFiltersQuery) {
+  const { scope } = useDashboardScope();
+  return useQuery<Ec2InstanceUsageResponse, Error>({
+    queryKey: ["dashboard", "ec2", "instance-usage", scope, filters],
+    queryFn: () => dashboardApi.getEc2InstanceUsage(assertScope(scope), filters),
+    enabled: Boolean(scope),
+  });
+}
+
+export function useEc2InstanceHoursQuery(filters?: Ec2InstanceHoursFiltersQuery) {
+  const { scope } = useDashboardScope();
+  return useQuery<Ec2InstanceHoursResponse, Error>({
+    queryKey: ["dashboard", "ec2", "instance-hours", scope, filters],
+    queryFn: () => dashboardApi.getEc2InstanceHours(assertScope(scope), filters),
     enabled: Boolean(scope),
   });
 }
