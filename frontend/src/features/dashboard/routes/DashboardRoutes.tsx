@@ -46,13 +46,26 @@ function DashboardCostRedirect() {
 }
 
 function DashboardInventoryRedirect() {
-function DashboardEC2Redirect() {
   const location = useLocation();
 
   return (
     <Navigate
       to={{
         pathname: "/dashboard/inventory/aws",
+        search: location.search,
+      }}
+      replace
+    />
+  );
+}
+
+function DashboardEC2Redirect() {
+  const location = useLocation();
+
+  return (
+    <Navigate
+      to={{
+        pathname: "/dashboard/ec2/cost",
         search: location.search,
       }}
       replace
@@ -67,7 +80,6 @@ function DashboardInventoryEc2Redirect() {
     <Navigate
       to={{
         pathname: "/dashboard/inventory/aws/ec2/instances",
-        pathname: "/dashboard/ec2/cost",
         search: location.search,
       }}
       replace
@@ -96,7 +108,7 @@ export default function DashboardRoutes() {
         <Route path="anomalies-alerts" element={<AnomaliesAlertsPage />} />
         <Route path="budget" element={<BudgetPage />} />
         <Route path="report" element={<ReportPage />} />
-        <Route path="inventory" element={<DashboardInventoryRedirect />} />
+        <Route path="inventory" element={<DashboardInventoryRedirect/>} />
         <Route path="inventory/aws" element={<AwsInventoryPage />} />
         <Route path="inventory/aws/ec2" element={<DashboardInventoryEc2Redirect />} />
         <Route path="inventory/aws/ec2/instances" element={<InventoryInstancesPage />} />
