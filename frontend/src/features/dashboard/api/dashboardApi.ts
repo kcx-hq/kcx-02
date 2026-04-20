@@ -20,6 +20,8 @@ import type {
   DashboardResolvedScope,
   DashboardScopeInput,
   DashboardSectionData,
+  Ec2InstanceUsageFiltersQuery,
+  Ec2InstanceUsageResponse,
   OptimizationIdleOverview,
   OptimizationCommitmentOverview,
   OptimizationIdleRecommendationsResponse,
@@ -182,6 +184,21 @@ function withAnomaliesAlertsFilters(
   if (filters?.date_to) params.set("date_to", filters.date_to);
   if (typeof filters?.limit === "number") params.set("limit", String(filters.limit));
   if (typeof filters?.offset === "number") params.set("offset", String(filters.offset));
+
+  const query = params.toString();
+  return query.length > 0 ? `${path}?${query}` : path;
+}
+
+function withEc2InstanceUsageFilters(
+  path: string,
+  scope: DashboardResolvedScope,
+  filters?: Ec2InstanceUsageFiltersQuery,
+): string {
+  const params = new URLSearchParams(buildDashboardQueryParams(scope));
+  if (filters?.cloudConnectionId) params.set("cloud_connection_id", filters.cloudConnectionId);
+  if (typeof filters?.subAccountKey === "number") params.set("sub_account_key", String(filters.subAccountKey));
+  if (typeof filters?.regionKey === "number") params.set("region_key", String(filters.regionKey));
+  if (filters?.category) params.set("category", filters.category);
 
   const query = params.toString();
   return query.length > 0 ? `${path}?${query}` : path;
@@ -400,6 +417,10 @@ export const dashboardApi = {
   getReport(scope: DashboardResolvedScope) {
     return apiGet<DashboardSectionData>(withDashboardQuery("/dashboard/report", scope));
   },
+
+  getEc2InstanceUsage(scope: DashboardResolvedScope, filters?: Ec2InstanceUsageFiltersQuery) {
+    return apiGet<Ec2InstanceUsageResponse>(withEc2InstanceUsageFilters("/dashboard/ec2/instance-usage", scope, filters));
+  },
 };
 
 export type {
@@ -433,6 +454,8 @@ export type {
   DashboardResolvedScope,
   DashboardScopeInput,
   DashboardSectionData,
+  Ec2InstanceUsageFiltersQuery,
+  Ec2InstanceUsageResponse,
   OptimizationIdleOverview,
   OptimizationCommitmentOverview,
   OptimizationIdleRecommendationsResponse,

@@ -9,6 +9,8 @@ import OptimizationPage from "../pages/optimization/OptimizationPage";
 import AnomaliesAlertsPage from "../pages/anomalies-alerts/AnomaliesAlertsPage";
 import BudgetPage from "../pages/budget/BudgetPage";
 import ReportPage from "../pages/report/ReportPage";
+import EC2CostPage from "../pages/ec2/EC2CostPage";
+import EC2UsagePage from "../pages/ec2/EC2UsagePage";
 import "../styles/tokens.css";
 import "../styles/dashboard.css";
 
@@ -40,6 +42,20 @@ function DashboardCostRedirect() {
   );
 }
 
+function DashboardEC2Redirect() {
+  const location = useLocation();
+
+  return (
+    <Navigate
+      to={{
+        pathname: "/dashboard/ec2/cost",
+        search: location.search,
+      }}
+      replace
+    />
+  );
+}
+
 export default function DashboardRoutes() {
   return (
     <Routes>
@@ -51,6 +67,9 @@ export default function DashboardRoutes() {
         <Route path="cost/explorer" element={<CostExplorerPage />} />
         <Route path="cost/history" element={<CostHistoryPage />} />
         <Route path="cost-explorer" element={<DashboardCostRedirect />} />
+        <Route path="ec2" element={<DashboardEC2Redirect />} />
+        <Route path="ec2/cost" element={<EC2CostPage />} />
+        <Route path="ec2/usage" element={<EC2UsagePage />} />
         <Route path="resources" element={<ResourcesPage />} />
         <Route path="allocation" element={<AllocationPage />} />
         <Route path="optimization" element={<OptimizationPage />} />
