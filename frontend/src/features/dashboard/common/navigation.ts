@@ -47,6 +47,19 @@ export const dashboardNav: DashboardNavNode[] = [
       },
     ],
   },
+  {
+    kind: "group",
+    label: "Inventory",
+    icon: "server",
+    items: [
+      {
+        kind: "link",
+        label: "AWS",
+        path: "/dashboard/inventory/aws",
+        icon: "boxes",
+      },
+    ],
+  },
   { kind: "link", label: "Optimization", path: "/dashboard/optimization", icon: "gauge" },
   {
     kind: "link",

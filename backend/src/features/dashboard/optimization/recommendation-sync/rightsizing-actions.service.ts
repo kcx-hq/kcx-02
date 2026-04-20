@@ -2,7 +2,7 @@ import { QueryTypes, Transaction } from "sequelize";
 import { ConflictError, NotFoundError } from "../../../../errors/http-errors.js";
 import { sequelize } from "../../../../models/index.js";
 import { logger } from "../../../../utils/logger.js";
-import { AwsEc2Error, changeInstanceType } from "../../../cloud-connections/aws/ec2/ec2.service.js";
+import { AwsEc2Error, changeInstanceType } from "../../../cloud-connections/aws/ec2/ec2.shared.service.js";
 
 const RIGHTSIZING_PREDICATE_SQL = `
   (

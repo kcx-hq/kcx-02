@@ -7,7 +7,6 @@ import adminAnnouncementsRoutes from "../admin/admin-announcements/admin-announc
 import adminAuthRoutes from "../admin/admin-auth/admin-auth.routes.js";
 import authRoutes from "../auth/auth.routes.js";
 import awsAutoCloudConnectionsRoutes from "../cloud-connections/aws/auto-connection/cloud-connections.routes.js";
-import awsEc2Routes from "../cloud-connections/aws/ec2/ec2.routes.js";
 import awsManualConnectionRoutes from "../cloud-connections/aws/manual-connection/manual-connection.routes.js";
 import scheduleDemoRoutes from "../schedule-demo/schedule-demo.routes.js";
 import billingRoutes from "../billing/billing.routes.js";
@@ -20,6 +19,7 @@ import supportMeetingsRoutes from "../support-meetings/support-meetings.routes.j
 import anomalyRoutes from "../dashboard/anomaly-alerts/anomaly.routes.js";
 import organizationUsersRoutes from "../organization-users/organization-users.routes.js";
 import reportRoutes from "../dashboard/report/report.routes.js";
+import instancesInventoryRoutes from "../inventory/aws/ec2/instances/instances-inventory.routes.js";
 const router = Router();
 
 router.use(scheduleDemoRoutes);
@@ -27,7 +27,6 @@ router.use(authRoutes);
 router.use(adminAuthRoutes);
 router.use(awsAutoCloudConnectionsRoutes);
 router.use(awsManualConnectionRoutes);
-router.use(awsEc2Routes);
 router.use(billingRoutes);
 router.use(dashboardRoutes);
 router.use(uploadDashboardRoutes);
@@ -43,6 +42,7 @@ router.use(organizationUsersRoutes);
 router.use(awsExportFileEventRoutes);
 router.use(anomalyRoutes);
 router.use(reportRoutes);
+router.use(instancesInventoryRoutes);
 
 export default router;
 

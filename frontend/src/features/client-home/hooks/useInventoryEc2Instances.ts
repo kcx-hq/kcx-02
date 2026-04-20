@@ -1,0 +1,26 @@
+import { useQuery } from "@tanstack/react-query"
+
+import {
+  getInventoryEc2Instances,
+  type InventoryEc2InstancesListParams,
+  type InventoryEc2InstancesListResponse,
+} from "@/features/client-home/api/inventory-instances.api"
+
+export const INVENTORY_EC2_INSTANCES_QUERY_KEY = ["inventory", "aws", "ec2", "instances"] as const
+
+export function useInventoryEc2Instances(params: InventoryEc2InstancesListParams) {
+  return useQuery<InventoryEc2InstancesListResponse>({
+    queryKey: [
+      ...INVENTORY_EC2_INSTANCES_QUERY_KEY,
+      params.cloudConnectionId ?? "all",
+      params.state ?? "all",
+      params.instanceType ?? "all",
+      params.search ?? "",
+      params.page ?? 1,
+      params.pageSize ?? 25,
+    ],
+    queryFn: () => getInventoryEc2Instances(params),
+    placeholderData: (previous) => previous,
+  })
+}
+

@@ -52,6 +52,12 @@ import createAggCostHourlyModel from "./billing/agg_cost_hourly.js";
 import createAggCostDailyModel from "./billing/agg_cost_daily.js";
 import createAggCostMonthlyModel from "./billing/agg_cost_monthly.js";
 import createEc2InstanceInventorySnapshotModel from "./ec2/ec2_instance_inventory_snapshots.js";
+import createEc2VolumeInventorySnapshotModel from "./ec2/ec2_volume_inventory_snapshots.js";
+import createEc2SnapshotInventorySnapshotModel from "./ec2/ec2_snapshot_inventory_snapshots.js";
+import createEc2EipInventorySnapshotModel from "./ec2/ec2_eip_inventory_snapshots.js";
+import createEc2AmiInventorySnapshotModel from "./ec2/ec2_ami_inventory_snapshots.js";
+import createEc2LoadBalancerInventorySnapshotModel from "./ec2/ec2_load_balancer_inventory_snapshots.js";
+import createEc2TargetGroupInventorySnapshotModel from "./ec2/ec2_target_group_inventory_snapshots.js";
 import createEc2InstanceUtilizationHourlyModel from "./ec2/ec2_instance_utilization_hourly.js";
 import createEc2InstanceUtilizationDailyModel from "./ec2/ec2_instance_utilization_daily.js";
 import createScheduledJobModel from "./ec2/scheduled_jobs.js";
@@ -124,6 +130,12 @@ const AggCostHourly = createAggCostHourlyModel(sequelize);
 const AggCostDaily = createAggCostDailyModel(sequelize);
 const AggCostMonthly = createAggCostMonthlyModel(sequelize);
 const Ec2InstanceInventorySnapshot = createEc2InstanceInventorySnapshotModel(sequelize);
+const Ec2VolumeInventorySnapshot = createEc2VolumeInventorySnapshotModel(sequelize);
+const Ec2SnapshotInventorySnapshot = createEc2SnapshotInventorySnapshotModel(sequelize);
+const Ec2EipInventorySnapshot = createEc2EipInventorySnapshotModel(sequelize);
+const Ec2AmiInventorySnapshot = createEc2AmiInventorySnapshotModel(sequelize);
+const Ec2LoadBalancerInventorySnapshot = createEc2LoadBalancerInventorySnapshotModel(sequelize);
+const Ec2TargetGroupInventorySnapshot = createEc2TargetGroupInventorySnapshotModel(sequelize);
 const Ec2InstanceUtilizationHourly = createEc2InstanceUtilizationHourlyModel(sequelize);
 const Ec2InstanceUtilizationDaily = createEc2InstanceUtilizationDailyModel(sequelize);
 const ScheduledJob = createScheduledJobModel(sequelize);
@@ -509,6 +521,12 @@ export {
   AggCostDaily,
   AggCostMonthly,
   Ec2InstanceInventorySnapshot,
+  Ec2VolumeInventorySnapshot,
+  Ec2SnapshotInventorySnapshot,
+  Ec2EipInventorySnapshot,
+  Ec2AmiInventorySnapshot,
+  Ec2LoadBalancerInventorySnapshot,
+  Ec2TargetGroupInventorySnapshot,
   Ec2InstanceUtilizationHourly,
   Ec2InstanceUtilizationDaily,
   ScheduledJob,

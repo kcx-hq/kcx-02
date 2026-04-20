@@ -9,6 +9,8 @@ import OptimizationPage from "../pages/optimization/OptimizationPage";
 import AnomaliesAlertsPage from "../pages/anomalies-alerts/AnomaliesAlertsPage";
 import BudgetPage from "../pages/budget/BudgetPage";
 import ReportPage from "../pages/report/ReportPage";
+import InventoryInstancesPage from "../pages/inventory/InventoryInstancesPage";
+import AwsInventoryPage from "../pages/inventory/AwsInventoryPage";
 import "../styles/tokens.css";
 import "../styles/dashboard.css";
 
@@ -40,6 +42,34 @@ function DashboardCostRedirect() {
   );
 }
 
+function DashboardInventoryRedirect() {
+  const location = useLocation();
+
+  return (
+    <Navigate
+      to={{
+        pathname: "/dashboard/inventory/aws",
+        search: location.search,
+      }}
+      replace
+    />
+  );
+}
+
+function DashboardInventoryEc2Redirect() {
+  const location = useLocation();
+
+  return (
+    <Navigate
+      to={{
+        pathname: "/dashboard/inventory/aws/ec2/instances",
+        search: location.search,
+      }}
+      replace
+    />
+  );
+}
+
 export default function DashboardRoutes() {
   return (
     <Routes>
@@ -57,6 +87,10 @@ export default function DashboardRoutes() {
         <Route path="anomalies-alerts" element={<AnomaliesAlertsPage />} />
         <Route path="budget" element={<BudgetPage />} />
         <Route path="report" element={<ReportPage />} />
+        <Route path="inventory" element={<DashboardInventoryRedirect />} />
+        <Route path="inventory/aws" element={<AwsInventoryPage />} />
+        <Route path="inventory/aws/ec2" element={<DashboardInventoryEc2Redirect />} />
+        <Route path="inventory/aws/ec2/instances" element={<InventoryInstancesPage />} />
         <Route path="*" element={<DashboardOverviewRedirect />} />
       </Route>
     </Routes>

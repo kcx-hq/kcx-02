@@ -7,7 +7,7 @@ import {
   deleteSnapshot,
   deleteVolume,
   releaseAddress,
-} from "../../../cloud-connections/aws/ec2/ec2.service.js";
+} from "../../../cloud-connections/aws/ec2/ec2.shared.service.js";
 
 const IDLE_PREDICATE_SQL = `
   (
