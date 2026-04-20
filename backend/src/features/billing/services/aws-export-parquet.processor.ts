@@ -26,6 +26,7 @@ import {
   syncAwsIdleRecommendationsAfterIngestion,
   syncAwsRightsizingRecommendationsAfterIngestion,
 } from "../../dashboard/optimization/recommendation-sync/sync.service.js";
+import { syncEc2CostHistoryForIngestionRun } from "./ec2-cost-history.service.js";
 import { createTagDimensionCache, resolveFactPrimaryTagId, resolveFactTagIds } from "./dim-tag.service.js";
 import { assertTagDimensionSchemaReady } from "./ingestion-schema-guard.service.js";
 
@@ -569,6 +570,12 @@ export async function processAwsExportParquetRun({ run }) {
         providerId: source.cloudProviderId,
         billingSourceId: source.id,
         uploadedBy: connection.createdBy ?? null,
+      });
+      await syncEc2CostHistoryForIngestionRun({
+        ingestionRunId: runId,
+        tenantId: source.tenantId,
+        providerId: source.cloudProviderId,
+        billingSourceId: source.id,
       });
 
       try {

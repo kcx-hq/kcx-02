@@ -160,7 +160,7 @@ export function BillingUploadDetailsDrawer({
                   <DetailRow label="Error Message" value={formatValue(data.failureDetails.errorMessage)} />
                   <DetailRow label="Row Error Count" value={String(data.failureDetails.rowErrorCount)} />
 
-                  <div className="mt-2 overflow-x-auto rounded-xl ring-1 ring-[color:rgba(15,23,42,0.08)]">
+                  <div className="kcx-admin-table-scroll mt-2 overflow-x-auto rounded-xl ring-1 ring-[color:rgba(15,23,42,0.08)]">
                     <table className="min-w-[620px] w-full border-separate border-spacing-0 text-sm">
                       <thead className="bg-white">
                         <tr className="text-left text-[11px] font-semibold uppercase tracking-[0.12em] text-[color:rgba(15,23,42,0.55)]">
@@ -198,7 +198,7 @@ export function BillingUploadDetailsDrawer({
               <Card>
                 <CardContent className="space-y-3 p-4">
                   <div className="text-sm font-semibold text-[color:rgba(15,23,42,0.88)]">H. Related Files</div>
-                  <div className="overflow-x-auto rounded-xl ring-1 ring-[color:rgba(15,23,42,0.08)]">
+                  <div className="kcx-admin-table-scroll overflow-x-auto rounded-xl ring-1 ring-[color:rgba(15,23,42,0.08)]">
                     <table className="min-w-[620px] w-full border-separate border-spacing-0 text-sm">
                       <thead className="bg-white">
                         <tr className="text-left text-[11px] font-semibold uppercase tracking-[0.12em] text-[color:rgba(15,23,42,0.55)]">

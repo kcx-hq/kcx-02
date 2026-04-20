@@ -51,6 +51,9 @@ import createBudgetAlertsModel from "./billing/budget_alerts.js";
 import createAggCostHourlyModel from "./billing/agg_cost_hourly.js";
 import createAggCostDailyModel from "./billing/agg_cost_daily.js";
 import createAggCostMonthlyModel from "./billing/agg_cost_monthly.js";
+import createCostPeriodStatusModel from "./billing/cost_period_status.js";
+import createEc2CostHistoryDailyModel from "./ec2/ec2_cost_history_daily.js";
+import createEc2CostHistoryMonthlyModel from "./ec2/ec2_cost_history_monthly.js";
 import createEc2InstanceInventorySnapshotModel from "./ec2/ec2_instance_inventory_snapshots.js";
 import createEc2InstanceUtilizationHourlyModel from "./ec2/ec2_instance_utilization_hourly.js";
 import createEc2InstanceUtilizationDailyModel from "./ec2/ec2_instance_utilization_daily.js";
@@ -124,6 +127,9 @@ const BudgetAlerts = createBudgetAlertsModel(sequelize);
 const AggCostHourly = createAggCostHourlyModel(sequelize);
 const AggCostDaily = createAggCostDailyModel(sequelize);
 const AggCostMonthly = createAggCostMonthlyModel(sequelize);
+const CostPeriodStatus = createCostPeriodStatusModel(sequelize);
+const Ec2CostHistoryDaily = createEc2CostHistoryDailyModel(sequelize);
+const Ec2CostHistoryMonthly = createEc2CostHistoryMonthlyModel(sequelize);
 const Ec2InstanceInventorySnapshot = createEc2InstanceInventorySnapshotModel(sequelize);
 const Ec2InstanceUtilizationHourly = createEc2InstanceUtilizationHourlyModel(sequelize);
 const Ec2InstanceUtilizationDaily = createEc2InstanceUtilizationDailyModel(sequelize);
@@ -450,6 +456,37 @@ AggCostMonthly.belongsTo(CloudProvider, { foreignKey: "providerId" });
 User.hasMany(AggCostMonthly, { foreignKey: "uploadedBy" });
 AggCostMonthly.belongsTo(User, { foreignKey: "uploadedBy" });
 
+Tenant.hasMany(CostPeriodStatus, { foreignKey: "tenantId" });
+CostPeriodStatus.belongsTo(Tenant, { foreignKey: "tenantId" });
+CloudProvider.hasMany(CostPeriodStatus, { foreignKey: "providerId" });
+CostPeriodStatus.belongsTo(CloudProvider, { foreignKey: "providerId" });
+BillingSource.hasMany(CostPeriodStatus, { foreignKey: "billingSourceId" });
+CostPeriodStatus.belongsTo(BillingSource, { foreignKey: "billingSourceId" });
+BillingIngestionRun.hasMany(CostPeriodStatus, { foreignKey: "sourceIngestionRunId" });
+CostPeriodStatus.belongsTo(BillingIngestionRun, { foreignKey: "sourceIngestionRunId" });
+
+Tenant.hasMany(Ec2CostHistoryDaily, { foreignKey: "tenantId" });
+Ec2CostHistoryDaily.belongsTo(Tenant, { foreignKey: "tenantId" });
+CloudProvider.hasMany(Ec2CostHistoryDaily, { foreignKey: "providerId" });
+Ec2CostHistoryDaily.belongsTo(CloudProvider, { foreignKey: "providerId" });
+BillingSource.hasMany(Ec2CostHistoryDaily, { foreignKey: "billingSourceId" });
+Ec2CostHistoryDaily.belongsTo(BillingSource, { foreignKey: "billingSourceId" });
+CloudConnectionV2.hasMany(Ec2CostHistoryDaily, { foreignKey: "cloudConnectionId" });
+Ec2CostHistoryDaily.belongsTo(CloudConnectionV2, { foreignKey: "cloudConnectionId" });
+BillingIngestionRun.hasMany(Ec2CostHistoryDaily, { foreignKey: "ingestionRunId" });
+Ec2CostHistoryDaily.belongsTo(BillingIngestionRun, { foreignKey: "ingestionRunId" });
+
+Tenant.hasMany(Ec2CostHistoryMonthly, { foreignKey: "tenantId" });
+Ec2CostHistoryMonthly.belongsTo(Tenant, { foreignKey: "tenantId" });
+CloudProvider.hasMany(Ec2CostHistoryMonthly, { foreignKey: "providerId" });
+Ec2CostHistoryMonthly.belongsTo(CloudProvider, { foreignKey: "providerId" });
+BillingSource.hasMany(Ec2CostHistoryMonthly, { foreignKey: "billingSourceId" });
+Ec2CostHistoryMonthly.belongsTo(BillingSource, { foreignKey: "billingSourceId" });
+CloudConnectionV2.hasMany(Ec2CostHistoryMonthly, { foreignKey: "cloudConnectionId" });
+Ec2CostHistoryMonthly.belongsTo(CloudConnectionV2, { foreignKey: "cloudConnectionId" });
+BillingIngestionRun.hasMany(Ec2CostHistoryMonthly, { foreignKey: "ingestionRunId" });
+Ec2CostHistoryMonthly.belongsTo(BillingIngestionRun, { foreignKey: "ingestionRunId" });
+
 Tenant.hasMany(Budgets, { foreignKey: "tenantId" });
 Budgets.belongsTo(Tenant, { foreignKey: "tenantId" });
 CloudConnectionV2.hasMany(Budgets, { foreignKey: "cloudConnectionId" });
@@ -523,6 +560,9 @@ export {
   AggCostHourly,
   AggCostDaily,
   AggCostMonthly,
+  CostPeriodStatus,
+  Ec2CostHistoryDaily,
+  Ec2CostHistoryMonthly,
   Ec2InstanceInventorySnapshot,
   Ec2InstanceUtilizationHourly,
   Ec2InstanceUtilizationDaily,

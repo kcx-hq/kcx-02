@@ -6,7 +6,6 @@ import {
   CloudConnectionsIcon,
   MeetingIcon,
   TicketIcon,
-  UserIcon,
 } from "@/shared/ui/icons"
 
 export type AdminNavItem = {
@@ -40,12 +39,6 @@ export const ADMIN_NAV: AdminNavItem[] = [
     to: "/billing-uploads",
     Icon: BillingUploadsIcon,
     description: "Upload, validate, reconcile",
-  },
-  {
-    label: "Users & Roles",
-    to: "/user",
-    Icon: UserIcon,
-    description: "Access, roles, onboarding",
   },
   {
     label: "Announcements",
