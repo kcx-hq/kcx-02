@@ -12,6 +12,7 @@ import ReportPage from "../pages/report/ReportPage";
 import InventoryInstancesPage from "../pages/inventory/InventoryInstancesPage";
 import AwsInventoryPage from "../pages/inventory/AwsInventoryPage";
 import EC2CostPage from "../pages/ec2/EC2CostPage";
+import EC2OverviewPage from "../pages/ec2/EC2OverviewPage";
 import EC2UsagePage from "../pages/ec2/EC2UsagePage";
 import EC2UsageHoursPage from "../pages/ec2/EC2UsageHoursPage";
 import "../styles/tokens.css";
@@ -59,20 +60,6 @@ function DashboardInventoryRedirect() {
   );
 }
 
-function DashboardEC2Redirect() {
-  const location = useLocation();
-
-  return (
-    <Navigate
-      to={{
-        pathname: "/dashboard/ec2/cost",
-        search: location.search,
-      }}
-      replace
-    />
-  );
-}
-
 function DashboardInventoryEc2Redirect() {
   const location = useLocation();
 
@@ -98,7 +85,7 @@ export default function DashboardRoutes() {
         <Route path="cost/explorer" element={<CostExplorerPage />} />
         <Route path="cost/history" element={<CostHistoryPage />} />
         <Route path="cost-explorer" element={<DashboardCostRedirect />} />
-        <Route path="ec2" element={<DashboardEC2Redirect />} />
+        <Route path="ec2" element={<EC2OverviewPage />} />
         <Route path="ec2/cost" element={<EC2CostPage />} />
         <Route path="ec2/usage" element={<EC2UsagePage />} />
         <Route path="ec2/instance-hours" element={<EC2UsageHoursPage />} />

@@ -5,6 +5,8 @@ import {
   type AnomaliesListResponse,
   type CostExplorerFiltersQuery,
   type DashboardResolvedScope,
+  type Ec2OverviewFiltersQuery,
+  type Ec2OverviewResponse,
   type Ec2InstanceUsageFiltersQuery,
   type Ec2InstanceHoursFiltersQuery,
   type Ec2InstanceHoursResponse,
@@ -254,6 +256,15 @@ export function useEc2InstanceUsageQuery(filters?: Ec2InstanceUsageFiltersQuery)
   return useQuery<Ec2InstanceUsageResponse, Error>({
     queryKey: ["dashboard", "ec2", "instance-usage", scope, filters],
     queryFn: () => dashboardApi.getEc2InstanceUsage(assertScope(scope), filters),
+    enabled: Boolean(scope),
+  });
+}
+
+export function useEc2OverviewQuery(filters?: Ec2OverviewFiltersQuery) {
+  const { scope } = useDashboardScope();
+  return useQuery<Ec2OverviewResponse, Error>({
+    queryKey: ["dashboard", "ec2", "overview", scope, filters],
+    queryFn: () => dashboardApi.getEc2Overview(assertScope(scope), filters),
     enabled: Boolean(scope),
   });
 }
