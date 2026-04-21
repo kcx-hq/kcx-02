@@ -1,5 +1,5 @@
-import { Ec2InstanceDailyStateRepository } from "../src/features/ec2/scheduled-jobs/handlers/ec2-instance-daily-state.repository.js";
 import { Ec2InstanceUtilizationDailyRepository } from "../src/features/ec2/scheduled-jobs/handlers/ec2-instance-utilization-daily.repository.js";
+import { syncEc2InstanceDailyFact } from "../src/features/ec2/scheduled-jobs/handlers/ec2-instance-daily-fact.service.js";
 import { CloudConnectionV2, sequelize } from "../src/models/index.js";
 
 type CliOptions = {
@@ -93,8 +93,6 @@ async function main(): Promise<void> {
   });
 
   const utilizationRepository = new Ec2InstanceUtilizationDailyRepository();
-  const stateRepository = new Ec2InstanceDailyStateRepository();
-
   for (const connection of connections) {
     const cloudConnectionId = String(connection.id);
     const tenantId = connection.tenantId ? String(connection.tenantId) : null;
@@ -108,31 +106,12 @@ async function main(): Promise<void> {
       endDate,
     });
 
-    const inventory = await stateRepository.populateFromInventorySnapshots({
+    const fact = await syncEc2InstanceDailyFact({
       cloudConnectionId,
       tenantId,
       providerId,
       startDate,
       endDate,
-      source: "ec2_inventory_sync",
-    });
-
-    const usage = await stateRepository.populateUsageFromUtilizationDaily({
-      cloudConnectionId,
-      tenantId,
-      providerId,
-      startDate,
-      endDate,
-      source: "ec2_utilization_daily",
-    });
-
-    const costs = await stateRepository.populateUsageFromCostHistory({
-      cloudConnectionId,
-      tenantId,
-      providerId,
-      startDate,
-      endDate,
-      source: "ec2_cost_history",
     });
 
     console.info("Backfilled cloud connection", {
@@ -141,12 +120,7 @@ async function main(): Promise<void> {
       providerId,
       hourlySourceRows: utilization.hourlySourceRows,
       dailyRowsUpserted: utilization.dailyRowsUpserted,
-      inventorySourceRows: inventory.inventorySourceRows,
-      factRowsUpserted: inventory.factRowsUpserted,
-      usageSourceRows: usage.usageSourceRows,
-      factUsageRowsUpserted: usage.factRowsUpserted,
-      costSourceRows: costs.costSourceRows,
-      factCostRowsUpserted: costs.factRowsUpserted,
+      factDailyRowsUpserted: fact.rowsUpserted,
     });
   }
 

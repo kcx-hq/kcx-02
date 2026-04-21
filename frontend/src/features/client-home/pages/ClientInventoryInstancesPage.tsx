@@ -177,14 +177,6 @@ export function ClientInventoryInstancesPage() {
   return (
     <section aria-label="Inventory AWS EC2 Instances" className="space-y-4">
       <Card className="rounded-[14px] border-[color:var(--border-light)] bg-[#f7fbfb] shadow-sm-custom">
-        <div className="space-y-3 border-b border-[color:var(--border-light)] px-6 py-5">
-          <p className="kcx-eyebrow text-brand-primary">Inventory</p>
-          <h1 className="text-[2rem] font-semibold leading-tight text-text-primary">AWS / EC2 / Instances</h1>
-          <p className="max-w-3xl text-sm text-text-secondary">
-            Current EC2 instance inventory composed from synced infrastructure, utilization, and cost data.
-          </p>
-        </div>
-
         <div className="grid grid-cols-1 border-b border-[color:var(--border-light)] md:grid-cols-4">
           <div className="min-h-[96px] px-6 py-4">
             <div className="flex items-start justify-between gap-3">

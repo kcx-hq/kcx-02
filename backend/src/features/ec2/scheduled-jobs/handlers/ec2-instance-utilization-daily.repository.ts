@@ -63,6 +63,9 @@ export class Ec2InstanceUtilizationDailyRepository {
           provider_id,
           instance_id,
           usage_date,
+          resource_key,
+          region_key,
+          sub_account_key,
 
           cpu_avg,
           cpu_max,
@@ -102,6 +105,9 @@ export class Ec2InstanceUtilizationDailyRepository {
           provider_id,
           instance_id,
           usage_date,
+          (ARRAY_AGG(resource_key ORDER BY hour_start DESC) FILTER (WHERE resource_key IS NOT NULL))[1] AS resource_key,
+          (ARRAY_AGG(region_key ORDER BY hour_start DESC) FILTER (WHERE region_key IS NOT NULL))[1] AS region_key,
+          (ARRAY_AGG(sub_account_key ORDER BY hour_start DESC) FILTER (WHERE sub_account_key IS NOT NULL))[1] AS sub_account_key,
 
           AVG(cpu_avg) AS cpu_avg,
           MAX(cpu_max) AS cpu_max,
@@ -146,6 +152,9 @@ export class Ec2InstanceUtilizationDailyRepository {
           tenant_id = EXCLUDED.tenant_id,
           cloud_connection_id = EXCLUDED.cloud_connection_id,
           provider_id = EXCLUDED.provider_id,
+          resource_key = COALESCE(EXCLUDED.resource_key, ec2_instance_utilization_daily.resource_key),
+          region_key = COALESCE(EXCLUDED.region_key, ec2_instance_utilization_daily.region_key),
+          sub_account_key = COALESCE(EXCLUDED.sub_account_key, ec2_instance_utilization_daily.sub_account_key),
 
           cpu_avg = EXCLUDED.cpu_avg,
           cpu_max = EXCLUDED.cpu_max,

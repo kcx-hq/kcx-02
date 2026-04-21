@@ -104,6 +104,7 @@ export default function DashboardRoutes() {
         <Route path="ec2/cost" element={<EC2CostPage />} />
         <Route path="ec2/usage" element={<EC2UsagePage />} />
         <Route path="ec2/instance-hours" element={<EC2UsageHoursPage />} />
+        <Route path="ec2/anomaly-detection" element={<AnomaliesAlertsPage />} />
         <Route path="resources" element={<ResourcesPage />} />
         <Route path="allocation" element={<AllocationPage />} />
         <Route path="optimization" element={<OptimizationPage />} />

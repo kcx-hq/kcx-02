@@ -211,9 +211,21 @@ export function DashboardGlobalHeader() {
   });
   const uploadHistoryQuery = useTenantUploadHistory(scope?.scopeType === "upload");
 
-  const currentLabel = useMemo(() => {
-    const match = dashboardNavLinks.find((item) => location.pathname.startsWith(item.path));
-    return match?.label ?? "Overview Dashboard";
+  const breadcrumbs = useMemo(() => {
+    const path = location.pathname;
+
+    if (path.startsWith("/dashboard/inventory/aws/ec2/instances")) {
+      return [rootCrumb, "Services", "EC2", "Instances"];
+    }
+    if (path.startsWith("/dashboard/ec2/anomaly-detection")) {
+      return [rootCrumb, "Services", "EC2", "Anomaly Detection"];
+    }
+
+    const bestMatch = dashboardNavLinks
+      .filter((item) => path.startsWith(item.path))
+      .sort((a, b) => b.path.length - a.path.length)[0];
+
+    return [rootCrumb, bestMatch?.label ?? "Overview Dashboard"];
   }, [location.pathname]);
 
   const uploadedFileLabel = useMemo(() => {
@@ -382,11 +394,21 @@ export function DashboardGlobalHeader() {
     <>
       <header className="dashboard-global-header">
         <nav className="dashboard-global-header__breadcrumbs" aria-label="Breadcrumb">
-          <span className="dashboard-breadcrumb dashboard-breadcrumb--muted">{rootCrumb}</span>
-          <span className="dashboard-breadcrumb__separator" aria-hidden="true">
-            /
-          </span>
-          <span className="dashboard-breadcrumb dashboard-breadcrumb--current">{currentLabel}</span>
+          {breadcrumbs.map((crumb, index) => {
+            const isCurrent = index === breadcrumbs.length - 1;
+            return (
+              <span key={`${crumb}-${index}`}>
+                {index > 0 ? (
+                  <span className="dashboard-breadcrumb__separator" aria-hidden="true">
+                    /
+                  </span>
+                ) : null}
+                <span className={isCurrent ? "dashboard-breadcrumb dashboard-breadcrumb--current" : "dashboard-breadcrumb dashboard-breadcrumb--muted"}>
+                  {crumb}
+                </span>
+              </span>
+            );
+          })}
         </nav>
 
         <div className="dashboard-global-header__center">

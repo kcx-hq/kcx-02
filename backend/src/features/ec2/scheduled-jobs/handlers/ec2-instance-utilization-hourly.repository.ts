@@ -35,6 +35,9 @@ const buildUpsertSql = (rows: UtilizationHourlyRow[]): { sql: string; bind: unkn
     "instance_id",
     "hour_start",
     "usage_date",
+    "resource_key",
+    "region_key",
+    "sub_account_key",
     "metric_source",
     "cpu_avg",
     "cpu_max",
@@ -80,6 +83,9 @@ const buildUpsertSql = (rows: UtilizationHourlyRow[]): { sql: string; bind: unkn
     push(row.instanceId);
     push(row.hourStart);
     push(row.usageDate);
+    push(row.resourceKey);
+    push(row.regionKey);
+    push(row.subAccountKey);
     push(row.metricSource);
     push(row.cpuAvg);
     push(row.cpuMax);
@@ -119,6 +125,9 @@ const buildUpsertSql = (rows: UtilizationHourlyRow[]): { sql: string; bind: unkn
       cloud_connection_id = COALESCE(EXCLUDED.cloud_connection_id, ec2_instance_utilization_hourly.cloud_connection_id),
       provider_id = COALESCE(EXCLUDED.provider_id, ec2_instance_utilization_hourly.provider_id),
       usage_date = EXCLUDED.usage_date,
+      resource_key = COALESCE(EXCLUDED.resource_key, ec2_instance_utilization_hourly.resource_key),
+      region_key = COALESCE(EXCLUDED.region_key, ec2_instance_utilization_hourly.region_key),
+      sub_account_key = COALESCE(EXCLUDED.sub_account_key, ec2_instance_utilization_hourly.sub_account_key),
       metric_source = COALESCE(EXCLUDED.metric_source, ec2_instance_utilization_hourly.metric_source),
 
       cpu_avg = COALESCE(EXCLUDED.cpu_avg, ec2_instance_utilization_hourly.cpu_avg),

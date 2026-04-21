@@ -3,7 +3,14 @@ import { QueryTypes } from "sequelize";
 import type { Transaction } from "sequelize";
 
 import env from "../../../../config/env.js";
-import { CloudConnectionV2, Ec2InstanceInventorySnapshot, sequelize } from "../../../../models/index.js";
+import {
+  CloudConnectionV2,
+  DimRegion,
+  DimResource,
+  DimSubAccount,
+  Ec2InstanceInventorySnapshot,
+  sequelize,
+} from "../../../../models/index.js";
 import { logger } from "../../../../utils/logger.js";
 import { assumeRole } from "../../../cloud-connections/aws/infrastructure/aws-sts.service.js";
 import type { ScheduledJob } from "../../../../models/ec2/scheduled_jobs.js";
@@ -15,6 +22,8 @@ type AwsConnectionContext = {
   actionRoleArn: string;
   externalId: string | null;
   defaultRegion: string;
+  subAccountId: string | null;
+  subAccountName: string | null;
 };
 
 type RegionInfo = {
@@ -27,6 +36,9 @@ type SnapshotRowInput = {
   cloudConnectionId: string | null;
   providerId: string | null;
   instanceId: string;
+  resourceKey: string | null;
+  regionKey: string | null;
+  subAccountKey: string | null;
   instanceType: string | null;
   state: string | null;
   launchTime: Date | null;
@@ -48,6 +60,197 @@ type SnapshotRowInput = {
 };
 
 const normalizeTrim = (value: string | null | undefined): string => String(value ?? "").trim();
+const isUniqueViolation = (error: unknown): boolean => {
+  const msg = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
+  return msg.includes("duplicate key value violates unique constraint");
+};
+
+type InventoryDimensionCache = {
+  resourceByInstanceId: Map<string, string | null>;
+  regionByRegionAz: Map<string, string | null>;
+  subAccountByExternalId: Map<string, string | null>;
+};
+
+const createInventoryDimensionCache = (): InventoryDimensionCache => ({
+  resourceByInstanceId: new Map(),
+  regionByRegionAz: new Map(),
+  subAccountByExternalId: new Map(),
+});
+
+const resolveSubAccountKey = async (input: {
+  tenantId: string | null;
+  providerId: string | null;
+  subAccountId: string | null;
+  subAccountName: string | null;
+  cache: InventoryDimensionCache;
+}): Promise<string | null> => {
+  const tenantId = normalizeTrim(input.tenantId);
+  const providerId = normalizeTrim(input.providerId);
+  const subAccountId = normalizeTrim(input.subAccountId);
+  if (!tenantId || !providerId || !subAccountId) return null;
+
+  const cacheKey = `${tenantId}|${providerId}|${subAccountId}`;
+  if (input.cache.subAccountByExternalId.has(cacheKey)) {
+    return input.cache.subAccountByExternalId.get(cacheKey) ?? null;
+  }
+
+  const where = { tenantId, providerId, subAccountId };
+  const existing = await DimSubAccount.findOne({ where });
+  if (existing) {
+    const id = String(existing.id);
+    input.cache.subAccountByExternalId.set(cacheKey, id);
+    return id;
+  }
+
+  try {
+    const created = await DimSubAccount.create({
+      tenantId,
+      providerId,
+      subAccountId,
+      subAccountName: normalizeTrim(input.subAccountName) || null,
+    });
+    const id = String(created.id);
+    input.cache.subAccountByExternalId.set(cacheKey, id);
+    return id;
+  } catch (error) {
+    if (!isUniqueViolation(error)) throw error;
+    const retried = await DimSubAccount.findOne({ where });
+    const id = retried ? String(retried.id) : null;
+    input.cache.subAccountByExternalId.set(cacheKey, id);
+    return id;
+  }
+};
+
+const resolveRegionKey = async (input: {
+  providerId: string | null;
+  region: string;
+  availabilityZone: string | null;
+  cache: InventoryDimensionCache;
+}): Promise<string | null> => {
+  const providerId = normalizeTrim(input.providerId);
+  const region = normalizeTrim(input.region);
+  const az = normalizeTrim(input.availabilityZone) || null;
+  if (!providerId || !region) return null;
+
+  const cacheKey = `${providerId}|${region}|${az ?? ""}`;
+  if (input.cache.regionByRegionAz.has(cacheKey)) {
+    return input.cache.regionByRegionAz.get(cacheKey) ?? null;
+  }
+
+  const candidates = [
+    { providerId, regionId: region, availabilityZone: az },
+    { providerId, regionId: region, availabilityZone: null },
+    { providerId, regionName: region, availabilityZone: az },
+    { providerId, regionName: region, availabilityZone: null },
+  ] as const;
+
+  for (const where of candidates) {
+    const existing = await DimRegion.findOne({ where });
+    if (existing) {
+      const id = String(existing.id);
+      input.cache.regionByRegionAz.set(cacheKey, id);
+      return id;
+    }
+  }
+
+  try {
+    const created = await DimRegion.create({
+      providerId,
+      regionId: region,
+      regionName: region,
+      availabilityZone: az,
+    });
+    const id = String(created.id);
+    input.cache.regionByRegionAz.set(cacheKey, id);
+    return id;
+  } catch (error) {
+    if (!isUniqueViolation(error)) throw error;
+    const retried = await DimRegion.findOne({
+      where: { providerId, regionId: region, availabilityZone: az },
+    });
+    const id = retried ? String(retried.id) : null;
+    input.cache.regionByRegionAz.set(cacheKey, id);
+    return id;
+  }
+};
+
+const resolveResourceKey = async (input: {
+  tenantId: string | null;
+  providerId: string | null;
+  instanceId: string;
+  instanceName: string | null;
+  cache: InventoryDimensionCache;
+}): Promise<string | null> => {
+  const tenantId = normalizeTrim(input.tenantId);
+  const providerId = normalizeTrim(input.providerId);
+  const instanceId = normalizeTrim(input.instanceId);
+  if (!tenantId || !providerId || !instanceId) return null;
+
+  const cacheKey = `${tenantId}|${providerId}|${instanceId}`;
+  if (input.cache.resourceByInstanceId.has(cacheKey)) {
+    return input.cache.resourceByInstanceId.get(cacheKey) ?? null;
+  }
+
+  const where = { tenantId, providerId, resourceId: instanceId };
+  const existing = await DimResource.findOne({ where });
+  if (existing) {
+    const id = String(existing.id);
+    input.cache.resourceByInstanceId.set(cacheKey, id);
+    return id;
+  }
+
+  try {
+    const created = await DimResource.create({
+      tenantId,
+      providerId,
+      resourceId: instanceId,
+      resourceName: normalizeTrim(input.instanceName) || instanceId,
+      resourceType: "ec2_instance",
+    });
+    const id = String(created.id);
+    input.cache.resourceByInstanceId.set(cacheKey, id);
+    return id;
+  } catch (error) {
+    if (!isUniqueViolation(error)) throw error;
+    const retried = await DimResource.findOne({ where });
+    const id = retried ? String(retried.id) : null;
+    input.cache.resourceByInstanceId.set(cacheKey, id);
+    return id;
+  }
+};
+
+const enrichSnapshotsWithDimensionKeys = async (input: {
+  rows: SnapshotRowInput[];
+  context: AwsConnectionContext;
+  cache: InventoryDimensionCache;
+  region: string;
+}): Promise<void> => {
+  for (const row of input.rows) {
+    const tagName =
+      row.tagsJson && typeof row.tagsJson.Name === "string" ? normalizeTrim(String(row.tagsJson.Name)) : null;
+
+    row.subAccountKey = await resolveSubAccountKey({
+      tenantId: input.context.tenantId,
+      providerId: input.context.providerId,
+      subAccountId: input.context.subAccountId,
+      subAccountName: input.context.subAccountName,
+      cache: input.cache,
+    });
+    row.regionKey = await resolveRegionKey({
+      providerId: input.context.providerId,
+      region: input.region,
+      availabilityZone: row.availabilityZone,
+      cache: input.cache,
+    });
+    row.resourceKey = await resolveResourceKey({
+      tenantId: input.context.tenantId,
+      providerId: input.context.providerId,
+      instanceId: row.instanceId,
+      instanceName: tagName,
+      cache: input.cache,
+    });
+  }
+};
 
 const toTagMap = (tags: Tag[] | undefined): Record<string, string> | null => {
   if (!tags || tags.length === 0) return null;
@@ -147,6 +350,8 @@ const resolveAwsConnectionContextForJob = async (job: ScheduledJob): Promise<Aws
     actionRoleArn: roleArn,
     externalId: connection.externalId ? String(connection.externalId) : null,
     defaultRegion,
+    subAccountId: normalizeTrim(connection.cloudAccountId) || normalizeTrim(connection.payerAccountId) || null,
+    subAccountName: normalizeTrim(connection.connectionName) || null,
   };
 };
 
@@ -235,6 +440,9 @@ const toSnapshotRow = (input: {
     cloudConnectionId: input.context.connectionId,
     providerId: input.context.providerId,
     instanceId,
+    resourceKey: null,
+    regionKey: null,
+    subAccountKey: null,
     instanceType: input.instance.InstanceType ? String(input.instance.InstanceType) : null,
     state: input.instance.State?.Name ? String(input.instance.State.Name) : null,
     launchTime: input.instance.LaunchTime ?? null,
@@ -316,6 +524,7 @@ export async function syncEc2InventoryForScheduledJob(job: ScheduledJob): Promis
 
   let totalInstances = 0;
   let totalInserted = 0;
+  const dimensionCache = createInventoryDimensionCache();
 
   for (const region of enabledRegions) {
     const regionName = region.region;
@@ -351,6 +560,12 @@ export async function syncEc2InventoryForScheduledJob(job: ScheduledJob): Promis
       }
 
       const instanceIds = snapshotRows.map((row) => row.instanceId);
+      await enrichSnapshotsWithDimensionKeys({
+        rows: snapshotRows,
+        context,
+        cache: dimensionCache,
+        region: regionName,
+      });
 
       const insertedForRegion = await sequelize.transaction(async (transaction) => {
         await markOlderSnapshotsNotCurrent({
