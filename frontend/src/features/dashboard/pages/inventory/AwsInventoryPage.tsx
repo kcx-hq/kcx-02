@@ -22,6 +22,12 @@ const serviceGroups: InventoryServiceGroup[] = [
         label: "AMIs",
         placeholder: true,
       },
+      {
+        id: "ec2-anomaly-detection",
+        label: "Anomaly Detection",
+        href: "/dashboard/ec2/anomaly-detection",
+        matchPrefixes: ["/dashboard/ec2/anomaly-detection"],
+      },
     ],
   },
   {
