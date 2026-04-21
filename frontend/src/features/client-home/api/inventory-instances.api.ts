@@ -5,6 +5,8 @@ export type InventoryEc2InstanceRow = {
   instanceName: string
   state: string | null
   instanceType: string | null
+  subAccountKey: string | null
+  subAccountName: string | null
   availabilityZone: string | null
   launchTime: string | null
   privateIpAddress: string | null
@@ -14,6 +16,11 @@ export type InventoryEc2InstanceRow = {
   isIdleCandidate: boolean | null
   isUnderutilizedCandidate: boolean | null
   isOverutilizedCandidate: boolean | null
+  pricingType: "on_demand" | "reserved" | "savings_plan" | "spot" | "other" | null
+  totalHours: number
+  computeCost: number
+  coveredHours: number
+  uncoveredHours: number
   monthToDateCost: number
   latestDailyCost: number | null
   imageId: string | null
@@ -42,9 +49,14 @@ export type InventoryEc2InstancesListResponse = {
 
 export type InventoryEc2InstancesListParams = {
   cloudConnectionId?: string | null
+  subAccountKey?: string | null
   state?: string | null
+  region?: string | null
   instanceType?: string | null
+  pricingType?: "on_demand" | "reserved" | "savings_plan" | "spot" | null
   search?: string | null
+  startDate?: string | null
+  endDate?: string | null
   page?: number
   pageSize?: number
 }
@@ -80,12 +92,23 @@ const normalizeInstanceRow = (value: unknown): InventoryEc2InstanceRow | null =>
   if (!instanceId) return null
 
   const monthToDateCost = toNumberOrNull(value.monthToDateCost) ?? 0
+  const rawPricingType = toStringOrNull(value.pricingType)
+  const pricingType =
+    rawPricingType === "on_demand" ||
+    rawPricingType === "reserved" ||
+    rawPricingType === "savings_plan" ||
+    rawPricingType === "spot" ||
+    rawPricingType === "other"
+      ? (rawPricingType as InventoryEc2InstanceRow["pricingType"])
+      : null
 
   return {
     instanceId,
     instanceName: toStringOrNull(value.instanceName) ?? instanceId,
     state: toStringOrNull(value.state),
     instanceType: toStringOrNull(value.instanceType),
+    subAccountKey: toStringOrNull(value.subAccountKey),
+    subAccountName: toStringOrNull(value.subAccountName),
     availabilityZone: toStringOrNull(value.availabilityZone),
     launchTime: toStringOrNull(value.launchTime),
     privateIpAddress: toStringOrNull(value.privateIpAddress),
@@ -95,6 +118,11 @@ const normalizeInstanceRow = (value: unknown): InventoryEc2InstanceRow | null =>
     isIdleCandidate: toBooleanOrNull(value.isIdleCandidate),
     isUnderutilizedCandidate: toBooleanOrNull(value.isUnderutilizedCandidate),
     isOverutilizedCandidate: toBooleanOrNull(value.isOverutilizedCandidate),
+    pricingType,
+    totalHours: toNumberOrNull(value.totalHours) ?? 0,
+    computeCost: toNumberOrNull(value.computeCost) ?? 0,
+    coveredHours: toNumberOrNull(value.coveredHours) ?? 0,
+    uncoveredHours: toNumberOrNull(value.uncoveredHours) ?? 0,
     monthToDateCost,
     latestDailyCost: toNumberOrNull(value.latestDailyCost),
     imageId: toStringOrNull(value.imageId),
@@ -162,9 +190,14 @@ export async function getInventoryEc2Instances(
   searchParams.set("pageSize", String(pageSize))
 
   if (params.cloudConnectionId) searchParams.set("cloudConnectionId", params.cloudConnectionId)
+  if (params.subAccountKey) searchParams.set("subAccountKey", params.subAccountKey)
   if (params.state) searchParams.set("state", params.state)
+  if (params.region) searchParams.set("region", params.region)
   if (params.instanceType) searchParams.set("instanceType", params.instanceType)
+  if (params.pricingType) searchParams.set("pricingType", params.pricingType)
   if (params.search) searchParams.set("search", params.search)
+  if (params.startDate) searchParams.set("startDate", params.startDate)
+  if (params.endDate) searchParams.set("endDate", params.endDate)
 
   const path = `/inventory/aws/ec2/instances?${searchParams.toString()}`
   const response = await apiGet<unknown>(path)

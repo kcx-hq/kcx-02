@@ -16,6 +16,7 @@ import EC2OverviewPage from "../pages/ec2/EC2OverviewPage";
 import EC2UsagePage from "../pages/ec2/EC2UsagePage";
 import EC2UsageHoursPage from "../pages/ec2/EC2UsageHoursPage";
 import EC2VolumesPage from "../pages/ec2/EC2VolumesPage";
+import DashboardEC2Redirect from "../pages/ec2/EC2OverviewPage"
 import "../styles/tokens.css";
 import "../styles/dashboard.css";
 
