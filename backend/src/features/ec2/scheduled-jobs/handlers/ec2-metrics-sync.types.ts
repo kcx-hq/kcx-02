@@ -19,6 +19,9 @@ export type UtilizationHourlyRow = {
   instanceId: string;
   hourStart: Date;
   usageDate: string;
+  resourceKey: string | null;
+  regionKey: string | null;
+  subAccountKey: string | null;
   metricSource: "cloudwatch";
   sampleCount: number;
   cpuAvg: string | null;

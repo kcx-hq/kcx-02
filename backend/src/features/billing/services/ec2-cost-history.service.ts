@@ -1,6 +1,9 @@
 import { QueryTypes, Transaction } from "sequelize";
 
 import { sequelize } from "../../../models/index.js";
+import { syncEc2InstanceCostDaily } from "../../ec2/scheduled-jobs/handlers/ec2-instance-cost-daily.service.js";
+import { syncEc2InstanceCoverageDaily } from "../../ec2/scheduled-jobs/handlers/ec2-instance-coverage-daily.service.js";
+import { syncEc2InstanceDailyFact } from "../../ec2/scheduled-jobs/handlers/ec2-instance-daily-fact.service.js";
 
 type PeriodStatus = "open" | "frozen" | "adjusted";
 
@@ -106,6 +109,12 @@ END
 `;
 
 const toMonthStart = (value: string): string => `${value.slice(0, 7)}-01`;
+const toMonthEnd = (value: string): string => {
+  const start = new Date(`${toMonthStart(value)}T00:00:00.000Z`);
+  const nextMonthStart = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 1));
+  const end = new Date(nextMonthStart.getTime() - 24 * 60 * 60 * 1000);
+  return end.toISOString().slice(0, 10);
+};
 const toSnapshotVersion = (value: number | string): number => {
   const parsed = Number(value);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : 1;
@@ -631,6 +640,9 @@ async function syncEc2CostHistoryForIngestionRun({
   affectedMonths: string[];
   rebuiltMonths: string[];
   skippedMonths: Array<{ monthStart: string; status: PeriodStatus }>;
+  factCostRowsUpserted: number;
+  factCoverageRowsUpserted: number;
+  factDailyRowsUpserted: number;
 }> {
   const normalized = {
     ingestionRunId: String(ingestionRunId),
@@ -644,7 +656,14 @@ async function syncEc2CostHistoryForIngestionRun({
   });
 
   if (affectedMonths.length === 0) {
-    return { affectedMonths: [], rebuiltMonths: [], skippedMonths: [] };
+    return {
+      affectedMonths: [],
+      rebuiltMonths: [],
+      skippedMonths: [],
+      factCostRowsUpserted: 0,
+      factCoverageRowsUpserted: 0,
+      factDailyRowsUpserted: 0,
+    };
   }
 
   await ensurePeriodStatusRows({
@@ -657,6 +676,9 @@ async function syncEc2CostHistoryForIngestionRun({
 
   const rebuiltMonths: string[] = [];
   const skippedMonths: Array<{ monthStart: string; status: PeriodStatus }> = [];
+  let factCostRowsUpserted = 0;
+  let factCoverageRowsUpserted = 0;
+  let factDailyRowsUpserted = 0;
 
   for (const monthStart of affectedMonths) {
     const periodStatus = await getPeriodStatusRow({
@@ -709,10 +731,39 @@ async function syncEc2CostHistoryForIngestionRun({
     rebuiltMonths.push(monthStart);
   }
 
+  for (const monthStart of rebuiltMonths) {
+    const startDate = toMonthStart(monthStart);
+    const endDate = toMonthEnd(monthStart);
+
+    const costSyncResult = await syncEc2InstanceCostDaily({
+      tenantId: normalized.tenantId,
+      startDate,
+      endDate,
+    });
+    factCostRowsUpserted += costSyncResult.rowsUpserted;
+
+    const coverageSyncResult = await syncEc2InstanceCoverageDaily({
+      tenantId: normalized.tenantId,
+      startDate,
+      endDate,
+    });
+    factCoverageRowsUpserted += coverageSyncResult.rowsUpserted;
+
+    const dailyFactSyncResult = await syncEc2InstanceDailyFact({
+      tenantId: normalized.tenantId,
+      startDate,
+      endDate,
+    });
+    factDailyRowsUpserted += dailyFactSyncResult.rowsUpserted;
+  }
+
   return {
     affectedMonths,
     rebuiltMonths,
     skippedMonths,
+    factCostRowsUpserted,
+    factCoverageRowsUpserted,
+    factDailyRowsUpserted,
   };
 }
 

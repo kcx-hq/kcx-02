@@ -32,6 +32,9 @@ class Ec2CostHistoryDaily extends Model<
   declare listCost: CreationOptional<string>;
   declare usageQuantity: CreationOptional<string>;
   declare currencyCode: CreationOptional<string>;
+  declare allocationScope: CreationOptional<string | null>;
+  declare isSharedCost: CreationOptional<boolean>;
+  declare allocationMethod: CreationOptional<string | null>;
   declare ingestionRunId: CreationOptional<string | null>;
   declare snapshotVersion: CreationOptional<number>;
   declare createdAt: CreationOptional<Date>;
@@ -62,6 +65,9 @@ const createEc2CostHistoryDailyModel = (sequelize: Sequelize): typeof Ec2CostHis
       listCost: { type: DataTypes.DECIMAL(18, 6), allowNull: false, defaultValue: 0, field: "list_cost" },
       usageQuantity: { type: DataTypes.DECIMAL(18, 6), allowNull: false, defaultValue: 0, field: "usage_quantity" },
       currencyCode: { type: DataTypes.STRING(10), allowNull: false, defaultValue: "USD", primaryKey: true, field: "currency_code" },
+      allocationScope: { type: DataTypes.STRING(30), allowNull: true, field: "allocation_scope" },
+      isSharedCost: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false, field: "is_shared_cost" },
+      allocationMethod: { type: DataTypes.STRING(50), allowNull: true, field: "allocation_method" },
       ingestionRunId: { type: DataTypes.BIGINT, allowNull: true, field: "ingestion_run_id" },
       snapshotVersion: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 1, primaryKey: true, field: "snapshot_version" },
       createdAt: { type: DataTypes.DATE, allowNull: false, defaultValue: sequelize.literal("NOW()"), field: "created_at" },
