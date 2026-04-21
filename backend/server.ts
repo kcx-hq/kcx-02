@@ -67,31 +67,31 @@ const shutdown = (signal: string): void => {
   }, SHUTDOWN_TIMEOUT_MS);
 
   server.close((error) => {
-    if (stopRightsizingActionProcessor) {
-      stopRightsizingActionProcessor();
-      stopRightsizingActionProcessor = null;
-    }
-    if (stopIdleActionProcessor) {
-      stopIdleActionProcessor();
-      stopIdleActionProcessor = null;
-    }
-    if (stopCommitmentScheduler) {
-      stopCommitmentScheduler();
-      stopCommitmentScheduler = null;
-    }
+    // if (stopRightsizingActionProcessor) {
+    //   stopRightsizingActionProcessor();
+    //   stopRightsizingActionProcessor = null;
+    // }
+    // if (stopIdleActionProcessor) {
+    //   stopIdleActionProcessor();
+    //   stopIdleActionProcessor = null;
+    // }
+    // if (stopCommitmentScheduler) {
+    //   stopCommitmentScheduler();
+    //   stopCommitmentScheduler = null;
+    // }
     if (stopEc2ScheduledJobsScheduler) {
       stopEc2ScheduledJobsScheduler();
       stopEc2ScheduledJobsScheduler = null;
     }
     clearTimeout(forceExitTimer);
-    if (stopIdleScheduler) {
-      stopIdleScheduler();
-      stopIdleScheduler = null;
-    }
-    if (stopRightsizingScheduler) {
-      stopRightsizingScheduler();
-      stopRightsizingScheduler = null;
-    }
+    // if (stopIdleScheduler) {
+    //   stopIdleScheduler();
+    //   stopIdleScheduler = null;
+    // }
+    // if (stopRightsizingScheduler) {
+    //   stopRightsizingScheduler();
+    //   stopRightsizingScheduler = null;
+    // }
 
     if (error) {
       logger.error("Error while shutting down server", {
@@ -118,11 +118,11 @@ const startServer = async (): Promise<void> => {
   }
 
   server = createServer(app);
-  stopRightsizingActionProcessor = startRightsizingActionProcessor();
-  stopIdleActionProcessor = startIdleActionProcessor();
-  stopCommitmentScheduler = startCommitmentRecommendationScheduler();
-  stopIdleScheduler = startIdleRecommendationScheduler();
-  stopRightsizingScheduler = startRightsizingRecommendationScheduler();
+  // stopRightsizingActionProcessor = startRightsizingActionProcessor();
+  // stopIdleActionProcessor = startIdleActionProcessor();
+  // stopCommitmentScheduler = startCommitmentRecommendationScheduler();
+  // stopIdleScheduler = startIdleRecommendationScheduler();
+  // stopRightsizingScheduler = startRightsizingRecommendationScheduler();
   stopEc2ScheduledJobsScheduler = startEc2ScheduledJobsScheduler();
 
   server.listen(PORT, () => {

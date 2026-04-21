@@ -1,5 +1,7 @@
 import { useDeferredValue, useMemo, useState } from "react"
+import { useEffect } from "react"
 import { RefreshCw, Search, Server, SlidersHorizontal } from "lucide-react"
+import { useLocation } from "react-router-dom"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -84,12 +86,27 @@ function getStateTone(state: string | null): string {
 }
 
 export function ClientInventoryInstancesPage() {
-  const [searchInput, setSearchInput] = useState("")
-  const [stateFilter, setStateFilter] = useState("ALL")
-  const [instanceTypeFilter, setInstanceTypeFilter] = useState("ALL")
-  const [connectionFilter, setConnectionFilter] = useState("ALL")
+  const location = useLocation()
+  const queryParams = useMemo(() => new URLSearchParams(location.search), [location.search])
+  const querySearch = queryParams.get("search") ?? queryParams.get("instanceId") ?? ""
+  const queryState = queryParams.get("state") ?? "ALL"
+  const queryInstanceType = queryParams.get("instanceType") ?? "ALL"
+  const queryConnection = queryParams.get("cloudConnectionId") ?? "ALL"
+
+  const [searchInput, setSearchInput] = useState(querySearch)
+  const [stateFilter, setStateFilter] = useState(queryState)
+  const [instanceTypeFilter, setInstanceTypeFilter] = useState(queryInstanceType)
+  const [connectionFilter, setConnectionFilter] = useState(queryConnection)
   const [page, setPage] = useState(1)
   const [selectedInstance, setSelectedInstance] = useState<InventoryEc2InstanceRow | null>(null)
+
+  useEffect(() => {
+    setSearchInput(querySearch)
+    setStateFilter(queryState)
+    setInstanceTypeFilter(queryInstanceType)
+    setConnectionFilter(queryConnection)
+    setPage(1)
+  }, [queryConnection, queryInstanceType, querySearch, queryState])
 
   const deferredSearch = useDeferredValue(searchInput.trim())
   const cloudConnectionId = connectionFilter === "ALL" ? null : connectionFilter

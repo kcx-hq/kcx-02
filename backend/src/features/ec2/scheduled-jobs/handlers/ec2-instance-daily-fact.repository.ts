@@ -204,7 +204,7 @@ final_rows AS (
     COALESCE(inv.region_key, util.region_key, cost.region_key, coverage.region_key) AS region_key,
     COALESCE(inv.sub_account_key, util.sub_account_key, cost.sub_account_key, coverage.sub_account_key) AS sub_account_key,
     inv.instance_name,
-    COALESCE(inv.instance_type, util.instance_type, cost.instance_type, coverage.instance_type) AS instance_type,
+    COALESCE(inv.instance_type, cost.instance_type, coverage.instance_type) AS instance_type,
     inv.availability_zone,
     inv.state,
     CASE

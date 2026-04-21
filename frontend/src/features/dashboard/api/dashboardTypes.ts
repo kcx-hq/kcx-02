@@ -56,6 +56,57 @@ export type Ec2InstanceUsageFiltersQuery = {
   category?: "none" | "region" | "instance_type" | "reservation_type";
 };
 
+export type Ec2OverviewFiltersQuery = {
+  cloudConnectionId?: string;
+  subAccountKey?: number;
+  regionKey?: number;
+  instanceType?: string;
+  state?: string;
+};
+
+export type Ec2OverviewResponse = {
+  section: "ec2-overview";
+  title: "EC2 Overview";
+  message: string;
+  filtersApplied: {
+    tenantId: string;
+    startDate: string;
+    endDate: string;
+    cloudConnectionId: string | null;
+    subAccountKey: number | null;
+    regionKey: number | null;
+    instanceType: string | null;
+    state: string | null;
+  };
+  kpis: {
+    totalInstances: number;
+    runningInstances: number;
+    stoppedInstances: number;
+    idleInstances: number;
+    underutilizedInstances: number;
+    overutilizedInstances: number;
+    totalComputeCost: number;
+    totalInstanceHours: number;
+  };
+  trends: Array<{
+    date: string;
+    runningInstanceCount: number;
+    computeCost: number;
+  }>;
+  topCostlyInstances: Array<{
+    instanceId: string;
+    instanceName: string;
+    instanceType: string | null;
+    totalHours: number;
+    computeCost: number;
+    state: string | null;
+  }>;
+  filterOptions: {
+    instanceTypes: string[];
+    states: string[];
+  };
+};
+
 export type Ec2InstanceUsageResponse = {
   section: "ec2-instance-usage";
   title: "EC2 Instance Usage";
