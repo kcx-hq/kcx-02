@@ -217,6 +217,9 @@ export function DashboardGlobalHeader() {
     if (path.startsWith("/dashboard/inventory/aws/ec2/instances")) {
       return [rootCrumb, "Services", "EC2", "Instances"];
     }
+    if (path.startsWith("/dashboard/inventory/aws/ec2/volumes")) {
+      return [rootCrumb, "Services", "EC2", "Volumes"];
+    }
     if (path.startsWith("/dashboard/ec2/anomaly-detection")) {
       return [rootCrumb, "Services", "EC2", "Anomaly Detection"];
     }

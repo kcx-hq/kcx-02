@@ -68,7 +68,7 @@ export const dashboardNav: DashboardNavNode[] = [
           {
             kind: "link",
             label: "Volumes",
-            path: "/dashboard/ec2/volumes",
+            path: "/dashboard/inventory/aws/ec2/volumes",
             icon: "boxes",
           },
           {

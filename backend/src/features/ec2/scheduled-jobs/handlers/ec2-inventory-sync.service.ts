@@ -1,4 +1,12 @@
-import { DescribeInstancesCommand, DescribeRegionsCommand, EC2Client, type Instance, type Tag } from "@aws-sdk/client-ec2";
+import {
+  DescribeInstancesCommand,
+  DescribeRegionsCommand,
+  DescribeVolumesCommand,
+  EC2Client,
+  type Instance,
+  type Tag,
+  type Volume,
+} from "@aws-sdk/client-ec2";
 import { QueryTypes } from "sequelize";
 import type { Transaction } from "sequelize";
 
@@ -9,6 +17,7 @@ import {
   DimResource,
   DimSubAccount,
   Ec2InstanceInventorySnapshot,
+  Ec2VolumeInventorySnapshot,
   sequelize,
 } from "../../../../models/index.js";
 import { logger } from "../../../../utils/logger.js";
@@ -59,7 +68,40 @@ type SnapshotRowInput = {
   updatedAt: Date;
 };
 
+type VolumeSnapshotRowInput = {
+  tenantId: string | null;
+  cloudConnectionId: string | null;
+  providerId: number | null;
+  volumeId: string;
+  resourceKey: number | null;
+  regionKey: number | null;
+  subAccountKey: number | null;
+  volumeType: string | null;
+  sizeGb: number | null;
+  iops: number | null;
+  throughput: number | null;
+  availabilityZone: string | null;
+  state: string | null;
+  attachedInstanceId: string | null;
+  isAttached: boolean | null;
+  tagsJson: Record<string, unknown> | null;
+  metadataJson: Record<string, unknown> | null;
+  discoveredAt: Date;
+  isCurrent: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
 const normalizeTrim = (value: string | null | undefined): string => String(value ?? "").trim();
+const toNullableNumber = (value: unknown): number | null => {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : null;
+  }
+  const normalized = normalizeTrim(typeof value === "string" ? value : null);
+  if (!normalized) return null;
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
+};
 const isUniqueViolation = (error: unknown): boolean => {
   const msg = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
   return msg.includes("duplicate key value violates unique constraint");
@@ -67,12 +109,14 @@ const isUniqueViolation = (error: unknown): boolean => {
 
 type InventoryDimensionCache = {
   resourceByInstanceId: Map<string, string | null>;
+  resourceByVolumeId: Map<string, string | null>;
   regionByRegionAz: Map<string, string | null>;
   subAccountByExternalId: Map<string, string | null>;
 };
 
 const createInventoryDimensionCache = (): InventoryDimensionCache => ({
   resourceByInstanceId: new Map(),
+  resourceByVolumeId: new Map(),
   regionByRegionAz: new Map(),
   subAccountByExternalId: new Map(),
 });
@@ -219,6 +263,51 @@ const resolveResourceKey = async (input: {
   }
 };
 
+const resolveVolumeResourceKey = async (input: {
+  tenantId: string | null;
+  providerId: string | null;
+  volumeId: string;
+  volumeName: string | null;
+  cache: InventoryDimensionCache;
+}): Promise<string | null> => {
+  const tenantId = normalizeTrim(input.tenantId);
+  const providerId = normalizeTrim(input.providerId);
+  const volumeId = normalizeTrim(input.volumeId);
+  if (!tenantId || !providerId || !volumeId) return null;
+
+  const cacheKey = `${tenantId}|${providerId}|${volumeId}`;
+  if (input.cache.resourceByVolumeId.has(cacheKey)) {
+    return input.cache.resourceByVolumeId.get(cacheKey) ?? null;
+  }
+
+  const where = { tenantId, providerId, resourceId: volumeId };
+  const existing = await DimResource.findOne({ where });
+  if (existing) {
+    const id = String(existing.id);
+    input.cache.resourceByVolumeId.set(cacheKey, id);
+    return id;
+  }
+
+  try {
+    const created = await DimResource.create({
+      tenantId,
+      providerId,
+      resourceId: volumeId,
+      resourceName: normalizeTrim(input.volumeName) || volumeId,
+      resourceType: "ec2_volume",
+    });
+    const id = String(created.id);
+    input.cache.resourceByVolumeId.set(cacheKey, id);
+    return id;
+  } catch (error) {
+    if (!isUniqueViolation(error)) throw error;
+    const retried = await DimResource.findOne({ where });
+    const id = retried ? String(retried.id) : null;
+    input.cache.resourceByVolumeId.set(cacheKey, id);
+    return id;
+  }
+};
+
 const enrichSnapshotsWithDimensionKeys = async (input: {
   rows: SnapshotRowInput[];
   context: AwsConnectionContext;
@@ -249,6 +338,44 @@ const enrichSnapshotsWithDimensionKeys = async (input: {
       instanceName: tagName,
       cache: input.cache,
     });
+  }
+};
+
+const enrichVolumeSnapshotsWithDimensionKeys = async (input: {
+  rows: VolumeSnapshotRowInput[];
+  context: AwsConnectionContext;
+  cache: InventoryDimensionCache;
+  region: string;
+}): Promise<void> => {
+  for (const row of input.rows) {
+    const tagName =
+      row.tagsJson && typeof row.tagsJson.Name === "string" ? normalizeTrim(String(row.tagsJson.Name)) : null;
+
+    const subAccountKey = await resolveSubAccountKey({
+      tenantId: input.context.tenantId,
+      providerId: input.context.providerId,
+      subAccountId: input.context.subAccountId,
+      subAccountName: input.context.subAccountName,
+      cache: input.cache,
+    });
+    row.subAccountKey = toNullableNumber(subAccountKey);
+
+    const regionKey = await resolveRegionKey({
+      providerId: input.context.providerId,
+      region: input.region,
+      availabilityZone: row.availabilityZone,
+      cache: input.cache,
+    });
+    row.regionKey = toNullableNumber(regionKey);
+
+    const resourceKey = await resolveVolumeResourceKey({
+      tenantId: input.context.tenantId,
+      providerId: input.context.providerId,
+      volumeId: row.volumeId,
+      volumeName: tagName,
+      cache: input.cache,
+    });
+    row.resourceKey = toNullableNumber(resourceKey);
   }
 };
 
@@ -395,6 +522,29 @@ const listInstancesInRegion = async (client: EC2Client): Promise<Instance[]> => 
   return instances;
 };
 
+const listVolumesInRegion = async (client: EC2Client): Promise<Volume[]> => {
+  const volumes: Volume[] = [];
+  let nextToken: string | undefined;
+
+  do {
+    const response = await client.send(
+      new DescribeVolumesCommand({
+        NextToken: nextToken,
+      }),
+    );
+
+    for (const volume of response.Volumes ?? []) {
+      if (volume.VolumeId) {
+        volumes.push(volume);
+      }
+    }
+
+    nextToken = response.NextToken;
+  } while (nextToken);
+
+  return volumes;
+};
+
 const toSnapshotRow = (input: {
   context: AwsConnectionContext;
   instance: Instance;
@@ -464,6 +614,61 @@ const toSnapshotRow = (input: {
   };
 };
 
+const toVolumeSnapshotRow = (input: {
+  context: AwsConnectionContext;
+  volume: Volume;
+  region: string;
+  discoveredAt: Date;
+}): VolumeSnapshotRowInput => {
+  const volumeId = normalizeTrim(input.volume.VolumeId);
+  if (!volumeId) {
+    throw new Error("DescribeVolumes returned volume without VolumeId");
+  }
+
+  const tagsJson = toTagMap(input.volume.Tags);
+  const availabilityZone = normalizeTrim(input.volume.AvailabilityZone) || null;
+  const attachments = Array.isArray(input.volume.Attachments) ? input.volume.Attachments : [];
+  const attachedInstanceId = normalizeTrim(attachments[0]?.InstanceId) || null;
+  const isAttached = attachments.length > 0;
+
+  const metadataJson: Record<string, unknown> = {
+    awsRegion: input.region,
+    availabilityZone,
+    createTime: input.volume.CreateTime ?? null,
+    encrypted: input.volume.Encrypted ?? null,
+    kmsKeyId: input.volume.KmsKeyId ?? null,
+    multiAttachEnabled: input.volume.MultiAttachEnabled ?? null,
+    outpostArn: input.volume.OutpostArn ?? null,
+    snapshotId: input.volume.SnapshotId ?? null,
+    state: input.volume.State ? String(input.volume.State) : null,
+    attachments,
+  };
+
+  return {
+    tenantId: input.context.tenantId,
+    cloudConnectionId: input.context.connectionId,
+    providerId: toNullableNumber(input.context.providerId),
+    volumeId,
+    resourceKey: null,
+    regionKey: null,
+    subAccountKey: null,
+    volumeType: input.volume.VolumeType ? String(input.volume.VolumeType) : null,
+    sizeGb: typeof input.volume.Size === "number" ? input.volume.Size : null,
+    iops: typeof input.volume.Iops === "number" ? input.volume.Iops : null,
+    throughput: typeof input.volume.Throughput === "number" ? input.volume.Throughput : null,
+    availabilityZone,
+    state: input.volume.State ? String(input.volume.State) : null,
+    attachedInstanceId,
+    isAttached,
+    tagsJson,
+    metadataJson,
+    discoveredAt: input.discoveredAt,
+    isCurrent: true,
+    createdAt: input.discoveredAt,
+    updatedAt: input.discoveredAt,
+  };
+};
+
 const markOlderSnapshotsNotCurrent = async (input: {
   cloudConnectionId: string;
   instanceIds: string[];
@@ -488,9 +693,42 @@ const markOlderSnapshotsNotCurrent = async (input: {
   );
 };
 
+const markOlderVolumeSnapshotsNotCurrent = async (input: {
+  cloudConnectionId: string;
+  volumeIds: string[];
+  transaction?: Transaction;
+}): Promise<void> => {
+  if (input.volumeIds.length === 0) return;
+
+  await sequelize.query(
+    `
+      UPDATE ec2_volume_inventory_snapshots
+      SET is_current = false,
+          updated_at = NOW()
+      WHERE cloud_connection_id = $1
+        AND is_current = true
+        AND volume_id = ANY($2::text[]);
+    `,
+    {
+      bind: [input.cloudConnectionId, input.volumeIds],
+      type: QueryTypes.UPDATE,
+      transaction: input.transaction,
+    },
+  );
+};
+
 const insertSnapshots = async (rows: SnapshotRowInput[], transaction?: Transaction): Promise<number> => {
   if (rows.length === 0) return 0;
   await Ec2InstanceInventorySnapshot.bulkCreate(rows, {
+    validate: false,
+    transaction,
+  });
+  return rows.length;
+};
+
+const insertVolumeSnapshots = async (rows: VolumeSnapshotRowInput[], transaction?: Transaction): Promise<number> => {
+  if (rows.length === 0) return 0;
+  await Ec2VolumeInventorySnapshot.bulkCreate(rows, {
     validate: false,
     transaction,
   });
@@ -524,6 +762,8 @@ export async function syncEc2InventoryForScheduledJob(job: ScheduledJob): Promis
 
   let totalInstances = 0;
   let totalInserted = 0;
+  let totalVolumes = 0;
+  let totalVolumesInserted = 0;
   const dimensionCache = createInventoryDimensionCache();
 
   for (const region of enabledRegions) {
@@ -584,6 +824,68 @@ export async function syncEc2InventoryForScheduledJob(job: ScheduledJob): Promis
         instancesDiscovered: instances.length,
         snapshotsInserted: insertedForRegion,
       });
+
+      try {
+        logger.info("EC2 volume inventory sync region scan started", {
+          connectionId: context.connectionId,
+          region: regionName,
+        });
+
+        const volumes = await listVolumesInRegion(regionClient);
+        totalVolumes += volumes.length;
+
+        const volumeSnapshotRows: VolumeSnapshotRowInput[] = [];
+        for (const volume of volumes) {
+          try {
+            volumeSnapshotRows.push(
+              toVolumeSnapshotRow({
+                context,
+                volume,
+                region: regionName,
+                discoveredAt,
+              }),
+            );
+          } catch (error) {
+            logger.warn("EC2 volume inventory sync skipped volume due to mapping error", {
+              connectionId: context.connectionId,
+              region: regionName,
+              reason: error instanceof Error ? error.message : String(error),
+            });
+          }
+        }
+
+        const volumeIds = volumeSnapshotRows.map((row) => row.volumeId);
+        await enrichVolumeSnapshotsWithDimensionKeys({
+          rows: volumeSnapshotRows,
+          context,
+          cache: dimensionCache,
+          region: regionName,
+        });
+
+        const insertedVolumeForRegion = await sequelize.transaction(async (transaction) => {
+          await markOlderVolumeSnapshotsNotCurrent({
+            cloudConnectionId: context.connectionId,
+            volumeIds,
+            transaction,
+          });
+          return insertVolumeSnapshots(volumeSnapshotRows, transaction);
+        });
+
+        totalVolumesInserted += insertedVolumeForRegion;
+
+        logger.info("EC2 volume inventory sync region scan completed", {
+          connectionId: context.connectionId,
+          region: regionName,
+          volumesDiscovered: volumes.length,
+          snapshotsInserted: insertedVolumeForRegion,
+        });
+      } catch (error) {
+        logger.warn("EC2 volume inventory sync region scan failed", {
+          connectionId: context.connectionId,
+          region: regionName,
+          reason: error instanceof Error ? error.message : String(error),
+        });
+      }
     } catch (error) {
       logger.warn("EC2 inventory sync region scan failed", {
         connectionId: context.connectionId,
@@ -598,6 +900,8 @@ export async function syncEc2InventoryForScheduledJob(job: ScheduledJob): Promis
     connectionId: context.connectionId,
     totalInstances,
     totalInserted,
+    totalVolumes,
+    totalVolumesInserted,
     durationMs: Date.now() - startedAt,
   });
 }

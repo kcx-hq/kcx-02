@@ -10,11 +10,11 @@ import AnomaliesAlertsPage from "../pages/anomalies-alerts/AnomaliesAlertsPage";
 import BudgetPage from "../pages/budget/BudgetPage";
 import ReportPage from "../pages/report/ReportPage";
 import InventoryInstancesPage from "../pages/inventory/InventoryInstancesPage";
+import InventoryVolumesPage from "../pages/inventory/InventoryVolumesPage";
 import AwsInventoryPage from "../pages/inventory/AwsInventoryPage";
 import EC2CostPage from "../pages/ec2/EC2CostPage";
 import EC2UsagePage from "../pages/ec2/EC2UsagePage";
 import EC2UsageHoursPage from "../pages/ec2/EC2UsageHoursPage";
-import EC2VolumesPage from "../pages/ec2/EC2VolumesPage";
 import "../styles/tokens.css";
 import "../styles/dashboard.css";
 
@@ -88,6 +88,20 @@ function DashboardInventoryEc2Redirect() {
   );
 }
 
+function DashboardLegacyEc2VolumesRedirect() {
+  const location = useLocation();
+
+  return (
+    <Navigate
+      to={{
+        pathname: "/dashboard/inventory/aws/ec2/volumes",
+        search: location.search,
+      }}
+      replace
+    />
+  );
+}
+
 export default function DashboardRoutes() {
   return (
     <Routes>
@@ -100,7 +114,7 @@ export default function DashboardRoutes() {
         <Route path="cost/history" element={<CostHistoryPage />} />
         <Route path="cost-explorer" element={<DashboardCostRedirect />} />
         <Route path="ec2" element={<DashboardEC2Redirect />} />
-        <Route path="ec2/volumes" element={<EC2VolumesPage />} />
+        <Route path="ec2/volumes" element={<DashboardLegacyEc2VolumesRedirect />} />
         <Route path="ec2/cost" element={<EC2CostPage />} />
         <Route path="ec2/usage" element={<EC2UsagePage />} />
         <Route path="ec2/instance-hours" element={<EC2UsageHoursPage />} />
@@ -115,6 +129,7 @@ export default function DashboardRoutes() {
         <Route path="inventory/aws" element={<DashboardInventoryRedirect />} />
         <Route path="inventory/aws/ec2" element={<DashboardInventoryEc2Redirect />} />
         <Route path="inventory/aws/ec2/instances" element={<InventoryInstancesPage />} />
+        <Route path="inventory/aws/ec2/volumes" element={<InventoryVolumesPage />} />
         <Route path="*" element={<DashboardOverviewRedirect />} />
       </Route>
     </Routes>
