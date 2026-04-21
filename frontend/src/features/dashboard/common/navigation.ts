@@ -3,6 +3,7 @@ export type DashboardNavLink = {
   label: string;
   path: string;
   icon: string;
+  children?: DashboardNavGroup[];
 };
 
 export type DashboardNavGroup = {
@@ -48,40 +49,41 @@ export const dashboardNav: DashboardNavNode[] = [
     ],
   },
   {
-    kind: "group",
-    label: "Inventory",
+    kind: "link",
+    label: "Services",
+    path: "/dashboard/inventory",
     icon: "server",
-    items: [
+    children: [
       {
-        kind: "link",
-        label: "AWS",
-        path: "/dashboard/inventory/aws",
+        kind: "group",
+        label: "EC2",
         icon: "boxes",
-      },
-    ],
-  },
-  {
-    kind: "group",
-    label: "EC2",
-    icon: "boxes",
-    items: [
-      {
-        kind: "link",
-        label: "Cost",
-        path: "/dashboard/ec2/cost",
-        icon: "line-chart",
-      },
-      {
-        kind: "link",
-        label: "Usage",
-        path: "/dashboard/ec2/usage",
-        icon: "activity",
-      },
-      {
-        kind: "link",
-        label: "EC2 Instance Hours",
-        path: "/dashboard/ec2/instance-hours",
-        icon: "activity",
+        items: [
+          {
+            kind: "link",
+            label: "Instances",
+            path: "/dashboard/inventory/aws/ec2/instances",
+            icon: "server",
+          },
+          {
+            kind: "link",
+            label: "Cost",
+            path: "/dashboard/ec2/cost",
+            icon: "line-chart",
+          },
+          {
+            kind: "link",
+            label: "Usage",
+            path: "/dashboard/ec2/usage",
+            icon: "activity",
+          },
+          {
+            kind: "link",
+            label: "EC2 Instance Hours",
+            path: "/dashboard/ec2/instance-hours",
+            icon: "activity",
+          },
+        ],
       },
     ],
   },
@@ -96,6 +98,23 @@ export const dashboardNav: DashboardNavNode[] = [
   { kind: "link", label: "Report", path: "/dashboard/report", icon: "file-text" },
 ];
 
+const flattenDashboardLink = (link: DashboardNavLink): DashboardNavLink[] => [
+  {
+    kind: "link",
+    label: link.label,
+    path: link.path,
+    icon: link.icon,
+  },
+  ...((link.children ?? []).flatMap((group) =>
+    group.items.flatMap((item) => flattenDashboardLink(item)),
+  )),
+];
+
+const flattenDashboardNode = (node: DashboardNavNode): DashboardNavLink[] =>
+  node.kind === "group"
+    ? node.items.flatMap((item) => flattenDashboardLink(item))
+    : flattenDashboardLink(node);
+
 export const dashboardNavLinks: DashboardNavLink[] = dashboardNav.flatMap((node) =>
-  node.kind === "group" ? node.items : [node],
+  flattenDashboardNode(node),
 );

@@ -1,7 +1,7 @@
 import { InventoryProviderPage } from "./components/InventoryProviderPage";
 import type { InventoryServiceGroup } from "./components/inventory-provider.types";
 
-const awsInventoryGroups: InventoryServiceGroup[] = [
+const serviceGroups: InventoryServiceGroup[] = [
   {
     id: "compute",
     title: "Compute (EC2)",
@@ -67,10 +67,9 @@ const awsInventoryGroups: InventoryServiceGroup[] = [
 export default function AwsInventoryPage() {
   return (
     <InventoryProviderPage
-      title="AWS Inventory"
-      subtitle="Explore cost-driving AWS resources across your connected accounts."
-      groups={awsInventoryGroups}
+      title="Services"
+      subtitle="Explore cost-driving cloud services across your connected accounts."
+      groups={serviceGroups}
     />
   );
 }
-

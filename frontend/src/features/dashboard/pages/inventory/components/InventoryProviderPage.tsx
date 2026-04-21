@@ -15,7 +15,7 @@ export function InventoryProviderPage({ title, subtitle, groups }: InventoryProv
     <section className="dashboard-page inventory-provider-page" aria-label={`${title} navigation`}>
       <header className="dashboard-page-header inventory-provider-page__header">
         <div>
-          <p className="inventory-provider-page__eyebrow">Inventory</p>
+          <p className="inventory-provider-page__eyebrow">Services</p>
           <h1 className="dashboard-page-header__title">{title}</h1>
           <p className="inventory-provider-page__subtitle">{subtitle}</p>
         </div>
@@ -34,4 +34,3 @@ export function InventoryProviderPage({ title, subtitle, groups }: InventoryProv
     </section>
   );
 }
-
