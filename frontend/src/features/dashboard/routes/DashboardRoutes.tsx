@@ -14,6 +14,7 @@ import AwsInventoryPage from "../pages/inventory/AwsInventoryPage";
 import EC2CostPage from "../pages/ec2/EC2CostPage";
 import EC2UsagePage from "../pages/ec2/EC2UsagePage";
 import EC2UsageHoursPage from "../pages/ec2/EC2UsageHoursPage";
+import EC2VolumesPage from "../pages/ec2/EC2VolumesPage";
 import "../styles/tokens.css";
 import "../styles/dashboard.css";
 
@@ -99,6 +100,7 @@ export default function DashboardRoutes() {
         <Route path="cost/history" element={<CostHistoryPage />} />
         <Route path="cost-explorer" element={<DashboardCostRedirect />} />
         <Route path="ec2" element={<DashboardEC2Redirect />} />
+        <Route path="ec2/volumes" element={<EC2VolumesPage />} />
         <Route path="ec2/cost" element={<EC2CostPage />} />
         <Route path="ec2/usage" element={<EC2UsagePage />} />
         <Route path="ec2/instance-hours" element={<EC2UsageHoursPage />} />
