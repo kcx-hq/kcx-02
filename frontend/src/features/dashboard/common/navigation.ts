@@ -69,6 +69,12 @@ export const dashboardNav: DashboardNavNode[] = [
           },
           {
             kind: "link",
+            label: "Volumes",
+            path: "/dashboard/ec2/volumes",
+            icon: "boxes",
+          },
+          {
+            kind: "link",
             label: "Cost",
             path: "/dashboard/ec2/cost",
             icon: "line-chart",
