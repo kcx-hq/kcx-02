@@ -226,6 +226,9 @@ export function DashboardGlobalHeader() {
     if (path === "/dashboard/ec2") {
       return [rootCrumb, "Services", "EC2"];
     }
+    if (path.startsWith("/dashboard/ec2/performance")) {
+      return [rootCrumb, "Services", "EC2", "Performance"];
+    }
     if (path.startsWith("/dashboard/ec2/anomaly-detection")) {
       return [rootCrumb, "Services", "EC2", "Anomaly Detection"];
     }

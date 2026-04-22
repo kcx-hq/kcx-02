@@ -17,6 +17,9 @@ import EC2CostPage from "../pages/ec2/EC2CostPage";
 import EC2OverviewPage from "../pages/ec2/EC2OverviewPage";
 import EC2UsagePage from "../pages/ec2/EC2UsagePage";
 import EC2UsageHoursPage from "../pages/ec2/EC2UsageHoursPage";
+import EC2VolumesPage from "../pages/ec2/EC2VolumesPage";
+import EC2PerformancePage from "../pages/ec2/EC2PerformancePage";
+import DashboardEC2Redirect from "../pages/ec2/EC2OverviewPage"
 import "../styles/tokens.css";
 import "../styles/dashboard.css";
 
@@ -106,6 +109,7 @@ export default function DashboardRoutes() {
         <Route path="ec2/cost" element={<EC2CostPage />} />
         <Route path="ec2/usage" element={<EC2UsagePage />} />
         <Route path="ec2/instance-hours" element={<EC2UsageHoursPage />} />
+        <Route path="ec2/performance" element={<EC2PerformancePage />} />
         <Route path="ec2/anomaly-detection" element={<AnomaliesAlertsPage />} />
         <Route path="resources" element={<ResourcesPage />} />
         <Route path="allocation" element={<AllocationPage />} />

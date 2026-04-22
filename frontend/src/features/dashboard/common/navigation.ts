@@ -99,6 +99,12 @@ export const dashboardNav: DashboardNavNode[] = [
           },
           {
             kind: "link",
+            label: "Performance",
+            path: "/dashboard/ec2/performance",
+            icon: "line-chart",
+          },
+          {
+            kind: "link",
             label: "Anomaly Detection",
             path: "/dashboard/ec2/anomaly-detection",
             icon: "triangle-alert",

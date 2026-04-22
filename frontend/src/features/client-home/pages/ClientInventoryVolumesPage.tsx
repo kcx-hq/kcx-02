@@ -1,5 +1,6 @@
-import { useDeferredValue, useMemo, useState } from "react"
+import { useDeferredValue, useEffect, useMemo, useState, type MouseEvent } from "react"
 import { HardDrive, RefreshCw, Search, SlidersHorizontal } from "lucide-react"
+import { useLocation, useNavigate } from "react-router-dom"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -102,13 +103,35 @@ function getRegionLabel(volume: InventoryEc2VolumeRow): string {
 }
 
 export function ClientInventoryVolumesPage() {
-  const [searchInput, setSearchInput] = useState("")
-  const [stateFilter, setStateFilter] = useState("ALL")
-  const [volumeTypeFilter, setVolumeTypeFilter] = useState("ALL")
-  const [attachedFilter, setAttachedFilter] = useState("ALL")
-  const [regionFilter, setRegionFilter] = useState("ALL")
+  const location = useLocation()
+  const navigate = useNavigate()
+  const queryParams = useMemo(() => new URLSearchParams(location.search), [location.search])
+  const querySearch = queryParams.get("search") ?? queryParams.get("instanceId") ?? ""
+  const queryState = queryParams.get("state") ?? "ALL"
+  const queryVolumeType = queryParams.get("volumeType") ?? "ALL"
+  const queryAttached = queryParams.get("isAttached")
+  const queryAttachedFilter =
+    queryAttached === "true" ? "ATTACHED" : queryAttached === "false" ? "UNATTACHED" : "ALL"
+  const queryRegion = queryParams.get("region") ?? "ALL"
+  const queryCloudConnectionId = queryParams.get("cloudConnectionId")
+  const queryAttachedInstanceId = queryParams.get("attachedInstanceId") ?? queryParams.get("instanceId")
+
+  const [searchInput, setSearchInput] = useState(querySearch)
+  const [stateFilter, setStateFilter] = useState(queryState)
+  const [volumeTypeFilter, setVolumeTypeFilter] = useState(queryVolumeType)
+  const [attachedFilter, setAttachedFilter] = useState(queryAttachedFilter)
+  const [regionFilter, setRegionFilter] = useState(queryRegion)
   const [page, setPage] = useState(1)
   const [selectedVolume, setSelectedVolume] = useState<InventoryEc2VolumeRow | null>(null)
+
+  useEffect(() => {
+    setSearchInput(querySearch)
+    setStateFilter(queryState)
+    setVolumeTypeFilter(queryVolumeType)
+    setAttachedFilter(queryAttachedFilter)
+    setRegionFilter(queryRegion)
+    setPage(1)
+  }, [queryAttachedFilter, queryRegion, querySearch, queryState, queryVolumeType])
 
   const deferredSearch = useDeferredValue(searchInput.trim())
   const state = stateFilter === "ALL" ? null : stateFilter
@@ -118,6 +141,8 @@ export function ClientInventoryVolumesPage() {
     attachedFilter === "ATTACHED" ? true : attachedFilter === "UNATTACHED" ? false : null
 
   const volumesQuery = useInventoryEc2Volumes({
+    cloudConnectionId: queryCloudConnectionId,
+    attachedInstanceId: queryAttachedInstanceId,
     state,
     volumeType,
     isAttached,
@@ -187,6 +212,26 @@ export function ClientInventoryVolumesPage() {
       : volumesQuery.error instanceof Error
         ? volumesQuery.error.message
         : "Failed to load EC2 inventory volumes."
+
+  const onPerformanceClick = (volume: InventoryEc2VolumeRow, event: MouseEvent<HTMLElement>) => {
+    event.preventDefault()
+    event.stopPropagation()
+    const params = new URLSearchParams(location.search)
+    params.set("resourceType", "volume")
+    params.set("mode", "single")
+    params.set("resourceId", volume.volumeId)
+    params.set("topic", "ebs")
+    params.set("metrics", "volume_read_bytes")
+    params.set("interval", "daily")
+    params.set("time", "last_30_days")
+    params.set("chartType", "line")
+    if (volume.cloudConnectionId) {
+      params.set("cloudConnectionId", volume.cloudConnectionId)
+    } else {
+      params.delete("cloudConnectionId")
+    }
+    navigate(`/dashboard/ec2/performance?${params.toString()}`)
+  }
 
   return (
     <section aria-label="Inventory AWS EC2 Volumes" className="space-y-4">
@@ -343,12 +388,13 @@ export function ClientInventoryVolumesPage() {
                   <TableHead className="py-4">AZ</TableHead>
                   <TableHead className="py-4">IOPS</TableHead>
                   <TableHead className="py-4">Throughput</TableHead>
+                  <TableHead className="py-4">Performance</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {items.length === 0 ? (
                   <TableRow className="border-b border-[color:var(--border-light)]">
-                    <TableCell colSpan={10} className="py-12 text-center text-sm text-text-secondary">
+                    <TableCell colSpan={11} className="py-12 text-center text-sm text-text-secondary">
                       No inventory volumes found for the selected filters.
                     </TableCell>
                   </TableRow>
@@ -390,6 +436,16 @@ export function ClientInventoryVolumesPage() {
                       <TableCell className="py-5">{formatCell(volume.availabilityZone)}</TableCell>
                       <TableCell className="py-5">{formatCell(volume.iops)}</TableCell>
                       <TableCell className="py-5">{formatCell(volume.throughput)}</TableCell>
+                      <TableCell className="py-5">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="h-8 rounded-none border-[color:var(--border-light)] bg-transparent px-2 text-xs text-text-primary hover:bg-transparent"
+                          onClick={(event) => onPerformanceClick(volume, event)}
+                        >
+                          Performance
+                        </Button>
+                      </TableCell>
                     </TableRow>
                   ))
                 )}

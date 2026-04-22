@@ -1,5 +1,6 @@
 export type InventoryEc2VolumesListQuery = {
   cloudConnectionId: string | null;
+  attachedInstanceId: string | null;
   state: string | null;
   volumeType: string | null;
   isAttached: boolean | null;

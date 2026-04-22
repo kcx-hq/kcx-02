@@ -6,6 +6,7 @@ import type { InventoryEc2VolumesListQuery } from "./volumes-inventory.types.js"
 
 const volumesInventoryQuerySchema = z.object({
   cloudConnectionId: z.string().uuid().nullable(),
+  attachedInstanceId: z.string().trim().min(1).max(128).nullable(),
   state: z.string().trim().min(1).max(100).nullable(),
   volumeType: z.string().trim().min(1).max(100).nullable(),
   isAttached: z.boolean().nullable(),
@@ -43,6 +44,9 @@ export function parseVolumesInventoryListQuery(req: Request): InventoryEc2Volume
   const cloudConnectionId = toNullableString(
     firstQueryValue(req.query.cloudConnectionId) ?? firstQueryValue(req.query.cloud_connection_id),
   );
+  const attachedInstanceId = toNullableString(
+    firstQueryValue(req.query.attachedInstanceId) ?? firstQueryValue(req.query.attached_instance_id),
+  );
   const state = toNullableString(firstQueryValue(req.query.state));
   const volumeType = toNullableString(
     firstQueryValue(req.query.volumeType) ?? firstQueryValue(req.query.volume_type),
@@ -60,6 +64,7 @@ export function parseVolumesInventoryListQuery(req: Request): InventoryEc2Volume
 
   return parseWithSchema(volumesInventoryQuerySchema, {
     cloudConnectionId,
+    attachedInstanceId,
     state,
     volumeType,
     isAttached,

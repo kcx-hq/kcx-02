@@ -23,7 +23,10 @@ WITH base AS (
     d.billing_source_id,
     d.provider_id,
     d.usage_date,
-    d.instance_id,
+    COALESCE(
+      NULLIF(TRIM(d.instance_id), ''),
+      ebs_map.mapped_instance_id
+    ) AS instance_id,
     d.resource_key,
     d.region_key,
     d.sub_account_key,
@@ -35,8 +38,28 @@ WITH base AS (
     COALESCE(d.list_cost, 0)::numeric(18,6)      AS list_cost,
     COALESCE(d.usage_quantity, 0)::numeric(18,6) AS usage_quantity
   FROM ec2_cost_history_daily d
-  WHERE d.instance_id IS NOT NULL
-    AND NULLIF(TRIM(d.instance_id), '') IS NOT NULL
+  LEFT JOIN dim_resource dr
+    ON dr.id = d.resource_key
+  LEFT JOIN LATERAL (
+    SELECT
+      MIN(NULLIF(TRIM(v.attached_instance_id), '')) AS mapped_instance_id
+    FROM ec2_volume_inventory_snapshots v
+    WHERE d.charge_category = 'ebs'
+      AND NULLIF(TRIM(d.instance_id), '') IS NULL
+      AND d.usage_date IS NOT NULL
+      AND NULLIF(TRIM(COALESCE(dr.resource_id, '')), '') IS NOT NULL
+      AND LOWER(TRIM(dr.resource_id)) ~ '^vol-[a-z0-9]+$'
+      AND LOWER(TRIM(v.volume_id)) = LOWER(TRIM(dr.resource_id))
+      AND v.tenant_id = d.tenant_id
+      AND v.provider_id IS NOT DISTINCT FROM d.provider_id
+      AND v.cloud_connection_id IS NOT DISTINCT FROM d.cloud_connection_id
+      AND v.discovered_at::date = d.usage_date
+      AND v.is_attached = TRUE
+      AND NULLIF(TRIM(v.attached_instance_id), '') IS NOT NULL
+    GROUP BY LOWER(TRIM(v.volume_id))
+    HAVING COUNT(DISTINCT NULLIF(TRIM(v.attached_instance_id), '')) = 1
+  ) ebs_map ON TRUE
+  WHERE COALESCE(NULLIF(TRIM(d.instance_id), ''), ebs_map.mapped_instance_id) IS NOT NULL
     AND d.usage_date >= CAST(:startDate AS date)
     AND d.usage_date <= CAST(:endDate AS date)
     AND (CAST(:tenantId AS uuid) IS NULL OR d.tenant_id = CAST(:tenantId AS uuid))
@@ -177,4 +200,3 @@ FROM upserted;
 }
 
 export type { SyncEc2InstanceCostDailyParams };
-
