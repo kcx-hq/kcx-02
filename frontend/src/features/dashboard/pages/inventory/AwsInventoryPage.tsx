@@ -19,6 +19,12 @@ const serviceGroups: InventoryServiceGroup[] = [
         matchPrefixes: ["/dashboard/inventory/aws/ec2/volumes"],
       },
       {
+        id: "ec2-snapshots",
+        label: "Snapshots",
+        href: "/dashboard/inventory/aws/ec2/snapshots",
+        matchPrefixes: ["/dashboard/inventory/aws/ec2/snapshots"],
+      },
+      {
         id: "ec2-amis",
         label: "AMIs",
         placeholder: true,
