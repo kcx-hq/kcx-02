@@ -75,6 +75,12 @@ export const dashboardNav: DashboardNavNode[] = [
           },
           {
             kind: "link",
+            label: "Snapshots",
+            path: "/dashboard/inventory/aws/ec2/snapshots",
+            icon: "boxes",
+          },
+          {
+            kind: "link",
             label: "Cost",
             path: "/dashboard/ec2/cost",
             icon: "line-chart",

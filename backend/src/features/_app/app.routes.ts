@@ -20,6 +20,7 @@ import anomalyRoutes from "../dashboard/anomaly-alerts/anomaly.routes.js";
 import organizationUsersRoutes from "../organization-users/organization-users.routes.js";
 import reportRoutes from "../dashboard/report/report.routes.js";
 import instancesInventoryRoutes from "../inventory/aws/ec2/instances/instances-inventory.routes.js";
+import snapshotsInventoryRoutes from "../inventory/aws/ec2/snapshots/snapshots-inventory.routes.js";
 import volumesInventoryRoutes from "../inventory/aws/ec2/volumes/volumes-inventory.routes.js";
 import ec2ReportsRoutes from "../ec2/reports/ec2-reports.routes.js";
 const router = Router();
@@ -45,6 +46,7 @@ router.use(awsExportFileEventRoutes);
 router.use(anomalyRoutes);
 router.use(reportRoutes);
 router.use(instancesInventoryRoutes);
+router.use(snapshotsInventoryRoutes);
 router.use(volumesInventoryRoutes);
 router.use(ec2ReportsRoutes);
 
