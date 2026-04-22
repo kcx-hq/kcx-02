@@ -10,6 +10,7 @@ export type DashboardNavGroup = {
   kind: "group";
   label: string;
   icon: string;
+  path?: string;
   items: DashboardNavLink[];
 };
 
@@ -58,12 +59,19 @@ export const dashboardNav: DashboardNavNode[] = [
         kind: "group",
         label: "EC2",
         icon: "boxes",
+        path: "/dashboard/ec2",
         items: [
           {
             kind: "link",
             label: "Instances",
             path: "/dashboard/inventory/aws/ec2/instances",
             icon: "server",
+          },
+          {
+            kind: "link",
+            label: "Volumes",
+            path: "/dashboard/inventory/aws/ec2/volumes",
+            icon: "boxes",
           },
           {
             kind: "link",
@@ -112,7 +120,19 @@ const flattenDashboardLink = (link: DashboardNavLink): DashboardNavLink[] => [
 
 const flattenDashboardNode = (node: DashboardNavNode): DashboardNavLink[] =>
   node.kind === "group"
-    ? node.items.flatMap((item) => flattenDashboardLink(item))
+    ? [
+        ...(node.path
+          ? ([
+              {
+                kind: "link",
+                label: node.label,
+                path: node.path,
+                icon: node.icon,
+              },
+            ] as DashboardNavLink[])
+          : []),
+        ...node.items.flatMap((item) => flattenDashboardLink(item)),
+      ]
     : flattenDashboardLink(node);
 
 export const dashboardNavLinks: DashboardNavLink[] = dashboardNav.flatMap((node) =>

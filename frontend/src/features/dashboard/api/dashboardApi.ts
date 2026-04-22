@@ -20,6 +20,8 @@ import type {
   DashboardResolvedScope,
   DashboardScopeInput,
   DashboardSectionData,
+  Ec2OverviewFiltersQuery,
+  Ec2OverviewResponse,
   Ec2InstanceHoursFiltersQuery,
   Ec2InstanceHoursResponse,
   Ec2InstanceUsageFiltersQuery,
@@ -213,6 +215,22 @@ function withEc2InstanceUsageFilters(
   if (typeof filters?.subAccountKey === "number") params.set("sub_account_key", String(filters.subAccountKey));
   if (typeof filters?.regionKey === "number") params.set("region_key", String(filters.regionKey));
   if (filters?.category) params.set("category", filters.category);
+
+  const query = params.toString();
+  return query.length > 0 ? `${path}?${query}` : path;
+}
+
+function withEc2OverviewFilters(
+  path: string,
+  scope: DashboardResolvedScope,
+  filters?: Ec2OverviewFiltersQuery,
+): string {
+  const params = new URLSearchParams(buildDashboardQueryParams(scope));
+  if (filters?.cloudConnectionId) params.set("cloud_connection_id", filters.cloudConnectionId);
+  if (typeof filters?.subAccountKey === "number") params.set("sub_account_key", String(filters.subAccountKey));
+  if (typeof filters?.regionKey === "number") params.set("region_key", String(filters.regionKey));
+  if (filters?.instanceType) params.set("instance_type", filters.instanceType);
+  if (filters?.state) params.set("state", filters.state);
 
   const query = params.toString();
   return query.length > 0 ? `${path}?${query}` : path;
@@ -449,6 +467,9 @@ export const dashboardApi = {
   getEc2InstanceUsage(scope: DashboardResolvedScope, filters?: Ec2InstanceUsageFiltersQuery) {
     return apiGet<Ec2InstanceUsageResponse>(withEc2InstanceUsageFilters("/dashboard/ec2/instance-usage", scope, filters));
   },
+  getEc2Overview(scope: DashboardResolvedScope, filters?: Ec2OverviewFiltersQuery) {
+    return apiGet<Ec2OverviewResponse>(withEc2OverviewFilters("/dashboard/ec2/overview", scope, filters));
+  },
   getEc2InstanceHours(scope: DashboardResolvedScope, filters?: Ec2InstanceHoursFiltersQuery) {
     return apiGet<Ec2InstanceHoursResponse>(withEc2InstanceHoursFilters("/dashboard/ec2/instance-hours", scope, filters));
   },
@@ -485,6 +506,8 @@ export type {
   DashboardResolvedScope,
   DashboardScopeInput,
   DashboardSectionData,
+  Ec2OverviewFiltersQuery,
+  Ec2OverviewResponse,
   Ec2InstanceHoursFiltersQuery,
   Ec2InstanceHoursResponse,
   Ec2InstanceUsageFiltersQuery,

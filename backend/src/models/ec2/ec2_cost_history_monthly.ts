@@ -30,6 +30,9 @@ class Ec2CostHistoryMonthly extends Model<
   declare listCost: CreationOptional<string>;
   declare usageQuantity: CreationOptional<string>;
   declare currencyCode: CreationOptional<string>;
+  declare allocationScope: CreationOptional<string | null>;
+  declare isSharedCost: CreationOptional<boolean>;
+  declare allocationMethod: CreationOptional<string | null>;
   declare isFinal: CreationOptional<boolean>;
   declare finalizedAt: CreationOptional<Date | null>;
   declare snapshotVersion: CreationOptional<number>;
@@ -60,6 +63,9 @@ const createEc2CostHistoryMonthlyModel = (sequelize: Sequelize): typeof Ec2CostH
       listCost: { type: DataTypes.DECIMAL(18, 6), allowNull: false, defaultValue: 0, field: "list_cost" },
       usageQuantity: { type: DataTypes.DECIMAL(18, 6), allowNull: false, defaultValue: 0, field: "usage_quantity" },
       currencyCode: { type: DataTypes.STRING(10), allowNull: false, defaultValue: "USD", primaryKey: true, field: "currency_code" },
+      allocationScope: { type: DataTypes.STRING(30), allowNull: true, field: "allocation_scope" },
+      isSharedCost: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false, field: "is_shared_cost" },
+      allocationMethod: { type: DataTypes.STRING(50), allowNull: true, field: "allocation_method" },
       isFinal: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false, field: "is_final" },
       finalizedAt: { type: DataTypes.DATE, allowNull: true, field: "finalized_at" },
       snapshotVersion: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 1, primaryKey: true, field: "snapshot_version" },

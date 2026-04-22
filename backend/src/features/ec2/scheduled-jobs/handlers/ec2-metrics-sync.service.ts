@@ -24,6 +24,12 @@ type AwsConnectionContext = {
   defaultRegion: string;
 };
 
+type InstanceDimensionKeys = {
+  resourceKey: string | null;
+  regionKey: string | null;
+  subAccountKey: string | null;
+};
+
 type RegionInfo = {
   region: string;
   optInStatus: string | null;
@@ -196,6 +202,42 @@ const loadInventoryInstancesByRegion = async (context: AwsConnectionContext): Pr
     region,
     instanceIds: Array.from(ids),
   }));
+};
+
+const loadLatestDimensionKeysForInstances = async (input: {
+  cloudConnectionId: string;
+  instanceIds: string[];
+}): Promise<Map<string, InstanceDimensionKeys>> => {
+  const ids = dedupe(input.instanceIds.map((id) => normalizeTrim(id)));
+  if (ids.length === 0) return new Map();
+
+  const rows = await Ec2InstanceInventorySnapshot.findAll({
+    where: {
+      cloudConnectionId: input.cloudConnectionId,
+      instanceId: ids,
+      deletedAt: null,
+    },
+    attributes: ["instanceId", "resourceKey", "regionKey", "subAccountKey", "isCurrent", "discoveredAt", "updatedAt"],
+    order: [
+      ["instanceId", "ASC"],
+      ["isCurrent", "DESC"],
+      ["discoveredAt", "DESC"],
+      ["updatedAt", "DESC"],
+    ],
+  });
+
+  const out = new Map<string, InstanceDimensionKeys>();
+  for (const row of rows) {
+    const instanceId = normalizeTrim(String(row.instanceId));
+    if (!instanceId || out.has(instanceId)) continue;
+    out.set(instanceId, {
+      resourceKey: row.resourceKey ? String(row.resourceKey) : null,
+      regionKey: row.regionKey ? String(row.regionKey) : null,
+      subAccountKey: row.subAccountKey ? String(row.subAccountKey) : null,
+    });
+  }
+
+  return out;
 };
 
 const listInstancesInRegion = async (client: EC2Client): Promise<string[]> => {
@@ -636,6 +678,7 @@ const buildUtilizationRows = (input: {
   context: AwsConnectionContext;
   instanceId: string;
   mergedByHour: Map<string, Partial<Record<MetricField, number>>>;
+  dimensionKeys: InstanceDimensionKeys | null;
   now: Date;
 }): UtilizationHourlyRow[] => {
   const rows: UtilizationHourlyRow[] = [];
@@ -651,6 +694,9 @@ const buildUtilizationRows = (input: {
       instanceId: input.instanceId,
       hourStart,
       usageDate: formatUsageDateUtc(hourStart),
+      resourceKey: input.dimensionKeys?.resourceKey ?? null,
+      regionKey: input.dimensionKeys?.regionKey ?? null,
+      subAccountKey: input.dimensionKeys?.subAccountKey ?? null,
       metricSource: "cloudwatch",
       sampleCount: 1,
       cpuAvg: null,
@@ -841,9 +887,19 @@ export async function syncEc2MetricsForScheduledJob(job: ScheduledJob): Promise<
         }
 
         const rowsToUpsert: UtilizationHourlyRow[] = [];
+        const dimensionKeysByInstance = await loadLatestDimensionKeysForInstances({
+          cloudConnectionId: context.connectionId,
+          instanceIds: instanceBatch,
+        });
         for (const instanceId of instanceBatch) {
           const hours = metricsByInstanceHour.get(instanceId) ?? new Map<string, Partial<Record<MetricField, number>>>();
-          const rows = buildUtilizationRows({ context, instanceId, mergedByHour: hours, now });
+          const rows = buildUtilizationRows({
+            context,
+            instanceId,
+            mergedByHour: hours,
+            dimensionKeys: dimensionKeysByInstance.get(instanceId) ?? null,
+            now,
+          });
           rowsToUpsert.push(...rows);
         }
 
