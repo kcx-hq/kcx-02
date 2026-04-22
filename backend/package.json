@@ -11,6 +11,7 @@
     "ingest:cloudtrail:files": "node dist/scripts/process-cloudtrail-files.js",
     "anomalies:run": "node dist/scripts/run-anomaly-detectors.js",
     "anomalies:test:backfill": "npm run build && node dist/scripts/test-billing-anomaly-detection-from-parquet.js",
+    "backfill:anomalies": "npm run build && node dist/scripts/backfill-anomaly-detection.js",
     "backfill:cost-aggregations": "npm run build && node dist/scripts/backfill-cost-aggregations.js",
     "backfill:ec2-cost-history": "npm run build && node dist/scripts/backfill-ec2-cost-history.js",
     "backfill:ec2-instance-daily": "npm run build && node dist/scripts/backfill-ec2-instance-daily.js",
