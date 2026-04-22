@@ -9,7 +9,7 @@ const BASELINE_TYPE = "rolling_7d";
 const SOURCE_GRANULARITY = "daily";
 const SOURCE_TABLE = "fact_ec2_instance_daily";
 const ANOMALY_SCOPE = "resource";
-const EC2_ANOMALY_TYPES = ["new_high_cost_instance", "sudden_cost_spike"] as const;
+const EC2_ANOMALY_TYPES = ["new_high_cost_instance", "sudden_cost_spike", "cost_drop"] as const;
 
 type Ec2InstanceCostSpikeLifecycleInput = {
   runId: string;
@@ -33,7 +33,9 @@ const toConfidenceScore = (severity: "low" | "medium" | "high"): string =>
   severity === "high" ? "95.00" : severity === "medium" ? "80.00" : "65.00";
 
 const toRootCauseHint = (candidate: Ec2InstanceCostSpikeCandidate): string =>
-  `EC2 instance ${candidate.instanceId} cost spiked by ${Math.round(candidate.deltaPercent * 100)}% versus rolling 7-day baseline`;
+  candidate.anomalyType === "cost_drop"
+    ? `EC2 instance ${candidate.instanceId} cost dropped by ${Math.round(candidate.deltaPercent * 100)}% versus rolling 7-day baseline`
+    : `EC2 instance ${candidate.instanceId} cost spiked by ${Math.round(candidate.deltaPercent * 100)}% versus rolling 7-day baseline`;
 
 const buildFingerprint = ({
   tenantId,
@@ -211,7 +213,11 @@ async function upsertDetectedCandidates(input: Ec2InstanceCostSpikeLifecycleInpu
     });
 
     const companionAnomalyType =
-      candidate.anomalyType === "new_high_cost_instance" ? "sudden_cost_spike" : "new_high_cost_instance";
+      candidate.anomalyType === "new_high_cost_instance"
+        ? "sudden_cost_spike"
+        : candidate.anomalyType === "sudden_cost_spike"
+          ? "new_high_cost_instance"
+          : "cost_drop";
     const companionFingerprint = buildFingerprint({
       tenantId: input.tenantId,
       billingSourceId: input.billingSourceId,
@@ -322,7 +328,7 @@ async function resolveMissingOpenAnomaliesInScope(input: {
       billingSourceId: input.billingSourceId,
       cloudConnectionId: input.cloudConnectionId ?? { [Op.is]: null },
       anomalyType: {
-        [Op.in]: ["new_high_cost_instance", "sudden_cost_spike"],
+        [Op.in]: ["new_high_cost_instance", "sudden_cost_spike", "cost_drop"],
       },
       anomalyScope: ANOMALY_SCOPE,
       sourceGranularity: SOURCE_GRANULARITY,
@@ -377,7 +383,7 @@ export async function applyEc2InstanceCostSpikeLifecycle(
 }
 
 export const ec2InstanceCostSpikeLifecycleScope = {
-  anomalyType: "new_high_cost_instance_or_sudden_cost_spike",
+  anomalyType: "new_high_cost_instance_or_sudden_cost_spike_or_cost_drop",
   anomalyScope: ANOMALY_SCOPE,
   baselineType: BASELINE_TYPE,
   sourceGranularity: SOURCE_GRANULARITY,

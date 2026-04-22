@@ -51,7 +51,7 @@ const BASELINE_WINDOW_DAYS = 7;
 const MIN_HISTORY_DAYS_REQUIRED = 1;
 const MINIMUM_EXPECTED_BASELINE = 0.1;
 const MINIMUM_ABSOLUTE_DELTA = 0.25;
-const MINIMUM_PERCENTAGE_DELTA = 0.5;
+const MINIMUM_PERCENTAGE_DELTA = 0.3;
 const MINIMUM_NEW_INSTANCE_COST = 1;
 const NEW_INSTANCE_WARMUP_DAYS = 2;
 const DEFAULT_INCREMENTAL_TARGET_DAYS = 1;
@@ -402,10 +402,14 @@ export async function detectEc2InstanceCostSpikesForSource({
       // (instead of sudden_cost_spike) so the alert explicitly signals "new instance spend ramp-up".
       const isWarmupWindow = historicalValues.length <= NEW_INSTANCE_WARMUP_DAYS;
       if (isWarmupWindow) {
+        const warmupAbsDeltaCost = Math.abs(deltaCost);
+        const warmupAbsDeltaPercent = Math.abs(deltaPercent);
+
         if (
+          deltaCost >= 0 &&
           point.actualCost >= MINIMUM_NEW_INSTANCE_COST &&
-          deltaCost >= MINIMUM_ABSOLUTE_DELTA &&
-          deltaPercent >= MINIMUM_PERCENTAGE_DELTA
+          warmupAbsDeltaCost >= MINIMUM_ABSOLUTE_DELTA &&
+          warmupAbsDeltaPercent >= MINIMUM_PERCENTAGE_DELTA
         ) {
           candidates.push({
             usageDate: point.usageDate,
@@ -417,9 +421,28 @@ export async function detectEc2InstanceCostSpikesForSource({
             actualCost: point.actualCost,
             expectedCost,
             deltaCost,
-            deltaPercent,
+            deltaPercent: warmupAbsDeltaPercent,
             historyCount: historicalValues.length,
-            severity: mapSeverity(deltaPercent),
+            severity: mapSeverity(warmupAbsDeltaPercent),
+          });
+        } else if (
+          deltaCost < 0 &&
+          warmupAbsDeltaCost >= MINIMUM_ABSOLUTE_DELTA &&
+          warmupAbsDeltaPercent >= MINIMUM_PERCENTAGE_DELTA
+        ) {
+          candidates.push({
+            usageDate: point.usageDate,
+            instanceId: point.instanceId,
+            anomalyType: "cost_drop",
+            resourceKey: point.resourceKey,
+            regionKey: point.regionKey,
+            subAccountKey: point.subAccountKey,
+            actualCost: point.actualCost,
+            expectedCost,
+            deltaCost,
+            deltaPercent: warmupAbsDeltaPercent,
+            historyCount: historicalValues.length,
+            severity: mapSeverity(warmupAbsDeltaPercent),
           });
         }
         continue;
