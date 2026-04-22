@@ -1,7 +1,14 @@
 import { QueryTypes } from "sequelize";
 
+import { BadRequestError } from "../../../../../errors/http-errors.js";
 import { sequelize } from "../../../../../models/index.js";
 import type {
+  InventoryEc2InstancePerformanceQuery,
+  InventoryEc2InstancePerformanceSeries,
+  InventoryEc2InstancePerformanceResponse,
+  InventoryEc2PerformanceInterval,
+  InventoryEc2PerformanceMetric,
+  InventoryEc2PerformanceTopic,
   InventoryEc2InstancesListItem,
   InventoryEc2InstancesListQuery,
   InventoryEc2InstancesListResponse,
@@ -49,6 +56,18 @@ type FactMetricsRow = {
   uncoveredHours: number | string | null;
   latestDailyCost: number;
 };
+
+type AttachedVolumeSummaryRow = {
+  cloudConnectionKey: string;
+  instanceId: string;
+  attachedVolumeCount: number | string;
+  attachedVolumeTotalSizeGb: number | string | null;
+  attachedVolumeIds: string[];
+};
+
+type PerformanceDataRow = {
+  timestamp: Date | string;
+} & Partial<Record<InventoryEc2PerformanceMetric, number | string | null>>;
 
 type DateRange = {
   startDate: string;
@@ -117,6 +136,81 @@ const resolveDateRange = (query: InventoryEc2InstancesListQuery): DateRange => {
 const toConnectionInstanceKey = (cloudConnectionId: string | null, instanceId: string): string =>
   `${cloudConnectionId ?? ""}::${instanceId}`;
 
+const PERFORMANCE_TOPIC_METRICS: Record<InventoryEc2PerformanceTopic, InventoryEc2PerformanceMetric[]> = {
+  cpu: ["cpu_avg", "cpu_max", "cpu_min"],
+  network: ["network_in_bytes", "network_out_bytes"],
+  disk_throughput: ["disk_read_bytes", "disk_write_bytes"],
+  disk_operations: ["disk_read_ops", "disk_write_ops"],
+  ebs: [
+    "ebs_read_bytes",
+    "ebs_write_bytes",
+    "ebs_queue_length_max",
+    "ebs_burst_balance_avg",
+    "ebs_idle_time_avg",
+  ],
+  health: [
+    "status_check_failed_max",
+    "status_check_failed_instance_max",
+    "status_check_failed_system_max",
+  ],
+};
+
+const DEFAULT_TOPIC_METRIC: Record<InventoryEc2PerformanceTopic, InventoryEc2PerformanceMetric> = {
+  cpu: "cpu_avg",
+  network: "network_in_bytes",
+  disk_throughput: "disk_read_bytes",
+  disk_operations: "disk_read_ops",
+  ebs: "ebs_read_bytes",
+  health: "status_check_failed_max",
+};
+
+const PERFORMANCE_METRIC_META: Record<
+  InventoryEc2PerformanceMetric,
+  { label: string; unit: InventoryEc2InstancePerformanceSeries["unit"] }
+> = {
+  cpu_avg: { label: "Avg CPU %", unit: "percent" },
+  cpu_max: { label: "Max CPU %", unit: "percent" },
+  cpu_min: { label: "Min CPU %", unit: "percent" },
+  network_in_bytes: { label: "Network In", unit: "bytes" },
+  network_out_bytes: { label: "Network Out", unit: "bytes" },
+  disk_read_bytes: { label: "Disk Read Bytes", unit: "bytes" },
+  disk_write_bytes: { label: "Disk Write Bytes", unit: "bytes" },
+  disk_read_ops: { label: "Disk Read Ops", unit: "count" },
+  disk_write_ops: { label: "Disk Write Ops", unit: "count" },
+  ebs_read_bytes: { label: "EBS Read Bytes", unit: "bytes" },
+  ebs_write_bytes: { label: "EBS Write Bytes", unit: "bytes" },
+  ebs_queue_length_max: { label: "EBS Queue Length Max", unit: "count" },
+  ebs_burst_balance_avg: { label: "EBS Burst Balance Avg", unit: "percent" },
+  ebs_idle_time_avg: { label: "EBS Idle Time Avg", unit: "percent" },
+  status_check_failed_max: { label: "Status Check Failed", unit: "count" },
+  status_check_failed_instance_max: { label: "Instance Status Check Failed", unit: "count" },
+  status_check_failed_system_max: { label: "System Status Check Failed", unit: "count" },
+};
+
+const resolvePerformanceDateRange = (query: InventoryEc2InstancePerformanceQuery): DateRange => {
+  const today = new Date();
+  const defaultStart = new Date(today);
+  defaultStart.setUTCDate(defaultStart.getUTCDate() - 29);
+
+  const parsedStart = query.startDate ? new Date(`${query.startDate}T00:00:00Z`) : null;
+  const parsedEnd = query.endDate ? new Date(`${query.endDate}T00:00:00Z`) : null;
+
+  const startDate = parsedStart && !Number.isNaN(parsedStart.getTime()) ? parsedStart : defaultStart;
+  const endDate = parsedEnd && !Number.isNaN(parsedEnd.getTime()) ? parsedEnd : today;
+
+  if (startDate.getTime() <= endDate.getTime()) {
+    return {
+      startDate: toIsoDate(startDate),
+      endDate: toIsoDate(endDate),
+    };
+  }
+
+  return {
+    startDate: toIsoDate(endDate),
+    endDate: toIsoDate(startDate),
+  };
+};
+
 export class InstancesInventoryService {
   async listInstances(input: {
     tenantId: string;
@@ -149,12 +243,20 @@ export class InstancesInventoryService {
       rows,
       dateRange,
     });
+    const attachedVolumesLookup = await this.loadAttachedVolumeLookup({
+      tenantId: input.tenantId,
+      rows,
+    });
 
     const items: InventoryEc2InstancesListItem[] = rows.map((row) => {
       const metrics =
         metricsLookup.byConnectionInstance.get(
           toConnectionInstanceKey(row.cloudConnectionId, row.instanceId),
         ) ?? metricsLookup.byInstance.get(row.instanceId);
+      const attachedVolumes =
+        attachedVolumesLookup.byConnectionInstance.get(
+          toConnectionInstanceKey(row.cloudConnectionId, row.instanceId),
+        ) ?? attachedVolumesLookup.byInstance.get(row.instanceId);
 
       return {
         instanceId: row.instanceId,
@@ -196,6 +298,14 @@ export class InstancesInventoryService {
         instanceLifecycle: row.instanceLifecycle,
         resourceKey: row.resourceKey,
         cloudConnectionId: row.cloudConnectionId,
+        attachedVolumeCount: toNumberOrZero(attachedVolumes?.attachedVolumeCount),
+        attachedVolumeTotalSizeGb: toNullableNumber(attachedVolumes?.attachedVolumeTotalSizeGb),
+        attachedVolumeIds: Array.isArray(attachedVolumes?.attachedVolumeIds)
+          ? attachedVolumes.attachedVolumeIds.filter(
+              (volumeId): volumeId is string =>
+                typeof volumeId === "string" && volumeId.trim().length > 0,
+            )
+          : [],
       };
     });
 
@@ -208,6 +318,119 @@ export class InstancesInventoryService {
         totalPages: total === 0 ? 0 : Math.ceil(total / pageSize),
       },
     };
+  }
+
+  async getInstancePerformance(input: {
+    tenantId: string;
+    query: InventoryEc2InstancePerformanceQuery;
+  }): Promise<InventoryEc2InstancePerformanceResponse> {
+    const dateRange = resolvePerformanceDateRange(input.query);
+    const selectedMetrics = this.resolveValidatedPerformanceMetrics(
+      input.query.topic,
+      input.query.metrics,
+    );
+
+    const rows = await this.loadPerformanceRows({
+      tenantId: input.tenantId,
+      instanceId: input.query.instanceId,
+      cloudConnectionId: input.query.cloudConnectionId,
+      interval: input.query.interval,
+      metrics: selectedMetrics,
+      dateRange,
+    });
+
+    const series: InventoryEc2InstancePerformanceSeries[] = selectedMetrics.map((metric) => {
+      const metadata = PERFORMANCE_METRIC_META[metric];
+      return {
+        metric,
+        label: metadata.label,
+        unit: metadata.unit,
+        points: rows
+          .map((row) => {
+            const value = toNullableNumber(row[metric]);
+            const timestamp = toIsoOrNull(row.timestamp);
+            if (value === null || timestamp === null) return null;
+            return { timestamp, value };
+          })
+          .filter((point): point is { timestamp: string; value: number } => point !== null),
+      };
+    });
+
+    return {
+      instanceId: input.query.instanceId,
+      cloudConnectionId: input.query.cloudConnectionId,
+      interval: input.query.interval,
+      topic: input.query.topic,
+      metrics: selectedMetrics,
+      startDate: dateRange.startDate,
+      endDate: dateRange.endDate,
+      series,
+    };
+  }
+
+  private resolveValidatedPerformanceMetrics(
+    topic: InventoryEc2PerformanceTopic,
+    requestedMetrics: InventoryEc2PerformanceMetric[],
+  ): InventoryEc2PerformanceMetric[] {
+    const allowed = new Set(PERFORMANCE_TOPIC_METRICS[topic]);
+    const filtered = requestedMetrics.filter((metric) => allowed.has(metric));
+    if (filtered.length === 0) {
+      return [DEFAULT_TOPIC_METRIC[topic]];
+    }
+    return Array.from(new Set(filtered));
+  }
+
+  private async loadPerformanceRows(input: {
+    tenantId: string;
+    instanceId: string;
+    cloudConnectionId: string | null;
+    interval: InventoryEc2PerformanceInterval;
+    metrics: InventoryEc2PerformanceMetric[];
+    dateRange: DateRange;
+  }): Promise<PerformanceDataRow[]> {
+    if (input.metrics.length === 0) {
+      throw new BadRequestError("At least one metric is required");
+    }
+
+    const tableName =
+      input.interval === "hourly"
+        ? "ec2_instance_utilization_hourly"
+        : "ec2_instance_utilization_daily";
+    const timestampSelect =
+      input.interval === "hourly" ? "u.hour_start AS timestamp" : "u.usage_date::timestamp AS timestamp";
+    const rangeClause =
+      input.interval === "hourly"
+        ? "u.hour_start >= $4::timestamptz AND u.hour_start < (($5::date + INTERVAL '1 day')::timestamptz)"
+        : "u.usage_date >= $4::date AND u.usage_date <= $5::date";
+    const metricSelect = input.metrics.map((metric) => `u.${metric} AS ${metric}`).join(",\n          ");
+
+    const cloudConnectionClause = "AND ($3::uuid IS NULL OR u.cloud_connection_id = $3::uuid)";
+
+    const rows = await sequelize.query<PerformanceDataRow>(
+      `
+        SELECT
+          ${timestampSelect},
+          ${metricSelect}
+        FROM ${tableName} u
+        WHERE u.tenant_id = $1::uuid
+          AND u.instance_id = $2
+          ${cloudConnectionClause}
+          AND ${rangeClause}
+        ORDER BY timestamp ASC;
+      `,
+      {
+        bind: [
+          input.tenantId,
+          input.instanceId,
+          input.cloudConnectionId,
+          input.dateRange.startDate,
+          input.dateRange.endDate,
+        ],
+        type: QueryTypes.SELECT,
+      },
+    );
+
+    return rows;
   }
 
   private buildInventoryWhereClause(input: {
@@ -509,6 +732,61 @@ export class InstancesInventoryService {
 
     const byConnectionInstance = new Map<string, FactMetricsRow>();
     const byInstance = new Map<string, FactMetricsRow>();
+
+    for (const row of rows) {
+      byConnectionInstance.set(
+        toConnectionInstanceKey(row.cloudConnectionKey || null, row.instanceId),
+        row,
+      );
+      if (!byInstance.has(row.instanceId)) {
+        byInstance.set(row.instanceId, row);
+      }
+    }
+
+    return { byConnectionInstance, byInstance };
+  }
+
+  private async loadAttachedVolumeLookup(input: {
+    tenantId: string;
+    rows: InventoryRow[];
+  }): Promise<{
+    byConnectionInstance: Map<string, AttachedVolumeSummaryRow>;
+    byInstance: Map<string, AttachedVolumeSummaryRow>;
+  }> {
+    const instanceIds = Array.from(new Set(input.rows.map((row) => row.instanceId)));
+    if (instanceIds.length === 0) {
+      return {
+        byConnectionInstance: new Map(),
+        byInstance: new Map(),
+      };
+    }
+
+    const rows = await sequelize.query<AttachedVolumeSummaryRow>(
+      `
+        SELECT
+          COALESCE(inv.cloud_connection_id::text, '') AS "cloudConnectionKey",
+          inv.attached_instance_id AS "instanceId",
+          COUNT(*)::int AS "attachedVolumeCount",
+          SUM(COALESCE(inv.size_gb, 0))::double precision AS "attachedVolumeTotalSizeGb",
+          ARRAY_AGG(DISTINCT inv.volume_id ORDER BY inv.volume_id) AS "attachedVolumeIds"
+        FROM ec2_volume_inventory_snapshots inv
+        WHERE inv.tenant_id = $1
+          AND inv.is_current = true
+          AND inv.deleted_at IS NULL
+          AND inv.is_attached = true
+          AND inv.attached_instance_id = ANY($2::text[])
+        GROUP BY
+          COALESCE(inv.cloud_connection_id::text, ''),
+          inv.attached_instance_id;
+      `,
+      {
+        bind: [input.tenantId, instanceIds],
+        type: QueryTypes.SELECT,
+      },
+    );
+
+    const byConnectionInstance = new Map<string, AttachedVolumeSummaryRow>();
+    const byInstance = new Map<string, AttachedVolumeSummaryRow>();
 
     for (const row of rows) {
       byConnectionInstance.set(

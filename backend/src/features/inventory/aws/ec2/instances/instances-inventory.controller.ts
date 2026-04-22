@@ -3,7 +3,10 @@ import type { Request, Response } from "express";
 import { HTTP_STATUS } from "../../../../../constants/http-status.js";
 import { UnauthorizedError } from "../../../../../errors/http-errors.js";
 import { sendSuccess } from "../../../../../utils/api-response.js";
-import { parseInstancesInventoryListQuery } from "./instances-inventory.schema.js";
+import {
+  parseInstancesInventoryListQuery,
+  parseInstancesInventoryPerformanceQuery,
+} from "./instances-inventory.schema.js";
 import { InstancesInventoryService } from "./instances-inventory.service.js";
 
 const instancesInventoryService = new InstancesInventoryService();
@@ -29,6 +32,26 @@ export async function handleListInventoryAwsEc2Instances(
     req,
     statusCode: HTTP_STATUS.OK,
     message: "Inventory EC2 instances fetched successfully",
+    data,
+  });
+}
+
+export async function handleGetInventoryAwsEc2InstancePerformance(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  const { tenantId } = requireTenantContext(req);
+  const query = parseInstancesInventoryPerformanceQuery(req);
+  const data = await instancesInventoryService.getInstancePerformance({
+    tenantId,
+    query,
+  });
+
+  sendSuccess({
+    res,
+    req,
+    statusCode: HTTP_STATUS.OK,
+    message: "Inventory EC2 instance performance fetched successfully",
     data,
   });
 }

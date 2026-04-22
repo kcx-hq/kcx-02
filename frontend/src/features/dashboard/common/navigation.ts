@@ -70,7 +70,7 @@ export const dashboardNav: DashboardNavNode[] = [
           {
             kind: "link",
             label: "Volumes",
-            path: "/dashboard/ec2/volumes",
+            path: "/dashboard/inventory/aws/ec2/volumes",
             icon: "boxes",
           },
           {
@@ -90,6 +90,12 @@ export const dashboardNav: DashboardNavNode[] = [
             label: "EC2 Instance Hours",
             path: "/dashboard/ec2/instance-hours",
             icon: "activity",
+          },
+          {
+            kind: "link",
+            label: "Performance",
+            path: "/dashboard/ec2/performance",
+            icon: "line-chart",
           },
           {
             kind: "link",

@@ -33,6 +33,9 @@ export type InventoryEc2InstanceRow = {
   regionKey: string | null
   regionId: string | null
   regionName: string | null
+  attachedVolumeCount: number
+  attachedVolumeTotalSizeGb: number | null
+  attachedVolumeIds: string[]
 }
 
 export type InventoryEc2InstancesPagination = {
@@ -61,6 +64,67 @@ export type InventoryEc2InstancesListParams = {
   pageSize?: number
 }
 
+export type InventoryEc2PerformanceInterval = "daily" | "hourly"
+export type InventoryEc2PerformanceTopic =
+  | "cpu"
+  | "network"
+  | "disk_throughput"
+  | "disk_operations"
+  | "ebs"
+  | "health"
+
+export type InventoryEc2PerformanceMetric =
+  | "cpu_avg"
+  | "cpu_max"
+  | "cpu_min"
+  | "network_in_bytes"
+  | "network_out_bytes"
+  | "disk_read_bytes"
+  | "disk_write_bytes"
+  | "disk_read_ops"
+  | "disk_write_ops"
+  | "ebs_read_bytes"
+  | "ebs_write_bytes"
+  | "ebs_queue_length_max"
+  | "ebs_burst_balance_avg"
+  | "ebs_idle_time_avg"
+  | "status_check_failed_max"
+  | "status_check_failed_instance_max"
+  | "status_check_failed_system_max"
+
+export type InventoryEc2InstancePerformanceParams = {
+  instanceId: string
+  cloudConnectionId?: string | null
+  interval: InventoryEc2PerformanceInterval
+  topic: InventoryEc2PerformanceTopic
+  metrics: InventoryEc2PerformanceMetric[]
+  startDate?: string | null
+  endDate?: string | null
+}
+
+export type InventoryEc2InstancePerformancePoint = {
+  timestamp: string
+  value: number
+}
+
+export type InventoryEc2InstancePerformanceSeries = {
+  metric: InventoryEc2PerformanceMetric
+  label: string
+  unit: "percent" | "bytes" | "count"
+  points: InventoryEc2InstancePerformancePoint[]
+}
+
+export type InventoryEc2InstancePerformanceResponse = {
+  instanceId: string
+  cloudConnectionId: string | null
+  interval: InventoryEc2PerformanceInterval
+  topic: InventoryEc2PerformanceTopic
+  metrics: InventoryEc2PerformanceMetric[]
+  startDate: string
+  endDate: string
+  series: InventoryEc2InstancePerformanceSeries[]
+}
+
 type UnknownRecord = Record<string, unknown>
 
 const isRecord = (value: unknown): value is UnknownRecord =>
@@ -83,6 +147,35 @@ const toNumberOrNull = (value: unknown): number | null => {
 
 const toBooleanOrNull = (value: unknown): boolean | null => {
   return typeof value === "boolean" ? value : null
+}
+
+const isPerformanceMetric = (value: string): value is InventoryEc2PerformanceMetric =>
+  [
+    "cpu_avg",
+    "cpu_max",
+    "cpu_min",
+    "network_in_bytes",
+    "network_out_bytes",
+    "disk_read_bytes",
+    "disk_write_bytes",
+    "disk_read_ops",
+    "disk_write_ops",
+    "ebs_read_bytes",
+    "ebs_write_bytes",
+    "ebs_queue_length_max",
+    "ebs_burst_balance_avg",
+    "ebs_idle_time_avg",
+    "status_check_failed_max",
+    "status_check_failed_instance_max",
+    "status_check_failed_system_max",
+  ].includes(value)
+
+const toStringArray = (value: unknown): string[] => {
+  if (!Array.isArray(value)) return []
+  return value
+    .filter((item): item is string => typeof item === "string")
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0)
 }
 
 const normalizeInstanceRow = (value: unknown): InventoryEc2InstanceRow | null => {
@@ -135,6 +228,9 @@ const normalizeInstanceRow = (value: unknown): InventoryEc2InstanceRow | null =>
     regionKey: toStringOrNull(value.regionKey),
     regionId: toStringOrNull(value.regionId),
     regionName: toStringOrNull(value.regionName),
+    attachedVolumeCount: toNumberOrNull(value.attachedVolumeCount) ?? 0,
+    attachedVolumeTotalSizeGb: toNumberOrNull(value.attachedVolumeTotalSizeGb),
+    attachedVolumeIds: toStringArray(value.attachedVolumeIds),
   }
 }
 
@@ -214,6 +310,92 @@ export async function getInventoryEc2Instances(
   return {
     items,
     pagination: normalizePagination(paginationSource, page, pageSize),
+  }
+}
+
+const normalizePerformancePoint = (value: unknown): InventoryEc2InstancePerformancePoint | null => {
+  if (!isRecord(value)) return null
+  const timestamp = toStringOrNull(value.timestamp)
+  const numericValue = toNumberOrNull(value.value)
+  if (!timestamp || numericValue === null) return null
+  return { timestamp, value: numericValue }
+}
+
+const normalizePerformanceSeries = (value: unknown): InventoryEc2InstancePerformanceSeries | null => {
+  if (!isRecord(value)) return null
+  const metricRaw = toStringOrNull(value.metric)
+  const label = toStringOrNull(value.label)
+  const unitRaw = toStringOrNull(value.unit)
+  if (!metricRaw || !isPerformanceMetric(metricRaw) || !label) return null
+  if (unitRaw !== "percent" && unitRaw !== "bytes" && unitRaw !== "count") return null
+  const points = Array.isArray(value.points)
+    ? value.points
+        .map((point) => normalizePerformancePoint(point))
+        .filter((point): point is InventoryEc2InstancePerformancePoint => point !== null)
+    : []
+  return {
+    metric: metricRaw,
+    label,
+    unit: unitRaw,
+    points,
+  }
+}
+
+export async function getInventoryEc2InstancePerformance(
+  params: InventoryEc2InstancePerformanceParams,
+): Promise<InventoryEc2InstancePerformanceResponse> {
+  const searchParams = new URLSearchParams()
+  searchParams.set("instanceId", params.instanceId)
+  searchParams.set("interval", params.interval)
+  searchParams.set("topic", params.topic)
+  searchParams.set("metrics", params.metrics.join(","))
+  if (params.cloudConnectionId) searchParams.set("cloudConnectionId", params.cloudConnectionId)
+  if (params.startDate) searchParams.set("startDate", params.startDate)
+  if (params.endDate) searchParams.set("endDate", params.endDate)
+
+  const response = await apiGet<unknown>(`/inventory/aws/ec2/instances/performance?${searchParams.toString()}`)
+  if (!isRecord(response)) {
+    return {
+      instanceId: params.instanceId,
+      cloudConnectionId: params.cloudConnectionId ?? null,
+      interval: params.interval,
+      topic: params.topic,
+      metrics: params.metrics,
+      startDate: params.startDate ?? "",
+      endDate: params.endDate ?? "",
+      series: [],
+    }
+  }
+
+  const metricValues = Array.isArray(response.metrics)
+    ? response.metrics
+        .filter((metric): metric is string => typeof metric === "string")
+        .filter((metric): metric is InventoryEc2PerformanceMetric => isPerformanceMetric(metric))
+    : params.metrics
+  const series = Array.isArray(response.series)
+    ? response.series
+        .map((item) => normalizePerformanceSeries(item))
+        .filter((item): item is InventoryEc2InstancePerformanceSeries => item !== null)
+    : []
+  const intervalValue = toStringOrNull(response.interval)
+  const topicValue = toStringOrNull(response.topic)
+
+  return {
+    instanceId: toStringOrNull(response.instanceId) ?? params.instanceId,
+    cloudConnectionId: toStringOrNull(response.cloudConnectionId),
+    interval: intervalValue === "hourly" ? "hourly" : "daily",
+    topic:
+      topicValue === "network" ||
+      topicValue === "disk_throughput" ||
+      topicValue === "disk_operations" ||
+      topicValue === "ebs" ||
+      topicValue === "health"
+        ? topicValue
+        : "cpu",
+    metrics: metricValues,
+    startDate: toStringOrNull(response.startDate) ?? params.startDate ?? "",
+    endDate: toStringOrNull(response.endDate) ?? params.endDate ?? "",
+    series,
   }
 }
 
