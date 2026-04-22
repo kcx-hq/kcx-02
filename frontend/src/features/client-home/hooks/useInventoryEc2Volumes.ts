@@ -13,6 +13,7 @@ export function useInventoryEc2Volumes(params: InventoryEc2VolumesListParams) {
     queryKey: [
       ...INVENTORY_EC2_VOLUMES_QUERY_KEY,
       params.cloudConnectionId ?? "all",
+      params.attachedInstanceId ?? "all",
       params.state ?? "all",
       params.volumeType ?? "all",
       typeof params.isAttached === "boolean" ? String(params.isAttached) : "all",

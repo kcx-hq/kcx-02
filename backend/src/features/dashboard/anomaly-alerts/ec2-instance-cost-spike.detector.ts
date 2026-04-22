@@ -14,7 +14,7 @@ type Ec2InstanceDailyPoint = {
 export type Ec2InstanceCostSpikeCandidate = {
   usageDate: string;
   instanceId: string;
-  anomalyType: "sudden_cost_spike" | "new_high_cost_instance";
+  anomalyType: "sudden_cost_spike" | "new_high_cost_instance" | "cost_drop";
   resourceKey: string | null;
   regionKey: string | null;
   subAccountKey: string | null;
@@ -397,13 +397,16 @@ export async function detectEc2InstanceCostSpikesForSource({
       const deltaCost = point.actualCost - expectedCost;
       const deltaPercent = deltaCost / safeExpectedCost;
 
-      // New-instance warm-up fallback:
-      // with only 1-2 historical days, a low baseline can hide obvious "new resource ramp-up" events.
-      // We keep this as new_high_cost_instance to clearly signal "new instance + sudden spend increase".
+      // New-instance warm-up classification:
+      // if an instance is still in its first observed days and spikes, classify it as new_high_cost_instance
+      // (instead of sudden_cost_spike) so the alert explicitly signals "new instance spend ramp-up".
       const isWarmupWindow = historicalValues.length <= NEW_INSTANCE_WARMUP_DAYS;
-      const isLowBaselineWarmup = expectedCost <= MINIMUM_EXPECTED_BASELINE;
-      if (isWarmupWindow && isLowBaselineWarmup) {
-        if (point.actualCost >= MINIMUM_NEW_INSTANCE_COST && deltaCost >= MINIMUM_ABSOLUTE_DELTA) {
+      if (isWarmupWindow) {
+        if (
+          point.actualCost >= MINIMUM_NEW_INSTANCE_COST &&
+          deltaCost >= MINIMUM_ABSOLUTE_DELTA &&
+          deltaPercent >= MINIMUM_PERCENTAGE_DELTA
+        ) {
           candidates.push({
             usageDate: point.usageDate,
             instanceId: point.instanceId,
@@ -426,30 +429,32 @@ export async function detectEc2InstanceCostSpikesForSource({
         continue;
       }
 
-      if (deltaCost <= 0) {
+      const absoluteDeltaCost = Math.abs(deltaCost);
+      const absoluteDeltaPercent = Math.abs(deltaPercent);
+
+      if (absoluteDeltaCost < MINIMUM_ABSOLUTE_DELTA) {
+        continue;
+      }
+      if (absoluteDeltaPercent < MINIMUM_PERCENTAGE_DELTA) {
         continue;
       }
 
-      if (deltaCost < MINIMUM_ABSOLUTE_DELTA) {
-        continue;
-      }
-      if (deltaPercent < MINIMUM_PERCENTAGE_DELTA) {
-        continue;
-      }
+      const anomalyType: Ec2InstanceCostSpikeCandidate["anomalyType"] =
+        deltaCost >= 0 ? "sudden_cost_spike" : "cost_drop";
 
       candidates.push({
         usageDate: point.usageDate,
         instanceId: point.instanceId,
-        anomalyType: "sudden_cost_spike",
+        anomalyType,
         resourceKey: point.resourceKey,
         regionKey: point.regionKey,
         subAccountKey: point.subAccountKey,
         actualCost: point.actualCost,
         expectedCost,
         deltaCost,
-        deltaPercent,
+        deltaPercent: absoluteDeltaPercent,
         historyCount: historicalValues.length,
-        severity: mapSeverity(deltaPercent),
+        severity: mapSeverity(absoluteDeltaPercent),
       });
     }
   }

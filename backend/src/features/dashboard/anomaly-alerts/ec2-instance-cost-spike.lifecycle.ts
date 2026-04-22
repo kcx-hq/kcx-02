@@ -9,6 +9,7 @@ const BASELINE_TYPE = "rolling_7d";
 const SOURCE_GRANULARITY = "daily";
 const SOURCE_TABLE = "fact_ec2_instance_daily";
 const ANOMALY_SCOPE = "resource";
+const EC2_ANOMALY_TYPES = ["new_high_cost_instance", "sudden_cost_spike"] as const;
 
 type Ec2InstanceCostSpikeLifecycleInput = {
   runId: string;
@@ -162,13 +163,29 @@ async function upsertDetectedCandidates(input: Ec2InstanceCostSpikeLifecycleInpu
       anomalyType: candidate.anomalyType,
     }),
   );
+  const candidateFingerprintsForLookup = Array.from(
+    new Set(
+      input.candidates.flatMap((candidate) =>
+        EC2_ANOMALY_TYPES.map((anomalyType) =>
+          buildFingerprint({
+            tenantId: input.tenantId,
+            billingSourceId: input.billingSourceId,
+            cloudConnectionId: input.cloudConnectionId,
+            usageDate: candidate.usageDate,
+            instanceId: candidate.instanceId,
+            anomalyType,
+          }),
+        ),
+      ),
+    ),
+  );
 
   const existingByFingerprint = new Map<string, InstanceType<typeof FactAnomalies>>();
-  if (detectedFingerprints.length > 0) {
+  if (candidateFingerprintsForLookup.length > 0) {
     const existing = await FactAnomalies.findAll({
       where: {
         fingerprint: {
-          [Op.in]: detectedFingerprints,
+          [Op.in]: candidateFingerprintsForLookup,
         },
       },
     });
@@ -193,7 +210,18 @@ async function upsertDetectedCandidates(input: Ec2InstanceCostSpikeLifecycleInpu
       anomalyType: candidate.anomalyType,
     });
 
-    const existing = existingByFingerprint.get(fingerprint);
+    const companionAnomalyType =
+      candidate.anomalyType === "new_high_cost_instance" ? "sudden_cost_spike" : "new_high_cost_instance";
+    const companionFingerprint = buildFingerprint({
+      tenantId: input.tenantId,
+      billingSourceId: input.billingSourceId,
+      cloudConnectionId: input.cloudConnectionId,
+      usageDate: candidate.usageDate,
+      instanceId: candidate.instanceId,
+      anomalyType: companionAnomalyType,
+    });
+
+    const existing = existingByFingerprint.get(fingerprint) ?? existingByFingerprint.get(companionFingerprint);
 
     const patch = {
       tenantId: input.tenantId,

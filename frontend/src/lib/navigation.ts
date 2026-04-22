@@ -14,7 +14,7 @@ const STATIC_ROUTES = [
   "/dashboard/ec2/cost",
   "/dashboard/ec2/usage",
   "/dashboard/ec2/instance-hours",
-  "/dashboard/ec2/anomaly-detection",
+  "/dashboard/ec2/performance",
   "/dashboard/resources",
   "/dashboard/allocation",
   "/dashboard/optimization",
@@ -122,6 +122,7 @@ const LEGACY_ROUTE_REDIRECTS: Record<string, StaticRoute> = {
   "/dashboard/cost-analysis": "/dashboard/cost/explorer",
   "/dashboard/cost-driver": "/dashboard/allocation",
   "/dashboard/data-quality": "/dashboard/anomalies-alerts",
+  "/dashboard/ec2/anomaly-detection": "/dashboard/anomalies-alerts",
   "/manual-dashboard": "/uploads-dashboard/overview",
   "/client/billing/manual-setup": "/client/billing/connect-cloud/aws/manual",
 }

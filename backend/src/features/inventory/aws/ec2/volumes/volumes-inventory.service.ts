@@ -158,6 +158,12 @@ export class VolumesInventoryService {
       bind.push(input.query.cloudConnectionId);
       nextIndex += 1;
     }
+    const normalizedAttachedInstanceId = normalizeLower(input.query.attachedInstanceId);
+    if (normalizedAttachedInstanceId) {
+      whereParts.push(`LOWER(COALESCE(inv.attached_instance_id, '')) = $${nextIndex}`);
+      bind.push(normalizedAttachedInstanceId);
+      nextIndex += 1;
+    }
 
     const normalizedState = normalizeLower(input.query.state);
     if (normalizedState) {
