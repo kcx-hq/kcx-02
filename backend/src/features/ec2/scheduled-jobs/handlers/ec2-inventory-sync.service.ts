@@ -1,9 +1,11 @@
 import {
   DescribeInstancesCommand,
   DescribeRegionsCommand,
+  DescribeSnapshotsCommand,
   DescribeVolumesCommand,
   EC2Client,
   type Instance,
+  type Snapshot,
   type Tag,
   type Volume,
 } from "@aws-sdk/client-ec2";
@@ -17,6 +19,7 @@ import {
   DimResource,
   DimSubAccount,
   Ec2InstanceInventorySnapshot,
+  Ec2SnapshotInventorySnapshot,
   Ec2VolumeInventorySnapshot,
   sequelize,
 } from "../../../../models/index.js";
@@ -92,6 +95,32 @@ type VolumeSnapshotRowInput = {
   updatedAt: Date;
 };
 
+type SnapshotInventoryRowInput = {
+  tenantId: string | null;
+  cloudConnectionId: string | null;
+  providerId: number | null;
+  snapshotId: string;
+  resourceKey: number | null;
+  regionKey: number | null;
+  subAccountKey: number | null;
+  sourceVolumeId: string | null;
+  sourceInstanceId: string | null;
+  sizeGb: number | null;
+  startTime: Date | null;
+  state: string | null;
+  storageTier: string | null;
+  encrypted: boolean | null;
+  kmsKeyId: string | null;
+  progress: string | null;
+  tagsJson: Record<string, unknown> | null;
+  metadataJson: Record<string, unknown> | null;
+  discoveredAt: Date;
+  isCurrent: boolean;
+  deletedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
 const normalizeTrim = (value: string | null | undefined): string => String(value ?? "").trim();
 const toNullableNumber = (value: unknown): number | null => {
   if (typeof value === "number") {
@@ -110,6 +139,7 @@ const isUniqueViolation = (error: unknown): boolean => {
 type InventoryDimensionCache = {
   resourceByInstanceId: Map<string, string | null>;
   resourceByVolumeId: Map<string, string | null>;
+  resourceBySnapshotId: Map<string, string | null>;
   regionByRegionAz: Map<string, string | null>;
   subAccountByExternalId: Map<string, string | null>;
 };
@@ -117,6 +147,7 @@ type InventoryDimensionCache = {
 const createInventoryDimensionCache = (): InventoryDimensionCache => ({
   resourceByInstanceId: new Map(),
   resourceByVolumeId: new Map(),
+  resourceBySnapshotId: new Map(),
   regionByRegionAz: new Map(),
   subAccountByExternalId: new Map(),
 });
@@ -308,6 +339,51 @@ const resolveVolumeResourceKey = async (input: {
   }
 };
 
+const resolveSnapshotResourceKey = async (input: {
+  tenantId: string | null;
+  providerId: string | null;
+  snapshotId: string;
+  snapshotName: string | null;
+  cache: InventoryDimensionCache;
+}): Promise<string | null> => {
+  const tenantId = normalizeTrim(input.tenantId);
+  const providerId = normalizeTrim(input.providerId);
+  const snapshotId = normalizeTrim(input.snapshotId);
+  if (!tenantId || !providerId || !snapshotId) return null;
+
+  const cacheKey = `${tenantId}|${providerId}|${snapshotId}`;
+  if (input.cache.resourceBySnapshotId.has(cacheKey)) {
+    return input.cache.resourceBySnapshotId.get(cacheKey) ?? null;
+  }
+
+  const where = { tenantId, providerId, resourceId: snapshotId };
+  const existing = await DimResource.findOne({ where });
+  if (existing) {
+    const id = String(existing.id);
+    input.cache.resourceBySnapshotId.set(cacheKey, id);
+    return id;
+  }
+
+  try {
+    const created = await DimResource.create({
+      tenantId,
+      providerId,
+      resourceId: snapshotId,
+      resourceName: normalizeTrim(input.snapshotName) || snapshotId,
+      resourceType: "ec2_snapshot",
+    });
+    const id = String(created.id);
+    input.cache.resourceBySnapshotId.set(cacheKey, id);
+    return id;
+  } catch (error) {
+    if (!isUniqueViolation(error)) throw error;
+    const retried = await DimResource.findOne({ where });
+    const id = retried ? String(retried.id) : null;
+    input.cache.resourceBySnapshotId.set(cacheKey, id);
+    return id;
+  }
+};
+
 const enrichSnapshotsWithDimensionKeys = async (input: {
   rows: SnapshotRowInput[];
   context: AwsConnectionContext;
@@ -373,6 +449,44 @@ const enrichVolumeSnapshotsWithDimensionKeys = async (input: {
       providerId: input.context.providerId,
       volumeId: row.volumeId,
       volumeName: tagName,
+      cache: input.cache,
+    });
+    row.resourceKey = toNullableNumber(resourceKey);
+  }
+};
+
+const enrichSnapshotInventoryWithDimensionKeys = async (input: {
+  rows: SnapshotInventoryRowInput[];
+  context: AwsConnectionContext;
+  cache: InventoryDimensionCache;
+  region: string;
+}): Promise<void> => {
+  for (const row of input.rows) {
+    const tagName =
+      row.tagsJson && typeof row.tagsJson.Name === "string" ? normalizeTrim(String(row.tagsJson.Name)) : null;
+
+    const subAccountKey = await resolveSubAccountKey({
+      tenantId: input.context.tenantId,
+      providerId: input.context.providerId,
+      subAccountId: input.context.subAccountId,
+      subAccountName: input.context.subAccountName,
+      cache: input.cache,
+    });
+    row.subAccountKey = toNullableNumber(subAccountKey);
+
+    const regionKey = await resolveRegionKey({
+      providerId: input.context.providerId,
+      region: input.region,
+      availabilityZone: null,
+      cache: input.cache,
+    });
+    row.regionKey = toNullableNumber(regionKey);
+
+    const resourceKey = await resolveSnapshotResourceKey({
+      tenantId: input.context.tenantId,
+      providerId: input.context.providerId,
+      snapshotId: row.snapshotId,
+      snapshotName: tagName,
       cache: input.cache,
     });
     row.resourceKey = toNullableNumber(resourceKey);
@@ -545,6 +659,83 @@ const listVolumesInRegion = async (client: EC2Client): Promise<Volume[]> => {
   return volumes;
 };
 
+const listSnapshotsInRegion = async (client: EC2Client): Promise<Snapshot[]> => {
+  const snapshots: Snapshot[] = [];
+  let nextToken: string | undefined;
+
+  do {
+    const response = await client.send(
+      new DescribeSnapshotsCommand({
+        NextToken: nextToken,
+        OwnerIds: ["self"],
+      }),
+    );
+
+    for (const snapshot of response.Snapshots ?? []) {
+      if (snapshot.SnapshotId) {
+        snapshots.push(snapshot);
+      }
+    }
+
+    nextToken = response.NextToken;
+  } while (nextToken);
+
+  return snapshots;
+};
+
+const instanceIdPattern = /\b(i-[0-9a-f]{8,17})\b/i;
+const sourceInstanceTagKeys = new Set([
+  "instanceid",
+  "instance-id",
+  "instance_id",
+  "sourceinstanceid",
+  "source-instance-id",
+  "source_instance_id",
+]);
+
+const extractSourceInstanceId = (snapshot: Snapshot, tags: Record<string, string> | null): {
+  sourceInstanceId: string | null;
+  sourceHint: "tag" | "description" | null;
+  sourceTagKey: string | null;
+} => {
+  if (tags) {
+    for (const [key, value] of Object.entries(tags)) {
+      const normalizedTagKey = normalizeTrim(key).toLowerCase().replace(/[^a-z0-9]+/g, "");
+      if (!sourceInstanceTagKeys.has(normalizedTagKey)) continue;
+
+      const tagValue = normalizeTrim(value);
+      if (!tagValue) continue;
+
+      const matched = instanceIdPattern.exec(tagValue);
+      if (matched?.[1]) {
+        return {
+          sourceInstanceId: normalizeTrim(matched[1]) || null,
+          sourceHint: "tag",
+          sourceTagKey: key,
+        };
+      }
+    }
+  }
+
+  const description = normalizeTrim(snapshot.Description);
+  if (description) {
+    const matched = instanceIdPattern.exec(description);
+    if (matched?.[1]) {
+      return {
+        sourceInstanceId: normalizeTrim(matched[1]) || null,
+        sourceHint: "description",
+        sourceTagKey: null,
+      };
+    }
+  }
+
+  return {
+    sourceInstanceId: null,
+    sourceHint: null,
+    sourceTagKey: null,
+  };
+};
+
 const toSnapshotRow = (input: {
   context: AwsConnectionContext;
   instance: Instance;
@@ -669,6 +860,68 @@ const toVolumeSnapshotRow = (input: {
   };
 };
 
+const toSnapshotInventoryRow = (input: {
+  context: AwsConnectionContext;
+  snapshot: Snapshot;
+  region: string;
+  discoveredAt: Date;
+}): SnapshotInventoryRowInput => {
+  const snapshotId = normalizeTrim(input.snapshot.SnapshotId);
+  if (!snapshotId) {
+    throw new Error("DescribeSnapshots returned snapshot without SnapshotId");
+  }
+
+  const tagsJson = toTagMap(input.snapshot.Tags);
+  const source = extractSourceInstanceId(input.snapshot, tagsJson);
+
+  const metadataJson: Record<string, unknown> = {
+    awsRegion: input.region,
+    availabilityZone: normalizeTrim(input.snapshot.AvailabilityZone) || null,
+    description: input.snapshot.Description ?? null,
+    ownerId: input.snapshot.OwnerId ?? null,
+    ownerAlias: input.snapshot.OwnerAlias ?? null,
+    stateMessage: input.snapshot.StateMessage ?? null,
+    dataEncryptionKeyId: input.snapshot.DataEncryptionKeyId ?? null,
+    outpostArn: input.snapshot.OutpostArn ?? null,
+    transferType: input.snapshot.TransferType ? String(input.snapshot.TransferType) : null,
+    completionDurationMinutes:
+      typeof input.snapshot.CompletionDurationMinutes === "number" ? input.snapshot.CompletionDurationMinutes : null,
+    completionTime: input.snapshot.CompletionTime ?? null,
+    restoreExpiryTime: input.snapshot.RestoreExpiryTime ?? null,
+    fullSnapshotSizeInBytes:
+      typeof input.snapshot.FullSnapshotSizeInBytes === "number" ? input.snapshot.FullSnapshotSizeInBytes : null,
+    sseType: input.snapshot.SseType ? String(input.snapshot.SseType) : null,
+    sourceInstanceDerivation: source.sourceHint,
+    sourceInstanceTagKey: source.sourceTagKey,
+  };
+
+  return {
+    tenantId: input.context.tenantId,
+    cloudConnectionId: input.context.connectionId,
+    providerId: toNullableNumber(input.context.providerId),
+    snapshotId,
+    resourceKey: null,
+    regionKey: null,
+    subAccountKey: null,
+    sourceVolumeId: normalizeTrim(input.snapshot.VolumeId) || null,
+    sourceInstanceId: source.sourceInstanceId,
+    sizeGb: typeof input.snapshot.VolumeSize === "number" ? input.snapshot.VolumeSize : null,
+    startTime: input.snapshot.StartTime ?? null,
+    state: input.snapshot.State ? String(input.snapshot.State) : null,
+    storageTier: input.snapshot.StorageTier ? String(input.snapshot.StorageTier) : null,
+    encrypted: typeof input.snapshot.Encrypted === "boolean" ? input.snapshot.Encrypted : null,
+    kmsKeyId: normalizeTrim(input.snapshot.KmsKeyId) || null,
+    progress: normalizeTrim(input.snapshot.Progress) || null,
+    tagsJson,
+    metadataJson,
+    discoveredAt: input.discoveredAt,
+    isCurrent: true,
+    deletedAt: null,
+    createdAt: input.discoveredAt,
+    updatedAt: input.discoveredAt,
+  };
+};
+
 const markOlderSnapshotsNotCurrent = async (input: {
   cloudConnectionId: string;
   instanceIds: string[];
@@ -717,6 +970,104 @@ const markOlderVolumeSnapshotsNotCurrent = async (input: {
   );
 };
 
+const markOlderSnapshotInventoryRowsNotCurrent = async (input: {
+  cloudConnectionId: string;
+  snapshotIds: string[];
+  transaction?: Transaction;
+}): Promise<void> => {
+  if (input.snapshotIds.length === 0) return;
+
+  await sequelize.query(
+    `
+      UPDATE ec2_snapshot_inventory_snapshots
+      SET is_current = false,
+          updated_at = NOW()
+      WHERE cloud_connection_id = $1
+        AND is_current = true
+        AND snapshot_id = ANY($2::text[]);
+    `,
+    {
+      bind: [input.cloudConnectionId, input.snapshotIds],
+      type: QueryTypes.UPDATE,
+      transaction: input.transaction,
+    },
+  );
+};
+
+export const markStaleSnapshotInventoryRowsNotCurrentForRegionScope = async (input: {
+  tenantId: string | null;
+  cloudConnectionId: string;
+  providerId: string | null;
+  region: string;
+  latestSnapshotIds: string[];
+  transaction?: Transaction;
+}): Promise<void> => {
+  const tenantId = normalizeTrim(input.tenantId) || null;
+  const region = normalizeTrim(input.region).toLowerCase();
+  if (!region) return;
+
+  const latestSnapshotIds = Array.from(
+    new Set(input.latestSnapshotIds.map((snapshotId) => normalizeTrim(snapshotId)).filter(Boolean)),
+  );
+
+  const bind: unknown[] = [input.cloudConnectionId];
+  let nextIndex = 2;
+
+  let tenantFilter = "";
+  if (tenantId) {
+    tenantFilter = `AND s.tenant_id = $${nextIndex}`;
+    bind.push(tenantId);
+    nextIndex += 1;
+  }
+
+  const regionBindIndex = nextIndex;
+  bind.push(region);
+  nextIndex += 1;
+
+  let providerFilter = "";
+  const providerId = toNullableNumber(input.providerId);
+  if (providerId !== null) {
+    providerFilter = `AND dr.provider_id = $${nextIndex}`;
+    bind.push(providerId);
+    nextIndex += 1;
+  }
+
+  const latestSnapshotIdsBindIndex = nextIndex;
+  bind.push(latestSnapshotIds);
+
+  await sequelize.query(
+    `
+      UPDATE ec2_snapshot_inventory_snapshots s
+      SET is_current = false,
+          updated_at = NOW()
+      WHERE s.cloud_connection_id = $1
+        ${tenantFilter}
+        AND s.is_current = true
+        AND (
+          s.region_key IN (
+            SELECT dr.id
+            FROM dim_region dr
+            WHERE (
+              LOWER(COALESCE(dr.region_id, '')) = $${regionBindIndex}
+              OR LOWER(COALESCE(dr.region_name, '')) = $${regionBindIndex}
+            )
+            ${providerFilter}
+          )
+          OR LOWER(COALESCE(s.metadata_json ->> 'awsRegion', '')) = $${regionBindIndex}
+        )
+        AND (
+          cardinality($${latestSnapshotIdsBindIndex}::text[]) = 0
+          OR s.snapshot_id <> ALL($${latestSnapshotIdsBindIndex}::text[])
+        );
+    `,
+    {
+      bind,
+      type: QueryTypes.UPDATE,
+      transaction: input.transaction,
+    },
+  );
+};
+
 const insertSnapshots = async (rows: SnapshotRowInput[], transaction?: Transaction): Promise<number> => {
   if (rows.length === 0) return 0;
   await Ec2InstanceInventorySnapshot.bulkCreate(rows, {
@@ -729,6 +1080,15 @@ const insertSnapshots = async (rows: SnapshotRowInput[], transaction?: Transacti
 const insertVolumeSnapshots = async (rows: VolumeSnapshotRowInput[], transaction?: Transaction): Promise<number> => {
   if (rows.length === 0) return 0;
   await Ec2VolumeInventorySnapshot.bulkCreate(rows, {
+    validate: false,
+    transaction,
+  });
+  return rows.length;
+};
+
+const insertSnapshotInventoryRows = async (rows: SnapshotInventoryRowInput[], transaction?: Transaction): Promise<number> => {
+  if (rows.length === 0) return 0;
+  await Ec2SnapshotInventorySnapshot.bulkCreate(rows, {
     validate: false,
     transaction,
   });
@@ -764,6 +1124,8 @@ export async function syncEc2InventoryForScheduledJob(job: ScheduledJob): Promis
   let totalInserted = 0;
   let totalVolumes = 0;
   let totalVolumesInserted = 0;
+  let totalSnapshots = 0;
+  let totalSnapshotsInserted = 0;
   const dimensionCache = createInventoryDimensionCache();
 
   for (const region of enabledRegions) {
@@ -886,6 +1248,79 @@ export async function syncEc2InventoryForScheduledJob(job: ScheduledJob): Promis
           reason: error instanceof Error ? error.message : String(error),
         });
       }
+
+      try {
+        logger.info("EC2 snapshot inventory sync region scan started", {
+          connectionId: context.connectionId,
+          region: regionName,
+        });
+
+        const snapshots = await listSnapshotsInRegion(regionClient);
+        totalSnapshots += snapshots.length;
+        const latestSnapshotIds = Array.from(
+          new Set(snapshots.map((snapshot) => normalizeTrim(snapshot.SnapshotId)).filter(Boolean)),
+        );
+
+        const snapshotInventoryRows: SnapshotInventoryRowInput[] = [];
+        for (const snapshot of snapshots) {
+          try {
+            snapshotInventoryRows.push(
+              toSnapshotInventoryRow({
+                context,
+                snapshot,
+                region: regionName,
+                discoveredAt,
+              }),
+            );
+          } catch (error) {
+            logger.warn("EC2 snapshot inventory sync skipped snapshot due to mapping error", {
+              connectionId: context.connectionId,
+              region: regionName,
+              reason: error instanceof Error ? error.message : String(error),
+            });
+          }
+        }
+
+        const snapshotIds = snapshotInventoryRows.map((row) => row.snapshotId);
+        await enrichSnapshotInventoryWithDimensionKeys({
+          rows: snapshotInventoryRows,
+          context,
+          cache: dimensionCache,
+          region: regionName,
+        });
+
+        const insertedSnapshotsForRegion = await sequelize.transaction(async (transaction) => {
+          await markOlderSnapshotInventoryRowsNotCurrent({
+            cloudConnectionId: context.connectionId,
+            snapshotIds,
+            transaction,
+          });
+          await markStaleSnapshotInventoryRowsNotCurrentForRegionScope({
+            tenantId: context.tenantId,
+            cloudConnectionId: context.connectionId,
+            providerId: context.providerId,
+            region: regionName,
+            latestSnapshotIds,
+            transaction,
+          });
+          return insertSnapshotInventoryRows(snapshotInventoryRows, transaction);
+        });
+
+        totalSnapshotsInserted += insertedSnapshotsForRegion;
+
+        logger.info("EC2 snapshot inventory sync region scan completed", {
+          connectionId: context.connectionId,
+          region: regionName,
+          snapshotsDiscovered: snapshots.length,
+          snapshotsInserted: insertedSnapshotsForRegion,
+        });
+      } catch (error) {
+        logger.warn("EC2 snapshot inventory sync region scan failed", {
+          connectionId: context.connectionId,
+          region: regionName,
+          reason: error instanceof Error ? error.message : String(error),
+        });
+      }
     } catch (error) {
       logger.warn("EC2 inventory sync region scan failed", {
         connectionId: context.connectionId,
@@ -902,6 +1337,8 @@ export async function syncEc2InventoryForScheduledJob(job: ScheduledJob): Promis
     totalInserted,
     totalVolumes,
     totalVolumesInserted,
+    totalSnapshots,
+    totalSnapshotsInserted,
     durationMs: Date.now() - startedAt,
   });
 }

@@ -24,6 +24,10 @@ class Ec2SnapshotInventorySnapshot extends Model<
   declare sizeGb: CreationOptional<number | null>;
   declare startTime: CreationOptional<Date | null>;
   declare state: CreationOptional<string | null>;
+  declare storageTier: CreationOptional<string | null>;
+  declare encrypted: CreationOptional<boolean | null>;
+  declare kmsKeyId: CreationOptional<string | null>;
+  declare progress: CreationOptional<string | null>;
   declare tagsJson: CreationOptional<Record<string, unknown> | null>;
   declare metadataJson: CreationOptional<Record<string, unknown> | null>;
   declare discoveredAt: Date;
@@ -49,6 +53,10 @@ const createEc2SnapshotInventorySnapshotModel = (sequelize: Sequelize): typeof E
       sizeGb: { type: DataTypes.INTEGER, allowNull: true, field: "size_gb" },
       startTime: { type: DataTypes.DATE, allowNull: true, field: "start_time" },
       state: { type: DataTypes.TEXT, allowNull: true },
+      storageTier: { type: DataTypes.TEXT, allowNull: true, field: "storage_tier" },
+      encrypted: { type: DataTypes.BOOLEAN, allowNull: true },
+      kmsKeyId: { type: DataTypes.TEXT, allowNull: true, field: "kms_key_id" },
+      progress: { type: DataTypes.TEXT, allowNull: true },
       tagsJson: { type: DataTypes.JSONB, allowNull: true, field: "tags_json" },
       metadataJson: { type: DataTypes.JSONB, allowNull: true, field: "metadata_json" },
       discoveredAt: { type: DataTypes.DATE, allowNull: false, field: "discovered_at" },

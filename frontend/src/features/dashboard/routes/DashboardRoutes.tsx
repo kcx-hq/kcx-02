@@ -10,6 +10,7 @@ import AnomaliesAlertsPage from "../pages/anomalies-alerts/AnomaliesAlertsPage";
 import BudgetPage from "../pages/budget/BudgetPage";
 import ReportPage from "../pages/report/ReportPage";
 import InventoryInstancesPage from "../pages/inventory/InventoryInstancesPage";
+import InventorySnapshotsPage from "../pages/inventory/InventorySnapshotsPage";
 import InventoryVolumesPage from "../pages/inventory/InventoryVolumesPage";
 import AwsInventoryPage from "../pages/inventory/AwsInventoryPage";
 import EC2CostPage from "../pages/ec2/EC2CostPage";
@@ -105,6 +106,7 @@ export default function DashboardRoutes() {
         <Route path="inventory/aws" element={<DashboardInventoryRedirect />} />
         <Route path="inventory/aws/ec2" element={<DashboardInventoryEc2Redirect />} />
         <Route path="inventory/aws/ec2/instances" element={<InventoryInstancesPage />} />
+        <Route path="inventory/aws/ec2/snapshots" element={<InventorySnapshotsPage />} />
         <Route path="inventory/aws/ec2/volumes" element={<InventoryVolumesPage />} />
         <Route path="*" element={<DashboardOverviewRedirect />} />
       </Route>
