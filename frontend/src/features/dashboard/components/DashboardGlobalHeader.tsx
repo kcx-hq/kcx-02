@@ -220,6 +220,9 @@ export function DashboardGlobalHeader() {
     if (path.startsWith("/dashboard/inventory/aws/ec2/volumes")) {
       return [rootCrumb, "Services", "EC2", "Volumes"];
     }
+    if (path.startsWith("/dashboard/ec2/volumes")) {
+      return [rootCrumb, "Services", "EC2", "Volumes"];
+    }
     if (path === "/dashboard/ec2") {
       return [rootCrumb, "Services", "EC2"];
     }
