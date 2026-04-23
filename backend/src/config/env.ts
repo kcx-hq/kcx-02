@@ -186,6 +186,9 @@ const env = {
     optionalBoolean(process.env.EC2_SCHEDULED_JOBS_SCHEDULER_ENABLED) ?? true,
   ec2ScheduledJobsPollIntervalMs:
     optionalPositiveInteger(process.env.EC2_SCHEDULED_JOBS_POLL_INTERVAL_MS) ?? 60_000,
+  ec2ScheduledJobsRunningStaleAfterMs:
+    optionalPositiveInteger(process.env.EC2_SCHEDULED_JOBS_RUNNING_STALE_AFTER_MS) ??
+    6 * 60 * 60 * 1000,
   ec2ScheduledJobsBatchSize:
     optionalPositiveInteger(process.env.EC2_SCHEDULED_JOBS_BATCH_SIZE) ?? 10,
   ec2ScheduledJobsMaxBatchesPerPoll:
