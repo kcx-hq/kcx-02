@@ -16,6 +16,7 @@
     "backfill:ec2-instance-cost-daily": "npm run build && node dist/scripts/backfill-ec2-instance-cost-daily.js",
     "backfill:ec2-instance-coverage-daily": "npm run build && node dist/scripts/backfill-ec2-instance-coverage-daily.js",
     "backfill:ec2-instance-daily": "npm run build && node dist/scripts/backfill-ec2-instance-daily.js",
+    "recover:stale:ec2-inventory-job": "npm run build && node dist/scripts/recover-stale-ec2-inventory-job.js",
     "diagnose:billing:parquet": "node scripts/diagnose-billing-parquet.mjs",
     "lint": "eslint . --ext .ts",
     "lint:fix": "eslint . --ext .ts --fix",
