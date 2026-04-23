@@ -15,12 +15,22 @@ export type InventoryEc2VolumeRow = {
   attachedInstanceState: string | null
   attachedInstanceType: string | null
   cloudConnectionId: string | null
+  subAccountKey: string | null
+  subAccountName: string | null
   regionKey: string | null
   regionId: string | null
   regionName: string | null
   resourceKey: string | null
-  subAccountKey: string | null
   discoveredAt: string | null
+  usageDate: string | null
+  currencyCode: string | null
+  dailyCost: number
+  mtdCost: number
+  isUnattached: boolean | null
+  isAttachedToStoppedInstance: boolean | null
+  isIdleCandidate: boolean | null
+  isUnderutilizedCandidate: boolean | null
+  optimizationStatus: "idle" | "underutilized" | "optimal" | "warning" | null
   tags: Record<string, unknown> | null
   metadata: Record<string, unknown> | null
 }
@@ -34,17 +44,46 @@ export type InventoryEc2VolumesPagination = {
 
 export type InventoryEc2VolumesListResponse = {
   items: InventoryEc2VolumeRow[]
+  summary: {
+    totalVolumes: number
+    totalStorageGb: number
+    totalCost: number
+    unattachedVolumes: number
+    attachedToStoppedInstance: number
+    idleVolumes: number
+    underutilizedVolumes: number
+  }
+  dateRange: {
+    startDate: string
+    endDate: string
+  }
   pagination: InventoryEc2VolumesPagination
 }
 
 export type InventoryEc2VolumesListParams = {
   cloudConnectionId?: string | null
+  subAccountKey?: string | null
   attachedInstanceId?: string | null
   state?: string | null
   volumeType?: string | null
   isAttached?: boolean | null
+  attachmentState?: "attached" | "unattached" | "attached_stopped" | null
+  optimizationStatus?: "idle" | "underutilized" | "optimal" | "warning" | null
+  signal?: "unattached" | "attached_stopped" | "idle" | "underutilized" | null
   region?: string | null
   search?: string | null
+  startDate?: string | null
+  endDate?: string | null
+  sortBy?:
+    | "signal"
+    | "volumeId"
+    | "sizeGb"
+    | "dailyCost"
+    | "mtdCost"
+    | "volumeType"
+    | "availabilityZone"
+    | "attachedInstanceState"
+  sortDirection?: "asc" | "desc"
   page?: number
   pageSize?: number
 }
@@ -58,6 +97,7 @@ export type InventoryEc2VolumePerformanceMetric =
   | "volume_write_ops"
   | "queue_length"
   | "burst_balance"
+  | "volume_idle_time"
 
 export type InventoryEc2VolumePerformanceParams = {
   volumeId: string
@@ -126,6 +166,7 @@ const normalizeVolumeRow = (value: unknown): InventoryEc2VolumeRow | null => {
 
   const volumeId = toStringOrNull(value.volumeId)
   if (!volumeId) return null
+  const optimizationStatus = toStringOrNull(value.optimizationStatus)
 
   return {
     volumeId,
@@ -142,12 +183,28 @@ const normalizeVolumeRow = (value: unknown): InventoryEc2VolumeRow | null => {
     attachedInstanceState: toStringOrNull(value.attachedInstanceState),
     attachedInstanceType: toStringOrNull(value.attachedInstanceType),
     cloudConnectionId: toStringOrNull(value.cloudConnectionId),
+    subAccountKey: toStringOrNull(value.subAccountKey),
+    subAccountName: toStringOrNull(value.subAccountName),
     regionKey: toStringOrNull(value.regionKey),
     regionId: toStringOrNull(value.regionId),
     regionName: toStringOrNull(value.regionName),
     resourceKey: toStringOrNull(value.resourceKey),
-    subAccountKey: toStringOrNull(value.subAccountKey),
     discoveredAt: toStringOrNull(value.discoveredAt),
+    usageDate: toStringOrNull(value.usageDate),
+    currencyCode: toStringOrNull(value.currencyCode),
+    dailyCost: toNumberOrNull(value.dailyCost) ?? 0,
+    mtdCost: toNumberOrNull(value.mtdCost) ?? 0,
+    isUnattached: toBooleanOrNull(value.isUnattached),
+    isAttachedToStoppedInstance: toBooleanOrNull(value.isAttachedToStoppedInstance),
+    isIdleCandidate: toBooleanOrNull(value.isIdleCandidate),
+    isUnderutilizedCandidate: toBooleanOrNull(value.isUnderutilizedCandidate),
+    optimizationStatus:
+      optimizationStatus === "idle" ||
+      optimizationStatus === "underutilized" ||
+      optimizationStatus === "optimal" ||
+      optimizationStatus === "warning"
+        ? (optimizationStatus as InventoryEc2VolumeRow["optimizationStatus"])
+        : null,
     tags: toObjectOrNull(value.tags),
     metadata: toObjectOrNull(value.metadata),
   }
@@ -161,6 +218,7 @@ const isPerformanceMetric = (value: string): value is InventoryEc2VolumePerforma
     "volume_write_ops",
     "queue_length",
     "burst_balance",
+    "volume_idle_time",
   ].includes(value)
 
 const normalizePagination = (
@@ -210,17 +268,28 @@ export async function getInventoryEc2Volumes(
       ? Math.min(100, Math.max(1, params.pageSize))
       : 25
 
+  const sortBy = params.sortBy ?? "signal"
+  const sortDirection = params.sortDirection ?? "desc"
+
   const searchParams = new URLSearchParams()
   searchParams.set("page", String(page))
   searchParams.set("pageSize", String(pageSize))
+  searchParams.set("sortBy", sortBy)
+  searchParams.set("sortDirection", sortDirection)
 
   if (params.cloudConnectionId) searchParams.set("cloudConnectionId", params.cloudConnectionId)
+  if (params.subAccountKey) searchParams.set("subAccountKey", params.subAccountKey)
   if (params.attachedInstanceId) searchParams.set("attachedInstanceId", params.attachedInstanceId)
   if (params.state) searchParams.set("state", params.state)
   if (params.volumeType) searchParams.set("volumeType", params.volumeType)
   if (typeof params.isAttached === "boolean") searchParams.set("isAttached", String(params.isAttached))
+  if (params.attachmentState) searchParams.set("attachmentState", params.attachmentState)
+  if (params.optimizationStatus) searchParams.set("optimizationStatus", params.optimizationStatus)
+  if (params.signal) searchParams.set("signal", params.signal)
   if (params.region) searchParams.set("region", params.region)
   if (params.search) searchParams.set("search", params.search)
+  if (params.startDate) searchParams.set("startDate", params.startDate)
+  if (params.endDate) searchParams.set("endDate", params.endDate)
 
   const path = `/inventory/aws/ec2/volumes?${searchParams.toString()}`
   const response = await apiGet<unknown>(path)
@@ -234,8 +303,25 @@ export async function getInventoryEc2Volumes(
     ? response.pagination ?? (isRecord(response.data) ? response.data.pagination : null)
     : null
 
+  const root = isRecord(response) && isRecord(response.data) ? response.data : isRecord(response) ? response : null
+  const summarySource = isRecord(root?.summary) ? root.summary : null
+  const dateRangeSource = isRecord(root?.dateRange) ? root.dateRange : null
+
   return {
     items,
+    summary: {
+      totalVolumes: toNumberOrNull(summarySource?.totalVolumes) ?? items.length,
+      totalStorageGb: toNumberOrNull(summarySource?.totalStorageGb) ?? 0,
+      totalCost: toNumberOrNull(summarySource?.totalCost) ?? 0,
+      unattachedVolumes: toNumberOrNull(summarySource?.unattachedVolumes) ?? 0,
+      attachedToStoppedInstance: toNumberOrNull(summarySource?.attachedToStoppedInstance) ?? 0,
+      idleVolumes: toNumberOrNull(summarySource?.idleVolumes) ?? 0,
+      underutilizedVolumes: toNumberOrNull(summarySource?.underutilizedVolumes) ?? 0,
+    },
+    dateRange: {
+      startDate: toStringOrNull(dateRangeSource?.startDate) ?? "",
+      endDate: toStringOrNull(dateRangeSource?.endDate) ?? "",
+    },
     pagination: normalizePagination(paginationSource, page, pageSize),
   }
 }

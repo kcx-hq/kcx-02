@@ -30,10 +30,9 @@ type MetricId = InventoryEc2PerformanceMetric | InventoryEc2VolumePerformanceMet
 type PopoverKey = "resourceType" | "resource" | "interval" | "topic" | "metrics" | "chartType"
 
 type MetricOption = { id: MetricId; label: string; unit: MetricUnit }
-type TopicOption = { id: string; label: string; metrics: MetricOption[] }
+type TopicOption = { id: string; label: string; metrics: MetricOption[]; defaultMetrics?: MetricId[] }
 type ResourceConfig = { label: string; pluralLabel: string; defaultTopic: string; topics: TopicOption[] }
 
-const METRIC_CAP = 3
 const COMPARE_RESOURCE_CAP = 30
 const PICKER_LIMIT = 100
 const ALL_OPTION_ID = "__all__"
@@ -76,13 +75,32 @@ const CONFIG: Record<ResourceType, ResourceConfig> = {
     pluralLabel: "Volumes",
     defaultTopic: "ebs",
     topics: [
-      { id: "ebs", label: "EBS", metrics: [{ id: "volume_read_bytes", label: "Volume Read Bytes", unit: "bytes" }, { id: "volume_write_bytes", label: "Volume Write Bytes", unit: "bytes" }, { id: "volume_read_ops", label: "Volume Read Ops", unit: "count" }, { id: "volume_write_ops", label: "Volume Write Ops", unit: "count" }, { id: "queue_length", label: "Queue Length", unit: "count" }, { id: "burst_balance", label: "Burst Balance", unit: "percent" }] },
+      {
+        id: "ebs",
+        label: "EBS",
+        defaultMetrics: ["volume_read_bytes", "volume_write_bytes"],
+        metrics: [
+          { id: "volume_read_bytes", label: "Volume Read Bytes", unit: "bytes" },
+          { id: "volume_write_bytes", label: "Volume Write Bytes", unit: "bytes" },
+          { id: "volume_read_ops", label: "Volume Read Ops", unit: "count" },
+          { id: "volume_write_ops", label: "Volume Write Ops", unit: "count" },
+          { id: "queue_length", label: "Volume Queue Length", unit: "count" },
+          { id: "burst_balance", label: "Burst Balance", unit: "percent" },
+          { id: "volume_idle_time", label: "Volume Idle Time", unit: "count" },
+        ],
+      },
     ],
   },
 }
 
 const parseCsv = (value: string | null) =>
   (value ?? "").split(",").map((item) => item.trim()).filter((item) => item.length > 0)
+
+const getDefaultTopicMetrics = (topic: TopicOption): MetricId[] => {
+  const preferred = (topic.defaultMetrics ?? []).filter((id) => topic.metrics.some((metric) => metric.id === id))
+  if (preferred.length > 0) return Array.from(new Set(preferred))
+  return topic.metrics.slice(0, 1).map((metric) => metric.id)
+}
 
 const isResourceType = (value: string | null): value is ResourceType => value === "instance" || value === "volume"
 const isInterval = (value: string | null): value is InventoryEc2PerformanceInterval => value === "daily" || value === "hourly"
@@ -215,14 +233,19 @@ export default function EC2PerformancePage() {
   const chartType: ChartType = isChartType(params.get("chartType")) ? (params.get("chartType") as ChartType) : mode === "single" ? "line" : "bar"
 
   const topic = config.topics.find((item) => item.id === params.get("topic")) ?? config.topics.find((item) => item.id === config.defaultTopic) ?? config.topics[0]
+  const defaultTopicMetrics = getDefaultTopicMetrics(topic)
   const metricMap = new Map(topic.metrics.map((m) => [m.id, m]))
   const rawMetrics = parseCsv(params.get("metrics")).filter((id): id is MetricId => metricMap.has(id))
-  const firstMetric = rawMetrics[0] ?? topic.metrics[0]?.id
+  const effectiveRawMetrics = rawMetrics.length > 0 ? rawMetrics : defaultTopicMetrics
+  const firstMetric = effectiveRawMetrics[0] ?? topic.metrics[0]?.id
   const firstUnit = topic.metrics.find((metric) => metric.id === firstMetric)?.unit ?? topic.metrics[0]?.unit ?? "count"
-  const compatibleMetrics = topic.metrics.filter((metric) => metric.unit === firstUnit)
-  const compatibleSet = new Set(compatibleMetrics.map((m) => m.id))
-  const selectedMetrics = Array.from(new Set(rawMetrics.filter((id): id is MetricId => compatibleSet.has(id)))).slice(0, METRIC_CAP)
-  const safeMetrics: MetricId[] = selectedMetrics.length > 0 ? selectedMetrics : compatibleMetrics.slice(0, 1).map((m) => m.id)
+  const selectedMetrics = Array.from(new Set(effectiveRawMetrics.filter((id): id is MetricId => metricMap.has(id))))
+  const safeMetrics: MetricId[] =
+    selectedMetrics.length > 0
+      ? selectedMetrics
+      : defaultTopicMetrics.length > 0
+        ? defaultTopicMetrics
+        : topic.metrics.slice(0, 1).map((m) => m.id)
 
   const startDate = parseIsoDate(params.get("billingPeriodStart") ?? params.get("from"))
   const endDate = parseIsoDate(params.get("billingPeriodEnd") ?? params.get("to"))
@@ -330,7 +353,7 @@ export default function EC2PerformancePage() {
   const compareError = compareQueries.find((q) => q.isError)?.error
   const compareLabels = compareIdsLimited.map((id) => resourceType === "instance" ? (instanceLookup.get(id)?.instanceName ?? id) : (volumeLookup.get(id)?.volumeName ?? id))
   const compareSeries = safeMetrics.map((metricId, index) => {
-    const meta = compatibleMetrics.find((metric) => metric.id === metricId)
+    const meta = topic.metrics.find((metric) => metric.id === metricId)
     const unit = meta?.unit ?? firstUnit
     const data = compareQueries.map((query) => {
       const series = query.data?.series.find((item) => item.metric === metricId)
@@ -365,7 +388,7 @@ export default function EC2PerformancePage() {
       ? `${selectedInstance?.instanceName ?? selectedInstance?.instanceId ?? "Select instance"}`
       : `${selectedVolume?.volumeName ?? selectedVolume?.volumeId ?? "Select volume"}`)
     : allResources ? `All ${config.pluralLabel}` : `${resourceIds.length} selected`
-  const metricsDisplay = safeMetrics.map((metricId) => compatibleMetrics.find((m) => m.id === metricId)?.label ?? metricId).join(", ")
+  const metricsDisplay = safeMetrics.map((metricId) => topic.metrics.find((m) => m.id === metricId)?.label ?? metricId).join(", ")
   const chartDisplay = chartType === "line" ? "Line Chart" : "Bar Chart"
 
   const shouldPromptSingle = mode === "single" && resourceId.length === 0
@@ -387,13 +410,14 @@ export default function EC2PerformancePage() {
   const onResourceTypeChange = (nextType: ResourceType) => {
     const nextConfig = CONFIG[nextType]
     const nextTopic = nextConfig.topics.find((item) => item.id === nextConfig.defaultTopic) ?? nextConfig.topics[0]
+    const nextTopicMetrics = getDefaultTopicMetrics(nextTopic)
     updateParams((next) => {
       next.set("resourceType", nextType)
       next.delete("resourceId")
       next.delete("resourceIds")
       next.set("allResources", "true")
       next.set("topic", nextTopic.id)
-      next.set("metrics", nextTopic.metrics[0]?.id ?? "")
+      next.set("metrics", nextTopicMetrics.join(","))
       next.set("chartType", "bar")
     })
   }
@@ -451,19 +475,29 @@ export default function EC2PerformancePage() {
   const onTopicChange = (topicId: string) => {
     const nextTopic = config.topics.find((item) => item.id === topicId)
     if (!nextTopic) return
+    const nextTopicMetrics = getDefaultTopicMetrics(nextTopic)
     updateParams((next) => {
       next.set("topic", nextTopic.id)
-      next.set("metrics", nextTopic.metrics[0]?.id ?? "")
+      next.set("metrics", nextTopicMetrics.join(","))
     })
   }
 
   const onMetricsToggle = (metricId: MetricId) => {
-    const current = new Set(safeMetrics)
-    if (current.has(metricId)) current.delete(metricId)
-    else current.add(metricId)
-    const nextMetrics = Array.from(current).filter((id): id is MetricId => compatibleSet.has(id)).slice(0, METRIC_CAP)
-    const safe = nextMetrics.length > 0 ? nextMetrics : [compatibleMetrics[0]?.id].filter(Boolean) as MetricId[]
-    updateParams((next) => next.set("metrics", safe.join(",")))
+    const selected = safeMetrics.includes(metricId)
+    if (!topic.metrics.some((metric) => metric.id === metricId)) return
+
+    let nextMetrics: MetricId[] = []
+    if (selected) {
+      nextMetrics = safeMetrics.filter((id) => id !== metricId)
+    } else {
+      nextMetrics = [...safeMetrics, metricId]
+    }
+
+    nextMetrics = Array.from(new Set(nextMetrics))
+    if (nextMetrics.length === 0) {
+      nextMetrics = getDefaultTopicMetrics(topic).slice(0, 1)
+    }
+    updateParams((next) => next.set("metrics", nextMetrics.join(",")))
   }
 
   const resourcePopoverOptions = mode === "single"
@@ -570,12 +604,17 @@ export default function EC2PerformancePage() {
                 </button>
                 {activePopover === "metrics" ? (
                   <div className="cost-explorer-filter-popover" role="dialog">
-                    <p className="cost-explorer-filter-popover__title">Metrics (max {METRIC_CAP})</p>
+                    <p className="cost-explorer-filter-popover__title">Metrics</p>
                     <div className="cost-explorer-filter-popover__list">
-                      {compatibleMetrics.map((metric) => {
+                      {topic.metrics.map((metric) => {
                         const selected = safeMetrics.includes(metric.id)
                         return (
-                          <button key={metric.id} type="button" className={`cost-explorer-filter-option${selected ? " is-active" : ""}`} onClick={() => onMetricsToggle(metric.id)}>
+                          <button
+                            key={metric.id}
+                            type="button"
+                            className={`cost-explorer-filter-option${selected ? " is-active" : ""}`}
+                            onClick={() => onMetricsToggle(metric.id)}
+                          >
                             <span className="cost-explorer-filter-option__content"><span className="cost-explorer-filter-option__label">{metric.label}</span></span>
                             {selected ? <Check className="cost-explorer-filter-option__check" size={15} /> : null}
                           </button>

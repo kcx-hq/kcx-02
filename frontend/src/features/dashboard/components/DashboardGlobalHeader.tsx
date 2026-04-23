@@ -220,6 +220,9 @@ export function DashboardGlobalHeader() {
     if (path.startsWith("/dashboard/inventory/aws/ec2/volumes")) {
       return [rootCrumb, "Services", "EC2", "Volumes"];
     }
+    if (path.startsWith("/dashboard/ec2/volumes")) {
+      return [rootCrumb, "Services", "EC2", "Volumes"];
+    }
     if (path.startsWith("/dashboard/inventory/aws/ec2/snapshots")) {
       return [rootCrumb, "Services", "EC2", "Snapshots"];
     }
@@ -228,9 +231,6 @@ export function DashboardGlobalHeader() {
     }
     if (path.startsWith("/dashboard/ec2/performance")) {
       return [rootCrumb, "Services", "EC2", "Performance"];
-    }
-    if (path.startsWith("/dashboard/ec2/anomaly-detection")) {
-      return [rootCrumb, "Services", "EC2", "Anomaly Detection"];
     }
 
     const bestMatch = dashboardNavLinks

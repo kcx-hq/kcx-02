@@ -66,6 +66,9 @@ import createEc2InstanceUtilizationDailyModel from "./ec2/ec2_instance_utilizati
 import createFactEc2InstanceDailyModel from "./ec2/fact_ec2_instance_daily.js";
 import createFactEc2InstanceCostDailyModel from "./ec2/fact_ec2_instance_cost_daily.js";
 import createFactEc2InstanceCoverageDailyModel from "./ec2/fact_ec2_instance_coverage_daily.js";
+import createFactEbsVolumeDailyModel from "./ec2/fact_ebs_volume_daily.js";
+import createEbsVolumeUtilizationHourlyModel from "./ec2/ebs_volume_utilization_hourly.js";
+import createEbsVolumeUtilizationDailyModel from "./ec2/ebs_volume_utilization_daily.js";
 import createScheduledJobModel from "./ec2/scheduled_jobs.js";
 
 const dbUrl = new URL(env.dbUrl);
@@ -150,6 +153,9 @@ const Ec2InstanceUtilizationDaily = createEc2InstanceUtilizationDailyModel(seque
 const FactEc2InstanceDaily = createFactEc2InstanceDailyModel(sequelize);
 const FactEc2InstanceCostDaily = createFactEc2InstanceCostDailyModel(sequelize);
 const FactEc2InstanceCoverageDaily = createFactEc2InstanceCoverageDailyModel(sequelize);
+const FactEbsVolumeDaily = createFactEbsVolumeDailyModel(sequelize);
+const EbsVolumeUtilizationHourly = createEbsVolumeUtilizationHourlyModel(sequelize);
+const EbsVolumeUtilizationDaily = createEbsVolumeUtilizationDailyModel(sequelize);
 const ScheduledJob = createScheduledJobModel(sequelize);
 
 User.hasMany(DemoRequest, { foreignKey: "userId" });
@@ -407,6 +413,47 @@ FactEc2InstanceCoverageDaily.belongsTo(DimRegion, { foreignKey: "regionKey" });
 DimSubAccount.hasMany(FactEc2InstanceCoverageDaily, { foreignKey: "subAccountKey" });
 FactEc2InstanceCoverageDaily.belongsTo(DimSubAccount, { foreignKey: "subAccountKey" });
 
+Tenant.hasMany(FactEbsVolumeDaily, { foreignKey: "tenantId" });
+FactEbsVolumeDaily.belongsTo(Tenant, { foreignKey: "tenantId" });
+CloudConnectionV2.hasMany(FactEbsVolumeDaily, { foreignKey: "cloudConnectionId" });
+FactEbsVolumeDaily.belongsTo(CloudConnectionV2, { foreignKey: "cloudConnectionId" });
+BillingSource.hasMany(FactEbsVolumeDaily, { foreignKey: "billingSourceId" });
+FactEbsVolumeDaily.belongsTo(BillingSource, { foreignKey: "billingSourceId" });
+CloudProvider.hasMany(FactEbsVolumeDaily, { foreignKey: "providerId" });
+FactEbsVolumeDaily.belongsTo(CloudProvider, { foreignKey: "providerId" });
+DimResource.hasMany(FactEbsVolumeDaily, { foreignKey: "resourceKey" });
+FactEbsVolumeDaily.belongsTo(DimResource, { foreignKey: "resourceKey" });
+DimRegion.hasMany(FactEbsVolumeDaily, { foreignKey: "regionKey" });
+FactEbsVolumeDaily.belongsTo(DimRegion, { foreignKey: "regionKey" });
+DimSubAccount.hasMany(FactEbsVolumeDaily, { foreignKey: "subAccountKey" });
+FactEbsVolumeDaily.belongsTo(DimSubAccount, { foreignKey: "subAccountKey" });
+
+Tenant.hasMany(EbsVolumeUtilizationHourly, { foreignKey: "tenantId" });
+EbsVolumeUtilizationHourly.belongsTo(Tenant, { foreignKey: "tenantId" });
+CloudConnectionV2.hasMany(EbsVolumeUtilizationHourly, { foreignKey: "cloudConnectionId" });
+EbsVolumeUtilizationHourly.belongsTo(CloudConnectionV2, { foreignKey: "cloudConnectionId" });
+CloudProvider.hasMany(EbsVolumeUtilizationHourly, { foreignKey: "providerId" });
+EbsVolumeUtilizationHourly.belongsTo(CloudProvider, { foreignKey: "providerId" });
+DimResource.hasMany(EbsVolumeUtilizationHourly, { foreignKey: "resourceKey" });
+EbsVolumeUtilizationHourly.belongsTo(DimResource, { foreignKey: "resourceKey" });
+DimRegion.hasMany(EbsVolumeUtilizationHourly, { foreignKey: "regionKey" });
+EbsVolumeUtilizationHourly.belongsTo(DimRegion, { foreignKey: "regionKey" });
+DimSubAccount.hasMany(EbsVolumeUtilizationHourly, { foreignKey: "subAccountKey" });
+EbsVolumeUtilizationHourly.belongsTo(DimSubAccount, { foreignKey: "subAccountKey" });
+
+Tenant.hasMany(EbsVolumeUtilizationDaily, { foreignKey: "tenantId" });
+EbsVolumeUtilizationDaily.belongsTo(Tenant, { foreignKey: "tenantId" });
+CloudConnectionV2.hasMany(EbsVolumeUtilizationDaily, { foreignKey: "cloudConnectionId" });
+EbsVolumeUtilizationDaily.belongsTo(CloudConnectionV2, { foreignKey: "cloudConnectionId" });
+CloudProvider.hasMany(EbsVolumeUtilizationDaily, { foreignKey: "providerId" });
+EbsVolumeUtilizationDaily.belongsTo(CloudProvider, { foreignKey: "providerId" });
+DimResource.hasMany(EbsVolumeUtilizationDaily, { foreignKey: "resourceKey" });
+EbsVolumeUtilizationDaily.belongsTo(DimResource, { foreignKey: "resourceKey" });
+DimRegion.hasMany(EbsVolumeUtilizationDaily, { foreignKey: "regionKey" });
+EbsVolumeUtilizationDaily.belongsTo(DimRegion, { foreignKey: "regionKey" });
+DimSubAccount.hasMany(EbsVolumeUtilizationDaily, { foreignKey: "subAccountKey" });
+EbsVolumeUtilizationDaily.belongsTo(DimSubAccount, { foreignKey: "subAccountKey" });
+
 Tenant.hasMany(ScheduledJob, { foreignKey: "tenantId" });
 ScheduledJob.belongsTo(Tenant, { foreignKey: "tenantId" });
 CloudConnectionV2.hasMany(ScheduledJob, { foreignKey: "cloudConnectionId" });
@@ -623,5 +670,8 @@ export {
   FactEc2InstanceDaily,
   FactEc2InstanceCostDaily,
   FactEc2InstanceCoverageDaily,
+  FactEbsVolumeDaily,
+  EbsVolumeUtilizationHourly,
+  EbsVolumeUtilizationDaily,
   ScheduledJob,
 };

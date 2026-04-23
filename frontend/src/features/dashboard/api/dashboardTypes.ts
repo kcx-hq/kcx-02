@@ -614,7 +614,11 @@ export type AnomalyRecord = {
   billing_source_id: number | null;
   billing_source_name: string | null;
   cloud_connection_id: string | null;
+  cloud_connection_name?: string | null;
   usage_date: string;
+  account_name?: string | null;
+  service?: string | null;
+  region?: string | null;
   detected_at: string;
   anomaly_type: string | null;
   anomaly_scope: string | null;
@@ -625,6 +629,7 @@ export type AnomalyRecord = {
   actual_cost: number | string | null;
   delta_cost: number | string | null;
   delta_percent: number | string | null;
+  confidence_score?: number | string | null;
   severity: "low" | "medium" | "high";
   status: "open" | "resolved" | "ignored";
   root_cause_hint: string | null;
@@ -635,6 +640,22 @@ export type AnomalyRecord = {
   resolved_at: string | null;
   ignored_reason: string | null;
   created_at: string;
+  service_name?: string | null;
+  region_name?: string | null;
+  resource_id?: string | null;
+  resource_name?: string | null;
+  sub_account_id?: string | null;
+  sub_account_name?: string | null;
+  contributors?: Array<{
+    id: string;
+    dimension_type: string;
+    dimension_key: string | null;
+    dimension_value: string | null;
+    contribution_cost: number | string | null;
+    contribution_percent: number | string | null;
+    rank: number | null;
+    created_at: string;
+  }>;
 };
 
 export type AnomaliesListResponse = {

@@ -3,7 +3,10 @@ import type { Request, Response } from "express";
 import { HTTP_STATUS } from "../../../../../constants/http-status.js";
 import { UnauthorizedError } from "../../../../../errors/http-errors.js";
 import { sendSuccess } from "../../../../../utils/api-response.js";
-import { parseVolumesInventoryListQuery } from "./volumes-inventory.schema.js";
+import {
+  parseVolumesInventoryListQuery,
+  parseVolumesInventoryPerformanceQuery,
+} from "./volumes-inventory.schema.js";
 import { VolumesInventoryService } from "./volumes-inventory.service.js";
 
 const volumesInventoryService = new VolumesInventoryService();
@@ -29,6 +32,26 @@ export async function handleListInventoryAwsEc2Volumes(
     req,
     statusCode: HTTP_STATUS.OK,
     message: "Inventory EC2 volumes fetched successfully",
+    data,
+  });
+}
+
+export async function handleGetInventoryAwsEc2VolumePerformance(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  const { tenantId } = requireTenantContext(req);
+  const query = parseVolumesInventoryPerformanceQuery(req);
+  const data = await volumesInventoryService.getVolumePerformance({
+    tenantId,
+    query,
+  });
+
+  sendSuccess({
+    res,
+    req,
+    statusCode: HTTP_STATUS.OK,
+    message: "Inventory EC2 volume performance fetched successfully",
     data,
   });
 }
