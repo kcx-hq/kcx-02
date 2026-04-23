@@ -5,7 +5,7 @@ import {
   type MetricDataResult,
   type MetricStat,
 } from "@aws-sdk/client-cloudwatch";
-import { DescribeInstancesCommand, DescribeRegionsCommand, EC2Client, type Instance } from "@aws-sdk/client-ec2";
+import { DescribeInstancesCommand, DescribeRegionsCommand, EC2Client } from "@aws-sdk/client-ec2";
 
 import env from "../../../../config/env.js";
 import { CloudConnectionV2, Ec2InstanceInventorySnapshot } from "../../../../models/index.js";
@@ -49,18 +49,9 @@ type MetricField =
   | "diskWriteOps"
   | "statusCheckFailedMax"
   | "statusCheckFailedInstanceMax"
-  | "statusCheckFailedSystemMax"
-  | "ebsReadBytes"
-  | "ebsWriteBytes"
-  | "ebsReadOps"
-  | "ebsWriteOps"
-  | "ebsQueueLengthMax"
-  | "ebsIdleTimeAvg"
-  | "ebsBurstBalanceAvg";
+  | "statusCheckFailedSystemMax";
 
-type QueryTarget =
-  | { targetType: "instance"; instanceId: string; field: MetricField; agg: HourlyMetricAggregation }
-  | { targetType: "volume"; volumeId: string; field: MetricField; agg: HourlyMetricAggregation };
+type QueryTarget = { targetType: "instance"; instanceId: string; field: MetricField; agg: HourlyMetricAggregation };
 
 type MetricValueByHour = Map<string, number[]>;
 
@@ -286,37 +277,6 @@ const discoverInstancesByRegion = async (
   return out;
 };
 
-const describeInstancesVolumeMap = async (input: { client: EC2Client; instanceIds: string[] }): Promise<Map<string, string[]>> => {
-  const map = new Map<string, string[]>();
-  const batches = chunk(input.instanceIds, 100);
-
-  for (const batch of batches) {
-    const response = await input.client.send(new DescribeInstancesCommand({ InstanceIds: batch }));
-
-    const instances: Instance[] = [];
-    for (const reservation of response.Reservations ?? []) {
-      for (const instance of reservation.Instances ?? []) {
-        if (instance.InstanceId) instances.push(instance);
-      }
-    }
-
-    for (const instance of instances) {
-      const instanceId = normalizeTrim(instance.InstanceId);
-      if (!instanceId) continue;
-
-      const volumeIds: string[] = [];
-      for (const mapping of instance.BlockDeviceMappings ?? []) {
-        const volumeId = normalizeTrim(mapping.Ebs?.VolumeId);
-        if (volumeId) volumeIds.push(volumeId);
-      }
-
-      map.set(instanceId, dedupe(volumeIds));
-    }
-  }
-
-  return map;
-};
-
 const toMetricStat = (input: {
   namespace: string;
   metricName: string;
@@ -405,9 +365,6 @@ const mergeMetricField = (row: Partial<UtilizationHourlyRow>, field: MetricField
     case "statusCheckFailedMax":
     case "statusCheckFailedInstanceMax":
     case "statusCheckFailedSystemMax":
-    case "ebsQueueLengthMax":
-    case "ebsIdleTimeAvg":
-    case "ebsBurstBalanceAvg":
       row[field] = formatDecimal(value, 4);
       return;
     default:
@@ -476,45 +433,6 @@ const buildEc2MetricQueries = (instances: string[]): { queries: MetricDataQuery[
   return { queries, targets };
 };
 
-const buildEbsMetricQueries = (volumeIds: string[]): { queries: MetricDataQuery[]; targets: Map<string, QueryTarget> } => {
-  const queries: MetricDataQuery[] = [];
-  const targets = new Map<string, QueryTarget>();
-
-  const add = (input: {
-    volumeId: string;
-    metricName: string;
-    field: MetricField;
-    stat: "Average" | "Maximum" | "Sum";
-    agg: HourlyMetricAggregation;
-  }) => {
-    const id = makeQueryId("v", queries.length + 1);
-    const query: MetricDataQuery = {
-      Id: id,
-      MetricStat: toMetricStat({
-        namespace: "AWS/EBS",
-        metricName: input.metricName,
-        dimensions: [{ Name: "VolumeId", Value: input.volumeId }],
-        stat: input.stat,
-      }),
-      ReturnData: true,
-    };
-    queries.push(query);
-    targets.set(id, { targetType: "volume", volumeId: input.volumeId, field: input.field, agg: input.agg });
-  };
-
-  for (const volumeId of volumeIds) {
-    add({ volumeId, metricName: "VolumeReadBytes", field: "ebsReadBytes", stat: "Sum", agg: "sum" });
-    add({ volumeId, metricName: "VolumeWriteBytes", field: "ebsWriteBytes", stat: "Sum", agg: "sum" });
-    add({ volumeId, metricName: "VolumeReadOps", field: "ebsReadOps", stat: "Sum", agg: "sum" });
-    add({ volumeId, metricName: "VolumeWriteOps", field: "ebsWriteOps", stat: "Sum", agg: "sum" });
-    add({ volumeId, metricName: "VolumeQueueLength", field: "ebsQueueLengthMax", stat: "Maximum", agg: "max" });
-    add({ volumeId, metricName: "VolumeIdleTime", field: "ebsIdleTimeAvg", stat: "Average", agg: "avg" });
-    add({ volumeId, metricName: "BurstBalance", field: "ebsBurstBalanceAvg", stat: "Average", agg: "avg" });
-  }
-
-  return { queries, targets };
-};
-
 const splitQueriesByLimit = (queries: MetricDataQuery[], limit: number): MetricDataQuery[][] =>
   queries.length <= limit ? [queries] : chunk(queries, limit);
 
@@ -564,110 +482,6 @@ const applyCloudWatchResultsToInstanceRows = (input: {
       if (aggregated === null) continue;
       const row = ensure(target.instanceId, hourIso);
       row[target.field] = aggregated;
-    }
-  }
-
-  return out;
-};
-
-const applyCloudWatchResultsToVolumeRows = (input: {
-  results: MetricDataResult[];
-  targetsById: Map<string, QueryTarget>;
-  allowedHourIsos?: Set<string>;
-}): Map<string, Map<string, Partial<Record<MetricField, number>>>> => {
-  const out = new Map<string, Map<string, Partial<Record<MetricField, number>>>>();
-
-  const ensure = (volumeId: string, hourIso: string): Partial<Record<MetricField, number>> => {
-    if (!out.has(volumeId)) out.set(volumeId, new Map());
-    const hourMap = out.get(volumeId) as Map<string, Partial<Record<MetricField, number>>>;
-    if (!hourMap.has(hourIso)) hourMap.set(hourIso, {});
-    return hourMap.get(hourIso) as Partial<Record<MetricField, number>>;
-  };
-
-  for (const result of input.results) {
-    const id = normalizeTrim(result.Id);
-    if (!id) continue;
-    const target = input.targetsById.get(id);
-    if (!target || target.targetType !== "volume") continue;
-
-    const byHour: MetricValueByHour = new Map();
-    recordPointsByHour(byHour, result.Timestamps, result.Values);
-
-    for (const [hourIso, values] of byHour.entries()) {
-      if (input.allowedHourIsos && !input.allowedHourIsos.has(hourIso)) continue;
-      const aggregated = aggregateValues(values, target.agg);
-      if (aggregated === null) continue;
-      const row = ensure(target.volumeId, hourIso);
-      row[target.field] = aggregated;
-    }
-  }
-
-  return out;
-};
-
-const rollupEbsToInstances = (input: {
-  instanceToVolumes: Map<string, string[]>;
-  volumeMetrics: Map<string, Map<string, Partial<Record<MetricField, number>>>>;
-}): Map<string, Map<string, Partial<Record<MetricField, number>>>> => {
-  const out = new Map<string, Map<string, Partial<Record<MetricField, number>>>>();
-
-  const ensure = (instanceId: string, hourIso: string): Partial<Record<MetricField, number>> => {
-    if (!out.has(instanceId)) out.set(instanceId, new Map());
-    const hourMap = out.get(instanceId) as Map<string, Partial<Record<MetricField, number>>>;
-    if (!hourMap.has(hourIso)) hourMap.set(hourIso, {});
-    return hourMap.get(hourIso) as Partial<Record<MetricField, number>>;
-  };
-
-  const addSum = (obj: Partial<Record<MetricField, number>>, field: MetricField, value: number) => {
-    obj[field] = (obj[field] ?? 0) + value;
-  };
-  const addMax = (obj: Partial<Record<MetricField, number>>, field: MetricField, value: number) => {
-    const current = obj[field];
-    obj[field] = typeof current === "number" ? Math.max(current, value) : value;
-  };
-  const addAvgSum = (
-    obj: Partial<Record<MetricField, number>>,
-    field: MetricField,
-    value: number,
-    counters: Record<string, number>,
-  ) => {
-    const key = `${String(field)}__count`;
-    counters[key] = (counters[key] ?? 0) + 1;
-    obj[field] = (obj[field] ?? 0) + value;
-  };
-
-  for (const [instanceId, volumes] of input.instanceToVolumes.entries()) {
-    const countersByHour = new Map<string, Record<string, number>>();
-
-    for (const volumeId of volumes) {
-      const volumeHours = input.volumeMetrics.get(volumeId);
-      if (!volumeHours) continue;
-
-      for (const [hourIso, metrics] of volumeHours.entries()) {
-        const row = ensure(instanceId, hourIso);
-        if (!countersByHour.has(hourIso)) countersByHour.set(hourIso, {});
-        const counters = countersByHour.get(hourIso) as Record<string, number>;
-
-        if (typeof metrics.ebsReadBytes === "number") addSum(row, "ebsReadBytes", metrics.ebsReadBytes);
-        if (typeof metrics.ebsWriteBytes === "number") addSum(row, "ebsWriteBytes", metrics.ebsWriteBytes);
-        if (typeof metrics.ebsReadOps === "number") addSum(row, "ebsReadOps", metrics.ebsReadOps);
-        if (typeof metrics.ebsWriteOps === "number") addSum(row, "ebsWriteOps", metrics.ebsWriteOps);
-        if (typeof metrics.ebsQueueLengthMax === "number") addMax(row, "ebsQueueLengthMax", metrics.ebsQueueLengthMax);
-        if (typeof metrics.ebsIdleTimeAvg === "number") addAvgSum(row, "ebsIdleTimeAvg", metrics.ebsIdleTimeAvg, counters);
-        if (typeof metrics.ebsBurstBalanceAvg === "number") addAvgSum(row, "ebsBurstBalanceAvg", metrics.ebsBurstBalanceAvg, counters);
-      }
-    }
-
-    for (const [hourIso, counters] of countersByHour.entries()) {
-      const row = ensure(instanceId, hourIso);
-      const idleCount = counters["ebsIdleTimeAvg__count"] ?? 0;
-      if (idleCount > 0 && typeof row.ebsIdleTimeAvg === "number") {
-        row.ebsIdleTimeAvg = row.ebsIdleTimeAvg / idleCount;
-      }
-      const burstCount = counters["ebsBurstBalanceAvg__count"] ?? 0;
-      if (burstCount > 0 && typeof row.ebsBurstBalanceAvg === "number") {
-        row.ebsBurstBalanceAvg = row.ebsBurstBalanceAvg / burstCount;
-      }
     }
   }
 
@@ -734,7 +548,7 @@ const buildUtilizationRows = (input: {
   return rows;
 };
 
-export async function syncEc2MetricsForScheduledJob(job: ScheduledJob): Promise<void> {
+export async function syncEc2InstanceMetrics(job: ScheduledJob): Promise<void> {
   const startedAt = Date.now();
 
   const lookbackHoursRaw = typeof job.lookbackHours === "number" ? job.lookbackHours : Number(job.lookbackHours);
@@ -802,10 +616,7 @@ export async function syncEc2MetricsForScheduledJob(job: ScheduledJob): Promise<
     });
 
     try {
-      const ec2Client = buildEc2Client(region, credentials);
       const cwClient = buildCloudWatchClient(region, credentials);
-
-      const instanceVolumeMap = await describeInstancesVolumeMap({ client: ec2Client, instanceIds });
       const instanceBatches = chunk(instanceIds, 25);
 
       let regionUpserted = 0;
@@ -844,46 +655,6 @@ export async function syncEc2MetricsForScheduledJob(job: ScheduledJob): Promise<
             allowedHourIsos,
           });
           mergeInstanceHourMaps(metricsByInstanceHour, applied);
-        }
-
-        const volumes = dedupe(instanceBatch.flatMap((instanceId) => instanceVolumeMap.get(instanceId) ?? []));
-
-        if (volumes.length > 0) {
-          const ebsQueryPack = buildEbsMetricQueries(volumes);
-
-          const volumeMetricsAll = new Map<string, Map<string, Partial<Record<MetricField, number>>>>();
-          for (const q of splitQueriesByLimit(ebsQueryPack.queries, CW_TARGET_QUERIES)) {
-            cwBatchCount += 1;
-            const results = await fetchMetricDataAll({ client: cwClient, startTime, endTime, queries: q });
-            regionResultsReturned += results.length;
-            regionResultsWithValues += results.filter((r) => Array.isArray(r.Values) && r.Values.length > 0).length;
-
-            const applied = applyCloudWatchResultsToVolumeRows({
-              results,
-              targetsById: ebsQueryPack.targets,
-              allowedHourIsos,
-            });
-
-            for (const [volumeId, hours] of applied.entries()) {
-              if (!volumeMetricsAll.has(volumeId)) volumeMetricsAll.set(volumeId, new Map());
-              const baseHourMap = volumeMetricsAll.get(volumeId) as Map<string, Partial<Record<MetricField, number>>>;
-              for (const [hourIso, metrics] of hours.entries()) {
-                if (!baseHourMap.has(hourIso)) baseHourMap.set(hourIso, {});
-                const existing = baseHourMap.get(hourIso);
-                if (existing) {
-                  Object.assign(existing, metrics);
-                }
-              }
-            }
-          }
-
-          const instanceToVolumes = new Map<string, string[]>();
-          for (const instanceId of instanceBatch) {
-            instanceToVolumes.set(instanceId, instanceVolumeMap.get(instanceId) ?? []);
-          }
-
-          const rolled = rollupEbsToInstances({ instanceToVolumes, volumeMetrics: volumeMetricsAll });
-          mergeInstanceHourMaps(metricsByInstanceHour, rolled);
         }
 
         const rowsToUpsert: UtilizationHourlyRow[] = [];
@@ -932,7 +703,6 @@ export async function syncEc2MetricsForScheduledJob(job: ScheduledJob): Promise<
                   hourStart: rowsToUpsert[0].hourStart.toISOString(),
                   cpuAvg: rowsToUpsert[0].cpuAvg,
                   networkInBytes: rowsToUpsert[0].networkInBytes,
-                  ebsReadBytes: rowsToUpsert[0].ebsReadBytes,
                 }
               : null,
           });
@@ -971,4 +741,8 @@ export async function syncEc2MetricsForScheduledJob(job: ScheduledJob): Promise<
     hourlyRowsUpserted: totalUpserted,
     durationMs: Date.now() - startedAt,
   });
+}
+
+export async function syncEc2MetricsForScheduledJob(job: ScheduledJob): Promise<void> {
+  await syncEc2InstanceMetrics(job);
 }

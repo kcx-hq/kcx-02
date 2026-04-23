@@ -77,20 +77,6 @@ function DashboardInventoryEc2Redirect() {
   );
 }
 
-function DashboardLegacyEc2VolumesRedirect() {
-  const location = useLocation();
-
-  return (
-    <Navigate
-      to={{
-        pathname: "/dashboard/inventory/aws/ec2/volumes",
-        search: location.search,
-      }}
-      replace
-    />
-  );
-}
-
 export default function DashboardRoutes() {
   return (
     <Routes>
@@ -102,7 +88,7 @@ export default function DashboardRoutes() {
         <Route path="cost/explorer" element={<CostExplorerPage />} />
         <Route path="cost/history" element={<CostHistoryPage />} />
         <Route path="cost-explorer" element={<DashboardCostRedirect />} />
-        <Route path="ec2/volumes" element={<DashboardLegacyEc2VolumesRedirect />} />
+        <Route path="ec2/volumes" element={<EC2VolumesPage />} />
         <Route path="ec2" element={<EC2OverviewPage />} />
         <Route path="ec2/cost" element={<EC2CostPage />} />
         <Route path="ec2/usage" element={<EC2UsagePage />} />

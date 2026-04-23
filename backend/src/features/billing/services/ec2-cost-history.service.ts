@@ -4,6 +4,7 @@ import { sequelize } from "../../../models/index.js";
 import { syncEc2InstanceCostDaily } from "../../ec2/scheduled-jobs/handlers/ec2-instance-cost-daily.service.js";
 import { syncEc2InstanceCoverageDaily } from "../../ec2/scheduled-jobs/handlers/ec2-instance-coverage-daily.service.js";
 import { syncEc2InstanceDailyFact } from "../../ec2/scheduled-jobs/handlers/ec2-instance-daily-fact.service.js";
+import { syncEbsVolumeDaily } from "../../ec2/scheduled-jobs/handlers/ebs-volume-daily.service.js";
 
 type PeriodStatus = "open" | "frozen" | "adjusted";
 
@@ -643,6 +644,7 @@ async function syncEc2CostHistoryForIngestionRun({
   factCostRowsUpserted: number;
   factCoverageRowsUpserted: number;
   factDailyRowsUpserted: number;
+  factEbsVolumeRowsUpserted: number;
 }> {
   const normalized = {
     ingestionRunId: String(ingestionRunId),
@@ -663,6 +665,7 @@ async function syncEc2CostHistoryForIngestionRun({
       factCostRowsUpserted: 0,
       factCoverageRowsUpserted: 0,
       factDailyRowsUpserted: 0,
+      factEbsVolumeRowsUpserted: 0,
     };
   }
 
@@ -679,6 +682,7 @@ async function syncEc2CostHistoryForIngestionRun({
   let factCostRowsUpserted = 0;
   let factCoverageRowsUpserted = 0;
   let factDailyRowsUpserted = 0;
+  let factEbsVolumeRowsUpserted = 0;
 
   for (const monthStart of affectedMonths) {
     const periodStatus = await getPeriodStatusRow({
@@ -755,6 +759,13 @@ async function syncEc2CostHistoryForIngestionRun({
       endDate,
     });
     factDailyRowsUpserted += dailyFactSyncResult.rowsUpserted;
+
+    const ebsVolumeSyncResult = await syncEbsVolumeDaily({
+      tenantId: normalized.tenantId,
+      startDate,
+      endDate,
+    });
+    factEbsVolumeRowsUpserted += ebsVolumeSyncResult.rowsUpserted;
   }
 
   return {
@@ -764,6 +775,7 @@ async function syncEc2CostHistoryForIngestionRun({
     factCostRowsUpserted,
     factCoverageRowsUpserted,
     factDailyRowsUpserted,
+    factEbsVolumeRowsUpserted,
   };
 }
 

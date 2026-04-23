@@ -1,10 +1,10 @@
 import type { ScheduledJob } from "../../../../models/ec2/scheduled_jobs.js";
 import { logger } from "../../../../utils/logger.js";
-import { Ec2InstanceUtilizationDailyRepository } from "./ec2-instance-utilization-daily.repository.js";
+import { EbsVolumeUtilizationDailyRepository } from "./ebs-volume-utilization-daily.repository.js";
 
 type RollupWindow = {
-  startDate: string; // YYYY-MM-DD (UTC)
-  endDate: string; // YYYY-MM-DD (UTC)
+  startDate: string;
+  endDate: string;
   rebuildRecentDays: number | null;
 };
 
@@ -47,15 +47,10 @@ const computeRollupWindow = (job: ScheduledJob, now: Date = new Date()): RollupW
   const startUtc = new Date(yesterdayUtc.getTime() - (rebuildRecentDays - 1) * 24 * 60 * 60 * 1000);
   const startDate = formatDateUtc(startUtc);
 
-  return {
-    startDate,
-    endDate,
-    rebuildRecentDays,
-  };
+  return { startDate, endDate, rebuildRecentDays };
 };
 
-export async function rollupEc2InstanceDaily(job: ScheduledJob): Promise<void> {
-  const jobId = String(job.id);
+export async function rollupEbsVolumeDaily(job: ScheduledJob): Promise<void> {
   const cloudConnectionId = normalizeTrim(job.cloudConnectionId ? String(job.cloudConnectionId) : "");
   if (!cloudConnectionId) {
     throw new Error("scheduled job missing cloud_connection_id");
@@ -63,12 +58,11 @@ export async function rollupEc2InstanceDaily(job: ScheduledJob): Promise<void> {
 
   const tenantId = normalizeTrim(job.tenantId ? String(job.tenantId) : "") || null;
   const providerId = normalizeTrim(job.providerId ? String(job.providerId) : "") || null;
-
-  const startedAt = Date.now();
   const window = computeRollupWindow(job);
+  const startedAt = Date.now();
 
-  logger.info("EC2 daily rollup started", {
-    jobId,
+  logger.info("EBS volume daily rollup started", {
+    jobId: String(job.id),
     tenantId,
     cloudConnectionId,
     providerId,
@@ -77,7 +71,7 @@ export async function rollupEc2InstanceDaily(job: ScheduledJob): Promise<void> {
     rebuildRecentDays: window.rebuildRecentDays,
   });
 
-  const repository = new Ec2InstanceUtilizationDailyRepository();
+  const repository = new EbsVolumeUtilizationDailyRepository();
   const result = await repository.rollupFromHourly({
     cloudConnectionId,
     tenantId,
@@ -86,8 +80,8 @@ export async function rollupEc2InstanceDaily(job: ScheduledJob): Promise<void> {
     endDate: window.endDate,
   });
 
-  logger.info("EC2 daily rollup completed", {
-    jobId,
+  logger.info("EBS volume daily rollup completed", {
+    jobId: String(job.id),
     tenantId,
     cloudConnectionId,
     providerId,
@@ -99,7 +93,6 @@ export async function rollupEc2InstanceDaily(job: ScheduledJob): Promise<void> {
   });
 }
 
-export async function rollupEc2DailyUtilizationForScheduledJob(job: ScheduledJob): Promise<void> {
-  await rollupEc2InstanceDaily(job);
+export async function rollupEbsVolumeDailyForScheduledJob(job: ScheduledJob): Promise<void> {
+  await rollupEbsVolumeDaily(job);
 }
-
