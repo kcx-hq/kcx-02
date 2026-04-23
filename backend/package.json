@@ -17,6 +17,7 @@
     "backfill:ec2-instance-coverage-daily": "npm run build && node dist/scripts/backfill-ec2-instance-coverage-daily.js",
     "backfill:ec2-instance-daily": "npm run build && node dist/scripts/backfill-ec2-instance-daily.js",
     "demo:anomaly-data": "npm run build && node dist/scripts/generate-anomaly-demo-data.js",
+    "seed:cloud-connections:demo": "npm run build && node dist/scripts/seed-cloud-connections-demo.js",
     "backfill:ebs-volume-utilization-hourly": "npm run build && node dist/scripts/backfill-ebs-volume-utilization-hourly.js",
     "backfill:ebs-volume-utilization-daily": "npm run build && node dist/scripts/backfill-ebs-volume-utilization-daily.js",
     "backfill:ebs-volume-daily": "npm run build && node dist/scripts/backfill-ebs-volume-daily.js",
@@ -27,7 +28,8 @@
     "format:check": "prettier . --check",
     "db:migrate": "npm run build && sequelize db:migrate --config dist/src/config/db.config.js --migrations-path dist/src/migrations",
     "db:migrate:undo": "npm run build && sequelize db:migrate:undo --config dist/src/config/db.config.js --migrations-path dist/src/migrations",
-    "db:seed": "npm run build && sequelize db:seed:all --config dist/src/config/db.config.js --seeders-path dist/src/seeders"
+    "db:seed": "npm run build && sequelize db:seed:all --config dist/src/config/db.config.js --seeders-path dist/src/seeders",
+    "db:migrate:single": "tsx scripts/run-single-migration.ts"
   },
   "keywords": [],
   "author": "",
