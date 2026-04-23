@@ -74,6 +74,7 @@ const FACT_NUMERIC_FIELDS = Object.freeze([
   "consumed_quantity",
   "pricing_quantity",
   "public_on_demand_cost",
+  "bundled_discount",
   "discount_amount",
   "credit_amount",
   "refund_amount",
