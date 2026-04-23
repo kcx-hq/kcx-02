@@ -2,7 +2,6 @@ import { apiGet, apiPatch, apiPost } from "@/lib/api";
 import type {
   AnomaliesFiltersQuery,
   AnomaliesListResponse,
-  AnomalyRecord,
   BudgetDashboardResponse,
   BudgetUpsertPayload,
   BudgetActualForecastPoint,
@@ -435,7 +434,7 @@ export const dashboardApi = {
   },
 
   getAnomaliesAlerts(scope: DashboardResolvedScope, filters?: AnomaliesFiltersQuery) {
-    return apiGet<AnomalyRecord[]>(withAnomaliesAlertsFilters("/dashboard/anomalies-alerts", scope, filters));
+    return apiGet<AnomaliesListResponse>(withAnomaliesAlertsFilters("/dashboard/anomalies-alerts", scope, filters));
   },
 
   getBudget(scope: DashboardResolvedScope) {

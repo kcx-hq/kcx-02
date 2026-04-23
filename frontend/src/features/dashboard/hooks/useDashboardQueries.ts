@@ -233,6 +233,15 @@ export function useAnomaliesQuery(filters?: AnomaliesFiltersQuery) {
   });
 }
 
+export function useAnomaliesAlertsQuery(filters?: AnomaliesFiltersQuery) {
+  const { scope } = useDashboardScope();
+  return useQuery<AnomaliesListResponse, Error>({
+    queryKey: ["dashboard", "anomalies-alerts", scope, filters],
+    queryFn: () => dashboardApi.getAnomaliesAlerts(assertScope(scope), filters),
+    enabled: Boolean(scope),
+  });
+}
+
 export function useBudgetQuery() {
   const { scope } = useDashboardScope();
   return useQuery({

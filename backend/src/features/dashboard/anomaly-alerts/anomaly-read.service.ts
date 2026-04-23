@@ -11,7 +11,11 @@ type AnomalyRow = {
   billing_source_id: number | null;
   billing_source_name: string | null;
   cloud_connection_id: string | null;
+  cloud_connection_name: string | null;
   usage_date: string;
+  account_name: string | null;
+  service: string | null;
+  region: string | null;
   detected_at: string;
   anomaly_type: string | null;
   anomaly_scope: string | null;
@@ -22,6 +26,7 @@ type AnomalyRow = {
   actual_cost: string | null;
   delta_cost: string | null;
   delta_percent: string | null;
+  confidence_score: string | null;
   severity: string;
   status: string;
   root_cause_hint: string | null;
@@ -32,6 +37,22 @@ type AnomalyRow = {
   resolved_at: string | null;
   ignored_reason: string | null;
   created_at: string;
+  service_name: string | null;
+  region_name: string | null;
+  resource_id: string | null;
+  resource_name: string | null;
+  sub_account_id: string | null;
+  sub_account_name: string | null;
+  contributors: Array<{
+    id: string;
+    dimension_type: string;
+    dimension_key: string | null;
+    dimension_value: string | null;
+    contribution_cost: string | null;
+    contribution_percent: string | null;
+    rank: number | null;
+    created_at: string;
+  }>;
 };
 
 type TotalCountRow = {
@@ -146,7 +167,11 @@ export async function getAnomaliesForTenant({
         fa.billing_source_id,
         bs.source_name AS billing_source_name,
         fa.cloud_connection_id,
+        cc.connection_name AS cloud_connection_name,
         fa.usage_date,
+        dsa.sub_account_name AS account_name,
+        ds.service_name AS service,
+        dr.region_name AS region,
         fa.detected_at,
         fa.anomaly_type,
         fa.anomaly_scope,
@@ -157,6 +182,7 @@ export async function getAnomaliesForTenant({
         fa.actual_cost,
         fa.delta_cost,
         fa.delta_percent,
+        fa.confidence_score,
         fa.severity,
         fa.status,
         fa.root_cause_hint,
@@ -166,9 +192,38 @@ export async function getAnomaliesForTenant({
         fa.last_seen_at,
         fa.resolved_at,
         fa.ignored_reason,
-        fa.created_at
+        fa.created_at,
+        ds.service_name,
+        dr.region_name,
+        dres.resource_id,
+        dres.resource_name,
+        dsa.sub_account_id,
+        dsa.sub_account_name,
+        COALESCE(ac.contributors, '[]'::json) AS contributors
       FROM fact_anomalies fa
       LEFT JOIN billing_sources bs ON bs.id = fa.billing_source_id
+      LEFT JOIN cloud_connections cc ON cc.id = fa.cloud_connection_id
+      LEFT JOIN dim_service ds ON ds.id = fa.service_key
+      LEFT JOIN dim_region dr ON dr.id = fa.region_key
+      LEFT JOIN dim_resource dres ON dres.id = fa.resource_key
+      LEFT JOIN dim_sub_account dsa ON dsa.id = fa.sub_account_key
+      LEFT JOIN LATERAL (
+        SELECT json_agg(
+          json_build_object(
+            'id', ac.id,
+            'dimension_type', ac.dimension_type,
+            'dimension_key', ac.dimension_key::text,
+            'dimension_value', ac.dimension_value,
+            'contribution_cost', ac.contribution_cost::text,
+            'contribution_percent', ac.contribution_percent::text,
+            'rank', ac.rank,
+            'created_at', ac.created_at
+          )
+          ORDER BY ac.rank ASC NULLS LAST, ac.created_at ASC
+        ) AS contributors
+        FROM anomaly_contributors ac
+        WHERE ac.anomaly_id = fa.id
+      ) ac ON TRUE
       ${whereSql}
       ORDER BY fa.usage_date DESC, fa.created_at DESC
       LIMIT :limit OFFSET :offset
