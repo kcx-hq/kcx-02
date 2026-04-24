@@ -1,5 +1,5 @@
 import env from "../../config/env.js";
-import { BadRequestError, ForbiddenError, UnauthorizedError } from "../../errors/http-errors.js";
+import { BadRequestError, ForbiddenError, InternalServerError, UnauthorizedError } from "../../errors/http-errors.js";
 import { AuthSession, PasswordResetToken, Tenant, User, sequelize } from "../../models/index.js";
 import { hashPassword, verifyPassword } from "../../utils/password.js";
 import { generateOpaqueToken, hashToken } from "../../utils/token.js";
@@ -7,6 +7,7 @@ import { buildFrontendUrl } from "../../utils/frontend-url.js";
 import { sendEmail } from "../_shared/mail/mailgun.service.js";
 import { logger } from "../../utils/logger.js";
 import { deriveTenantSlugFromEmail } from "../../utils/tenant-identity.js";
+import { signJwt } from "../../utils/jwt.js";
 
 type LoginResult = {
   token: string;
@@ -27,6 +28,10 @@ const firstNameFromFullName = (fullName: string): string => {
 };
 
 export async function loginWithEmailPassword(email: string, password: string): Promise<LoginResult> {
+  if (!env.jwtSecret) {
+    throw new InternalServerError("JWT_SECRET is not configured");
+  }
+
   const user = await User.findOne({ where: { email }, include: [{ model: Tenant }] });
   if (!user) {
     const tenantSlug = deriveTenantSlugFromEmail(email);
@@ -54,7 +59,18 @@ export async function loginWithEmailPassword(email: string, password: string): P
   const ok = await verifyPassword(password, user.passwordHash);
   if (!ok) throw new UnauthorizedError("Invalid credentials");
 
-  const token = generateOpaqueToken(32);
+  const token = signJwt({
+    secret: env.jwtSecret,
+    expiresInSeconds: Math.floor(env.sessionTtlHours * 60 * 60),
+    payload: {
+      iss: env.jwtIssuer,
+      sub: user.id,
+      email: user.email,
+      role: user.role,
+      tenantId: user.tenantId,
+      type: "user_access",
+    },
+  });
   const tokenHash = hashToken(token);
   const expiresAt = new Date(Date.now() + env.sessionTtlHours * 60 * 60_000);
 

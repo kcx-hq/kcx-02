@@ -22,7 +22,7 @@ const RAW_COLUMNS = Object.freeze({
   usageStartTime: "usage_start_time",
   usageEndTime: "usage_end_time",
   usageType: "usage_type",
-  productUsageType: "product_usage_type",
+  productUsageType: "product_usagetype",
   productFamily: "product_family",
   fromLocation: "from_location",
   toLocation: "to_location",
@@ -314,7 +314,18 @@ const mapFactMeasures = (rawRow) =>
     usage_start_time: toIsoTimestampOrNull(rawRow[RAW_COLUMNS.usageStartTime]),
     usage_end_time: toIsoTimestampOrNull(rawRow[RAW_COLUMNS.usageEndTime]),
     usage_type: cleanStringOrNull(rawRow[RAW_COLUMNS.usageType]),
-    product_usage_type: cleanStringOrNull(rawRow[RAW_COLUMNS.productUsageType]),
+    // Support both spellings during transition:
+    // - product_usagetype (CUR field)
+    // - product_usage_type (legacy/internal canonical key)
+    product_usage_type: cleanStringOrNull(
+      rawRow[RAW_COLUMNS.productUsageType] ??
+        rawRow.product_usage_type ??
+        rawRow["product_usage_type"] ??
+        rawRow.product_usagetype ??
+        rawRow.productUsageType ??
+        rawRow.ProductUsageType ??
+        rawRow["product/usageType"],
+    ),
     product_family: cleanStringOrNull(rawRow[RAW_COLUMNS.productFamily]),
     from_location: cleanStringOrNull(rawRow[RAW_COLUMNS.fromLocation]),
     to_location: cleanStringOrNull(rawRow[RAW_COLUMNS.toLocation]),

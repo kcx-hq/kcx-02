@@ -135,6 +135,8 @@ const env = {
     optionalEnv(process.env.AWS_VALIDATION_SESSION_TOKEN) ?? optionalEnv(process.env.AWS_SESSION_TOKEN),
   resetTokenTtlMinutes: optionalPositiveNumber(process.env.RESET_TOKEN_TTL_MINUTES, 60),
   sessionTtlHours: optionalPositiveNumber(process.env.SESSION_TTL_HOURS, 168),
+  jwtSecret: optionalEnv(process.env.JWT_SECRET),
+  jwtIssuer: optionalEnv(process.env.JWT_ISSUER) ?? "kcx-backend",
   awsRegion: optionalEnv(process.env.AWS_REGION) ?? "us-east-1",
   awsAccessKeyId: optionalEnv(process.env.AWS_ACCESS_KEY_ID),
   awsSecretAccessKey: optionalEnv(process.env.AWS_SECRET_ACCESS_KEY),
