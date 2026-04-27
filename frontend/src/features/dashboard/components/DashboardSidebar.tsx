@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { NavLink, useLocation, useNavigate } from "react-router-dom";
+import { NavLink, useLocation } from "react-router-dom";
 import kcxLogo from "@/assets/logos/kcx-logo.svg";
 import { handleAppLinkClick } from "@/lib/navigation";
 import { dashboardNav, dashboardNavLinks } from "../common/navigation";
@@ -32,7 +32,6 @@ export function DashboardSidebar() {
   );
   const sidebarRef = useRef<HTMLElement | null>(null);
   const location = useLocation();
-  const navigate = useNavigate();
   const collapsed = desktop ? !expanded : false;
 
   const groupNodes = useMemo(
@@ -270,14 +269,6 @@ export function DashboardSidebar() {
                             aria-expanded={isGroupOpen}
                             aria-controls={groupId}
                             onClick={() => {
-                              if (group.path && group.label === "S3") {
-                                navigate({ pathname: group.path, search: location.search });
-                                setOpenGroups((current) => ({
-                                  ...current,
-                                  [groupKey]: true,
-                                }));
-                                return;
-                              }
                               setOpenGroups((current) => ({
                                 ...current,
                                 [groupKey]: !(current[groupKey] ?? true),

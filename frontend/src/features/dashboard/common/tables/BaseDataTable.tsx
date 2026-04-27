@@ -8,6 +8,9 @@ type BaseDataTableProps<TData extends object> = {
   rowData: TData[];
   height?: number;
   emptyMessage?: string;
+  pagination?: boolean;
+  paginationPageSize?: number;
+  autoHeight?: boolean;
 };
 
 export function currencyFormatter(params: ValueFormatterParams) {
@@ -20,6 +23,9 @@ export function BaseDataTable<TData extends object>({
   rowData,
   height = 284,
   emptyMessage,
+  pagination = false,
+  paginationPageSize = 10,
+  autoHeight = false,
 }: BaseDataTableProps<TData>) {
   const defaultColDef = useMemo<ColDef<TData>>(
     () => ({
@@ -38,12 +44,16 @@ export function BaseDataTable<TData extends object>({
   }
 
   return (
-    <div className="dashboard-data-table" style={{ height }}>
+    <div className="dashboard-data-table" style={autoHeight ? undefined : { height }}>
       <AgGridReact<TData>
         theme={themeQuartz}
         rowData={rowData}
         columnDefs={columnDefs}
         defaultColDef={defaultColDef}
+        pagination={pagination}
+        paginationPageSize={paginationPageSize}
+        paginationPageSizeSelector={pagination ? [10, 20, 50, 100] : false}
+        domLayout={autoHeight ? "autoHeight" : "normal"}
         rowHeight={34}
         headerHeight={36}
         suppressCellFocus

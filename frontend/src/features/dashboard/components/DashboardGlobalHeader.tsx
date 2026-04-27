@@ -5,6 +5,7 @@ import { useTenantUploadHistory } from "@/features/client-home/hooks/useTenantUp
 import { dashboardNavLinks } from "../common/navigation";
 import { useDashboardFiltersQuery } from "../hooks/useDashboardQueries";
 import { useDashboardScope } from "../hooks/useDashboardScope";
+import type { S3OverviewFilterValue, S3OverviewSavedPreset } from "../pages/s3/components/s3Overview.types";
 
 const rootCrumb = "Dashboard";
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
@@ -187,16 +188,159 @@ const inferDateRangeTab = (start: string, end: string): DateRangeTab => {
   return days >= 28 ? "weekly" : "daily";
 };
 
+const S3_OVERVIEW_PRESETS_STORAGE_KEY = "dashboard.s3.overview.presets.v1";
+const S3_DEFAULT_FILTERS: S3OverviewFilterValue = {
+  seriesBy: "bucket",
+  seriesValues: [],
+  storageClass: [],
+  region: "",
+  costBy: "date",
+  yAxisMetric: "billed_cost",
+  chartType: "bar",
+  compareMode: "none",
+};
+
+const S3_SERIES_BY_OPTIONS: Array<S3OverviewFilterValue["seriesBy"]> = [
+  "bucket",
+  "cost_category",
+  "operation",
+  "product_family",
+  "storage_class",
+];
+const S3_COST_BY_OPTIONS: Array<S3OverviewFilterValue["costBy"]> = ["date", "bucket", "region", "account"];
+const S3_Y_AXIS_OPTIONS: Array<S3OverviewFilterValue["yAxisMetric"]> = ["billed_cost", "effective_cost", "amortized_cost"];
+const S3_CHART_TYPE_OPTIONS: Array<S3OverviewFilterValue["chartType"]> = ["bar", "line"];
+const S3_COMPARE_OPTIONS: Array<S3OverviewFilterValue["compareMode"]> = ["none", "previous_period"];
+
+const parseS3ListParam = (value: string | null): string[] =>
+  value
+    ? value
+        .split(",")
+        .map((item) => item.trim())
+        .filter((item) => item.length > 0)
+    : [];
+
+const parseS3FiltersFromSearch = (search: string): S3OverviewFilterValue => {
+  const params = new URLSearchParams(search);
+  const seriesBy = params.get("s3SeriesBy");
+  const seriesValues = parseS3ListParam(params.get("s3SeriesValues"));
+  const storageClass = parseS3ListParam(params.get("s3StorageClass"));
+  const region = (params.get("s3Region") ?? "").trim();
+  const costBy = params.get("s3CostBy");
+  const yAxisMetric = params.get("s3YAxisMetric");
+  const chartType = params.get("s3ChartType");
+  const compareMode = params.get("s3Compare");
+
+  return {
+    seriesBy: S3_SERIES_BY_OPTIONS.includes(seriesBy as S3OverviewFilterValue["seriesBy"])
+      ? (seriesBy as S3OverviewFilterValue["seriesBy"])
+      : S3_DEFAULT_FILTERS.seriesBy,
+    seriesValues,
+    storageClass,
+    region,
+    costBy: S3_COST_BY_OPTIONS.includes(costBy as S3OverviewFilterValue["costBy"])
+      ? (costBy as S3OverviewFilterValue["costBy"])
+      : S3_DEFAULT_FILTERS.costBy,
+    yAxisMetric: S3_Y_AXIS_OPTIONS.includes(yAxisMetric as S3OverviewFilterValue["yAxisMetric"])
+      ? (yAxisMetric as S3OverviewFilterValue["yAxisMetric"])
+      : S3_DEFAULT_FILTERS.yAxisMetric,
+    chartType: S3_CHART_TYPE_OPTIONS.includes(chartType as S3OverviewFilterValue["chartType"])
+      ? (chartType as S3OverviewFilterValue["chartType"])
+      : S3_DEFAULT_FILTERS.chartType,
+    compareMode: S3_COMPARE_OPTIONS.includes(compareMode as S3OverviewFilterValue["compareMode"])
+      ? (compareMode as S3OverviewFilterValue["compareMode"])
+      : S3_DEFAULT_FILTERS.compareMode,
+  };
+};
+
+const applyS3FiltersToParams = (params: URLSearchParams, filters: S3OverviewFilterValue) => {
+  if (filters.seriesBy !== S3_DEFAULT_FILTERS.seriesBy) params.set("s3SeriesBy", filters.seriesBy);
+  else params.delete("s3SeriesBy");
+  if (filters.seriesValues.length > 0) params.set("s3SeriesValues", filters.seriesValues.join(","));
+  else params.delete("s3SeriesValues");
+  if (filters.storageClass.length > 0) params.set("s3StorageClass", filters.storageClass.join(","));
+  else params.delete("s3StorageClass");
+  if (filters.region) params.set("s3Region", filters.region);
+  else params.delete("s3Region");
+  if (filters.costBy !== S3_DEFAULT_FILTERS.costBy) params.set("s3CostBy", filters.costBy);
+  else params.delete("s3CostBy");
+  if (filters.yAxisMetric !== S3_DEFAULT_FILTERS.yAxisMetric) params.set("s3YAxisMetric", filters.yAxisMetric);
+  else params.delete("s3YAxisMetric");
+  if (filters.chartType !== S3_DEFAULT_FILTERS.chartType) params.set("s3ChartType", filters.chartType);
+  else params.delete("s3ChartType");
+  if (filters.compareMode !== S3_DEFAULT_FILTERS.compareMode) params.set("s3Compare", filters.compareMode);
+  else params.delete("s3Compare");
+  params.delete("s3TopN");
+  params.delete("s3SortOrder");
+};
+
+const areS3FiltersEqual = (left: S3OverviewFilterValue, right: S3OverviewFilterValue): boolean =>
+  left.seriesBy === right.seriesBy &&
+  left.region === right.region &&
+  left.costBy === right.costBy &&
+  left.yAxisMetric === right.yAxisMetric &&
+  left.chartType === right.chartType &&
+  left.compareMode === right.compareMode &&
+  left.storageClass.length === right.storageClass.length &&
+  left.storageClass.every((item, index) => item === right.storageClass[index]) &&
+  left.seriesValues.length === right.seriesValues.length &&
+  left.seriesValues.every((item, index) => item === right.seriesValues[index]);
+
+const loadS3OverviewPresets = (): S3OverviewSavedPreset[] => {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(S3_OVERVIEW_PRESETS_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as S3OverviewSavedPreset[];
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter((item) => Boolean(item?.id) && Boolean(item?.name) && item?.value)
+      .map((item) => ({
+        ...item,
+        value: {
+          ...S3_DEFAULT_FILTERS,
+          ...item.value,
+          seriesBy: S3_SERIES_BY_OPTIONS.includes(item.value?.seriesBy as S3OverviewFilterValue["seriesBy"])
+            ? (item.value.seriesBy as S3OverviewFilterValue["seriesBy"])
+            : S3_DEFAULT_FILTERS.seriesBy,
+          storageClass: Array.isArray(item.value?.storageClass)
+            ? item.value.storageClass
+                .map((value) => String(value ?? "").trim())
+                .filter((value) => value.length > 0)
+            : S3_DEFAULT_FILTERS.storageClass,
+          costBy: S3_COST_BY_OPTIONS.includes(item.value?.costBy as S3OverviewFilterValue["costBy"])
+            ? (item.value.costBy as S3OverviewFilterValue["costBy"])
+            : S3_DEFAULT_FILTERS.costBy,
+          yAxisMetric: S3_Y_AXIS_OPTIONS.includes(item.value?.yAxisMetric as S3OverviewFilterValue["yAxisMetric"])
+            ? (item.value.yAxisMetric as S3OverviewFilterValue["yAxisMetric"])
+            : S3_DEFAULT_FILTERS.yAxisMetric,
+          chartType: S3_CHART_TYPE_OPTIONS.includes(item.value?.chartType as S3OverviewFilterValue["chartType"])
+            ? (item.value.chartType as S3OverviewFilterValue["chartType"])
+            : S3_DEFAULT_FILTERS.chartType,
+          compareMode: S3_COMPARE_OPTIONS.includes(item.value?.compareMode as S3OverviewFilterValue["compareMode"])
+            ? (item.value.compareMode as S3OverviewFilterValue["compareMode"])
+            : S3_DEFAULT_FILTERS.compareMode,
+        },
+      }));
+  } catch {
+    return [];
+  }
+};
+
 export function DashboardGlobalHeader() {
   const location = useLocation();
   const navigate = useNavigate();
   const { scope } = useDashboardScope();
+  const isS3OverviewPage = location.pathname.startsWith("/dashboard/s3/cost");
   const [isRangeMenuOpen, setIsRangeMenuOpen] = useState(false);
+  const [isPresetMenuOpen, setIsPresetMenuOpen] = useState(false);
   const [activeRangeTab, setActiveRangeTab] = useState<DateRangeTab>("daily");
   const [draftBillingStart, setDraftBillingStart] = useState("");
   const [draftBillingEnd, setDraftBillingEnd] = useState("");
   const [draftQuickRangeKey, setDraftQuickRangeKey] = useState<string | null>(null);
+  const [s3Presets, setS3Presets] = useState<S3OverviewSavedPreset[]>(() => loadS3OverviewPresets());
   const dateMenuRef = useRef<HTMLDivElement | null>(null);
+  const presetMenuRef = useRef<HTMLDivElement | null>(null);
 
   const searchParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
   const billingStart = parseDateValue(searchParams.get("billingPeriodStart") ?? searchParams.get("from"));
@@ -204,6 +348,11 @@ export function DashboardGlobalHeader() {
   const effectiveBillingStart = billingStart || (scope?.from ?? "");
   const effectiveBillingEnd = billingEnd || (scope?.to ?? "");
   const hasAppliedBillingRange = Boolean(effectiveBillingStart && effectiveBillingEnd);
+  const currentS3Filters = useMemo(() => parseS3FiltersFromSearch(location.search), [location.search]);
+  const selectedS3PresetId = useMemo(() => {
+    const match = s3Presets.find((preset) => areS3FiltersEqual(preset.value, currentS3Filters));
+    return match?.id ?? "";
+  }, [currentS3Filters, s3Presets]);
 
   const filtersQuery = useDashboardFiltersQuery({
     ...(effectiveBillingStart ? { billingPeriodStart: effectiveBillingStart } : {}),
@@ -275,13 +424,12 @@ export function DashboardGlobalHeader() {
   }, [scope, uploadHistoryQuery.data]);
 
   useEffect(() => {
-    if (!isRangeMenuOpen) {
-      return;
-    }
+    if (!isRangeMenuOpen && !isPresetMenuOpen) return;
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setIsRangeMenuOpen(false);
+        setIsPresetMenuOpen(false);
       }
     };
 
@@ -289,22 +437,33 @@ export function DashboardGlobalHeader() {
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [isRangeMenuOpen]);
+  }, [isPresetMenuOpen, isRangeMenuOpen]);
 
   useEffect(() => {
-    if (!isRangeMenuOpen) return;
+    if (!isRangeMenuOpen && !isPresetMenuOpen) return;
 
     const handlePointerDown = (event: MouseEvent) => {
-      if (!dateMenuRef.current) return;
-      if (dateMenuRef.current.contains(event.target as Node)) return;
-      setIsRangeMenuOpen(false);
+      const targetNode = event.target as Node;
+      const clickedDateMenu = Boolean(dateMenuRef.current?.contains(targetNode));
+      const clickedPresetMenu = Boolean(presetMenuRef.current?.contains(targetNode));
+      if (!clickedDateMenu && isRangeMenuOpen) {
+        setIsRangeMenuOpen(false);
+      }
+      if (!clickedPresetMenu && isPresetMenuOpen) {
+        setIsPresetMenuOpen(false);
+      }
     };
 
     window.addEventListener("mousedown", handlePointerDown);
     return () => {
       window.removeEventListener("mousedown", handlePointerDown);
     };
-  }, [isRangeMenuOpen]);
+  }, [isPresetMenuOpen, isRangeMenuOpen]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(S3_OVERVIEW_PRESETS_STORAGE_KEY, JSON.stringify(s3Presets));
+  }, [s3Presets]);
 
   const updateSearchParams = (mutate: (params: URLSearchParams) => void) => {
     const params = new URLSearchParams(location.search);
@@ -387,6 +546,7 @@ export function DashboardGlobalHeader() {
       setIsRangeMenuOpen(false);
       return;
     }
+    setIsPresetMenuOpen(false);
     openRangeMenu();
   };
 
@@ -410,6 +570,48 @@ export function DashboardGlobalHeader() {
     if (!startDate || !endDate) return false;
     return startDate <= endDate;
   }, [draftBillingEnd, draftBillingStart]);
+
+  const togglePresetMenu = () => {
+    if (!isS3OverviewPage) return;
+    setIsPresetMenuOpen((current) => !current);
+    setIsRangeMenuOpen(false);
+  };
+
+  const applyS3Preset = (presetId: string) => {
+    const target = s3Presets.find((preset) => preset.id === presetId);
+    if (!target) return;
+    updateSearchParams((params) => {
+      applyS3FiltersToParams(params, target.value);
+    });
+  };
+
+  const saveS3Preset = () => {
+    const name = window.prompt("Preset name");
+    const normalizedName = name?.trim();
+    if (!normalizedName) return;
+    const nowIso = new Date().toISOString();
+    const existing = s3Presets.find((item) => item.name.toLowerCase() === normalizedName.toLowerCase());
+    if (existing) {
+      setS3Presets((current) =>
+        current.map((item) =>
+          item.id === existing.id ? { ...item, name: normalizedName, value: currentS3Filters, updatedAt: nowIso } : item,
+        ),
+      );
+      return;
+    }
+    const nextPreset: S3OverviewSavedPreset = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      name: normalizedName,
+      value: currentS3Filters,
+      updatedAt: nowIso,
+    };
+    setS3Presets((current) => [nextPreset, ...current]);
+  };
+
+  const deleteSelectedS3Preset = () => {
+    if (!selectedS3PresetId) return;
+    setS3Presets((current) => current.filter((item) => item.id !== selectedS3PresetId));
+  };
 
   return (
     <>
@@ -544,6 +746,54 @@ export function DashboardGlobalHeader() {
               </div>
             ) : null}
           </div>
+
+          {isS3OverviewPage ? (
+            <div className="dashboard-preset-picker" ref={presetMenuRef}>
+              <button
+                type="button"
+                className={`dashboard-header-action dashboard-preset-trigger${isPresetMenuOpen ? " is-open" : ""}`}
+                onClick={togglePresetMenu}
+                aria-haspopup="dialog"
+                aria-expanded={isPresetMenuOpen}
+              >
+                Preset
+                <ChevronDown className="dashboard-preset-trigger__caret" size={14} aria-hidden="true" />
+              </button>
+              {isPresetMenuOpen ? (
+                <div className="dashboard-preset-popover" role="dialog" aria-label="S3 presets">
+                  <select
+                    className="dashboard-preset-select"
+                    value={selectedS3PresetId}
+                    onChange={(event) => {
+                      const presetId = event.target.value;
+                      if (!presetId) return;
+                      applyS3Preset(presetId);
+                    }}
+                  >
+                    <option value="">Saved presets</option>
+                    {s3Presets.map((preset) => (
+                      <option key={preset.id} value={preset.id}>
+                        {preset.name}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="dashboard-preset-popover__actions">
+                    <button type="button" className="dashboard-preset-btn" onClick={saveS3Preset}>
+                      Save preset
+                    </button>
+                    <button
+                      type="button"
+                      className="dashboard-preset-btn dashboard-preset-btn--muted"
+                      disabled={!selectedS3PresetId}
+                      onClick={deleteSelectedS3Preset}
+                    >
+                      Delete preset
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
 
           <button
             type="button"
