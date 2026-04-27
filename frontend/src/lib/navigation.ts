@@ -130,6 +130,9 @@ const BLOG_DETAIL_PATH_REGEX = /^\/resources\/blogs?\/([^/]+)$/
 const AWS_CONNECTION_SETUP_PATH_REGEX = /^\/client\/billing\/(?:connect-cloud|connections)\/aws\/setup\/[0-9a-fA-F-]{36}$/
 const AWS_MANUAL_EXPLORER_PATH_REGEX = /^\/client\/billing\/(?:connect-cloud|connections)\/aws\/manual\/explorer(?:\/|$)/
 const AWS_MANUAL_SUCCESS_PATH_REGEX = /^\/client\/billing\/(?:connect-cloud|connections)\/aws\/manual\/success(?:\/|$)/
+const DASHBOARD_PATH_REGEX = /^\/dashboard(?:\/.*)?$/
+const UPLOAD_DASHBOARD_PATH_REGEX = /^\/uploads-dashboard(?:\/.*)?$/
+const REPORT_STANDALONE_PATH_REGEX = /^\/reports\/cloud-cost-anomaly\/?$/
 
 function normalizePathname(pathname: string): string {
   if (!pathname.startsWith("/")) return `/${pathname}`
@@ -161,6 +164,18 @@ function resolvePathname(pathname: string): RouteResolution {
   }
 
   if (AWS_MANUAL_SUCCESS_PATH_REGEX.test(normalized)) {
+    return { route: normalized, redirectTo: null }
+  }
+
+  if (DASHBOARD_PATH_REGEX.test(normalized)) {
+    return { route: normalized, redirectTo: null }
+  }
+
+  if (UPLOAD_DASHBOARD_PATH_REGEX.test(normalized)) {
+    return { route: normalized, redirectTo: null }
+  }
+
+  if (REPORT_STANDALONE_PATH_REGEX.test(normalized)) {
     return { route: normalized, redirectTo: null }
   }
 
@@ -214,7 +229,10 @@ export function handleAppLinkClick(
     BLOG_DETAIL_PATH_REGEX.test(normalizedHref) ||
     AWS_CONNECTION_SETUP_PATH_REGEX.test(normalizedHref) ||
     AWS_MANUAL_EXPLORER_PATH_REGEX.test(normalizedHref) ||
-    AWS_MANUAL_SUCCESS_PATH_REGEX.test(normalizedHref)
+    AWS_MANUAL_SUCCESS_PATH_REGEX.test(normalizedHref) ||
+    DASHBOARD_PATH_REGEX.test(normalizedHref) ||
+    UPLOAD_DASHBOARD_PATH_REGEX.test(normalizedHref) ||
+    REPORT_STANDALONE_PATH_REGEX.test(normalizedHref)
   if (!isKnownPath) return
 
   event.preventDefault()

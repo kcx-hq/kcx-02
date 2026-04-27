@@ -74,6 +74,7 @@ const FACT_NUMERIC_FIELDS = Object.freeze([
   "consumed_quantity",
   "pricing_quantity",
   "public_on_demand_cost",
+  "bundled_discount",
   "discount_amount",
   "credit_amount",
   "refund_amount",
@@ -119,6 +120,19 @@ function classifyFactInsertError(error) {
       errorCode: "schema_mismatch_missing_tag_id",
       errorMessage:
         "database schema mismatch: fact_cost_line_items.tag_id is missing (run latest backend migrations)",
+    };
+  }
+
+  if (
+    combined.includes("column") &&
+    combined.includes("of relation") &&
+    combined.includes("fact_cost_line_items") &&
+    combined.includes("does not exist")
+  ) {
+    return {
+      errorCode: "schema_mismatch_fact_cost_line_items_columns",
+      errorMessage:
+        "database schema mismatch: fact_cost_line_items is missing one or more expected columns (run latest backend migrations)",
     };
   }
 

@@ -4,6 +4,7 @@
   "description": "Minimal Express + Sequelize + PostgreSQL starter with migrations",
   "main": "dist/server.js",
   "scripts": {
+    "clean": "node -e \"const fs=require('fs'); fs.rmSync('dist',{recursive:true,force:true,maxRetries:10,retryDelay:200});\"",
     "dev": "tsx watch server.ts",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/server.js",
@@ -23,6 +24,7 @@
     "backfill:ebs-volume-utilization-hourly": "npm run build && node dist/scripts/backfill-ebs-volume-utilization-hourly.js",
     "backfill:ebs-volume-utilization-daily": "npm run build && node dist/scripts/backfill-ebs-volume-utilization-daily.js",
     "backfill:ebs-volume-daily": "npm run build && node dist/scripts/backfill-ebs-volume-daily.js",
+    "recover:stale:ec2-inventory-job": "npm run build && node dist/scripts/recover-stale-ec2-inventory-job.js",
     "diagnose:billing:parquet": "node scripts/diagnose-billing-parquet.mjs",
     "lint": "eslint . --ext .ts",
     "lint:fix": "eslint . --ext .ts --fix",

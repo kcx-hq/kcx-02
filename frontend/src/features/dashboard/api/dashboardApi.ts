@@ -23,6 +23,8 @@ import type {
   Ec2OptimizationInstancesFiltersQuery,
   Ec2OptimizationSummaryResponse,
   Ec2OptimizationInstancesResponse,
+  S3CostInsightsFiltersQuery,
+  S3CostInsightsResponse,
   OptimizationIdleOverview,
   OptimizationCommitmentOverview,
   OptimizationIdleRecommendationsResponse,
@@ -224,6 +226,35 @@ function withEc2OptimizationFilters(
   }
   if (typeof filters?.pageSize === "number") {
     params.set("page_size", String(filters.pageSize));
+  }
+
+  const query = params.toString();
+  return query.length > 0 ? `${path}?${query}` : path;
+}
+
+function withS3CostInsightsFilters(
+  path: string,
+  scope: DashboardResolvedScope,
+  filters?: S3CostInsightsFiltersQuery,
+): string {
+  const params = new URLSearchParams(buildDashboardQueryParams(scope));
+  const appendArray = (key: string, values?: string[]) => {
+    if (!Array.isArray(values) || values.length === 0) return;
+    params.set(key, values.join(","));
+  };
+
+  appendArray("costCategory", filters?.costCategory);
+  appendArray("storageClass", filters?.storageClass);
+  appendArray("region", filters?.region);
+  appendArray("account", filters?.account);
+  if (typeof filters?.bucket === "string" && filters.bucket.trim().length > 0) {
+    params.set("bucket", filters.bucket.trim());
+  }
+  if (filters?.costBy) {
+    params.set("costBy", filters.costBy);
+  }
+  if (filters?.seriesBy) {
+    params.set("seriesBy", filters.seriesBy);
   }
 
   const query = params.toString();
@@ -454,6 +485,9 @@ export const dashboardApi = {
       withEc2OptimizationFilters("/dashboard/ec2/optimization/instances", scope, filters),
     );
   },
+  getS3CostInsights(scope: DashboardResolvedScope, filters?: S3CostInsightsFiltersQuery) {
+    return apiGet<S3CostInsightsResponse>(withS3CostInsightsFilters("/dashboard/s3/cost-insights", scope, filters));
+  },
 };
 
 export type {
@@ -491,6 +525,8 @@ export type {
   Ec2OptimizationInstancesFiltersQuery,
   Ec2OptimizationSummaryResponse,
   Ec2OptimizationInstancesResponse,
+  S3CostInsightsFiltersQuery,
+  S3CostInsightsResponse,
   OptimizationIdleOverview,
   OptimizationCommitmentOverview,
   OptimizationIdleRecommendationsResponse,

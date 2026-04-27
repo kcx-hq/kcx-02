@@ -135,6 +135,8 @@ const env = {
     optionalEnv(process.env.AWS_VALIDATION_SESSION_TOKEN) ?? optionalEnv(process.env.AWS_SESSION_TOKEN),
   resetTokenTtlMinutes: optionalPositiveNumber(process.env.RESET_TOKEN_TTL_MINUTES, 60),
   sessionTtlHours: optionalPositiveNumber(process.env.SESSION_TTL_HOURS, 168),
+  jwtSecret: optionalEnv(process.env.JWT_SECRET),
+  jwtIssuer: optionalEnv(process.env.JWT_ISSUER) ?? "kcx-backend",
   awsRegion: optionalEnv(process.env.AWS_REGION) ?? "us-east-1",
   awsAccessKeyId: optionalEnv(process.env.AWS_ACCESS_KEY_ID),
   awsSecretAccessKey: optionalEnv(process.env.AWS_SECRET_ACCESS_KEY),
@@ -186,6 +188,9 @@ const env = {
     optionalBoolean(process.env.EC2_SCHEDULED_JOBS_SCHEDULER_ENABLED) ?? true,
   ec2ScheduledJobsPollIntervalMs:
     optionalPositiveInteger(process.env.EC2_SCHEDULED_JOBS_POLL_INTERVAL_MS) ?? 60_000,
+  ec2ScheduledJobsRunningStaleAfterMs:
+    optionalPositiveInteger(process.env.EC2_SCHEDULED_JOBS_RUNNING_STALE_AFTER_MS) ??
+    6 * 60 * 60 * 1000,
   ec2ScheduledJobsBatchSize:
     optionalPositiveInteger(process.env.EC2_SCHEDULED_JOBS_BATCH_SIZE) ?? 10,
   ec2ScheduledJobsMaxBatchesPerPoll:

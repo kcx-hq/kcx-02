@@ -9,6 +9,8 @@ import {
   type Ec2OptimizationInstancesFiltersQuery,
   type Ec2OptimizationSummaryResponse,
   type Ec2OptimizationInstancesResponse,
+  type S3CostInsightsFiltersQuery,
+  type S3CostInsightsResponse,
   type OptimizationIdleOverview,
   type OptimizationCommitmentOverview,
   type OptimizationIdleRecommendationDetail,
@@ -274,5 +276,14 @@ export function useEc2OptimizationInstancesQuery(filters?: Ec2OptimizationInstan
     queryFn: () => dashboardApi.getEc2OptimizationInstances(assertScope(scope), filters),
     enabled: Boolean(scope),
     placeholderData: (previous) => previous,
+  });
+}
+
+export function useS3CostInsightsQuery(filters?: S3CostInsightsFiltersQuery) {
+  const { scope } = useDashboardScope();
+  return useQuery<S3CostInsightsResponse, Error>({
+    queryKey: ["dashboard", "s3", "cost-insights", scope, filters],
+    queryFn: () => dashboardApi.getS3CostInsights(assertScope(scope), filters),
+    enabled: Boolean(scope),
   });
 }

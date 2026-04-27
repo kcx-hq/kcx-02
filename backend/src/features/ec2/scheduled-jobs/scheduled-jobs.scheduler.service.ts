@@ -85,6 +85,8 @@ export async function pollScheduledJobs({
 
   const batchSize = env.ec2ScheduledJobsBatchSize;
   const maxBatches = env.ec2ScheduledJobsMaxBatchesPerPoll;
+  const staleAfterMs = env.ec2ScheduledJobsRunningStaleAfterMs;
+  const staleBefore = new Date(Date.now() - staleAfterMs);
 
   let claimedCount = 0;
   let completedCount = 0;
@@ -94,9 +96,33 @@ export async function pollScheduledJobs({
   try {
     for (let batchIndex = 0; batchIndex < maxBatches; batchIndex += 1) {
       batchCount += 1;
-      const claimedJobs = await repository.claimDueScheduledJobs({ limit: batchSize });
+      const claimedJobs = await repository.claimDueScheduledJobs({
+        limit: batchSize,
+        staleBefore,
+      });
       if (claimedJobs.length === 0) {
         break;
+      }
+
+      const reclaimedStaleRunningJobs = claimedJobs.filter(
+        (job) => job.reclaimedFromStaleRunning === true,
+      );
+      if (reclaimedStaleRunningJobs.length > 0) {
+        logger.warn("Stale running ec2_inventory_sync job reclaimed during claim", {
+          staleAfterMs,
+          staleBefore: staleBefore.toISOString(),
+          reclaimedCount: reclaimedStaleRunningJobs.length,
+          reclaimedJobs: reclaimedStaleRunningJobs.map((job) => ({
+            jobId: String(job.id),
+            staleReferenceAt:
+              job.staleReferenceAt instanceof Date
+                ? job.staleReferenceAt.toISOString()
+                : job.staleReferenceAt
+                ? new Date(job.staleReferenceAt).toISOString()
+                : null,
+            previousLastStatus: job.previousLastStatus ?? null,
+          })),
+        });
       }
 
       claimedCount += claimedJobs.length;
