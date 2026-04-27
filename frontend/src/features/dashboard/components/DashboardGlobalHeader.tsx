@@ -226,11 +226,11 @@ export function DashboardGlobalHeader() {
     if (path.startsWith("/dashboard/inventory/aws/ec2/snapshots")) {
       return [rootCrumb, "Services", "EC2", "Snapshots"];
     }
-    if (path === "/dashboard/ec2") {
-      return [rootCrumb, "Services", "EC2"];
-    }
     if (path.startsWith("/dashboard/ec2/performance")) {
       return [rootCrumb, "Services", "EC2", "Performance"];
+    }
+    if (path.startsWith("/dashboard/ec2/optimization")) {
+      return [rootCrumb, "Services", "EC2", "Optimization"];
     }
 
     const bestMatch = dashboardNavLinks

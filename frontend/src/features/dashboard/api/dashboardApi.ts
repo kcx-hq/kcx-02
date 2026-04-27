@@ -19,12 +19,10 @@ import type {
   DashboardResolvedScope,
   DashboardScopeInput,
   DashboardSectionData,
-  Ec2OverviewFiltersQuery,
-  Ec2OverviewResponse,
-  Ec2InstanceHoursFiltersQuery,
-  Ec2InstanceHoursResponse,
-  Ec2InstanceUsageFiltersQuery,
-  Ec2InstanceUsageResponse,
+  Ec2OptimizationSummaryFiltersQuery,
+  Ec2OptimizationInstancesFiltersQuery,
+  Ec2OptimizationSummaryResponse,
+  Ec2OptimizationInstancesResponse,
   OptimizationIdleOverview,
   OptimizationCommitmentOverview,
   OptimizationIdleRecommendationsResponse,
@@ -204,46 +202,29 @@ function withAnomaliesAlertsFilters(
   return query.length > 0 ? `${path}?${query}` : path;
 }
 
-function withEc2InstanceUsageFilters(
+function withEc2OptimizationFilters(
   path: string,
   scope: DashboardResolvedScope,
-  filters?: Ec2InstanceUsageFiltersQuery,
+  filters?: Ec2OptimizationSummaryFiltersQuery | Ec2OptimizationInstancesFiltersQuery,
 ): string {
   const params = new URLSearchParams(buildDashboardQueryParams(scope));
+
   if (filters?.cloudConnectionId) params.set("cloud_connection_id", filters.cloudConnectionId);
-  if (typeof filters?.subAccountKey === "number") params.set("sub_account_key", String(filters.subAccountKey));
+  if (typeof filters?.billingSourceId === "number") params.set("billing_source_id", String(filters.billingSourceId));
   if (typeof filters?.regionKey === "number") params.set("region_key", String(filters.regionKey));
-  if (filters?.category) params.set("category", filters.category);
-
-  const query = params.toString();
-  return query.length > 0 ? `${path}?${query}` : path;
-}
-
-function withEc2OverviewFilters(
-  path: string,
-  scope: DashboardResolvedScope,
-  filters?: Ec2OverviewFiltersQuery,
-): string {
-  const params = new URLSearchParams(buildDashboardQueryParams(scope));
-  if (filters?.cloudConnectionId) params.set("cloud_connection_id", filters.cloudConnectionId);
   if (typeof filters?.subAccountKey === "number") params.set("sub_account_key", String(filters.subAccountKey));
-  if (typeof filters?.regionKey === "number") params.set("region_key", String(filters.regionKey));
-  if (filters?.instanceType) params.set("instance_type", filters.instanceType);
-  if (filters?.state) params.set("state", filters.state);
-
-  const query = params.toString();
-  return query.length > 0 ? `${path}?${query}` : path;
-}
-
-function withEc2InstanceHoursFilters(
-  path: string,
-  scope: DashboardResolvedScope,
-  filters?: Ec2InstanceHoursFiltersQuery,
-): string {
-  const params = new URLSearchParams(buildDashboardQueryParams(scope));
-  if (filters?.cloudConnectionId) params.set("cloud_connection_id", filters.cloudConnectionId);
-  if (typeof filters?.subAccountKey === "number") params.set("sub_account_key", String(filters.subAccountKey));
-  if (typeof filters?.regionKey === "number") params.set("region_key", String(filters.regionKey));
+  if (filters?.recommendationType) params.set("recommendation_type", filters.recommendationType);
+  if (filters?.region) params.set("region", filters.region);
+  if (filters?.riskLevel) params.set("risk_level", filters.riskLevel);
+  if (filters?.status) params.set("status", filters.status);
+  if (filters?.dateFrom) params.set("dateFrom", filters.dateFrom);
+  if (filters?.dateTo) params.set("dateTo", filters.dateTo);
+  if (typeof filters?.page === "number") {
+    params.set("page", String(filters.page));
+  }
+  if (typeof filters?.pageSize === "number") {
+    params.set("page_size", String(filters.pageSize));
+  }
 
   const query = params.toString();
   return query.length > 0 ? `${path}?${query}` : path;
@@ -463,14 +444,15 @@ export const dashboardApi = {
     return apiGet<DashboardSectionData>(withDashboardQuery("/dashboard/report", scope));
   },
 
-  getEc2InstanceUsage(scope: DashboardResolvedScope, filters?: Ec2InstanceUsageFiltersQuery) {
-    return apiGet<Ec2InstanceUsageResponse>(withEc2InstanceUsageFilters("/dashboard/ec2/instance-usage", scope, filters));
+  getEc2OptimizationSummary(scope: DashboardResolvedScope, filters?: Ec2OptimizationSummaryFiltersQuery) {
+    return apiGet<Ec2OptimizationSummaryResponse>(
+      withEc2OptimizationFilters("/dashboard/ec2/optimization/summary", scope, filters),
+    );
   },
-  getEc2Overview(scope: DashboardResolvedScope, filters?: Ec2OverviewFiltersQuery) {
-    return apiGet<Ec2OverviewResponse>(withEc2OverviewFilters("/dashboard/ec2/overview", scope, filters));
-  },
-  getEc2InstanceHours(scope: DashboardResolvedScope, filters?: Ec2InstanceHoursFiltersQuery) {
-    return apiGet<Ec2InstanceHoursResponse>(withEc2InstanceHoursFilters("/dashboard/ec2/instance-hours", scope, filters));
+  getEc2OptimizationInstances(scope: DashboardResolvedScope, filters?: Ec2OptimizationInstancesFiltersQuery) {
+    return apiGet<Ec2OptimizationInstancesResponse>(
+      withEc2OptimizationFilters("/dashboard/ec2/optimization/instances", scope, filters),
+    );
   },
 };
 
@@ -505,12 +487,10 @@ export type {
   DashboardResolvedScope,
   DashboardScopeInput,
   DashboardSectionData,
-  Ec2OverviewFiltersQuery,
-  Ec2OverviewResponse,
-  Ec2InstanceHoursFiltersQuery,
-  Ec2InstanceHoursResponse,
-  Ec2InstanceUsageFiltersQuery,
-  Ec2InstanceUsageResponse,
+  Ec2OptimizationSummaryFiltersQuery,
+  Ec2OptimizationInstancesFiltersQuery,
+  Ec2OptimizationSummaryResponse,
+  Ec2OptimizationInstancesResponse,
   OptimizationIdleOverview,
   OptimizationCommitmentOverview,
   OptimizationIdleRecommendationsResponse,

@@ -5,12 +5,10 @@ import {
   type AnomaliesListResponse,
   type CostExplorerFiltersQuery,
   type DashboardResolvedScope,
-  type Ec2OverviewFiltersQuery,
-  type Ec2OverviewResponse,
-  type Ec2InstanceUsageFiltersQuery,
-  type Ec2InstanceHoursFiltersQuery,
-  type Ec2InstanceHoursResponse,
-  type Ec2InstanceUsageResponse,
+  type Ec2OptimizationSummaryFiltersQuery,
+  type Ec2OptimizationInstancesFiltersQuery,
+  type Ec2OptimizationSummaryResponse,
+  type Ec2OptimizationInstancesResponse,
   type OptimizationIdleOverview,
   type OptimizationCommitmentOverview,
   type OptimizationIdleRecommendationDetail,
@@ -260,29 +258,21 @@ export function useReportQuery() {
   });
 }
 
-export function useEc2InstanceUsageQuery(filters?: Ec2InstanceUsageFiltersQuery) {
+export function useEc2OptimizationSummaryQuery(filters?: Ec2OptimizationSummaryFiltersQuery) {
   const { scope } = useDashboardScope();
-  return useQuery<Ec2InstanceUsageResponse, Error>({
-    queryKey: ["dashboard", "ec2", "instance-usage", scope, filters],
-    queryFn: () => dashboardApi.getEc2InstanceUsage(assertScope(scope), filters),
+  return useQuery<Ec2OptimizationSummaryResponse, Error>({
+    queryKey: ["dashboard", "ec2", "optimization", "summary", scope, filters],
+    queryFn: () => dashboardApi.getEc2OptimizationSummary(assertScope(scope), filters),
     enabled: Boolean(scope),
   });
 }
 
-export function useEc2OverviewQuery(filters?: Ec2OverviewFiltersQuery) {
+export function useEc2OptimizationInstancesQuery(filters?: Ec2OptimizationInstancesFiltersQuery) {
   const { scope } = useDashboardScope();
-  return useQuery<Ec2OverviewResponse, Error>({
-    queryKey: ["dashboard", "ec2", "overview", scope, filters],
-    queryFn: () => dashboardApi.getEc2Overview(assertScope(scope), filters),
+  return useQuery<Ec2OptimizationInstancesResponse, Error>({
+    queryKey: ["dashboard", "ec2", "optimization", "instances", scope, filters],
+    queryFn: () => dashboardApi.getEc2OptimizationInstances(assertScope(scope), filters),
     enabled: Boolean(scope),
-  });
-}
-
-export function useEc2InstanceHoursQuery(filters?: Ec2InstanceHoursFiltersQuery) {
-  const { scope } = useDashboardScope();
-  return useQuery<Ec2InstanceHoursResponse, Error>({
-    queryKey: ["dashboard", "ec2", "instance-hours", scope, filters],
-    queryFn: () => dashboardApi.getEc2InstanceHours(assertScope(scope), filters),
-    enabled: Boolean(scope),
+    placeholderData: (previous) => previous,
   });
 }

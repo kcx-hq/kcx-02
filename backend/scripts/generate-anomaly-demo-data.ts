@@ -3,6 +3,7 @@ import { Op, type Transaction } from "sequelize";
 import { syncEc2InstanceCostDaily } from "../src/features/ec2/scheduled-jobs/handlers/ec2-instance-cost-daily.service.js";
 import { syncEc2InstanceDailyFact } from "../src/features/ec2/scheduled-jobs/handlers/ec2-instance-daily-fact.service.js";
 import {
+  AggCostDaily,
   BillingSource,
   CloudConnectionV2,
   CloudProvider,
@@ -470,15 +471,16 @@ function generateInstances(input: {
 
     let baselineDailyCost: number;
     let anomalyCost: number | null = null;
-    if (scenario === "normal") baselineDailyCost = randomInRange(input.rng, 1.5, 6.0);
+    if (scenario === "normal") baselineDailyCost = randomInRange(input.rng, 1.8, 5.8);
     else if (scenario === "cost_spike") {
       baselineDailyCost = randomInRange(input.rng, 2.0, 4.0);
-      anomalyCost = randomInRange(input.rng, 20.0, 40.0);
+      // Keep spike large enough so both EC2 resource spike and daily-total spike detectors can trigger.
+      anomalyCost = randomInRange(input.rng, 55.0, 90.0);
     } else if (scenario === "cost_drop") {
       baselineDailyCost = randomInRange(input.rng, 8.0, 12.0);
       anomalyCost = randomInRange(input.rng, 0.5, 2.0);
     } else {
-      baselineDailyCost = randomInRange(input.rng, 10.0, 25.0);
+      baselineDailyCost = randomInRange(input.rng, 10.0, 22.0);
     }
 
     baselineDailyCost = Math.max(
@@ -495,13 +497,13 @@ function generateInstances(input: {
     let anomalyEndIndex: number | null = null;
 
     if (scenario === "new_instance") {
-      const earliest = Math.max(5, Math.floor(dateCount * 0.65));
-      const latest = Math.max(earliest, dateCount - 5);
-      launchIndex = Math.floor(randomInRange(input.rng, earliest, latest + 1));
+      // Align with incremental detector default window (latest day).
+      launchIndex = Math.max(0, dateCount - 1);
     } else if (scenario === "cost_spike" || scenario === "cost_drop") {
-      const windowLength = Math.floor(randomInRange(input.rng, 1, 4));
+      const windowLength = Math.floor(randomInRange(input.rng, 1, 3));
       const endBound = Math.max(7, dateCount - 1);
-      anomalyEndIndex = Math.floor(randomInRange(input.rng, Math.max(7, endBound - 4), endBound + 1));
+      // Force anomaly window to include latest day for incremental runs.
+      anomalyEndIndex = endBound;
       anomalyStartIndex = Math.max(0, anomalyEndIndex - windowLength + 1);
     }
 
@@ -824,6 +826,26 @@ async function seedDemoData(input: {
     const utilizationRows: Array<Record<string, unknown>> = [];
     const ec2HistoryRows: Array<Record<string, unknown>> = [];
     const factLineRows: Array<Record<string, unknown>> = [];
+    const aggDailyRowsMap = new Map<
+      string,
+      {
+        usageDate: string;
+        billingPeriodStartDate: string;
+        tenantId: string;
+        billingSourceId: number;
+        ingestionRunId: null;
+        providerId: string;
+        uploadedBy: null;
+        serviceKey: number;
+        subAccountKey: number;
+        regionKey: number;
+        billedCost: number;
+        effectiveCost: number;
+        listCost: number;
+        usageQuantity: number;
+        currencyCode: string;
+      }
+    >();
 
     for (const instance of generation.instances) {
       const points = pointByInstance.get(instance.instanceId) ?? [];
@@ -937,12 +959,49 @@ async function seedDemoData(input: {
           refundAmount: 0,
           taxCost: 0,
         });
+
+        const aggKey = `${point.usageDate}|${instance.subAccount.subAccountKey}|${instance.region.regionKey}|USD`;
+        const current =
+          aggDailyRowsMap.get(aggKey) ??
+          {
+            usageDate: point.usageDate,
+            billingPeriodStartDate: monthStart(point.usageDate),
+            tenantId: input.options.tenantId,
+            billingSourceId: input.options.billingSourceId,
+            ingestionRunId: null,
+            providerId: providerIdText,
+            uploadedBy: null,
+            serviceKey,
+            subAccountKey: instance.subAccount.subAccountKey,
+            regionKey: instance.region.regionKey,
+            billedCost: 0,
+            effectiveCost: 0,
+            listCost: 0,
+            usageQuantity: 0,
+            currencyCode: "USD",
+          };
+        current.billedCost += point.billedCost;
+        current.effectiveCost += point.effectiveCost;
+        current.listCost += point.listCost;
+        current.usageQuantity += point.usageHours;
+        aggDailyRowsMap.set(aggKey, current);
       }
     }
 
     await Ec2InstanceUtilizationDaily.bulkCreate(utilizationRows as any[], { transaction });
     await Ec2CostHistoryDaily.bulkCreate(ec2HistoryRows as any[], { transaction });
     await FactCostLineItems.bulkCreate(factLineRows as any[], { transaction });
+
+    const aggDailyRows = Array.from(aggDailyRowsMap.values()).map((row) => ({
+      ...row,
+      billedCost: round6(row.billedCost),
+      effectiveCost: round6(row.effectiveCost),
+      listCost: round6(row.listCost),
+      usageQuantity: round6(row.usageQuantity),
+    }));
+    for (const row of aggDailyRows) {
+      await AggCostDaily.upsert(row as any, { transaction });
+    }
 
     return {
       generation,
@@ -951,6 +1010,7 @@ async function seedDemoData(input: {
         ec2_instance_utilization_daily: utilizationRows.length,
         ec2_cost_history_daily: ec2HistoryRows.length,
         fact_cost_line_items: factLineRows.length,
+        agg_cost_daily: aggDailyRows.length,
       },
       deletedCounts,
     };

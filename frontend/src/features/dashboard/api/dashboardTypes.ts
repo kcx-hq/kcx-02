@@ -49,132 +49,99 @@ export type DashboardSectionData = {
   summary: DashboardSummaryItem[];
 };
 
-export type Ec2InstanceUsageFiltersQuery = {
+export type Ec2OptimizationSummaryFiltersQuery = {
   cloudConnectionId?: string;
-  subAccountKey?: number;
+  billingSourceId?: number;
   regionKey?: number;
-  category?: "none" | "region" | "instance_type" | "reservation_type";
-};
-
-export type Ec2OverviewFiltersQuery = {
-  cloudConnectionId?: string;
   subAccountKey?: number;
-  regionKey?: number;
-  instanceType?: string;
-  state?: string;
+  recommendationType?:
+    | "overview"
+    | "rightsizing"
+    | "idle_waste"
+    | "coverage"
+    | "performance_risk"
+    | "all"
+    | "idle_instance"
+    | "underutilized_instance"
+    | "overutilized_instance"
+    | "uncovered_on_demand"
+    | "ebs_waste";
+  region?: string;
+  riskLevel?: "low" | "medium" | "high";
+  status?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  page?: number;
+  pageSize?: number;
 };
 
-export type Ec2OverviewResponse = {
-  section: "ec2-overview";
-  title: "EC2 Overview";
-  message: string;
-  filtersApplied: {
-    tenantId: string;
-    startDate: string;
-    endDate: string;
-    cloudConnectionId: string | null;
-    subAccountKey: number | null;
-    regionKey: number | null;
-    instanceType: string | null;
-    state: string | null;
-  };
-  kpis: {
-    totalInstances: number;
-    runningInstances: number;
-    stoppedInstances: number;
-    idleInstances: number;
-    underutilizedInstances: number;
-    overutilizedInstances: number;
-    totalComputeCost: number;
-    totalInstanceHours: number;
-  };
-  trends: Array<{
-    date: string;
-    runningInstanceCount: number;
-    computeCost: number;
-  }>;
-  topCostlyInstances: Array<{
-    instanceId: string;
-    instanceName: string;
-    instanceType: string | null;
-    totalHours: number;
-    computeCost: number;
-    state: string | null;
-  }>;
-  filterOptions: {
-    instanceTypes: string[];
-    states: string[];
-  };
-};
+export type Ec2OptimizationInstancesFiltersQuery = Ec2OptimizationSummaryFiltersQuery;
 
-export type Ec2InstanceUsageResponse = {
-  section: "ec2-instance-usage";
-  title: "EC2 Instance Usage";
-  message: string;
-  filtersApplied: {
-    tenantId: string;
-    startDate: string;
-    endDate: string;
-    cloudConnectionId: string | null;
-    subAccountKey: number | null;
-    regionKey: number | null;
-    category: "none" | "region" | "instance_type" | "reservation_type";
-    interval: "daily";
-    chartType: "bar";
-  };
-  metric: "instance_count";
-  items: Array<{
-    date: string;
-    category: string | null;
-    value: number;
-  }>;
-  chart: {
-    labels: Array<{
-      usageDate: string;
-      short: string;
-      long: string;
+export type Ec2OptimizationSummaryResponse = {
+  overview: {
+    totalPotentialSavings: number;
+    currencyCode: "USD";
+    categories: Array<{
+      key: "rightsizing" | "idle_waste" | "coverage" | "performance_risk";
+      label: "Rightsizing" | "Idle & Waste" | "Coverage" | "Performance Risk";
+      savings: number;
+      count: number;
+      percent: number;
     }>;
-    series: Array<{
-      name: string;
-      kind: "primary";
-      values: number[];
+    lifecycle: {
+      verifiedSavings: number;
+      appliedActions: number;
+      pendingActions: number;
+      ignoredRecommendations: number;
+    };
+    topActions: Array<{
+      recommendationId: number;
+      category: "rightsizing" | "idle_waste" | "coverage" | "performance_risk";
+      recommendationType: string;
+      title: string;
+      resourceId: string;
+      resourceName: string;
+      estimatedSavings: number;
+      riskLevel: "low" | "medium" | "high";
+      actionLabel: string;
+      drilldownUrl: string;
     }>;
   };
-  summary: {
-    totalInstanceDays: number;
-    avgDailyInstances: number;
-    peakDailyInstances: number;
+  recommendations: {
+    rightsizing: Ec2OptimizationRecommendationItem[];
+    idle_waste: Ec2OptimizationRecommendationItem[];
+    coverage: Ec2OptimizationRecommendationItem[];
+    performance_risk: Ec2OptimizationRecommendationItem[];
   };
 };
 
-export type Ec2InstanceHoursFiltersQuery = {
-  cloudConnectionId?: string;
-  subAccountKey?: number;
-  regionKey?: number;
-};
+export type Ec2OptimizationInstancesResponse = Ec2OptimizationSummaryResponse;
 
-export type Ec2InstanceHoursResponse = {
-  section: "ec2-instance-hours";
-  title: "EC2 Instance Hours";
-  message: string;
-  filtersApplied: {
-    tenantId: string;
-    startDate: string;
-    endDate: string;
-    cloudConnectionId: string | null;
-    subAccountKey: number | null;
-    regionKey: number | null;
-  };
-  items: Array<{
-    accountName: string;
-    instanceId: string;
-    instanceName: string | null;
-    instanceType: string | null;
-    availabilityZone: string | null;
-    isSpot: boolean;
-    totalHours: number;
-    computeCost: number;
+export type Ec2OptimizationRecommendationItem = {
+  recommendationId: number;
+  recommendationType: string;
+  resourceType: string;
+  resourceId: string;
+  resourceName: string;
+  accountName: string | null;
+  region: string | null;
+  availabilityZone: string | null;
+  currentResourceType: string | null;
+  recommendedResourceType: string | null;
+  monthlyCost: number;
+  estimatedSavings: number;
+  projectedMonthlyCost: number;
+  riskLevel: "low" | "medium" | "high";
+  effortLevel: "low" | "medium" | "high";
+  status: string;
+  reason: string;
+  evidence: Array<{
+    label: string;
+    value: string;
   }>;
+  recommendedAction: string;
+  actionLabel: string;
+  drilldownUrl: string;
 };
 
 export type OptimizationRightsizingOverview = {

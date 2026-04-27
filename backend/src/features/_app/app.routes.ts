@@ -22,7 +22,7 @@ import reportRoutes from "../dashboard/report/report.routes.js";
 import instancesInventoryRoutes from "../inventory/aws/ec2/instances/instances-inventory.routes.js";
 import snapshotsInventoryRoutes from "../inventory/aws/ec2/snapshots/snapshots-inventory.routes.js";
 import volumesInventoryRoutes from "../inventory/aws/ec2/volumes/volumes-inventory.routes.js";
-import ec2ReportsRoutes from "../ec2/reports/ec2-reports.routes.js";
+import ec2OptimizationRoutes from "../ec2/optimization/ec2-optimization.routes.js";
 const router = Router();
 
 router.use(scheduleDemoRoutes);
@@ -48,7 +48,7 @@ router.use(reportRoutes);
 router.use(instancesInventoryRoutes);
 router.use(snapshotsInventoryRoutes);
 router.use(volumesInventoryRoutes);
-router.use(ec2ReportsRoutes);
+router.use(ec2OptimizationRoutes);
 
 export default router;
 
