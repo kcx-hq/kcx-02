@@ -1,7 +1,9 @@
 import type { Request, Response } from "express";
 import { HTTP_STATUS } from "../../constants/http-status.js";
+import { UnauthorizedError } from "../../errors/http-errors.js";
 import { sendSuccess } from "../../utils/api-response.js";
 import {
+  decodeAccessToken,
   loginWithEmailPassword,
   requestPasswordReset,
   resetPasswordWithToken,
@@ -33,6 +35,25 @@ export async function handleAuthMe(req: Request, res: Response): Promise<void> {
     message: "Authenticated user fetched",
     data: {
       user: req.auth?.user ?? null,
+    },
+  });
+}
+
+export async function handleDecodeAuthToken(req: Request, res: Response): Promise<void> {
+  const token = req.auth?.token;
+  if (!token) {
+    throw new UnauthorizedError("Authorization token not found");
+  }
+
+  const payload = decodeAccessToken(token);
+
+  sendSuccess({
+    res,
+    req,
+    statusCode: HTTP_STATUS.OK,
+    message: "Token decoded successfully",
+    data: {
+      payload,
     },
   });
 }

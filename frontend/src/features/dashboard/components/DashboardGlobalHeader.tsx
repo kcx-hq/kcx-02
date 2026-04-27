@@ -232,6 +232,15 @@ export function DashboardGlobalHeader() {
     if (path.startsWith("/dashboard/ec2/performance")) {
       return [rootCrumb, "Services", "EC2", "Performance"];
     }
+    if (path === "/dashboard/s3") {
+      return [rootCrumb, "Services", "S3"];
+    }
+    if (path.startsWith("/dashboard/s3/cost")) {
+      return [rootCrumb, "Services", "S3", "Cost"];
+    }
+    if (path.startsWith("/dashboard/s3/usage")) {
+      return [rootCrumb, "Services", "S3", "Usage"];
+    }
 
     const bestMatch = dashboardNavLinks
       .filter((item) => path.startsWith(item.path))

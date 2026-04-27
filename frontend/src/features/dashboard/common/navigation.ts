@@ -105,6 +105,26 @@ export const dashboardNav: DashboardNavNode[] = [
           },
         ],
       },
+      {
+        kind: "group",
+        label: "S3",
+        icon: "boxes",
+        path: "/dashboard/s3",
+        items: [
+          {
+            kind: "link",
+            label: "Cost",
+            path: "/dashboard/s3/cost",
+            icon: "line-chart",
+          },
+          {
+            kind: "link",
+            label: "Usage",
+            path: "/dashboard/s3/usage",
+            icon: "activity",
+          },
+        ],
+      },
     ],
   },
   { kind: "link", label: "Optimization", path: "/dashboard/optimization", icon: "gauge" },

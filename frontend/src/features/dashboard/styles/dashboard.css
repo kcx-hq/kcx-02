@@ -5179,6 +5179,91 @@
   width: 100%;
 }
 
+.s3-overview-page {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.s3-overview-filter-panel {
+  position: relative;
+  top: auto;
+  z-index: auto;
+  border: 1px solid color-mix(in srgb, var(--dashboard-border-light) 78%, var(--dashboard-white-strong) 22%);
+  border-radius: var(--dashboard-radius-md);
+  background: var(--dashboard-surface-quiet);
+  padding: 12px 14px 10px;
+}
+
+.s3-overview-filter-panel .cost-explorer-toolbar-item {
+  padding-top: 6px;
+  padding-right: 8px;
+}
+
+.s3-overview-filter-panel .cost-explorer-toolbar-row {
+  flex-wrap: nowrap;
+  gap: 0 30px;
+}
+
+.s3-overview-filter-panel .cost-explorer-toolbar-item {
+  flex: 1 1 0;
+  max-width: none;
+}
+
+.s3-overview-filter-panel .cost-explorer-toolbar-item:first-child {
+  padding-left: 6px;
+}
+
+.s3-overview-filter-panel .cost-explorer-toolbar-trigger {
+  width: calc(100% - 8px);
+  padding: 8px 0 12px;
+  border-bottom: 1px solid color-mix(in srgb, var(--dashboard-border-light) 82%, var(--dashboard-white-strong) 18%);
+}
+
+.s3-overview-filter-panel .cost-explorer-toolbar-trigger__label {
+  margin-bottom: 4px;
+}
+
+.s3-overview-filter-panel .cost-explorer-chip-bar {
+  margin-top: 10px;
+}
+
+.s3-overview-filter-control {
+  width: 100%;
+  height: var(--ce-control-lg-h);
+  border: 0;
+  border-bottom: 1px solid var(--ce-separator);
+  border-radius: 0;
+  background: transparent;
+  color: #36565f;
+  font-family: inherit;
+  font-size: 0.9rem;
+  line-height: 1.2;
+  padding: 2px 0 10px;
+  outline: 0;
+  appearance: none;
+}
+
+.s3-overview-filter-control:focus {
+  border-bottom-color: color-mix(in srgb, var(--dashboard-accent) 45%, var(--dashboard-border-light) 55%);
+}
+
+.s3-overview-chart-panel {
+  border: 1px solid color-mix(in srgb, var(--dashboard-border-light) 78%, var(--dashboard-white-strong) 22%);
+  border-radius: var(--dashboard-radius-md);
+  background: var(--dashboard-surface-quiet);
+  overflow: hidden;
+}
+
+.s3-overview-chart-panel .cost-explorer-chart-panel__header {
+  padding: 12px 14px 10px;
+}
+
+.s3-overview-chart-panel .cost-explorer-chart-panel__body {
+  border-top: 1px solid var(--ce-separator);
+  padding: 8px 12px 12px;
+}
+
 .cost-explorer-chart-stack {
   width: 100%;
   position: relative;

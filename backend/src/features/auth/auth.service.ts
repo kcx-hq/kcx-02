@@ -7,7 +7,7 @@ import { buildFrontendUrl } from "../../utils/frontend-url.js";
 import { sendEmail } from "../_shared/mail/mailgun.service.js";
 import { logger } from "../../utils/logger.js";
 import { deriveTenantSlugFromEmail } from "../../utils/tenant-identity.js";
-import { signJwt } from "../../utils/jwt.js";
+import { signJwt, type JwtPayload, verifyJwt } from "../../utils/jwt.js";
 
 type LoginResult = {
   token: string;
@@ -199,4 +199,17 @@ export async function resetPasswordWithToken(
   }
 
   return { success: true };
+}
+
+export function decodeAccessToken(token: string): JwtPayload {
+  if (!env.jwtSecret) {
+    throw new InternalServerError("JWT_SECRET is not configured");
+  }
+
+  const payload = verifyJwt(token, env.jwtSecret);
+  if (!payload) {
+    throw new UnauthorizedError("Invalid or expired token");
+  }
+
+  return payload;
 }

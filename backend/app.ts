@@ -5,6 +5,7 @@ import { HTTP_STATUS } from "./src/constants/http-status.js";
 import { RESPONSE_MESSAGE } from "./src/constants/response-messages.js";
 import { NotFoundError } from "./src/errors/http-errors.js";
 import { errorHandlerMiddleware } from "./src/middlewares/error-handler.middleware.js";
+import { apiSecurityMiddleware } from "./src/middlewares/api-security.middleware.js";
 import { requestIdMiddleware } from "./src/middlewares/request-id.middleware.js";
 import { requestLoggerMiddleware } from "./src/middlewares/request-logger.middleware.js";
 import { sendSuccess } from "./src/utils/api-response.js";
@@ -19,6 +20,7 @@ app.use(helmet());
 app.use(cors());
 app.use(requestIdMiddleware);
 app.use(requestLoggerMiddleware);
+app.use(apiSecurityMiddleware);
 
 app.get(
   "/health",

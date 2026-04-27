@@ -25,6 +25,8 @@ import type {
   Ec2InstanceHoursResponse,
   Ec2InstanceUsageFiltersQuery,
   Ec2InstanceUsageResponse,
+  S3CostInsightsFiltersQuery,
+  S3CostInsightsResponse,
   OptimizationIdleOverview,
   OptimizationCommitmentOverview,
   OptimizationIdleRecommendationsResponse,
@@ -244,6 +246,35 @@ function withEc2InstanceHoursFilters(
   if (filters?.cloudConnectionId) params.set("cloud_connection_id", filters.cloudConnectionId);
   if (typeof filters?.subAccountKey === "number") params.set("sub_account_key", String(filters.subAccountKey));
   if (typeof filters?.regionKey === "number") params.set("region_key", String(filters.regionKey));
+
+  const query = params.toString();
+  return query.length > 0 ? `${path}?${query}` : path;
+}
+
+function withS3CostInsightsFilters(
+  path: string,
+  scope: DashboardResolvedScope,
+  filters?: S3CostInsightsFiltersQuery,
+): string {
+  const params = new URLSearchParams(buildDashboardQueryParams(scope));
+  const appendArray = (key: string, values?: string[]) => {
+    if (!Array.isArray(values) || values.length === 0) return;
+    params.set(key, values.join(","));
+  };
+
+  appendArray("costCategory", filters?.costCategory);
+  appendArray("storageClass", filters?.storageClass);
+  appendArray("region", filters?.region);
+  appendArray("account", filters?.account);
+  if (typeof filters?.bucket === "string" && filters.bucket.trim().length > 0) {
+    params.set("bucket", filters.bucket.trim());
+  }
+  if (filters?.costBy) {
+    params.set("costBy", filters.costBy);
+  }
+  if (filters?.seriesBy) {
+    params.set("seriesBy", filters.seriesBy);
+  }
 
   const query = params.toString();
   return query.length > 0 ? `${path}?${query}` : path;
@@ -472,6 +503,9 @@ export const dashboardApi = {
   getEc2InstanceHours(scope: DashboardResolvedScope, filters?: Ec2InstanceHoursFiltersQuery) {
     return apiGet<Ec2InstanceHoursResponse>(withEc2InstanceHoursFilters("/dashboard/ec2/instance-hours", scope, filters));
   },
+  getS3CostInsights(scope: DashboardResolvedScope, filters?: S3CostInsightsFiltersQuery) {
+    return apiGet<S3CostInsightsResponse>(withS3CostInsightsFilters("/dashboard/s3/cost-insights", scope, filters));
+  },
 };
 
 export type {
@@ -511,6 +545,8 @@ export type {
   Ec2InstanceHoursResponse,
   Ec2InstanceUsageFiltersQuery,
   Ec2InstanceUsageResponse,
+  S3CostInsightsFiltersQuery,
+  S3CostInsightsResponse,
   OptimizationIdleOverview,
   OptimizationCommitmentOverview,
   OptimizationIdleRecommendationsResponse,

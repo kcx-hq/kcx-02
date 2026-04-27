@@ -658,6 +658,109 @@ export type AnomalyRecord = {
   }>;
 };
 
+export type S3CostInsightsResponse = {
+  section: "s3-cost-insights";
+  title: "S3 Cost Insights";
+  message: string;
+  filtersApplied: {
+    from: string;
+    to: string;
+    scopeType: DashboardResolvedScope["scopeType"];
+    s3Filters: {
+      costCategory: string[];
+      bucket: string | null;
+      storageClass: string[];
+      region: string[];
+      account: string[];
+      costBy: "date" | "bucket" | "region" | "account";
+      seriesBy: "cost_category" | "usage_type" | "operation" | "product_family";
+    };
+  };
+  columnsUsed: Array<
+    | "service_name"
+    | "billed_cost"
+    | "effective_cost"
+    | "usage_start_time"
+    | "list_cost"
+    | "usage_type"
+    | "product_usage_type"
+    | "operation"
+    | "line_item_description"
+    | "product_family"
+    | "region_name"
+    | "sub_account_name"
+    | "tag_value"
+  >;
+  kpis: {
+    totalS3Cost: number;
+    monthToDateCost: number;
+    effectiveCost: number;
+  };
+  bucketTable: Array<{
+    bucketName: string;
+    cost: number;
+    storage: number;
+    requests: number;
+    transfer: number;
+    region: string;
+    owner: string;
+    driver: string;
+    savings: number;
+    retrieval: number;
+    other: number;
+    trendPct: number;
+  }>;
+  chart: {
+    bucketCosts: Array<{
+      bucketName: string;
+      billedCost: number;
+      effectiveCost: number;
+    }>;
+    trend: Array<{
+      usageStartTime: string;
+      billedCost: number;
+      effectiveCost: number;
+    }>;
+    featureTrend: Array<{
+      usageStartTime: string;
+      storage: number;
+      requests: number;
+      retrieval: number;
+      transfer: number;
+      bucket: number;
+      bucketStorageClass: number;
+      other: number;
+      total: number;
+    }>;
+    breakdown: {
+      labels: string[];
+      series: Array<{
+        name: string;
+        values: number[];
+      }>;
+    };
+  };
+  filterOptions: {
+    costCategory: string[];
+    bucket: string[];
+    storageClass: string[];
+    region: string[];
+    account: string[];
+    costBy: Array<"date" | "bucket" | "region" | "account">;
+    seriesBy: Array<"cost_category" | "usage_type" | "operation" | "product_family">;
+  };
+};
+
+export type S3CostInsightsFiltersQuery = {
+  costCategory?: string[];
+  bucket?: string | null;
+  storageClass?: string[];
+  region?: string[];
+  account?: string[];
+  costBy?: "date" | "bucket" | "region" | "account";
+  seriesBy?: "cost_category" | "usage_type" | "operation" | "product_family";
+};
+
 export type AnomaliesListResponse = {
   items: AnomalyRecord[];
   pagination: {

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { NavLink, useLocation } from "react-router-dom";
+import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import kcxLogo from "@/assets/logos/kcx-logo.svg";
 import { handleAppLinkClick } from "@/lib/navigation";
 import { dashboardNav, dashboardNavLinks } from "../common/navigation";
@@ -8,6 +8,10 @@ import { DashboardIcon } from "./DashboardIcon";
 
 function getGroupKey(label: string, parentPath?: string): string {
   return parentPath ? `${parentPath}::${label}` : label;
+}
+
+function getLinkKey(path: string): string {
+  return `link::${path}`;
 }
 
 function isNavGroupActive(pathname: string, group: DashboardNavGroup): boolean {
@@ -28,6 +32,7 @@ export function DashboardSidebar() {
   );
   const sidebarRef = useRef<HTMLElement | null>(null);
   const location = useLocation();
+  const navigate = useNavigate();
   const collapsed = desktop ? !expanded : false;
 
   const groupNodes = useMemo(
@@ -45,12 +50,18 @@ export function DashboardSidebar() {
     [],
   );
 
+  const parentLinkNodes = useMemo(
+    () => dashboardNav.filter((node): node is DashboardNavLink => node.kind === "link" && (node.children?.length ?? 0) > 0),
+    [],
+  );
+
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() =>
     Object.fromEntries([
       ...groupNodes.map((group) => [getGroupKey(group.label), true] as const),
       ...nestedGroupNodes.map(
-        ({ parentPath, group }) => [getGroupKey(group.label, parentPath), true] as const,
+        ({ parentPath, group }) => [getGroupKey(group.label, parentPath), false] as const,
       ),
+      ...parentLinkNodes.map((node) => [getLinkKey(node.path), true] as const),
     ]),
   );
 
@@ -92,9 +103,18 @@ export function DashboardSidebar() {
         }
       }
 
+      for (const node of parentLinkNodes) {
+        const nodeKey = getLinkKey(node.path);
+        const isActive = isNavItemActive(location.pathname, node);
+        if (isActive && !next[nodeKey]) {
+          next[nodeKey] = true;
+          changed = true;
+        }
+      }
+
       return changed ? next : current;
     });
-  }, [groupNodes, location.pathname, nestedGroupNodes]);
+  }, [groupNodes, location.pathname, nestedGroupNodes, parentLinkNodes]);
 
   const activeLabel = useMemo(() => {
     const match = dashboardNavLinks
@@ -202,57 +222,67 @@ export function DashboardSidebar() {
           const childGroups = node.children ?? [];
           if (childGroups.length > 0) {
             const isNodeActive = isNavItemActive(location.pathname, node);
+            const nodeKey = getLinkKey(node.path);
+            const isNodeOpen = openGroups[nodeKey] ?? true;
+            const nodeId = `dashboard-nav-link-${node.path.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
 
             return (
               <div key={node.path} className="dashboard-nav-group">
-                <NavLink
-                  to={{ pathname: node.path, search: location.search }}
-                  className={({ isActive }) =>
-                    `dashboard-nav-item ${isActive || isNodeActive ? "dashboard-nav-item--active" : ""}`
-                  }
+                <button
+                  type="button"
+                  className={`dashboard-nav-item dashboard-nav-item--group ${isNodeActive ? "dashboard-nav-item--active" : ""}`}
                   title={collapsed ? node.label : undefined}
-                  end
+                  aria-expanded={isNodeOpen}
+                  aria-controls={nodeId}
+                  onClick={() =>
+                    setOpenGroups((current) => ({
+                      ...current,
+                      [nodeKey]: !(current[nodeKey] ?? true),
+                    }))
+                  }
                 >
                   <DashboardIcon name={node.icon} className="dashboard-nav-item__icon" />
                   <span className="dashboard-nav-item__label">{node.label}</span>
-                </NavLink>
+                  <span className="dashboard-nav-group__chevron" aria-hidden="true">
+                    <DashboardIcon
+                      name="chevron-right"
+                      className={`dashboard-nav-group__chevron-icon ${isNodeOpen ? "dashboard-nav-group__chevron-icon--open" : ""}`}
+                    />
+                  </span>
+                </button>
 
-                <div className="dashboard-nav-submenu">
-                  {childGroups.map((group) => {
-                    const groupKey = getGroupKey(group.label, node.path);
-                    const isGroupActive = isNavGroupActive(location.pathname, group);
-                    const isGroupOpen = openGroups[groupKey] ?? true;
-                    const groupId = `dashboard-nav-group-${groupKey
-                      .toLowerCase()
-                      .replace(/[^a-z0-9]+/g, "-")}`;
+                {isNodeOpen ? (
+                  <div id={nodeId} className="dashboard-nav-submenu">
+                    {childGroups.map((group) => {
+                      const groupKey = getGroupKey(group.label, node.path);
+                      const isGroupActive = isNavGroupActive(location.pathname, group);
+                      const isGroupOpen = openGroups[groupKey] ?? true;
+                      const groupId = `dashboard-nav-group-${groupKey
+                        .toLowerCase()
+                        .replace(/[^a-z0-9]+/g, "-")}`;
 
-                    return (
-                      <div key={groupKey} className="dashboard-nav-group">
-                        {group.path ? (
-                          <NavLink
-                            to={{ pathname: group.path, search: location.search }}
-                            className={({ isActive }) =>
-                              `dashboard-nav-item dashboard-nav-item--group dashboard-nav-item--sub ${isActive || location.pathname.startsWith(group.path as string) || isGroupActive ? "dashboard-nav-item--active" : ""}`
-                            }
-                            title={collapsed ? group.label : undefined}
-                            end={false}
-                          >
-                            <DashboardIcon name={group.icon} className="dashboard-nav-item__icon" />
-                            <span className="dashboard-nav-item__label">{group.label}</span>
-                          </NavLink>
-                        ) : (
+                      return (
+                        <div key={groupKey} className="dashboard-nav-group">
                           <button
                             type="button"
-                            className={`dashboard-nav-item dashboard-nav-item--group dashboard-nav-item--sub ${isGroupActive ? "dashboard-nav-item--active" : ""}`}
+                            className={`dashboard-nav-item dashboard-nav-item--group dashboard-nav-item--sub ${isGroupActive || (group.path ? location.pathname.startsWith(group.path) : false) ? "dashboard-nav-item--active" : ""}`}
                             title={collapsed ? group.label : undefined}
                             aria-expanded={isGroupOpen}
                             aria-controls={groupId}
-                            onClick={() =>
+                            onClick={() => {
+                              if (group.path && group.label === "S3") {
+                                navigate({ pathname: group.path, search: location.search });
+                                setOpenGroups((current) => ({
+                                  ...current,
+                                  [groupKey]: true,
+                                }));
+                                return;
+                              }
                               setOpenGroups((current) => ({
                                 ...current,
                                 [groupKey]: !(current[groupKey] ?? true),
-                              }))
-                            }
+                              }));
+                            }}
                           >
                             <DashboardIcon name={group.icon} className="dashboard-nav-item__icon" />
                             <span className="dashboard-nav-item__label">{group.label}</span>
@@ -263,30 +293,30 @@ export function DashboardSidebar() {
                               />
                             </span>
                           </button>
-                        )}
 
-                        {isGroupOpen ? (
-                          <div id={groupId} className="dashboard-nav-submenu">
-                            {group.items.map((item) => (
-                              <NavLink
-                                key={item.path}
-                                to={{ pathname: item.path, search: location.search }}
-                                className={({ isActive }) =>
-                                  `dashboard-nav-item dashboard-nav-item--sub ${isActive || isNavItemActive(location.pathname, item) ? "dashboard-nav-item--active" : ""}`
-                                }
-                                title={collapsed ? item.label : undefined}
-                                end
-                              >
-                                <DashboardIcon name={item.icon} className="dashboard-nav-item__icon" />
-                                <span className="dashboard-nav-item__label">{item.label}</span>
-                              </NavLink>
-                            ))}
-                          </div>
-                        ) : null}
-                      </div>
-                    );
-                  })}
-                </div>
+                          {isGroupOpen ? (
+                            <div id={groupId} className="dashboard-nav-submenu">
+                              {group.items.map((item) => (
+                                <NavLink
+                                  key={item.path}
+                                  to={{ pathname: item.path, search: location.search }}
+                                  className={({ isActive }) =>
+                                    `dashboard-nav-item dashboard-nav-item--sub ${isActive || isNavItemActive(location.pathname, item) ? "dashboard-nav-item--active" : ""}`
+                                  }
+                                  title={collapsed ? item.label : undefined}
+                                  end
+                                >
+                                  <DashboardIcon name={item.icon} className="dashboard-nav-item__icon" />
+                                  <span className="dashboard-nav-item__label">{item.label}</span>
+                                </NavLink>
+                              ))}
+                            </div>
+                          ) : null}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : null}
               </div>
             );
           }

@@ -11,6 +11,8 @@ import {
   type Ec2InstanceHoursFiltersQuery,
   type Ec2InstanceHoursResponse,
   type Ec2InstanceUsageResponse,
+  type S3CostInsightsFiltersQuery,
+  type S3CostInsightsResponse,
   type OptimizationIdleOverview,
   type OptimizationCommitmentOverview,
   type OptimizationIdleRecommendationDetail,
@@ -283,6 +285,15 @@ export function useEc2InstanceHoursQuery(filters?: Ec2InstanceHoursFiltersQuery)
   return useQuery<Ec2InstanceHoursResponse, Error>({
     queryKey: ["dashboard", "ec2", "instance-hours", scope, filters],
     queryFn: () => dashboardApi.getEc2InstanceHours(assertScope(scope), filters),
+    enabled: Boolean(scope),
+  });
+}
+
+export function useS3CostInsightsQuery(filters?: S3CostInsightsFiltersQuery) {
+  const { scope } = useDashboardScope();
+  return useQuery<S3CostInsightsResponse, Error>({
+    queryKey: ["dashboard", "s3", "cost-insights", scope, filters],
+    queryFn: () => dashboardApi.getS3CostInsights(assertScope(scope), filters),
     enabled: Boolean(scope),
   });
 }

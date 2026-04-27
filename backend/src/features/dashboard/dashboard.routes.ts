@@ -50,6 +50,7 @@ import {
 import { handleGetAnomalies as handleGetAnomaliesAlertsDashboard } from "./anomaly-alerts/anomaly.controller.js";
 import { handleGetReportDashboard } from "./report/report.controller.js";
 import { handleGetResourcesDashboard } from "./resources/resources.controller.js";
+import { handleGetS3CostInsights } from "./s3/s3-cost-insights.controller.js";
 
 const router = Router();
 
@@ -151,6 +152,7 @@ router.get(
   asyncHandler(handleDebugSyncOptimizationRecommendations),
 );
 router.get("/dashboard/anomalies-alerts", asyncHandler(handleGetAnomaliesAlertsDashboard));
+router.get("/dashboard/s3/cost-insights", asyncHandler(handleGetS3CostInsights));
 router.get("/dashboard/budget", asyncHandler(handleGetBudgetDashboard));
 router.post("/dashboard/budget", asyncHandler(handleCreateBudget));
 router.patch("/dashboard/budget/:budgetId", asyncHandler(handleUpdateBudget));
