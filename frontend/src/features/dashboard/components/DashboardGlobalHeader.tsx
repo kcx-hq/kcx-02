@@ -232,6 +232,9 @@ export function DashboardGlobalHeader() {
     if (path.startsWith("/dashboard/ec2/optimization")) {
       return [rootCrumb, "Services", "EC2", "Optimization"];
     }
+    if (path.startsWith("/dashboard/ec2/explorer")) {
+      return [rootCrumb, "Services", "EC2", "Explorer"];
+    }
     if (path === "/dashboard/s3") {
       return [rootCrumb, "Services", "S3"];
     }

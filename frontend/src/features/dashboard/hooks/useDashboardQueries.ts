@@ -9,6 +9,8 @@ import {
   type Ec2OptimizationInstancesFiltersQuery,
   type Ec2OptimizationSummaryResponse,
   type Ec2OptimizationInstancesResponse,
+  type Ec2ExplorerFiltersQuery,
+  type Ec2ExplorerResponse,
   type S3CostInsightsFiltersQuery,
   type S3CostInsightsResponse,
   type OptimizationIdleOverview,
@@ -275,6 +277,16 @@ export function useEc2OptimizationInstancesQuery(filters?: Ec2OptimizationInstan
     queryKey: ["dashboard", "ec2", "optimization", "instances", scope, filters],
     queryFn: () => dashboardApi.getEc2OptimizationInstances(assertScope(scope), filters),
     enabled: Boolean(scope),
+    placeholderData: (previous) => previous,
+  });
+}
+
+export function useEc2ExplorerQuery(filters: Ec2ExplorerFiltersQuery, enabledOverride: boolean = true) {
+  const { scope } = useDashboardScope();
+  return useQuery<Ec2ExplorerResponse, Error>({
+    queryKey: ["dashboard", "ec2", "explorer", scope, filters],
+    queryFn: () => dashboardApi.getEc2Explorer(assertScope(scope), filters),
+    enabled: Boolean(scope) && enabledOverride,
     placeholderData: (previous) => previous,
   });
 }

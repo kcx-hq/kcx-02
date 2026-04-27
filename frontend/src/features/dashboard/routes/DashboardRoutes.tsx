@@ -13,8 +13,10 @@ import InventoryInstancesPage from "../pages/inventory/InventoryInstancesPage";
 import InventorySnapshotsPage from "../pages/inventory/InventorySnapshotsPage";
 import InventoryVolumesPage from "../pages/inventory/InventoryVolumesPage";
 import AwsInventoryPage from "../pages/inventory/AwsInventoryPage";
+import EC2ExplorerPage from "../pages/ec2/EC2ExplorerPage";
 import EC2PerformancePage from "../pages/ec2/EC2PerformancePage";
 import EC2VolumesPage from "../pages/ec2/EC2VolumesPage";
+import EC2OptimizationPage from "../pages/ec2/EC2OptimizationPage";
 import S3CostPage from "../pages/s3/S3CostPage";
 import S3OverviewPage from "../pages/s3/S3OverviewPage";
 import S3UsagePage from "../pages/s3/S3UsagePage";
@@ -88,6 +90,7 @@ export default function DashboardRoutes() {
         <Route path="cost/explorer" element={<CostExplorerPage />} />
         <Route path="cost/history" element={<CostHistoryPage />} />
         <Route path="cost-explorer" element={<DashboardCostRedirect />} />
+        <Route path="ec2/explorer" element={<EC2ExplorerPage />} />
         <Route path="ec2/volumes" element={<EC2VolumesPage />} />
         <Route path="ec2/performance" element={<EC2PerformancePage />} />
         <Route path="s3" element={<S3OverviewPage />} />

@@ -270,7 +270,7 @@ export function DashboardSidebar() {
                             aria-expanded={isGroupOpen}
                             aria-controls={groupId}
                             onClick={() => {
-                              if (group.path && group.label === "S3") {
+                              if (group.path && (group.label === "S3" || group.label === "EC2")) {
                                 navigate({ pathname: group.path, search: location.search });
                                 setOpenGroups((current) => ({
                                   ...current,

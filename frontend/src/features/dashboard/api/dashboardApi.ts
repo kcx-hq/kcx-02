@@ -23,6 +23,8 @@ import type {
   Ec2OptimizationInstancesFiltersQuery,
   Ec2OptimizationSummaryResponse,
   Ec2OptimizationInstancesResponse,
+  Ec2ExplorerFiltersQuery,
+  Ec2ExplorerResponse,
   S3CostInsightsFiltersQuery,
   S3CostInsightsResponse,
   OptimizationIdleOverview,
@@ -227,6 +229,48 @@ function withEc2OptimizationFilters(
   if (typeof filters?.pageSize === "number") {
     params.set("page_size", String(filters.pageSize));
   }
+
+  const query = params.toString();
+  return query.length > 0 ? `${path}?${query}` : path;
+}
+
+function withEc2ExplorerFilters(
+  path: string,
+  scope: DashboardResolvedScope,
+  filters: Ec2ExplorerFiltersQuery,
+): string {
+  const params = new URLSearchParams(buildDashboardQueryParams(scope));
+  const appendArray = (key: string, values?: Array<string | number>) => {
+    if (!Array.isArray(values) || values.length === 0) return;
+    params.set(key, values.join(","));
+  };
+
+  params.set("metric", filters.metric);
+  params.set("groupBy", filters.groupBy);
+  if (filters.startDate) params.set("startDate", filters.startDate);
+  if (filters.endDate) params.set("endDate", filters.endDate);
+  if (typeof filters.tagKey === "string" && filters.tagKey.trim().length > 0) {
+    params.set("tagKey", filters.tagKey.trim());
+  }
+
+  appendArray("regions", filters.regions);
+  appendArray("tags", filters.tags);
+
+  if (filters.costBasis) params.set("costBasis", filters.costBasis);
+  if (filters.usageMetric) params.set("usageMetric", filters.usageMetric);
+  if (filters.aggregation) params.set("aggregation", filters.aggregation);
+  if (filters.condition) params.set("condition", filters.condition);
+  appendArray("groupValues", filters.groupValues);
+
+  if (typeof filters.minCost === "number") params.set("minCost", String(filters.minCost));
+  if (typeof filters.maxCost === "number") params.set("maxCost", String(filters.maxCost));
+  if (typeof filters.minCpu === "number") params.set("minCpu", String(filters.minCpu));
+  if (typeof filters.maxCpu === "number") params.set("maxCpu", String(filters.maxCpu));
+  if (typeof filters.minNetwork === "number") params.set("minNetwork", String(filters.minNetwork));
+  if (typeof filters.maxNetwork === "number") params.set("maxNetwork", String(filters.maxNetwork));
+
+  appendArray("states", filters.states);
+  appendArray("instanceTypes", filters.instanceTypes);
 
   const query = params.toString();
   return query.length > 0 ? `${path}?${query}` : path;
@@ -485,6 +529,9 @@ export const dashboardApi = {
       withEc2OptimizationFilters("/dashboard/ec2/optimization/instances", scope, filters),
     );
   },
+  getEc2Explorer(scope: DashboardResolvedScope, filters: Ec2ExplorerFiltersQuery) {
+    return apiGet<Ec2ExplorerResponse>(withEc2ExplorerFilters("/dashboard/ec2/explorer", scope, filters));
+  },
   getS3CostInsights(scope: DashboardResolvedScope, filters?: S3CostInsightsFiltersQuery) {
     return apiGet<S3CostInsightsResponse>(withS3CostInsightsFilters("/dashboard/s3/cost-insights", scope, filters));
   },
@@ -525,6 +572,14 @@ export type {
   Ec2OptimizationInstancesFiltersQuery,
   Ec2OptimizationSummaryResponse,
   Ec2OptimizationInstancesResponse,
+  Ec2ExplorerMetric,
+  Ec2ExplorerGroupBy,
+  Ec2ExplorerCostBasis,
+  Ec2ExplorerUsageMetric,
+  Ec2ExplorerAggregation,
+  Ec2ExplorerCondition,
+  Ec2ExplorerFiltersQuery,
+  Ec2ExplorerResponse,
   S3CostInsightsFiltersQuery,
   S3CostInsightsResponse,
   OptimizationIdleOverview,

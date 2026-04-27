@@ -6,6 +6,7 @@ type BaseEChartProps = {
   option: EChartsOption;
   height?: number;
   className?: string;
+  onPointClick?: (params: unknown) => void;
 };
 
 const sharedOption: EChartsOption = {
@@ -24,7 +25,7 @@ const sharedOption: EChartsOption = {
   },
 };
 
-export function BaseEChart({ option, height = 260, className }: BaseEChartProps) {
+export function BaseEChart({ option, height = 260, className, onPointClick }: BaseEChartProps) {
   const chartContainerRef = useRef<HTMLDivElement | null>(null);
   const chartRef = useRef<echarts.EChartsType | null>(null);
 
@@ -62,6 +63,20 @@ export function BaseEChart({ option, height = 260, className }: BaseEChartProps)
       true,
     );
   }, [option]);
+
+  useEffect(() => {
+    if (!chartRef.current) return;
+    if (!onPointClick) return;
+
+    const handler = (params: unknown) => {
+      onPointClick(params);
+    };
+
+    chartRef.current.on("click", handler);
+    return () => {
+      chartRef.current?.off("click", handler);
+    };
+  }, [onPointClick]);
 
   const containerClassName = className ? `dashboard-echart ${className}` : "dashboard-echart";
 

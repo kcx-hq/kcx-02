@@ -77,6 +77,67 @@ export type Ec2OptimizationSummaryFiltersQuery = {
 
 export type Ec2OptimizationInstancesFiltersQuery = Ec2OptimizationSummaryFiltersQuery;
 
+export type Ec2ExplorerMetric = "cost" | "usage" | "instances";
+export type Ec2ExplorerGroupBy =
+  | "none"
+  | "region"
+  | "instance_type"
+  | "reservation_type"
+  | "usage_category"
+  | "cost_category"
+  | "tag";
+export type Ec2ExplorerCostBasis = "billed_cost" | "effective_cost" | "amortized_cost";
+export type Ec2ExplorerUsageMetric = "cpu" | "network_in" | "network_out" | "disk_read" | "disk_write";
+export type Ec2ExplorerAggregation = "avg" | "max" | "p95";
+export type Ec2ExplorerCondition = "all" | "idle" | "underutilized" | "overutilized" | "uncovered";
+
+export type Ec2ExplorerFiltersQuery = {
+  startDate?: string;
+  endDate?: string;
+  metric: Ec2ExplorerMetric;
+  groupBy: Ec2ExplorerGroupBy;
+  tagKey?: string | null;
+  regions?: string[];
+  tags?: string[];
+  costBasis?: Ec2ExplorerCostBasis;
+  usageMetric?: Ec2ExplorerUsageMetric;
+  aggregation?: Ec2ExplorerAggregation;
+  condition?: Ec2ExplorerCondition;
+  groupValues?: string[];
+  minCost?: number | null;
+  maxCost?: number | null;
+  minCpu?: number | null;
+  maxCpu?: number | null;
+  minNetwork?: number | null;
+  maxNetwork?: number | null;
+  states?: string[];
+  instanceTypes?: string[];
+};
+
+export type Ec2ExplorerResponse = {
+  summary: {
+    totalCost: number;
+    previousCost: number;
+    trendPercent: number;
+    instanceCount: number;
+    avgCpu: number;
+    totalNetworkGb: number;
+  };
+  graph: {
+    type: "bar" | "stacked_bar" | "line" | "area" | "stacked_area";
+    xKey: "date";
+    series: Array<{
+      key: string;
+      label: string;
+      data: Array<{ date: string; value: number }>;
+    }>;
+  };
+  table: {
+    columns: Array<{ key: string; label: string }>;
+    rows: Array<{ id: string; [key: string]: string | number | null }>;
+  };
+};
+
 export type Ec2OptimizationSummaryResponse = {
   overview: {
     totalPotentialSavings: number;

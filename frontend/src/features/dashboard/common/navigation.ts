@@ -59,7 +59,7 @@ export const dashboardNav: DashboardNavNode[] = [
         kind: "group",
         label: "EC2",
         icon: "boxes",
-        path: "/dashboard/inventory/aws/ec2/instances",
+        path: "/dashboard/ec2/explorer",
         items: [
           {
             kind: "link",
