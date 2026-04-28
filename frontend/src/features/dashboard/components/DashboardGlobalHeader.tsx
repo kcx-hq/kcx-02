@@ -466,6 +466,9 @@ export function DashboardGlobalHeader() {
         { label: "Usage" },
       ];
     }
+    if (path === "/dashboard/services/database") {
+      return [rootCrumb, "Services", "Database"];
+    }
 
     const bestMatch = dashboardNavLinks
       .filter((item) => path.startsWith(item.path))

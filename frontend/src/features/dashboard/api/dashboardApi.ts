@@ -28,6 +28,9 @@ import type {
   Ec2RecommendationStatus,
   Ec2ExplorerFiltersQuery,
   Ec2ExplorerResponse,
+  DatabaseExplorerFilters,
+  DatabaseExplorerResponse,
+
   S3CostInsightsFiltersQuery,
   S3CostInsightsResponse,
   OptimizationIdleOverview,
@@ -136,6 +139,34 @@ function withCostExplorerGroupOptions(
   if (tagKey && tagKey.trim().length > 0) {
     params.set("tagKey", tagKey.trim().toLowerCase());
   }
+  const query = params.toString();
+  return query.length > 0 ? `${path}?${query}` : path;
+}
+
+function withDatabaseExplorerFilters(
+  path: string,
+  scope: DashboardResolvedScope,
+  filters: DatabaseExplorerFilters,
+): string {
+  const params = new URLSearchParams();
+
+  if (scope.from) params.set("start_date", scope.from);
+  if (scope.to) params.set("end_date", scope.to);
+  if (filters.metric) params.set("metric", filters.metric);
+  if (filters.groupBy) params.set("group_by", filters.groupBy);
+  if (typeof filters.regionKey !== "undefined" && filters.regionKey !== null && String(filters.regionKey).trim().length > 0) {
+    params.set("region_key", String(filters.regionKey).trim());
+  }
+  if (typeof filters.dbService === "string" && filters.dbService.trim().length > 0) {
+    params.set("db_service", filters.dbService.trim());
+  }
+  if (typeof filters.dbEngine === "string" && filters.dbEngine.trim().length > 0) {
+    params.set("db_engine", filters.dbEngine.trim());
+  }
+  if (typeof filters.cloudConnectionId === "string" && filters.cloudConnectionId.trim().length > 0) {
+    params.set("cloud_connection_id", filters.cloudConnectionId.trim());
+  }
+
   const query = params.toString();
   return query.length > 0 ? `${path}?${query}` : path;
 }
@@ -398,6 +429,12 @@ export const dashboardApi = {
     );
   },
 
+  getDatabaseExplorer(scope: DashboardResolvedScope, filters: DatabaseExplorerFilters) {
+    return apiGet<DatabaseExplorerResponse>(
+      withDatabaseExplorerFilters("/services/database/explorer", scope, filters),
+    );
+  },
+
   getResources(scope: DashboardResolvedScope) {
     return apiGet<DashboardSectionData>(withDashboardQuery("/dashboard/resources", scope));
   },
@@ -602,6 +639,15 @@ export type {
   CostExplorerResponse,
   CostExplorerSeries,
   CostBreakdownItem,
+  DatabaseExplorerAppliedFilters,
+  DatabaseExplorerCards,
+  DatabaseExplorerCostTrendItem,
+  DatabaseExplorerFilters,
+  DatabaseExplorerGroupBy,
+  DatabaseExplorerMetric,
+  DatabaseExplorerResponse,
+  DatabaseExplorerTableRow,
+  DatabaseExplorerUsageTrendItem,
   DashboardOverviewResponse,
   OverviewAnomaliesResponse,
   OverviewAnomaly,

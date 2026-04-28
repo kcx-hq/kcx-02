@@ -75,6 +75,114 @@ export type Ec2OptimizationSummaryFiltersQuery = {
   pageSize?: number;
 };
 
+export type DatabaseExplorerMetric = "cost" | "usage";
+export type DatabaseExplorerGroupBy = "db_service" | "db_engine" | "region";
+
+export type DatabaseExplorerFilters = {
+  metric: DatabaseExplorerMetric;
+  groupBy: DatabaseExplorerGroupBy;
+  regionKey?: number | string;
+  dbService?: string;
+  dbEngine?: string;
+  cloudConnectionId?: string;
+};
+
+export type DatabaseExplorerAppliedFilters = {
+  tenantId: string;
+  startDate: string;
+  endDate: string;
+  cloudConnectionId?: string;
+  regionKey?: string;
+  dbService?: string;
+  dbEngine?: string;
+  metric: DatabaseExplorerMetric;
+  groupBy: DatabaseExplorerGroupBy;
+};
+
+export type DatabaseExplorerCards = {
+  totalCost: number;
+  costTrendPct: number | null;
+  activeResources: number;
+  dataFootprintGb: number;
+  avgLoad: number | null;
+  connections: number | null;
+};
+
+export type DatabaseExplorerCostTrendItem = {
+  date: string;
+  compute: number;
+  storage: number;
+  io: number;
+  backup: number;
+  total: number;
+};
+
+export type DatabaseExplorerUsageTrendItem = {
+  date: string;
+  load: number | null;
+  connections: number | null;
+};
+
+export type DatabaseExplorerTableRow = {
+  group: string;
+  totalCost: number;
+  computeCost: number;
+  storageCost: number;
+  ioCost: number;
+  backupCost: number;
+  resourceCount: number;
+  avgLoad: number | null;
+  connections: number | null;
+};
+
+export type DatabaseExplorerResponse = {
+  filters: DatabaseExplorerAppliedFilters;
+  cards: DatabaseExplorerCards;
+  trend: Array<DatabaseExplorerCostTrendItem | DatabaseExplorerUsageTrendItem>;
+  table: DatabaseExplorerTableRow[];
+};
+
+export type Ec2OverviewResponse = {
+  section: "ec2-overview";
+  title: "EC2 Overview";
+  message: string;
+  filtersApplied: {
+    tenantId: string;
+    startDate: string;
+    endDate: string;
+    cloudConnectionId: string | null;
+    subAccountKey: number | null;
+    regionKey: number | null;
+    instanceType: string | null;
+    state: string | null;
+  };
+  kpis: {
+    totalInstances: number;
+    runningInstances: number;
+    stoppedInstances: number;
+    idleInstances: number;
+    underutilizedInstances: number;
+    overutilizedInstances: number;
+    totalComputeCost: number;
+    totalInstanceHours: number;
+  };
+  trends: Array<{
+    date: string;
+    runningInstanceCount: number;
+    computeCost: number;
+  }>;
+  topCostlyInstances: Array<{
+    instanceId: string;
+    instanceName: string;
+    instanceType: string | null;
+    totalHours: number;
+    computeCost: number;
+    state: string | null;
+  }>;
+  filterOptions: {
+    instanceTypes: string[];
+    states: string[];
+  };
 export type Ec2OptimizationInstancesFiltersQuery = Ec2OptimizationSummaryFiltersQuery;
 
 export type Ec2RecommendationCategory = "compute" | "storage" | "pricing";

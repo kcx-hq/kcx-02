@@ -13,6 +13,9 @@ import {
   type Ec2RecommendationsResponse,
   type Ec2ExplorerFiltersQuery,
   type Ec2ExplorerResponse,
+  type DatabaseExplorerFilters,
+  type DatabaseExplorerResponse,
+
   type S3CostInsightsFiltersQuery,
   type S3CostInsightsResponse,
   type OptimizationIdleOverview,
@@ -92,6 +95,17 @@ export function useCostExplorerGroupOptionsQuery(groupBy?: CostExplorerFiltersQu
     enabled: Boolean(scope),
     staleTime: 30_000,
     placeholderData: (previousData) => previousData,
+  });
+}
+
+export function useDatabaseExplorerQuery(filters: DatabaseExplorerFilters) {
+  const { scope } = useDashboardScope();
+  return useQuery<DatabaseExplorerResponse, Error>({
+    queryKey: ["dashboard", "services", "database", "explorer", scope, filters],
+    queryFn: () => dashboardApi.getDatabaseExplorer(assertScope(scope), filters),
+    enabled: Boolean(scope?.from && scope?.to),
+    placeholderData: (previousData) => previousData,
+    staleTime: 30_000,
   });
 }
 
