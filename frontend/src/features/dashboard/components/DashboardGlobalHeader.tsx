@@ -241,6 +241,9 @@ export function DashboardGlobalHeader() {
     if (path.startsWith("/dashboard/s3/usage")) {
       return [rootCrumb, "Services", "S3", "Usage"];
     }
+    if (path === "/dashboard/services/database") {
+      return [rootCrumb, "Services", "Database"];
+    }
 
     const bestMatch = dashboardNavLinks
       .filter((item) => path.startsWith(item.path))

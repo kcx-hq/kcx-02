@@ -125,6 +125,13 @@ export const dashboardNav: DashboardNavNode[] = [
           },
         ],
       },
+      {
+        kind: "group",
+        label: "Database",
+        icon: "server",
+        path: "/dashboard/services/database",
+        items: [],
+      },
     ],
   },
   { kind: "link", label: "Optimization", path: "/dashboard/optimization", icon: "gauge" },
@@ -165,7 +172,17 @@ const flattenDashboardNode = (node: DashboardNavNode): DashboardNavLink[] =>
           : []),
         ...node.items.flatMap((item) => flattenDashboardLink(item)),
       ]
-    : flattenDashboardLink(node);
+    : [
+        ...flattenDashboardLink(node),
+        ...((node.children ?? [])
+          .filter((group) => group.path && group.items.length === 0)
+          .map((group) => ({
+            kind: "link" as const,
+            label: group.label,
+            path: group.path as string,
+            icon: group.icon,
+          }))),
+      ];
 
 export const dashboardNavLinks: DashboardNavLink[] = dashboardNav.flatMap((node) =>
   flattenDashboardNode(node),

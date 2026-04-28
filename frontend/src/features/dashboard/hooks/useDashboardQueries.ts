@@ -5,6 +5,8 @@ import {
   type AnomaliesListResponse,
   type CostExplorerFiltersQuery,
   type DashboardResolvedScope,
+  type DatabaseExplorerFilters,
+  type DatabaseExplorerResponse,
   type Ec2OverviewFiltersQuery,
   type Ec2OverviewResponse,
   type Ec2InstanceUsageFiltersQuery,
@@ -90,6 +92,17 @@ export function useCostExplorerGroupOptionsQuery(groupBy?: CostExplorerFiltersQu
     enabled: Boolean(scope),
     staleTime: 30_000,
     placeholderData: (previousData) => previousData,
+  });
+}
+
+export function useDatabaseExplorerQuery(filters: DatabaseExplorerFilters) {
+  const { scope } = useDashboardScope();
+  return useQuery<DatabaseExplorerResponse, Error>({
+    queryKey: ["dashboard", "services", "database", "explorer", scope, filters],
+    queryFn: () => dashboardApi.getDatabaseExplorer(assertScope(scope), filters),
+    enabled: Boolean(scope?.from && scope?.to),
+    placeholderData: (previousData) => previousData,
+    staleTime: 30_000,
   });
 }
 
