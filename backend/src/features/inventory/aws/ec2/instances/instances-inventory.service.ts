@@ -1,8 +1,10 @@
 import { QueryTypes } from "sequelize";
 
-import { BadRequestError } from "../../../../../errors/http-errors.js";
+import { BadRequestError, NotFoundError } from "../../../../../errors/http-errors.js";
 import { sequelize } from "../../../../../models/index.js";
 import type {
+  InventoryEc2InstanceDetailQuery,
+  InventoryEc2InstanceDetailResponse,
   InventoryEc2InstancePerformanceQuery,
   InventoryEc2InstancePerformanceSeries,
   InventoryEc2InstancePerformanceResponse,
@@ -35,6 +37,7 @@ type InventoryRow = {
   instanceLifecycle: string | null;
   resourceKey: string | null;
   cloudConnectionId: string | null;
+  tagsJson: Record<string, unknown> | null;
 };
 
 type InventoryCountRow = {
@@ -52,6 +55,9 @@ type FactMetricsRow = {
   pricingType: string | null;
   totalHours: number | string | null;
   computeCost: number | string | null;
+  monthToDateCost: number | string | null;
+  dataTransferCost: number | string | null;
+  networkUsageBytes: number | string | null;
   coveredHours: number | string | null;
   uncoveredHours: number | string | null;
   latestDailyCost: number;
@@ -68,6 +74,17 @@ type AttachedVolumeSummaryRow = {
 type PerformanceDataRow = {
   timestamp: Date | string;
 } & Partial<Record<InventoryEc2PerformanceMetric, number | string | null>>;
+
+type RecommendationRow = {
+  id: number | string;
+  type: string | null;
+  problem: string | null;
+  evidence: string | null;
+  action: string | null;
+  saving: number | string | null;
+  risk: string | null;
+  status: string | null;
+};
 
 type DateRange = {
   startDate: string;
@@ -212,6 +229,245 @@ const resolvePerformanceDateRange = (query: InventoryEc2InstancePerformanceQuery
 };
 
 export class InstancesInventoryService {
+  async getInstanceDetails(input: {
+    tenantId: string;
+    query: InventoryEc2InstanceDetailQuery;
+  }): Promise<InventoryEc2InstanceDetailResponse> {
+    const dateRange = resolveDateRange({
+      ...input.query,
+      page: 1,
+      pageSize: 1,
+      state: null,
+      instanceType: null,
+      pricingType: null,
+      region: null,
+      search: null,
+      subAccountKey: null,
+      cloudConnectionId: input.query.cloudConnectionId,
+    });
+    const instance = await this.loadInstanceIdentity(input);
+    if (!instance) {
+      throw new NotFoundError("Instance not found");
+    }
+
+    const costUsageRows = await sequelize.query<{
+      usageDate: string;
+      totalCost: number | string | null;
+      computeCost: number | string | null;
+      ebsCost: number | string | null;
+      networkCost: number | string | null;
+      cpuAvg: number | string | null;
+      cpuMax: number | string | null;
+      networkInBytes: number | string | null;
+      networkOutBytes: number | string | null;
+      totalHours: number | string | null;
+      coveredHours: number | string | null;
+      uncoveredHours: number | string | null;
+      pricingType: string | null;
+    }>(
+      `
+      SELECT
+        fed.usage_date::text AS "usageDate",
+        COALESCE(fed.total_effective_cost, fed.total_billed_cost, 0)::double precision AS "totalCost",
+        COALESCE(fed.compute_cost, 0)::double precision AS "computeCost",
+        COALESCE(fed.ebs_cost, 0)::double precision AS "ebsCost",
+        COALESCE(fed.data_transfer_cost, 0)::double precision AS "networkCost",
+        fed.cpu_avg::double precision AS "cpuAvg",
+        fed.cpu_max::double precision AS "cpuMax",
+        COALESCE(fed.network_in_bytes, 0)::double precision AS "networkInBytes",
+        COALESCE(fed.network_out_bytes, 0)::double precision AS "networkOutBytes",
+        COALESCE(fed.total_hours, 0)::double precision AS "totalHours",
+        COALESCE(fed.covered_hours, 0)::double precision AS "coveredHours",
+        COALESCE(fed.uncovered_hours, 0)::double precision AS "uncoveredHours",
+        LOWER(
+          COALESCE(
+            NULLIF(TRIM(fed.reservation_type), ''),
+            NULLIF(TRIM(fed.pricing_model), ''),
+            CASE WHEN COALESCE(fed.is_spot, FALSE) THEN 'spot' ELSE 'on_demand' END
+          )
+        ) AS "pricingType"
+      FROM fact_ec2_instance_daily fed
+      WHERE fed.tenant_id = $1::uuid
+        AND fed.instance_id = $2
+        AND ($3::uuid IS NULL OR fed.cloud_connection_id = $3::uuid)
+        AND fed.usage_date >= $4::date
+        AND fed.usage_date <= $5::date
+      ORDER BY fed.usage_date ASC;
+      `,
+      { bind: [input.tenantId, input.query.instanceId, input.query.cloudConnectionId, dateRange.startDate, dateRange.endDate], type: QueryTypes.SELECT },
+    );
+
+    const volumeRows = await sequelize.query<{
+      volumeId: string;
+      sizeGb: number | string | null;
+      volumeType: string | null;
+      cost: number | string | null;
+      state: string | null;
+      iops: number | string | null;
+      throughput: number | string | null;
+      attachedSince: Date | string | null;
+      deleteOnTermination: boolean | null;
+    }>(
+      `
+      SELECT
+        inv.volume_id AS "volumeId",
+        inv.size_gb::double precision AS "sizeGb",
+        inv.volume_type AS "volumeType",
+        COALESCE(SUM(fvd.total_cost), 0)::double precision AS cost,
+        inv.state AS state,
+        inv.iops::double precision AS iops,
+        inv.throughput::double precision AS throughput,
+        inv.discovered_at AS "attachedSince",
+        NULL::boolean AS "deleteOnTermination"
+      FROM ec2_volume_inventory_snapshots inv
+      LEFT JOIN fact_ebs_volume_daily fvd
+        ON fvd.tenant_id = inv.tenant_id
+        AND fvd.volume_id = inv.volume_id
+        AND ($3::uuid IS NULL OR fvd.cloud_connection_id = $3::uuid)
+        AND fvd.usage_date >= $4::date
+        AND fvd.usage_date <= $5::date
+      WHERE inv.tenant_id = $1::uuid
+        AND inv.attached_instance_id = $2
+        AND inv.is_current = true
+        AND inv.deleted_at IS NULL
+        AND inv.is_attached = true
+        AND ($3::uuid IS NULL OR inv.cloud_connection_id = $3::uuid)
+      GROUP BY inv.volume_id, inv.size_gb, inv.volume_type, inv.state, inv.iops, inv.throughput, inv.discovered_at
+      ORDER BY inv.volume_id ASC;
+      `,
+      { bind: [input.tenantId, input.query.instanceId, input.query.cloudConnectionId, dateRange.startDate, dateRange.endDate], type: QueryTypes.SELECT },
+    );
+
+    const recRows = await sequelize.query<RecommendationRow>(
+      `
+      SELECT
+        fr.id::bigint AS id,
+        fr.recommendation_type::text AS type,
+        COALESCE(fr.recommendation_title, '')::text AS problem,
+        COALESCE(fr.recommendation_text, '')::text AS evidence,
+        COALESCE(fr.idle_observation_value, '')::text AS action,
+        COALESCE(fr.estimated_monthly_savings, 0)::double precision AS saving,
+        LOWER(COALESCE(fr.risk_level, 'medium'))::text AS risk,
+        LOWER(COALESCE(fr.status, 'open'))::text AS status
+      FROM fact_recommendations fr
+      WHERE fr.tenant_id = $1::uuid
+        AND fr.source_system = 'KCX_EC2_OPTIMIZATION_V1'
+        AND fr.resource_type = 'ec2_instance'
+        AND fr.resource_id = $2
+        AND ($3::uuid IS NULL OR fr.cloud_connection_id = $3::uuid)
+      ORDER BY fr.estimated_monthly_savings DESC NULLS LAST, fr.updated_at DESC;
+      `,
+      { bind: [input.tenantId, input.query.instanceId, input.query.cloudConnectionId], type: QueryTypes.SELECT },
+    );
+
+    const totalCost = costUsageRows.reduce((sum, row) => sum + toNumberOrZero(row.totalCost), 0);
+    const computeCost = costUsageRows.reduce((sum, row) => sum + toNumberOrZero(row.computeCost), 0);
+    const ebsCostFromFact = costUsageRows.reduce((sum, row) => sum + toNumberOrZero(row.ebsCost), 0);
+    const ebsCost = ebsCostFromFact > 0 ? ebsCostFromFact : volumeRows.reduce((sum, row) => sum + toNumberOrZero(row.cost), 0);
+    const networkCost = costUsageRows.reduce((sum, row) => sum + toNumberOrZero(row.networkCost), 0);
+    const otherCost = Math.max(0, totalCost - computeCost - ebsCost - networkCost);
+
+    const avgCpuValues = costUsageRows.map((row) => toNullableNumber(row.cpuAvg)).filter((v): v is number => v !== null);
+    const maxCpuValues = costUsageRows.map((row) => toNullableNumber(row.cpuMax)).filter((v): v is number => v !== null);
+    const networkInBytes = costUsageRows.reduce((sum, row) => sum + toNumberOrZero(row.networkInBytes), 0);
+    const networkOutBytes = costUsageRows.reduce((sum, row) => sum + toNumberOrZero(row.networkOutBytes), 0);
+    const coveredHours = costUsageRows.reduce((sum, row) => sum + toNumberOrZero(row.coveredHours), 0);
+    const uncoveredHours = costUsageRows.reduce((sum, row) => sum + toNumberOrZero(row.uncoveredHours), 0);
+    const totalHours = costUsageRows.reduce((sum, row) => sum + toNumberOrZero(row.totalHours), 0);
+    const coveragePercent = totalHours > 0 ? (coveredHours / totalHours) * 100 : 0;
+    const latestPricingType =
+      [...costUsageRows].reverse().map((row) => row.pricingType).find((value) => value && value.length > 0) ?? null;
+
+    const costTrend = costUsageRows.map((row) => {
+      const rowTotal = toNumberOrZero(row.totalCost);
+      const rowCompute = toNumberOrZero(row.computeCost);
+      const rowEbs = toNumberOrZero(row.ebsCost);
+      const rowNetwork = toNumberOrZero(row.networkCost);
+      return {
+        date: row.usageDate,
+        totalCost: rowTotal,
+        computeCost: rowCompute,
+        ebsCost: rowEbs,
+        networkCost: rowNetwork,
+        otherCost: Math.max(0, rowTotal - rowCompute - rowEbs - rowNetwork),
+      };
+    });
+    const cpuTrend = costUsageRows
+      .map((row) => {
+        const avg = toNullableNumber(row.cpuAvg);
+        if (avg === null) return null;
+        return { date: row.usageDate, avgCpu: avg, maxCpu: toNullableNumber(row.cpuMax) };
+      })
+      .filter((row): row is { date: string; avgCpu: number; maxCpu: number | null } => row !== null);
+    const networkTrend = costUsageRows.map((row) => ({
+      date: row.usageDate,
+      totalGb: (toNumberOrZero(row.networkInBytes) + toNumberOrZero(row.networkOutBytes)) / (1024 * 1024 * 1024),
+      inGb: toNumberOrZero(row.networkInBytes) / (1024 * 1024 * 1024),
+      outGb: toNumberOrZero(row.networkOutBytes) / (1024 * 1024 * 1024),
+    }));
+
+    return {
+      identity: {
+        instanceId: instance.instanceId,
+        name: instance.instanceName,
+        state: instance.state,
+        type: instance.instanceType,
+        region: instance.regionId ?? instance.regionName ?? null,
+        account: instance.subAccountName,
+        launchTime: toIsoOrNull(instance.launchTime),
+        availabilityZone: instance.availabilityZone,
+        cloudConnectionId: instance.cloudConnectionId,
+      },
+      tags: instance.tagsJson ?? {},
+      costSummary: { totalCost, computeCost, ebsCost, networkCost, otherCost },
+      usageSummary: {
+        avgCpu: avgCpuValues.length > 0 ? avgCpuValues.reduce((sum, value) => sum + value, 0) / avgCpuValues.length : null,
+        maxCpu: maxCpuValues.length > 0 ? Math.max(...maxCpuValues) : null,
+        networkInBytes,
+        networkOutBytes,
+        networkUsageBytes: networkInBytes + networkOutBytes,
+        networkCost,
+      },
+      pricingSummary: {
+        pricingType:
+          latestPricingType === "on_demand" ||
+          latestPricingType === "reserved" ||
+          latestPricingType === "savings_plan" ||
+          latestPricingType === "spot" ||
+          latestPricingType === "other"
+            ? latestPricingType
+            : null,
+        coveredHours,
+        uncoveredHours,
+        coveragePercent,
+        computeCost,
+        potentialSavings: recRows.length > 0 ? Math.max(...recRows.map((row) => toNumberOrZero(row.saving))) : null,
+      },
+      attachedVolumes: volumeRows.map((row) => ({
+        volumeId: row.volumeId,
+        sizeGb: toNullableNumber(row.sizeGb),
+        volumeType: row.volumeType,
+        cost: toNumberOrZero(row.cost),
+        state: row.state,
+        iops: toNullableNumber(row.iops),
+        throughput: toNullableNumber(row.throughput),
+        attachedSince: toIsoOrNull(row.attachedSince),
+        deleteOnTermination: row.deleteOnTermination,
+      })),
+      recommendations: recRows.map((row) => ({
+        id: Math.trunc(toNumberOrZero(row.id)),
+        type: row.type ?? "unknown",
+        problem: row.problem ?? "",
+        evidence: row.evidence ?? "",
+        action: row.action ?? "",
+        saving: toNumberOrZero(row.saving),
+        risk: row.risk ?? "medium",
+        status: row.status ?? "open",
+      })),
+      trends: { costTrend, cpuTrend, networkTrend },
+    };
+  }
+
   async listInstances(input: {
     tenantId: string;
     query: InventoryEc2InstancesListQuery;
@@ -288,9 +544,17 @@ export class InstancesInventoryService {
             : null,
         totalHours: toNumberOrZero(metrics?.totalHours),
         computeCost: toNumberOrZero(metrics?.computeCost),
+        monthToDateCost: toNumberOrZero(metrics?.monthToDateCost),
+        dataTransferCost: toNumberOrZero(metrics?.dataTransferCost),
+        networkUsageBytes: toNumberOrZero(metrics?.networkUsageBytes),
         coveredHours: toNumberOrZero(metrics?.coveredHours),
         uncoveredHours: toNumberOrZero(metrics?.uncoveredHours),
-        monthToDateCost: toNumberOrZero(metrics?.computeCost),
+        otherUnallocatedCost: Math.max(
+          0,
+          toNumberOrZero(metrics?.monthToDateCost) -
+            toNumberOrZero(metrics?.computeCost) -
+            toNumberOrZero(metrics?.dataTransferCost),
+        ),
         latestDailyCost: toNumberOrZero(metrics?.latestDailyCost),
         imageId: row.imageId,
         tenancy: row.tenancy,
@@ -306,6 +570,7 @@ export class InstancesInventoryService {
                 typeof volumeId === "string" && volumeId.trim().length > 0,
             )
           : [],
+        tags: row.tagsJson,
       };
     });
 
@@ -378,6 +643,51 @@ export class InstancesInventoryService {
       return [DEFAULT_TOPIC_METRIC[topic]];
     }
     return Array.from(new Set(filtered));
+  }
+
+  private async loadInstanceIdentity(input: {
+    tenantId: string;
+    query: InventoryEc2InstanceDetailQuery;
+  }): Promise<InventoryRow | null> {
+    const rows = await sequelize.query<InventoryRow>(
+      `
+      SELECT
+        inv.instance_id AS "instanceId",
+        COALESCE(NULLIF(TRIM(COALESCE(inv.tags_json ->> 'Name', '')), ''), inv.instance_id) AS "instanceName",
+        inv.state AS "state",
+        inv.instance_type AS "instanceType",
+        inv.sub_account_key::text AS "subAccountKey",
+        dsa.sub_account_name AS "subAccountName",
+        inv.region_key::text AS "regionKey",
+        dr.region_id AS "regionId",
+        dr.region_name AS "regionName",
+        inv.availability_zone AS "availabilityZone",
+        inv.platform AS "platform",
+        inv.launch_time AS "launchTime",
+        inv.private_ip_address AS "privateIpAddress",
+        inv.public_ip_address AS "publicIpAddress",
+        inv.image_id AS "imageId",
+        inv.tenancy AS "tenancy",
+        inv.architecture AS "architecture",
+        inv.instance_lifecycle AS "instanceLifecycle",
+        inv.resource_key::text AS "resourceKey",
+        inv.cloud_connection_id::text AS "cloudConnectionId",
+        inv.tags_json AS "tagsJson"
+      FROM ec2_instance_inventory_snapshots inv
+      LEFT JOIN dim_region dr ON dr.id = inv.region_key
+      LEFT JOIN dim_sub_account dsa ON dsa.id = inv.sub_account_key
+      WHERE inv.tenant_id = $1::uuid
+        AND inv.instance_id = $2
+        AND inv.is_current = true
+        AND inv.deleted_at IS NULL
+        AND ($3::uuid IS NULL OR inv.cloud_connection_id = $3::uuid)
+      ORDER BY inv.updated_at DESC NULLS LAST
+      LIMIT 1;
+      `,
+      { bind: [input.tenantId, input.query.instanceId, input.query.cloudConnectionId], type: QueryTypes.SELECT },
+    );
+
+    return rows[0] ?? null;
   }
 
   private async loadPerformanceRows(input: {
@@ -604,6 +914,7 @@ export class InstancesInventoryService {
           inv.instance_lifecycle AS "instanceLifecycle",
           inv.resource_key::text AS "resourceKey",
           inv.cloud_connection_id::text AS "cloudConnectionId"
+          ,inv.tags_json AS "tagsJson"
         FROM ec2_instance_inventory_snapshots inv
         LEFT JOIN dim_region dr
           ON dr.id = inv.region_key
@@ -647,6 +958,9 @@ export class InstancesInventoryService {
             fed.usage_date AS usage_date,
             COALESCE(fed.total_hours, 0)::double precision AS total_hours,
             COALESCE(fed.compute_cost, 0)::double precision AS compute_cost,
+            COALESCE(fed.total_effective_cost, fed.total_billed_cost, 0)::double precision AS total_cost,
+            COALESCE(fed.data_transfer_cost, 0)::double precision AS data_transfer_cost,
+            (COALESCE(fed.network_in_bytes, 0) + COALESCE(fed.network_out_bytes, 0))::double precision AS network_usage_bytes,
             COALESCE(fed.covered_hours, 0)::double precision AS covered_hours,
             COALESCE(fed.uncovered_hours, 0)::double precision AS uncovered_hours,
             fed.cpu_avg::double precision AS cpu_avg,
@@ -698,6 +1012,9 @@ export class InstancesInventoryService {
           ) AS "pricingType",
           SUM(scoped.total_hours)::double precision AS "totalHours",
           SUM(scoped.compute_cost)::double precision AS "computeCost",
+          SUM(scoped.total_cost)::double precision AS "monthToDateCost",
+          SUM(scoped.data_transfer_cost)::double precision AS "dataTransferCost",
+          SUM(scoped.network_usage_bytes)::double precision AS "networkUsageBytes",
           SUM(scoped.covered_hours)::double precision AS "coveredHours",
           SUM(scoped.uncovered_hours)::double precision AS "uncoveredHours",
           COALESCE(

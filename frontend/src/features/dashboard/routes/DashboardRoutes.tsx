@@ -9,9 +9,7 @@ import OptimizationPage from "../pages/optimization/OptimizationPage";
 import AnomaliesAlertsPage from "../pages/anomalies-alerts/AnomaliesAlertsPage";
 import BudgetPage from "../pages/budget/BudgetPage";
 import ReportPage from "../pages/report/ReportPage";
-import InventoryInstancesPage from "../pages/inventory/InventoryInstancesPage";
 import InventorySnapshotsPage from "../pages/inventory/InventorySnapshotsPage";
-import InventoryVolumesPage from "../pages/inventory/InventoryVolumesPage";
 import AwsInventoryPage from "../pages/inventory/AwsInventoryPage";
 import EC2ExplorerPage from "../pages/ec2/EC2ExplorerPage";
 import EC2PerformancePage from "../pages/ec2/EC2PerformancePage";
@@ -22,6 +20,9 @@ import S3BucketDetailPage from "../pages/s3/S3BucketDetailPage";
 import S3UsagePage from "../pages/s3/S3UsagePage";
 import "../styles/tokens.css";
 import "../styles/dashboard.css";
+import EC2InstancesPage from "../pages/ec2/EC2InstancesPage";
+import EC2InstanceDetailPage from "../pages/ec2/EC2InstanceDetailPage";
+import EC2VolumeDetailPage from "../pages/ec2/EC2VolumeDetailPage";
 
 function DashboardOverviewRedirect() {
   const location = useLocation();
@@ -121,9 +122,11 @@ export default function DashboardRoutes() {
         <Route path="inventory" element={<AwsInventoryPage />} />
         <Route path="inventory/aws" element={<DashboardInventoryRedirect />} />
         <Route path="inventory/aws/ec2" element={<DashboardInventoryEc2Redirect />} />
-        <Route path="inventory/aws/ec2/instances" element={<InventoryInstancesPage />} />
+        <Route path="inventory/aws/ec2/instances" element={<EC2InstancesPage />} />
+        <Route path="inventory/aws/ec2/instances/:instanceId" element={<EC2InstanceDetailPage />} />
         <Route path="inventory/aws/ec2/snapshots" element={<InventorySnapshotsPage />} />
-        <Route path="inventory/aws/ec2/volumes" element={<InventoryVolumesPage />} />
+        <Route path="inventory/aws/ec2/volumes" element={<EC2VolumesPage />} />
+        <Route path="inventory/aws/ec2/volumes/:volumeId" element={<EC2VolumeDetailPage />} />
         <Route path="*" element={<DashboardOverviewRedirect />} />
       </Route>
     </Routes>

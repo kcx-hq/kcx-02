@@ -128,6 +128,7 @@ export type Ec2ExplorerFactRow = {
   dataTransferCost: number;
   totalEffectiveCost: number;
   totalBilledCost: number;
+  totalAmortizedCost: number | null;
   cpuAvg: number;
   cpuMax: number;
   diskUsedPercentAvg: number;

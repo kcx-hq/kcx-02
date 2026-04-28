@@ -23,6 +23,9 @@ import type {
   Ec2OptimizationInstancesFiltersQuery,
   Ec2OptimizationSummaryResponse,
   Ec2OptimizationInstancesResponse,
+  Ec2RecommendationsFiltersQuery,
+  Ec2RecommendationsResponse,
+  Ec2RecommendationStatus,
   Ec2ExplorerFiltersQuery,
   Ec2ExplorerResponse,
   S3CostInsightsFiltersQuery,
@@ -272,6 +275,29 @@ function withEc2ExplorerFilters(
   appendArray("states", filters.states);
   appendArray("instanceTypes", filters.instanceTypes);
 
+  const query = params.toString();
+  return query.length > 0 ? `${path}?${query}` : path;
+}
+
+function withEc2RecommendationsFilters(
+  path: string,
+  scope: DashboardResolvedScope,
+  filters?: Ec2RecommendationsFiltersQuery,
+): string {
+  const params = new URLSearchParams(buildDashboardQueryParams(scope));
+  if (filters?.cloudConnectionId) params.set("cloudConnectionId", filters.cloudConnectionId);
+  if (typeof filters?.billingSourceId === "number") params.set("billingSourceId", String(filters.billingSourceId));
+  if (filters?.category) params.set("category", filters.category);
+  if (filters?.type) params.set("type", filters.type);
+  if (filters?.status) params.set("status", filters.status);
+  if (filters?.account) params.set("account", filters.account);
+  if (filters?.region) params.set("region", filters.region);
+  if (filters?.team) params.set("team", filters.team);
+  if (filters?.product) params.set("product", filters.product);
+  if (filters?.environment) params.set("environment", filters.environment);
+  if (Array.isArray(filters?.tags) && filters.tags.length > 0) params.set("tags", filters.tags.join(","));
+  if (filters?.dateFrom) params.set("dateFrom", filters.dateFrom);
+  if (filters?.dateTo) params.set("dateTo", filters.dateTo);
   const query = params.toString();
   return query.length > 0 ? `${path}?${query}` : path;
 }
@@ -533,6 +559,23 @@ export const dashboardApi = {
       withEc2OptimizationFilters("/dashboard/ec2/optimization/instances", scope, filters),
     );
   },
+  getEc2Recommendations(scope: DashboardResolvedScope, filters?: Ec2RecommendationsFiltersQuery) {
+    return apiGet<Ec2RecommendationsResponse>(
+      withEc2RecommendationsFilters("/dashboard/ec2/recommendations", scope, filters),
+    );
+  },
+  refreshEc2Recommendations(scope: DashboardResolvedScope, payload?: Partial<Ec2RecommendationsFiltersQuery>) {
+    return apiPost<{ created: number; updated: number; resolved: number }>(
+      withDashboardQuery("/dashboard/ec2/recommendations/refresh", scope),
+      payload ?? {},
+    );
+  },
+  updateEc2RecommendationStatus(scope: DashboardResolvedScope, recommendationId: number, status: Ec2RecommendationStatus) {
+    return apiPatch<{ id: number; status: Ec2RecommendationStatus }>(
+      withDashboardQuery(`/dashboard/ec2/recommendations/${recommendationId}/status`, scope),
+      { status },
+    );
+  },
   getEc2Explorer(scope: DashboardResolvedScope, filters: Ec2ExplorerFiltersQuery) {
     return apiGet<Ec2ExplorerResponse>(withEc2ExplorerFilters("/dashboard/ec2/explorer", scope, filters));
   },
@@ -576,6 +619,9 @@ export type {
   Ec2OptimizationInstancesFiltersQuery,
   Ec2OptimizationSummaryResponse,
   Ec2OptimizationInstancesResponse,
+  Ec2RecommendationsFiltersQuery,
+  Ec2RecommendationsResponse,
+  Ec2RecommendationStatus,
   Ec2ExplorerMetric,
   Ec2ExplorerGroupBy,
   Ec2ExplorerCostBasis,

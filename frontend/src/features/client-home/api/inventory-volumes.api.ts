@@ -132,6 +132,50 @@ export type InventoryEc2VolumePerformanceResponse = {
   series: InventoryEc2VolumePerformanceSeries[]
 }
 
+export type InventoryEc2VolumeDetailParams = {
+  volumeId: string
+  cloudConnectionId?: string | null
+  startDate?: string | null
+  endDate?: string | null
+}
+
+export type InventoryEc2VolumeDetailResponse = {
+  identity: {
+    volumeId: string
+    name: string
+    state: string | null
+    volumeType: string | null
+    sizeGb: number | null
+    iops: number | null
+    throughput: number | null
+    availabilityZone: string | null
+    region: string | null
+    subAccount: string | null
+    cloudConnectionId: string | null
+    discoveredAt: string | null
+  }
+  attachment: {
+    instanceId: string | null
+    instanceName: string | null
+    instanceState: string | null
+  }
+  metadata: {
+    tags: Record<string, unknown>
+    metadata: Record<string, unknown>
+  }
+  costBreakdown: {
+    totalVolumeCost: number
+    storageCost: number
+    iopsCost: number
+    throughputCost: number
+    snapshotCost: number
+  }
+  trends: {
+    costTrend: Array<{ date: string; totalCost: number }>
+    sizeTrend: Array<{ date: string; sizeGb: number }>
+  }
+}
+
 type UnknownRecord = Record<string, unknown>
 
 const isRecord = (value: unknown): value is UnknownRecord =>
@@ -418,5 +462,18 @@ export async function getInventoryEc2VolumePerformance(
     }
     throw error
   }
+}
+
+export async function getInventoryEc2VolumeDetail(
+  params: InventoryEc2VolumeDetailParams,
+): Promise<InventoryEc2VolumeDetailResponse> {
+  const searchParams = new URLSearchParams()
+  if (params.cloudConnectionId) searchParams.set("cloudConnectionId", params.cloudConnectionId)
+  if (params.startDate) searchParams.set("startDate", params.startDate)
+  if (params.endDate) searchParams.set("endDate", params.endDate)
+
+  const qs = searchParams.toString()
+  const path = `/inventory/aws/ec2/volumes/${encodeURIComponent(params.volumeId)}/details${qs ? `?${qs}` : ""}`
+  return apiGet<InventoryEc2VolumeDetailResponse>(path)
 }
 

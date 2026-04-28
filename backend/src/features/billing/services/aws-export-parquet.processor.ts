@@ -29,6 +29,7 @@ import {
 import { syncEc2CostHistoryForIngestionRun } from "./ec2-cost-history.service.js";
 import { createTagDimensionCache, resolveFactPrimaryTagId, resolveFactTagIds } from "./dim-tag.service.js";
 import { assertTagDimensionSchemaReady } from "./ingestion-schema-guard.service.js";
+import { Ec2RecommendationsService } from "../../ec2/optimization/ec2-recommendations.service.js";
 
 const STAGE_MESSAGE = {
   validating_schema: "Validating manifest and parquet schema",
@@ -54,6 +55,7 @@ const PROGRESS_BY_STAGE = {
 };
 
 const now = () => new Date();
+const ec2RecommendationsService = new Ec2RecommendationsService();
 
 const toErrorMessage = (error) => {
   if (error instanceof Error && error.message.trim().length > 0) {
@@ -594,6 +596,23 @@ export async function processAwsExportParquetRun({ run }) {
         providerId: source.cloudProviderId,
         billingSourceId: source.id,
       });
+
+      try {
+        await ec2RecommendationsService.refreshRecommendations({
+          tenantId: String(source.tenantId),
+          billingSourceId: Number(source.id),
+          cloudConnectionId: source.cloudConnectionId ? String(source.cloudConnectionId) : null,
+          dateFrom: String(run.periodStartDate).slice(0, 10),
+          dateTo: String(run.periodEndDate).slice(0, 10),
+        });
+      } catch (ec2V1Error) {
+        logger.warn("EC2 V1 recommendation refresh failed after AWS parquet ingestion", {
+          ingestionRunId: runId,
+          tenantId: source.tenantId ?? null,
+          billingSourceId: source.id ?? null,
+          reason: toErrorMessage(ec2V1Error),
+        });
+      }
 
       try {
         await syncAwsRightsizingRecommendationsAfterIngestion({
