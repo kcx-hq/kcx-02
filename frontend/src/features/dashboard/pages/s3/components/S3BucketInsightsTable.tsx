@@ -30,6 +30,19 @@ export type S3BucketTableRow = {
   retrieval: number;
   other: number;
   trendPct: number;
+  storageLens?: {
+    usageDate: string;
+    objectCount: number | null;
+    currentVersionBytes: number | null;
+    avgObjectSizeBytes: number | null;
+    accessCount: number | null;
+    percentInGlacier: number;
+    storageClassDistribution: Array<{
+      name: string;
+      bytes: number;
+      percent: number;
+    }>;
+  } | null;
 };
 
 type Props = {

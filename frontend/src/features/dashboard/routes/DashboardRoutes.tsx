@@ -22,6 +22,7 @@ import EC2VolumesPage from "../pages/ec2/EC2VolumesPage";
 import S3OverviewPage from "../pages/s3/S3OverviewPage";
 import S3BucketDetailPage from "../pages/s3/S3BucketDetailPage";
 import S3UsagePage from "../pages/s3/S3UsagePage";
+import S3UsageBucketDetailPage from "../pages/s3/S3UsageBucketDetailPage";
 import "../styles/tokens.css";
 import "../styles/dashboard.css";
 
@@ -116,6 +117,7 @@ export default function DashboardRoutes() {
         <Route path="s3/cost" element={<S3OverviewPage />} />
         <Route path="s3/cost/bucket/:bucketName" element={<S3BucketDetailPage />} />
         <Route path="s3/usage" element={<S3UsagePage />} />
+        <Route path="s3/usage/bucket/:bucketName" element={<S3UsageBucketDetailPage />} />
         <Route path="resources" element={<ResourcesPage />} />
         <Route path="allocation" element={<AllocationPage />} />
         <Route path="optimization" element={<OptimizationPage />} />

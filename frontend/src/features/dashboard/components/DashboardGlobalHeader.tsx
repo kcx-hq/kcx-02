@@ -208,7 +208,7 @@ const S3_SERIES_BY_OPTIONS: Array<S3OverviewFilterValue["seriesBy"]> = [
   "storage_class",
 ];
 const S3_COST_BY_OPTIONS: Array<S3OverviewFilterValue["costBy"]> = ["date", "bucket", "region", "account"];
-const S3_Y_AXIS_OPTIONS: Array<S3OverviewFilterValue["yAxisMetric"]> = ["billed_cost", "effective_cost", "amortized_cost"];
+const S3_Y_AXIS_OPTIONS: Array<S3OverviewFilterValue["yAxisMetric"]> = ["billed_cost", "effective_cost", "amortized_cost", "usage_quantity"];
 const S3_CHART_TYPE_OPTIONS: Array<S3OverviewFilterValue["chartType"]> = ["bar", "line"];
 const S3_COMPARE_OPTIONS: Array<S3OverviewFilterValue["compareMode"]> = ["none", "previous_period"];
 
