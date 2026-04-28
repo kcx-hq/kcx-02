@@ -696,13 +696,15 @@ export type S3CostInsightsResponse = {
     scopeType: DashboardResolvedScope["scopeType"];
     s3Filters: {
       costCategory: string[];
+      seriesValues: string[];
       bucket: string | null;
       storageClass: string[];
       region: string[];
-      account: string[];
-      costBy: "date" | "bucket" | "region" | "account";
-      seriesBy: "cost_category" | "usage_type" | "operation" | "product_family";
-    };
+        account: string[];
+        costBy: "date" | "bucket" | "region" | "account";
+        seriesBy: "cost_category" | "usage_type" | "operation" | "product_family" | "bucket" | "storage_class";
+        yAxisMetric: "billed_cost" | "effective_cost" | "amortized_cost";
+      };
   };
   columnsUsed: Array<
     | "service_name"
@@ -726,6 +728,7 @@ export type S3CostInsightsResponse = {
   };
   bucketTable: Array<{
     bucketName: string;
+    account: string;
     cost: number;
     storage: number;
     requests: number;
@@ -737,6 +740,20 @@ export type S3CostInsightsResponse = {
     retrieval: number;
     other: number;
     trendPct: number;
+  }>;
+  costCategoryTable: Array<{
+    costCategory: "Storage" | "Request" | "Transfer" | "Retrieval" | "Other";
+    cost: number;
+    usageQuantity: number;
+    pricingUnit: string;
+    percentOfBucketCost: number;
+  }>;
+  usageOperationTable: Array<{
+    usageType: string;
+    operation: string;
+    cost: number;
+    quantity: number;
+    unit: string;
   }>;
   chart: {
     bucketCosts: Array<{
@@ -770,23 +787,29 @@ export type S3CostInsightsResponse = {
   };
   filterOptions: {
     costCategory: string[];
+    usageType: string[];
+    operation: string[];
+    productFamily: string[];
     bucket: string[];
     storageClass: string[];
     region: string[];
-    account: string[];
-    costBy: Array<"date" | "bucket" | "region" | "account">;
-    seriesBy: Array<"cost_category" | "usage_type" | "operation" | "product_family">;
+      account: string[];
+      costBy: Array<"date" | "bucket" | "region" | "account">;
+      seriesBy: Array<"cost_category" | "usage_type" | "operation" | "product_family" | "bucket" | "storage_class">;
+      yAxisMetric: Array<"billed_cost" | "effective_cost" | "amortized_cost">;
+    };
   };
-};
 
 export type S3CostInsightsFiltersQuery = {
   costCategory?: string[];
+  seriesValues?: string[];
   bucket?: string | null;
   storageClass?: string[];
   region?: string[];
   account?: string[];
   costBy?: "date" | "bucket" | "region" | "account";
-  seriesBy?: "cost_category" | "usage_type" | "operation" | "product_family";
+  seriesBy?: "cost_category" | "usage_type" | "operation" | "product_family" | "bucket" | "storage_class";
+  yAxisMetric?: "billed_cost" | "effective_cost" | "amortized_cost";
 };
 
 export type AnomaliesListResponse = {

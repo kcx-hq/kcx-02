@@ -127,7 +127,7 @@ export const DEFAULT_EC2_EXPLORER_CONTROLS: EC2ExplorerControlsState = {
   costBasis: "effective_cost",
   usageMetric: "cpu",
   usageAggregation: "avg",
-  chartType: "line",
+  chartType: "stacked_bar",
   instancesCondition: "all",
   instancesState: "running",
   instanceType: "all",

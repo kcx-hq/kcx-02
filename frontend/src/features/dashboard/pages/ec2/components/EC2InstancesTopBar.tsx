@@ -1,5 +1,5 @@
 import { Check, ChevronDown, Filter, RotateCcw, Search, Settings2 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
@@ -27,9 +27,16 @@ type EC2InstancesTopBarProps = {
   instanceTypeOptions: Array<{ key: string; label: string }>;
   onChange: (next: EC2InstancesControlsState) => void;
   onReset: () => void;
+  children?: ReactNode;
 };
 
-export function EC2InstancesTopBar({ value, instanceTypeOptions, onChange, onReset }: EC2InstancesTopBarProps) {
+export function EC2InstancesTopBar({
+  value,
+  instanceTypeOptions,
+  onChange,
+  onReset,
+  children,
+}: EC2InstancesTopBarProps) {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const [activePopover, setActivePopover] = useState<PopoverKey | null>(null);
   const [scopeFiltersOpen, setScopeFiltersOpen] = useState(false);
@@ -223,29 +230,6 @@ export function EC2InstancesTopBar({ value, instanceTypeOptions, onChange, onRes
           </div>
 
           <div className="cost-explorer-toolbar-item">
-            <button
-              type="button"
-              className={`cost-explorer-toolbar-trigger${activePopover === "thresholds" ? " is-active" : ""}${hasActiveThresholds ? " is-active" : ""}`}
-              onClick={() => togglePopover("thresholds")}
-              aria-expanded={activePopover === "thresholds"}
-              aria-haspopup="dialog"
-            >
-              <span className="cost-explorer-toolbar-trigger__row">
-                <span className="cost-explorer-toolbar-trigger__value">Thresholds</span>
-                <Settings2 className="cost-explorer-toolbar-trigger__caret" size={14} aria-hidden="true" />
-              </span>
-            </button>
-            {activePopover === "thresholds" ? (
-              <div className="cost-explorer-filter-popover ec2-explorer-filter-popover ec2-explorer-filter-popover--thresholds">
-                <EC2ExplorerThresholdsPopover
-                  value={value.thresholds}
-                  onChange={(nextThresholds) => update({ thresholds: nextThresholds })}
-                />
-              </div>
-            ) : null}
-          </div>
-
-          <div className="cost-explorer-toolbar-item">
             <label className="cost-explorer-toolbar-trigger ec2-instances-search-trigger">
               <span className="ec2-instances-search-trigger__icon-wrap" aria-hidden="true">
                 <Search size={14} />
@@ -262,15 +246,45 @@ export function EC2InstancesTopBar({ value, instanceTypeOptions, onChange, onRes
           </div>
 
           <div className="cost-explorer-toolbar-item">
-            <button type="button" className="cost-explorer-toolbar-trigger" onClick={onReset}>
-              <span className="cost-explorer-toolbar-trigger__row">
-                <span className="cost-explorer-toolbar-trigger__value">Reset</span>
-                <RotateCcw className="cost-explorer-toolbar-trigger__caret" size={14} aria-hidden="true" />
+            <button
+              type="button"
+              className={`cost-explorer-toolbar-trigger ec2-instances-toolbar-icon-trigger${activePopover === "thresholds" ? " is-active" : ""}${hasActiveThresholds ? " is-active" : ""}`}
+              onClick={() => togglePopover("thresholds")}
+              aria-expanded={activePopover === "thresholds"}
+              aria-haspopup="dialog"
+              aria-label="Thresholds"
+              title="Thresholds"
+            >
+              <span className="cost-explorer-toolbar-trigger__row ec2-instances-toolbar-icon-trigger__row">
+                <Settings2 className="ec2-instances-toolbar-icon-trigger__icon" size={16} aria-hidden="true" />
+              </span>
+            </button>
+            {activePopover === "thresholds" ? (
+              <div className="cost-explorer-filter-popover ec2-explorer-filter-popover ec2-explorer-filter-popover--thresholds">
+                <EC2ExplorerThresholdsPopover
+                  value={value.thresholds}
+                  onChange={(nextThresholds) => update({ thresholds: nextThresholds })}
+                />
+              </div>
+            ) : null}
+          </div>
+
+          <div className="cost-explorer-toolbar-item">
+            <button
+              type="button"
+              className="cost-explorer-toolbar-trigger ec2-instances-toolbar-icon-trigger"
+              onClick={onReset}
+              aria-label="Reset filters"
+              title="Reset filters"
+            >
+              <span className="cost-explorer-toolbar-trigger__row ec2-instances-toolbar-icon-trigger__row">
+                <RotateCcw className="ec2-instances-toolbar-icon-trigger__icon" size={16} aria-hidden="true" />
               </span>
             </button>
           </div>
         </div>
       </div>
+      {children}
 
       <Dialog open={scopeFiltersOpen} onOpenChange={setScopeFiltersOpen}>
         <DialogContent className="left-auto right-0 top-0 h-screen max-h-screen w-[min(96vw,44rem)] max-w-none -translate-x-0 -translate-y-0 rounded-none border-l border-[color:var(--border-light)] p-6 data-[state=open]:slide-in-from-right data-[state=closed]:slide-out-to-right data-[state=open]:zoom-in-100 data-[state=closed]:zoom-out-100">

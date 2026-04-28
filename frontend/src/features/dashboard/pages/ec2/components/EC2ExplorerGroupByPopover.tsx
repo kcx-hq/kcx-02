@@ -109,6 +109,10 @@ export function EC2ExplorerGroupByPopover({
     }
   }, [activeGroupBy, filteredGroups]);
 
+  useEffect(() => {
+    setValueSearch("");
+  }, [activeGroupBy]);
+
   const activeValues = useMemo(() => GROUP_VALUE_OPTIONS[activeGroupBy] ?? [], [activeGroupBy]);
   const filteredValues = useMemo(() => {
     const query = valueSearch.trim().toLowerCase();
@@ -205,7 +209,10 @@ export function EC2ExplorerGroupByPopover({
                   <span className="cost-explorer-filter-option__content">
                     <span className="cost-explorer-filter-option__label">{option.label}</span>
                   </span>
-                  <span className="cost-explorer-filter-option__label">{option.count}</span>
+                  <span className="cost-explorer-filter-option__meta">
+                    <span className="cost-explorer-filter-option__label">{option.count}</span>
+                    {selected ? <Check className="cost-explorer-filter-option__check" size={15} aria-hidden="true" /> : null}
+                  </span>
                 </button>
               );
             })}

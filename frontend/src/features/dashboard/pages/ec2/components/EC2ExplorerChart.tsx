@@ -58,8 +58,7 @@ export function EC2ExplorerChart({
             type: "scroll",
             orient: "horizontal",
             top: 2,
-            left: 12,
-            right: 12,
+            left: "center",
             itemWidth: 12,
             itemHeight: 8,
             textStyle: {

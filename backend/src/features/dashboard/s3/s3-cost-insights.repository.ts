@@ -6,10 +6,13 @@ import { buildDashboardFilter } from "../shared/filter-builder.js";
 import type {
   S3CostBucketInsight,
   S3CostBucketTableInsight,
+  S3CostCategoryTableInsight,
   S3CostCategory,
   S3CostChartBy,
   S3CostInsightsFilters,
   S3CostSeriesBy,
+  S3UsageOperationTableInsight,
+  S3CostYAxisMetric,
   S3CostFeatureTrendInsight,
   S3CostTrendInsight,
 } from "./s3-cost-insights.types.js";
@@ -36,6 +39,7 @@ type S3TrendRow = {
 
 type S3BucketBreakdownRow = {
   bucket_name: string | null;
+  account: string | null;
   cost: number | string | null;
   storage: number | string | null;
   requests: number | string | null;
@@ -60,10 +64,26 @@ type S3FeatureTrendRow = {
   total: number | string | null;
 };
 
+type S3CostCategoryTableRow = {
+  cost_category: string | null;
+  cost: number | string | null;
+  usage_quantity: number | string | null;
+  pricing_unit: string | null;
+  percent_of_bucket_cost: number | string | null;
+};
+
+type S3UsageOperationTableRow = {
+  usage_type: string | null;
+  operation: string | null;
+  cost: number | string | null;
+  quantity: number | string | null;
+  unit: string | null;
+};
+
 type S3BreakdownRow = {
   x_value: string | null;
   series_value: string | null;
-  billed_cost: number | string | null;
+  metric_cost: number | string | null;
 };
 
 type S3OptionRow = {
@@ -222,7 +242,8 @@ const S3_COST_CATEGORY_OPTIONS: S3CostCategory[] = [
 ];
 
 const S3_COST_BY_OPTIONS: S3CostChartBy[] = ["date", "bucket", "region", "account"];
-const S3_SERIES_BY_OPTIONS: S3CostSeriesBy[] = ["cost_category", "usage_type", "operation", "product_family"];
+const S3_SERIES_BY_OPTIONS: S3CostSeriesBy[] = ["bucket", "usage_type", "cost_category", "operation", "product_family", "storage_class"];
+const S3_Y_AXIS_METRIC_OPTIONS: S3CostYAxisMetric[] = ["billed_cost", "effective_cost", "amortized_cost"];
 
 const OWNER_TAG_KEYS_SQL = `
 (
@@ -290,6 +311,21 @@ export class S3CostInsightsRepository {
     if (filters.account.length > 0) {
       push(`account_name = ANY(?::text[])`, filters.account);
     }
+    if (filters.seriesValues.length > 0) {
+      if (filters.seriesBy === "cost_category") {
+        push(`cost_category = ANY(?::text[])`, filters.seriesValues);
+      } else if (filters.seriesBy === "storage_class") {
+        push(`storage_class = ANY(?::text[])`, filters.seriesValues);
+      } else if (filters.seriesBy === "usage_type") {
+        push(`COALESCE(NULLIF(usage_type, ''), 'Unspecified') = ANY(?::text[])`, filters.seriesValues);
+      } else if (filters.seriesBy === "operation") {
+        push(`COALESCE(NULLIF(operation, ''), 'Unspecified') = ANY(?::text[])`, filters.seriesValues);
+      } else if (filters.seriesBy === "product_family") {
+        push(`COALESCE(NULLIF(product_family, ''), 'Unspecified') = ANY(?::text[])`, filters.seriesValues);
+      } else if (filters.seriesBy === "bucket") {
+        push(`bucket_name = ANY(?::text[])`, filters.seriesValues);
+      }
+    }
 
     return {
       clause: conditions.length > 0 ? conditions.join("\n          AND ") : "1=1",
@@ -319,9 +355,25 @@ export class S3CostInsightsRepository {
         return "COALESCE(NULLIF(operation, ''), 'Unspecified')";
       case "product_family":
         return "COALESCE(NULLIF(product_family, ''), 'Unspecified')";
+      case "bucket":
+        return "bucket_name";
+      case "storage_class":
+        return "storage_class";
       case "cost_category":
       default:
         return "cost_category";
+    }
+  }
+
+  private getMetricCostExpression(metric: S3CostYAxisMetric): string {
+    switch (metric) {
+      case "effective_cost":
+        return "fcli.effective_cost";
+      case "amortized_cost":
+        return "COALESCE(fcli.amortized_cost, fcli.effective_cost, fcli.billed_cost)";
+      case "billed_cost":
+      default:
+        return "fcli.billed_cost";
     }
   }
 
@@ -336,6 +388,7 @@ export class S3CostInsightsRepository {
     const filterPredicates = this.buildS3FilterPredicates(filters, scoped.nextIndex);
     const xExpr = this.getXAxisExpression(filters.costBy);
     const seriesExpr = this.getSeriesExpression(filters.seriesBy);
+    const metricCostExpr = this.getMetricCostExpression(filters.yAxisMetric);
 
     const rows = await sequelize.query<S3BreakdownRow>(
       `
@@ -350,7 +403,7 @@ export class S3CostInsightsRepository {
           COALESCE(fcli.product_family, '') AS product_family,
           COALESCE(fcli.product_usage_type, '') AS product_usage_type,
           COALESCE(fcli.line_item_description, '') AS line_item_description,
-          COALESCE(fcli.billed_cost, 0)::double precision AS billed_cost
+          COALESCE(${metricCostExpr}, 0)::double precision AS metric_cost
         FROM fact_cost_line_items fcli
         LEFT JOIN dim_date dd ON dd.id = fcli.usage_date_key
         LEFT JOIN dim_service ds ON ds.id = fcli.service_key
@@ -374,8 +427,8 @@ export class S3CostInsightsRepository {
       ranked_x AS (
         SELECT
           ${xExpr} AS x_value,
-          SUM(billed_cost)::double precision AS total_cost,
-          ROW_NUMBER() OVER (ORDER BY SUM(billed_cost) DESC, ${xExpr} ASC) AS rn
+          SUM(metric_cost)::double precision AS total_cost,
+          ROW_NUMBER() OVER (ORDER BY SUM(metric_cost) DESC, ${xExpr} ASC) AS rn
         FROM filtered
         GROUP BY ${xExpr}
       ),
@@ -392,13 +445,13 @@ export class S3CostInsightsRepository {
       SELECT
         ${xExpr} AS x_value,
         ${seriesExpr} AS series_value,
-        SUM(billed_cost)::double precision AS billed_cost
+        SUM(metric_cost)::double precision AS metric_cost
       FROM reduced
       WHERE keep_x = TRUE
       GROUP BY ${xExpr}, ${seriesExpr}
       ORDER BY
         CASE WHEN $${scoped.nextIndex + filterPredicates.params.length}::text = 'date' THEN ${xExpr} END ASC,
-        CASE WHEN $${scoped.nextIndex + filterPredicates.params.length}::text <> 'date' THEN SUM(billed_cost) END DESC;
+        CASE WHEN $${scoped.nextIndex + filterPredicates.params.length}::text <> 'date' THEN SUM(metric_cost) END DESC;
       `,
       {
         bind: [...scoped.params, ...filterPredicates.params, filters.costBy],
@@ -413,7 +466,7 @@ export class S3CostInsightsRepository {
     for (const row of rows) {
       const x = String(row.x_value ?? "Unspecified");
       const series = String(row.series_value ?? "Unspecified");
-      const cost = toNumber(row.billed_cost);
+      const cost = toNumber(row.metric_cost);
       if (!byX.has(x)) {
         byX.set(x, new Map());
       }
@@ -463,12 +516,16 @@ export class S3CostInsightsRepository {
 
   async getBreakdownFilterOptions(scope: DashboardScope): Promise<{
     costCategory: S3CostCategory[];
+    usageType: string[];
+    operation: string[];
+    productFamily: string[];
     bucket: string[];
     storageClass: string[];
     region: string[];
     account: string[];
     costBy: S3CostChartBy[];
     seriesBy: S3CostSeriesBy[];
+    yAxisMetric: S3CostYAxisMetric[];
   }> {
     const scoped = this.buildS3ScopedWhere(scope);
     const baseCte = `
@@ -500,7 +557,40 @@ export class S3CostInsightsRepository {
       )
     `;
 
-    const [bucketRows, storageRows, regionRows, accountRows] = await Promise.all([
+    const [usageTypeRows, operationRows, productFamilyRows, bucketRows, storageRows, regionRows, accountRows] = await Promise.all([
+      sequelize.query<S3OptionRow>(
+        `
+        ${baseCte}
+        SELECT COALESCE(NULLIF(usage_type, ''), 'Unspecified') AS value
+        FROM scoped
+        GROUP BY COALESCE(NULLIF(usage_type, ''), 'Unspecified')
+        ORDER BY SUM(billed_cost) DESC, value ASC
+        LIMIT 200;
+        `,
+        { bind: scoped.params, type: QueryTypes.SELECT },
+      ),
+      sequelize.query<S3OptionRow>(
+        `
+        ${baseCte}
+        SELECT COALESCE(NULLIF(operation, ''), 'Unspecified') AS value
+        FROM scoped
+        GROUP BY COALESCE(NULLIF(operation, ''), 'Unspecified')
+        ORDER BY SUM(billed_cost) DESC, value ASC
+        LIMIT 200;
+        `,
+        { bind: scoped.params, type: QueryTypes.SELECT },
+      ),
+      sequelize.query<S3OptionRow>(
+        `
+        ${baseCte}
+        SELECT COALESCE(NULLIF(product_family, ''), 'Unspecified') AS value
+        FROM scoped
+        GROUP BY COALESCE(NULLIF(product_family, ''), 'Unspecified')
+        ORDER BY SUM(billed_cost) DESC, value ASC
+        LIMIT 200;
+        `,
+        { bind: scoped.params, type: QueryTypes.SELECT },
+      ),
       sequelize.query<S3OptionRow>(
         `
         ${baseCte}
@@ -551,12 +641,16 @@ export class S3CostInsightsRepository {
 
     return {
       costCategory: S3_COST_CATEGORY_OPTIONS,
+      usageType: normalize(usageTypeRows),
+      operation: normalize(operationRows),
+      productFamily: normalize(productFamilyRows),
       bucket: normalize(bucketRows),
       storageClass: normalize(storageRows),
       region: normalize(regionRows),
       account: normalize(accountRows),
       costBy: S3_COST_BY_OPTIONS,
       seriesBy: S3_SERIES_BY_OPTIONS,
+      yAxisMetric: S3_Y_AXIS_METRIC_OPTIONS,
     };
   }
 
@@ -720,14 +814,182 @@ export class S3CostInsightsRepository {
       }));
   }
 
-  async getBucketCostBreakdown(scope: DashboardScope, limit: number = 5000): Promise<Omit<S3CostBucketTableInsight, "trendPct">[]> {
+  async getCostCategoryTable(
+    scope: DashboardScope,
+    filters: S3CostInsightsFilters,
+  ): Promise<S3CostCategoryTableInsight[]> {
+    const scoped = this.buildS3ScopedWhere(scope);
+    const filterPredicates = this.buildS3FilterPredicates(filters, scoped.nextIndex);
+
+    const rows = await sequelize.query<S3CostCategoryTableRow>(
+      `
+      WITH base_scoped AS (
+        SELECT
+          COALESCE(NULLIF(${S3_BUCKET_NAME_SQL}, ''), 'unattributed') AS bucket_name,
+          COALESCE(NULLIF(dr.region_name, ''), NULLIF(dr.region_id, ''), 'global') AS region_name,
+          COALESCE(dsa.sub_account_name, dsa.sub_account_id, 'Unspecified') AS account_name,
+          COALESCE(fcli.usage_type, '') AS usage_type,
+          COALESCE(fcli.operation, '') AS operation,
+          COALESCE(fcli.product_family, '') AS product_family,
+          COALESCE(fcli.product_usage_type, '') AS product_usage_type,
+          COALESCE(fcli.line_item_description, '') AS line_item_description,
+          COALESCE(fcli.billed_cost, 0)::double precision AS billed_cost,
+          COALESCE(fcli.consumed_quantity, 0)::double precision AS usage_quantity,
+          COALESCE(NULLIF(dsku.pricing_unit, ''), 'Units') AS pricing_unit
+        FROM fact_cost_line_items fcli
+        LEFT JOIN dim_date dd ON dd.id = fcli.usage_date_key
+        LEFT JOIN dim_service ds ON ds.id = fcli.service_key
+        LEFT JOIN dim_resource dres ON dres.id = fcli.resource_key
+        LEFT JOIN dim_region dr ON dr.id = fcli.region_key
+        LEFT JOIN dim_sub_account dsa ON dsa.id = fcli.sub_account_key
+        LEFT JOIN dim_sku dsku ON dsku.id = fcli.sku_key
+        WHERE ${scoped.whereClause}
+      ),
+      scoped_data AS (
+        SELECT
+          base_scoped.*,
+          ${S3_STORAGE_CLASS_LABEL_SQL} AS storage_class,
+          ${S3_COST_CATEGORY_SQL} AS cost_category
+        FROM base_scoped
+      ),
+      filtered AS (
+        SELECT *
+        FROM scoped_data
+        WHERE ${filterPredicates.clause}
+      ),
+      grouped AS (
+        SELECT
+          cost_category,
+          COALESCE(SUM(billed_cost), 0)::double precision AS cost,
+          COALESCE(SUM(usage_quantity), 0)::double precision AS usage_quantity,
+          CASE
+            WHEN COUNT(DISTINCT pricing_unit) = 1 THEN MIN(pricing_unit)
+            ELSE 'Mixed'
+          END AS pricing_unit
+        FROM filtered
+        GROUP BY cost_category
+      ),
+      total_cost AS (
+        SELECT COALESCE(SUM(cost), 0)::double precision AS total
+        FROM grouped
+      )
+      SELECT
+        g.cost_category,
+        g.cost,
+        g.usage_quantity,
+        g.pricing_unit,
+        CASE
+          WHEN t.total > 0 THEN (g.cost / t.total) * 100
+          ELSE 0
+        END::double precision AS percent_of_bucket_cost
+      FROM grouped g
+      CROSS JOIN total_cost t
+      ORDER BY g.cost DESC, g.cost_category ASC;
+      `,
+      {
+        bind: [...scoped.params, ...filterPredicates.params],
+        type: QueryTypes.SELECT,
+      },
+    );
+
+    return rows.map((row) => ({
+      costCategory: (String(row.cost_category ?? "Other") as S3CostCategory),
+      cost: toNumber(row.cost),
+      usageQuantity: toNumber(row.usage_quantity),
+      pricingUnit: String(row.pricing_unit ?? "Units"),
+      percentOfBucketCost: toNumber(row.percent_of_bucket_cost),
+    }));
+  }
+
+  async getUsageOperationTable(
+    scope: DashboardScope,
+    filters: S3CostInsightsFilters,
+    limit: number = 2000,
+  ): Promise<S3UsageOperationTableInsight[]> {
+    const scoped = this.buildS3ScopedWhere(scope);
+    const filterPredicates = this.buildS3FilterPredicates(filters, scoped.nextIndex);
+    const limitPlaceholder = scoped.params.length + filterPredicates.params.length + 1;
+
+    const rows = await sequelize.query<S3UsageOperationTableRow>(
+      `
+      WITH base_scoped AS (
+        SELECT
+          COALESCE(NULLIF(${S3_BUCKET_NAME_SQL}, ''), 'unattributed') AS bucket_name,
+          COALESCE(NULLIF(dr.region_name, ''), NULLIF(dr.region_id, ''), 'global') AS region_name,
+          COALESCE(dsa.sub_account_name, dsa.sub_account_id, 'Unspecified') AS account_name,
+          COALESCE(fcli.usage_type, '') AS usage_type,
+          COALESCE(fcli.operation, '') AS operation,
+          COALESCE(fcli.product_family, '') AS product_family,
+          COALESCE(fcli.product_usage_type, '') AS product_usage_type,
+          COALESCE(fcli.line_item_description, '') AS line_item_description,
+          COALESCE(fcli.billed_cost, 0)::double precision AS billed_cost,
+          COALESCE(fcli.consumed_quantity, 0)::double precision AS quantity,
+          COALESCE(NULLIF(dsku.pricing_unit, ''), 'Units') AS unit
+        FROM fact_cost_line_items fcli
+        LEFT JOIN dim_date dd ON dd.id = fcli.usage_date_key
+        LEFT JOIN dim_service ds ON ds.id = fcli.service_key
+        LEFT JOIN dim_resource dres ON dres.id = fcli.resource_key
+        LEFT JOIN dim_region dr ON dr.id = fcli.region_key
+        LEFT JOIN dim_sub_account dsa ON dsa.id = fcli.sub_account_key
+        LEFT JOIN dim_sku dsku ON dsku.id = fcli.sku_key
+        WHERE ${scoped.whereClause}
+      ),
+      scoped_data AS (
+        SELECT
+          base_scoped.*,
+          ${S3_STORAGE_CLASS_LABEL_SQL} AS storage_class,
+          ${S3_COST_CATEGORY_SQL} AS cost_category
+        FROM base_scoped
+      ),
+      filtered AS (
+        SELECT *
+        FROM scoped_data
+        WHERE ${filterPredicates.clause}
+      )
+      SELECT
+        COALESCE(NULLIF(usage_type, ''), 'Unspecified') AS usage_type,
+        COALESCE(NULLIF(operation, ''), 'Unspecified') AS operation,
+        COALESCE(SUM(billed_cost), 0)::double precision AS cost,
+        COALESCE(SUM(quantity), 0)::double precision AS quantity,
+        CASE
+          WHEN COUNT(DISTINCT unit) = 1 THEN MIN(unit)
+          ELSE 'Mixed'
+        END AS unit
+      FROM filtered
+      GROUP BY COALESCE(NULLIF(usage_type, ''), 'Unspecified'), COALESCE(NULLIF(operation, ''), 'Unspecified')
+      ORDER BY cost DESC, usage_type ASC, operation ASC
+      LIMIT $${limitPlaceholder};
+      `,
+      {
+        bind: [...scoped.params, ...filterPredicates.params, limit],
+        type: QueryTypes.SELECT,
+      },
+    );
+
+    return rows.map((row) => ({
+      usageType: String(row.usage_type ?? "Unspecified"),
+      operation: String(row.operation ?? "Unspecified"),
+      cost: toNumber(row.cost),
+      quantity: toNumber(row.quantity),
+      unit: String(row.unit ?? "Units"),
+    }));
+  }
+
+  async getBucketCostBreakdown(
+    scope: DashboardScope,
+    filters: S3CostInsightsFilters,
+    limit: number = 5000,
+  ): Promise<Omit<S3CostBucketTableInsight, "trendPct">[]> {
     const filter = buildDashboardFilter(scope);
+    const filterPredicates = this.buildS3FilterPredicates(filters, filter.params.length + 1);
+    const limitPlaceholder = filter.params.length + filterPredicates.params.length + 1;
     const rows = await sequelize.query<S3BucketBreakdownRow>(
       `
       WITH filtered AS (
         SELECT
           COALESCE(NULLIF(${S3_BUCKET_NAME_SQL}, ''), 'unattributed') AS bucket_name,
           COALESCE(NULLIF(dr.region_name, ''), NULLIF(dr.region_id, ''), 'global') AS region_name,
+          COALESCE(dsa.sub_account_name, dsa.sub_account_id, 'Unspecified') AS account_name,
           COALESCE(fcli.billed_cost, 0)::double precision AS billed_cost,
           COALESCE(fcli.effective_cost, 0)::double precision AS effective_cost,
           COALESCE(fcli.list_cost, 0)::double precision AS list_cost,
@@ -742,6 +1004,7 @@ export class S3CostInsightsRepository {
         LEFT JOIN dim_service ds ON ds.id = fcli.service_key
         LEFT JOIN dim_resource dres ON dres.id = fcli.resource_key
         LEFT JOIN dim_region dr ON dr.id = fcli.region_key
+        LEFT JOIN dim_sub_account dsa ON dsa.id = fcli.sub_account_key
         LEFT JOIN LATERAL (
           SELECT dt.tag_value AS owner_value
           FROM (
@@ -790,6 +1053,14 @@ export class S3CostInsightsRepository {
         WHERE ${filter.whereClause}
           AND ${S3_SERVICE_NAME_FILTER_SQL}
       ),
+      filtered_with_filters AS (
+        SELECT
+          filtered.*,
+          ${S3_STORAGE_CLASS_LABEL_SQL} AS storage_class,
+          ${S3_COST_CATEGORY_SQL} AS cost_category
+        FROM filtered
+        WHERE ${filterPredicates.clause}
+      ),
       bucket_agg AS (
         SELECT
           bucket_name,
@@ -812,7 +1083,7 @@ export class S3CostInsightsRepository {
             0
           )::double precision AS other,
           GREATEST(COALESCE(SUM(list_cost - effective_cost), 0), 0)::double precision AS savings
-        FROM filtered
+        FROM filtered_with_filters
         GROUP BY bucket_name
       ),
       region_rank AS (
@@ -824,8 +1095,20 @@ export class S3CostInsightsRepository {
             PARTITION BY bucket_name
             ORDER BY SUM(billed_cost) DESC, region_name ASC
           ) AS rn
-        FROM filtered
+        FROM filtered_with_filters
         GROUP BY bucket_name, region_name
+      ),
+      account_rank AS (
+        SELECT
+          bucket_name,
+          account_name,
+          SUM(billed_cost)::double precision AS billed_cost,
+          ROW_NUMBER() OVER (
+            PARTITION BY bucket_name
+            ORDER BY SUM(billed_cost) DESC, account_name ASC
+          ) AS rn
+        FROM filtered_with_filters
+        GROUP BY bucket_name, account_name
       ),
       owner_rank AS (
         SELECT
@@ -836,7 +1119,7 @@ export class S3CostInsightsRepository {
             PARTITION BY bucket_name
             ORDER BY SUM(billed_cost) DESC, owner_value ASC
           ) AS rn
-        FROM filtered
+        FROM filtered_with_filters
         WHERE COALESCE(NULLIF(owner_value, ''), '') <> ''
         GROUP BY bucket_name, owner_value
       ),
@@ -849,12 +1132,13 @@ export class S3CostInsightsRepository {
             PARTITION BY bucket_name
             ORDER BY SUM(billed_cost) DESC, driver_value ASC
           ) AS rn
-        FROM filtered
+        FROM filtered_with_filters
         WHERE COALESCE(NULLIF(driver_value, ''), '') <> ''
         GROUP BY bucket_name, driver_value
       )
       SELECT
         ba.bucket_name,
+        COALESCE(ar.account_name, 'Unspecified') AS account,
         ba.cost,
         ba.storage,
         ba.requests,
@@ -878,6 +1162,9 @@ export class S3CostInsightsRepository {
       LEFT JOIN region_rank rr
         ON rr.bucket_name = ba.bucket_name
        AND rr.rn = 1
+      LEFT JOIN account_rank ar
+        ON ar.bucket_name = ba.bucket_name
+       AND ar.rn = 1
       LEFT JOIN owner_rank orank
         ON orank.bucket_name = ba.bucket_name
        AND orank.rn = 1
@@ -885,13 +1172,14 @@ export class S3CostInsightsRepository {
         ON drank.bucket_name = ba.bucket_name
        AND drank.rn = 1
       ORDER BY ba.cost DESC
-      LIMIT $${filter.params.length + 1};
+      LIMIT $${limitPlaceholder};
       `,
-      { bind: [...filter.params, limit], type: QueryTypes.SELECT },
+      { bind: [...filter.params, ...filterPredicates.params, limit], type: QueryTypes.SELECT },
     );
 
     return rows.map((row) => ({
       bucketName: String(row.bucket_name ?? "unattributed"),
+      account: String(row.account ?? "Unspecified"),
       cost: toNumber(row.cost),
       storage: toNumber(row.storage),
       requests: toNumber(row.requests),

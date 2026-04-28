@@ -1,5 +1,9 @@
+import { useMemo } from "react";
+import type { ColDef, ICellRendererParams, ValueFormatterParams } from "ag-grid-community";
+
 import type { InventoryEc2InstanceRow } from "@/features/client-home/api/inventory-instances.api";
 import { EmptyStateBlock } from "@/features/dashboard/common/components/EmptyStateBlock";
+import { BaseDataTable } from "@/features/dashboard/common/tables/BaseDataTable";
 
 type EC2InstancesTableProps = {
   rows: InventoryEc2InstanceRow[];
@@ -62,6 +66,90 @@ const getRecommendation = (instance: InventoryEc2InstanceRow): string => {
 };
 
 export function EC2InstancesTable({ rows, loading, error, onRetry }: EC2InstancesTableProps) {
+  const columnDefs = useMemo<ColDef<InventoryEc2InstanceRow>[]>(
+    () => [
+      {
+        headerName: "Instance",
+        field: "instanceId",
+        minWidth: 240,
+        cellRenderer: (params: ICellRendererParams<InventoryEc2InstanceRow>) => {
+          const instance = params.data;
+          if (!instance) return "-";
+          return (
+            <div className="ec2-instances-table__instance-cell">
+              <strong>{instance.instanceName ?? instance.instanceId}</strong>
+              <span>{instance.instanceId}</span>
+            </div>
+          );
+        },
+      },
+      {
+        headerName: "Total Cost",
+        field: "monthToDateCost",
+        minWidth: 132,
+        valueFormatter: (params: ValueFormatterParams<InventoryEc2InstanceRow, number | null | undefined>) =>
+          formatCurrency(params.value),
+      },
+      {
+        headerName: "CPU %",
+        field: "cpuAvg",
+        minWidth: 110,
+        valueFormatter: (params: ValueFormatterParams<InventoryEc2InstanceRow, number | null | undefined>) =>
+          formatPercent(params.value),
+      },
+      {
+        headerName: "Network",
+        valueGetter: () => "-",
+        minWidth: 106,
+      },
+      {
+        headerName: "Volume Cost",
+        valueGetter: () => "-",
+        minWidth: 128,
+      },
+      {
+        headerName: "State",
+        field: "state",
+        minWidth: 110,
+        valueFormatter: (params: ValueFormatterParams<InventoryEc2InstanceRow, string | null | undefined>) =>
+          toTitle(params.value ?? null),
+      },
+      {
+        headerName: "Instance Type",
+        field: "instanceType",
+        minWidth: 140,
+        valueFormatter: (params: ValueFormatterParams<InventoryEc2InstanceRow, string | null | undefined>) =>
+          params.value ?? "-",
+      },
+      {
+        headerName: "Reservation Type",
+        field: "pricingType",
+        minWidth: 162,
+        valueFormatter: (
+          params: ValueFormatterParams<InventoryEc2InstanceRow, InventoryEc2InstanceRow["pricingType"]>,
+        ) => getReservationType(params.value),
+      },
+      {
+        headerName: "Region",
+        minWidth: 190,
+        valueGetter: (params) => params.data?.regionName ?? params.data?.regionId ?? params.data?.regionKey ?? "-",
+      },
+      {
+        headerName: "Launch Time",
+        field: "launchTime",
+        minWidth: 178,
+        valueFormatter: (params: ValueFormatterParams<InventoryEc2InstanceRow, string | null | undefined>) =>
+          formatDateTime(params.value ?? null),
+      },
+      {
+        headerName: "Recommendation",
+        minWidth: 190,
+        valueGetter: (params) => (params.data ? getRecommendation(params.data) : "-"),
+      },
+    ],
+    [],
+  );
+
   if (loading) {
     return <div className="ec2-explorer-table__skeleton" aria-hidden="true" />;
   }
@@ -91,47 +179,7 @@ export function EC2InstancesTable({ rows, loading, error, onRetry }: EC2Instance
 
   return (
     <section className="ec2-explorer-table ec2-instances-table" aria-label="EC2 instances table">
-      <div className="ec2-explorer-table__scroll">
-        <table>
-          <thead>
-            <tr>
-              <th scope="col">Instance</th>
-              <th scope="col">Total Cost</th>
-              <th scope="col">CPU %</th>
-              <th scope="col">Network</th>
-              <th scope="col">Volume Cost</th>
-              <th scope="col">State</th>
-              <th scope="col">Instance Type</th>
-              <th scope="col">Reservation Type</th>
-              <th scope="col">Region</th>
-              <th scope="col">Launch Time</th>
-              <th scope="col">Recommendation</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((instance) => (
-              <tr key={instance.instanceId}>
-                <td>
-                  <div className="ec2-instances-table__instance-cell">
-                    <strong>{instance.instanceName ?? instance.instanceId}</strong>
-                    <span>{instance.instanceId}</span>
-                  </div>
-                </td>
-                <td>{formatCurrency(instance.monthToDateCost)}</td>
-                <td>{formatPercent(instance.cpuAvg)}</td>
-                <td>-</td>
-                <td>-</td>
-                <td>{toTitle(instance.state)}</td>
-                <td>{instance.instanceType ?? "-"}</td>
-                <td>{getReservationType(instance.pricingType)}</td>
-                <td>{instance.regionName ?? instance.regionId ?? instance.regionKey ?? "-"}</td>
-                <td>{formatDateTime(instance.launchTime)}</td>
-                <td>{getRecommendation(instance)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <BaseDataTable columnDefs={columnDefs} rowData={rows} pagination paginationPageSize={10}  autoHeight />
     </section>
   );
 }

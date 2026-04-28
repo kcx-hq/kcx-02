@@ -1,15 +1,21 @@
+import { useMemo } from "react";
+import type { ColDef, ICellRendererParams } from "ag-grid-community";
+
+import { BaseDataTable } from "../../../common/tables/BaseDataTable";
 import { EmptyStateBlock } from "../../../common/components/EmptyStateBlock";
+
+type EC2ExplorerTableRow = { id: string; [key: string]: string | number | null };
 
 type EC2ExplorerTableProps = {
   loading: boolean;
   error: Error | null;
   table: {
     columns: Array<{ key: string; label: string }>;
-    rows: Array<{ id: string; [key: string]: string | number | null }>;
+    rows: EC2ExplorerTableRow[];
   } | null;
   onRetry: () => void;
-  onRowClick: (row: { id: string; [key: string]: string | number | null }) => void;
-  onRecommendationClick?: (row: { id: string; [key: string]: string | number | null }) => void;
+  onRowClick: (row: EC2ExplorerTableRow) => void;
+  onRecommendationClick?: (row: EC2ExplorerTableRow) => void;
 };
 
 const formatCellValue = (value: string | number | null): string => {
@@ -22,6 +28,33 @@ const formatCellValue = (value: string | number | null): string => {
 };
 
 export function EC2ExplorerTable({ loading, error, table, onRetry, onRowClick, onRecommendationClick }: EC2ExplorerTableProps) {
+  const columnDefs = useMemo<ColDef<EC2ExplorerTableRow>[]>(() => {
+    if (!table) return [];
+    return table.columns.map((column) => {
+      const isRecommendationColumn = /recommendation/i.test(column.key) || /recommendation/i.test(column.label);
+      return {
+        headerName: column.label,
+        field: column.key,
+        minWidth: 160,
+        valueFormatter: (params) => formatCellValue(params.value as string | number | null),
+        cellRenderer: isRecommendationColumn && onRecommendationClick
+          ? (params: ICellRendererParams<EC2ExplorerTableRow, string | number | null>) => (
+              <button
+                type="button"
+                className="optimization-rightsizing-view-btn"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  if (params.data) onRecommendationClick(params.data);
+                }}
+              >
+                {formatCellValue(params.value ?? null)}
+              </button>
+            )
+          : undefined,
+      } satisfies ColDef<EC2ExplorerTableRow>;
+    });
+  }, [onRecommendationClick, table]);
+
   if (loading) {
     return <div className="ec2-explorer-table__skeleton" aria-hidden="true" />;
   }
@@ -51,47 +84,14 @@ export function EC2ExplorerTable({ loading, error, table, onRetry, onRowClick, o
 
   return (
     <section className="ec2-explorer-table" aria-label="EC2 explorer table">
-      <div className="ec2-explorer-table__scroll">
-        <table>
-          <thead>
-            <tr>
-              {table.columns.map((column) => (
-                <th key={column.key} scope="col">
-                  {column.label}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {table.rows.map((row) => (
-              <tr key={row.id} onClick={() => onRowClick(row)} role="button" tabIndex={0}>
-                {table.columns.map((column) => (
-                  <td key={`${row.id}-${column.key}`}>
-                    {(() => {
-                      const value = formatCellValue(row[column.key] ?? null);
-                      const isRecommendationColumn = /recommendation/i.test(column.key) || /recommendation/i.test(column.label);
-                      if (!isRecommendationColumn || !onRecommendationClick) return value;
-
-                      return (
-                        <button
-                          type="button"
-                          className="optimization-rightsizing-view-btn"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            onRecommendationClick(row);
-                          }}
-                        >
-                          {value}
-                        </button>
-                      );
-                    })()}
-                  </td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <BaseDataTable
+        columnDefs={columnDefs}
+        rowData={table.rows}
+        pagination
+        paginationPageSize={10}
+        autoHeight
+        onRowClick={onRowClick}
+      />
     </section>
   );
 }

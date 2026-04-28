@@ -2,7 +2,6 @@ import { useDeferredValue, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import type { InventoryEc2InstanceRow } from "@/features/client-home/api/inventory-instances.api";
-import { TablePagination } from "@/features/client-home/components/TablePagination";
 import { useInventoryEc2Instances } from "@/features/client-home/hooks/useInventoryEc2Instances";
 
 import { EC2InstancesContextChips } from "./components/EC2InstancesContextChips";
@@ -379,25 +378,9 @@ export default function EC2InstancesPage() {
     return chips;
   }, [controls.condition, controls.instanceType, controls.reservationType, controls.scopeFilters, controls.state, controls.thresholds]);
 
-  const hasThresholdFilters = Object.values(controls.thresholds).some((value) => value.trim().length > 0);
-  const hasClientOnlyFilters =
-    controls.condition !== "all" ||
-    controls.scopeFilters.region.length > 0 ||
-    controls.scopeFilters.tags.length > 0 ||
-    hasThresholdFilters;
-
-  const totalItems = hasClientOnlyFilters ? filteredRows.length : instancesQuery.data?.pagination.total ?? items.length;
-  const totalPages = hasClientOnlyFilters ? 1 : instancesQuery.data?.pagination.totalPages ?? 1;
-  const currentPage = hasClientOnlyFilters ? 1 : instancesQuery.data?.pagination.page ?? page;
-
   return (
     <div className="dashboard-page cost-explorer-page">
-      <section className="cost-explorer-unified-shell" aria-label="EC2 instances list">
-        <header className="space-y-1">
-          <h1 className="text-[1.45rem] font-semibold leading-tight text-text-primary">Instances</h1>
-          <p className="text-sm text-text-secondary">Showing EC2 instances for selected scope</p>
-        </header>
-
+      <section aria-label="EC2 instances list">
         <EC2InstancesTopBar
           value={controls}
           instanceTypeOptions={instanceTypeOptions}
@@ -409,32 +392,32 @@ export default function EC2InstancesPage() {
             setControls({ ...EC2_INSTANCES_DEFAULT_CONTROLS });
             setPage(1);
           }}
-        />
-
-        <EC2InstancesContextChips
-          chips={activeChips}
-          explorerContextLabel={explorerContextLabel}
-          onClearExplorerContext={isFromExplorer ? clearExplorerContext : undefined}
-          onClearAll={() => {
-            setControls((current) => ({
-              ...current,
-              condition: "all",
-              state: "all",
-              instanceType: "all",
-              reservationType: "all",
-              scopeFilters: { region: [], tags: [] },
-              thresholds: {
-                cpuMin: "",
-                cpuMax: "",
-                costMin: "",
-                costMax: "",
-                networkMin: "",
-                networkMax: "",
-              },
-            }));
-            setPage(1);
-          }}
-        />
+        >
+          <EC2InstancesContextChips
+            chips={activeChips}
+            explorerContextLabel={explorerContextLabel}
+            onClearExplorerContext={isFromExplorer ? clearExplorerContext : undefined}
+            onClearAll={() => {
+              setControls((current) => ({
+                ...current,
+                condition: "all",
+                state: "all",
+                instanceType: "all",
+                reservationType: "all",
+                scopeFilters: { region: [], tags: [] },
+                thresholds: {
+                  cpuMin: "",
+                  cpuMax: "",
+                  costMin: "",
+                  costMax: "",
+                  networkMin: "",
+                  networkMax: "",
+                },
+              }));
+              setPage(1);
+            }}
+          />
+        </EC2InstancesTopBar>
 
         <EC2InstancesTable
           rows={filteredRows}
@@ -442,21 +425,6 @@ export default function EC2InstancesPage() {
           error={instancesQuery.isError ? instancesQuery.error : null}
           onRetry={() => {
             void instancesQuery.refetch();
-          }}
-        />
-
-        <TablePagination
-          currentPage={currentPage}
-          totalPages={Math.max(1, totalPages)}
-          totalItems={Math.max(0, totalItems)}
-          pageSize={PAGE_SIZE}
-          onPrevious={() => {
-            if (hasClientOnlyFilters) return;
-            setPage((current) => Math.max(1, current - 1));
-          }}
-          onNext={() => {
-            if (hasClientOnlyFilters) return;
-            setPage((current) => Math.min(Math.max(1, totalPages), current + 1));
           }}
         />
       </section>

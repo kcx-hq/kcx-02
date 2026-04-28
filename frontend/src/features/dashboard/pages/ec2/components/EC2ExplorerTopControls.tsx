@@ -1,5 +1,6 @@
-import { Filter, RotateCcw, Settings2, ChevronDown, Check } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { RotateCcw, Settings2, ChevronDown, Check, Filter } from "lucide-react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 import {
   AGGREGATION_OPTIONS,
@@ -29,7 +30,6 @@ type PopoverKey =
   | "groupBy"
   | "usageAggregation"
   | "instancesState"
-  | "scopeFilters"
   | "thresholds";
 
 type Option<T extends string> = {
@@ -41,11 +41,13 @@ type EC2ExplorerTopControlsProps = {
   value: EC2ExplorerControlsState;
   onChange: (next: EC2ExplorerControlsState) => void;
   onReset: () => void;
+  children?: ReactNode;
 };
 
-export function EC2ExplorerTopControls({ value, onChange, onReset }: EC2ExplorerTopControlsProps) {
+export function EC2ExplorerTopControls({ value, onChange, onReset, children }: EC2ExplorerTopControlsProps) {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const [activePopover, setActivePopover] = useState<PopoverKey | null>(null);
+  const [scopeFiltersOpen, setScopeFiltersOpen] = useState(false);
 
   useEffect(() => {
     const handlePointerDown = (event: MouseEvent) => {
@@ -107,7 +109,6 @@ export function EC2ExplorerTopControls({ value, onChange, onReset }: EC2Explorer
       GROUP_BY_OPTIONS.filter((option) => {
         if (option.key === "usage-category") return value.metric === "usage";
         if (option.key === "cost-category") return value.metric === "cost";
-        if (option.key === "instance-type") return value.metric === "instances";
         return true;
       }),
     [value.metric],
@@ -115,7 +116,6 @@ export function EC2ExplorerTopControls({ value, onChange, onReset }: EC2Explorer
   const isGroupByVisibleForMetric = (groupBy: EC2GroupBy, metric: EC2Metric): boolean => {
     if (groupBy === "usage-category") return metric === "usage";
     if (groupBy === "cost-category") return metric === "cost";
-    if (groupBy === "instance-type") return metric === "instances";
     return true;
   };
 
@@ -162,6 +162,22 @@ export function EC2ExplorerTopControls({ value, onChange, onReset }: EC2Explorer
         <div
           className={`ec2-explorer-toolbar-main${value.metric === "instances" ? " ec2-explorer-toolbar-main--instances" : ""}`}
         >
+          <div className="cost-explorer-toolbar-item">
+            <button
+              type="button"
+              className="cost-explorer-toolbar-trigger"
+              onClick={() => {
+                setActivePopover(null);
+                setScopeFiltersOpen(true);
+              }}
+            >
+              <span className="cost-explorer-toolbar-trigger__row">
+                <span className="cost-explorer-toolbar-trigger__value">Filters</span>
+                <Filter className="cost-explorer-toolbar-trigger__caret" size={14} aria-hidden="true" />
+              </span>
+            </button>
+          </div>
+
           <div className="cost-explorer-toolbar-item">
             <button
               type="button"
@@ -348,27 +364,6 @@ export function EC2ExplorerTopControls({ value, onChange, onReset }: EC2Explorer
             </div>
           ) : null}
 
-          <div className="cost-explorer-toolbar-item">
-            <button
-              type="button"
-              className={`ec2-explorer-toolbar-action${activePopover === "scopeFilters" ? " is-active" : ""}`}
-              onClick={() => togglePopover("scopeFilters")}
-              aria-label="Filters"
-              title="Filters"
-            >
-              <Filter size={14} aria-hidden="true" />
-            </button>
-            {activePopover === "scopeFilters" ? (
-              <div className="cost-explorer-filter-popover cost-explorer-filter-popover--split ec2-explorer-filter-popover ec2-explorer-filter-popover--scope cost-explorer-filter-popover--right">
-                <EC2ExplorerScopeFilters
-                  value={value.scopeFilters}
-                  onChange={(nextScopeFilters) => update({ scopeFilters: nextScopeFilters })}
-                  onApply={() => setActivePopover(null)}
-                />
-              </div>
-            ) : null}
-          </div>
-
           <button
             type="button"
             className="ec2-explorer-toolbar-action"
@@ -380,6 +375,22 @@ export function EC2ExplorerTopControls({ value, onChange, onReset }: EC2Explorer
           </button>
         </div>
       </div>
+      {children}
+
+      <Dialog open={scopeFiltersOpen} onOpenChange={setScopeFiltersOpen}>
+        <DialogContent className="left-auto right-0 top-0 h-screen max-h-screen w-[min(96vw,44rem)] max-w-none -translate-x-0 -translate-y-0 rounded-none border-l border-[color:var(--border-light)] p-6 data-[state=open]:slide-in-from-right data-[state=closed]:slide-out-to-right data-[state=open]:zoom-in-100 data-[state=closed]:zoom-out-100">
+          <DialogHeader className="space-y-1">
+            <DialogTitle className="text-xl font-semibold text-text-primary">Scope Filters</DialogTitle>
+          </DialogHeader>
+          <div className="mt-4">
+            <EC2ExplorerScopeFilters
+              value={value.scopeFilters}
+              onChange={(nextScopeFilters) => update({ scopeFilters: nextScopeFilters })}
+              onApply={() => setScopeFiltersOpen(false)}
+            />
+          </div>
+        </DialogContent>
+      </Dialog>
     </section>
   );
 }

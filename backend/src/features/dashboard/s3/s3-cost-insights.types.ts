@@ -25,7 +25,8 @@ export type S3CostFeatureTrendInsight = {
 };
 
 export type S3CostChartBy = "date" | "bucket" | "region" | "account";
-export type S3CostSeriesBy = "cost_category" | "usage_type" | "operation" | "product_family";
+export type S3CostSeriesBy = "cost_category" | "usage_type" | "operation" | "product_family" | "bucket" | "storage_class";
+export type S3CostYAxisMetric = "billed_cost" | "effective_cost" | "amortized_cost";
 export type S3CostCategory =
   | "Storage"
   | "Request"
@@ -35,12 +36,14 @@ export type S3CostCategory =
 
 export type S3CostInsightsFilters = {
   costCategory: S3CostCategory[];
+  seriesValues: string[];
   bucket: string | null;
   storageClass: string[];
   region: string[];
   account: string[];
   costBy: S3CostChartBy;
   seriesBy: S3CostSeriesBy;
+  yAxisMetric: S3CostYAxisMetric;
 };
 
 export type S3CostBreakdownChart = {
@@ -53,6 +56,7 @@ export type S3CostBreakdownChart = {
 
 export type S3CostBucketTableInsight = {
   bucketName: string;
+  account: string;
   cost: number;
   storage: number;
   requests: number;
@@ -64,6 +68,22 @@ export type S3CostBucketTableInsight = {
   retrieval: number;
   other: number;
   trendPct: number;
+};
+
+export type S3CostCategoryTableInsight = {
+  costCategory: S3CostCategory;
+  cost: number;
+  usageQuantity: number;
+  pricingUnit: string;
+  percentOfBucketCost: number;
+};
+
+export type S3UsageOperationTableInsight = {
+  usageType: string;
+  operation: string;
+  cost: number;
+  quantity: number;
+  unit: string;
 };
 
 export type S3CostInsightsResponse = {
@@ -97,6 +117,8 @@ export type S3CostInsightsResponse = {
     effectiveCost: number;
   };
   bucketTable: S3CostBucketTableInsight[];
+  costCategoryTable: S3CostCategoryTableInsight[];
+  usageOperationTable: S3UsageOperationTableInsight[];
   chart: {
     bucketCosts: S3CostBucketInsight[];
     trend: S3CostTrendInsight[];
@@ -105,11 +127,15 @@ export type S3CostInsightsResponse = {
   };
   filterOptions: {
     costCategory: S3CostCategory[];
+    usageType: string[];
+    operation: string[];
+    productFamily: string[];
     bucket: string[];
     storageClass: string[];
     region: string[];
     account: string[];
     costBy: S3CostChartBy[];
     seriesBy: S3CostSeriesBy[];
+    yAxisMetric: S3CostYAxisMetric[];
   };
 };

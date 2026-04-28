@@ -1,3 +1,4 @@
+import { X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
@@ -71,14 +72,27 @@ export default function EC2ExplorerPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const { scope } = useDashboardScope();
+  const scopeParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
+  const scopeStartDate =
+    scope?.from ??
+    scopeParams.get("from") ??
+    scopeParams.get("billingPeriodStart") ??
+    scopeParams.get("startDate") ??
+    undefined;
+  const scopeEndDate =
+    scope?.to ??
+    scopeParams.get("to") ??
+    scopeParams.get("billingPeriodEnd") ??
+    scopeParams.get("endDate") ??
+    undefined;
 
   const [controls, setControls] = useState<EC2ExplorerControlsState>(EC2_EXPLORER_DEFAULT_CONTROLS);
   const shouldSendUsageMetric =
     controls.metric === "usage" && controls.groupBy !== "usage-category";
   const filters = useMemo(
     () => ({
-      startDate: scope?.from,
-      endDate: scope?.to,
+      startDate: scopeStartDate,
+      endDate: scopeEndDate,
       metric: controls.metric,
       groupBy: toApiGroupBy(controls.groupBy),
       tagKey: controls.groupBy === "tag" ? controls.scopeFilters.tags[0] ?? "owner" : null,
@@ -98,16 +112,14 @@ export default function EC2ExplorerPage() {
       states: controls.instancesState ? [controls.instancesState] : [],
       instanceTypes: controls.instanceType && controls.instanceType !== "all" ? [controls.instanceType] : [],
     }),
-    [controls, scope?.from, scope?.to, shouldSendUsageMetric],
+    [controls, scopeEndDate, scopeStartDate, shouldSendUsageMetric],
   );
 
   const query = useEc2ExplorerQuery(filters, Boolean(scope));
-  const resolvedGraphType = useMemo<"line" | "stacked_bar">(() => {
-    if (controls.metric === "usage") {
-      return controls.groupBy === "none" ? "line" : controls.chartType;
-    }
-    return controls.chartType === "stacked_bar" && controls.groupBy !== "none" ? "stacked_bar" : "line";
-  }, [controls.chartType, controls.groupBy, controls.metric]);
+  const resolvedGraphType = useMemo<"line" | "stacked_bar">(
+    () => controls.chartType,
+    [controls.chartType],
+  );
 
   const metricLabel = METRIC_OPTIONS.find((option) => option.key === controls.metric)?.label ?? "Cost";
 
@@ -119,8 +131,8 @@ export default function EC2ExplorerPage() {
     const next = new URLSearchParams(location.search);
     ["selectedDate", "groupValue", "date", "seriesKey", "seriesLabel"].forEach((key) => next.delete(key));
     next.set("source", source);
-    if (scope?.from) next.set("startDate", scope.from);
-    if (scope?.to) next.set("endDate", scope.to);
+    if (scopeStartDate) next.set("startDate", scopeStartDate);
+    if (scopeEndDate) next.set("endDate", scopeEndDate);
     next.set("metric", controls.metric);
     next.set("groupBy", toQueryGroupBy(controls.groupBy));
     if (controls.groupBy === "tag") {
@@ -160,18 +172,126 @@ export default function EC2ExplorerPage() {
     navigate({ pathname: INSTANCE_LIST_PATH, search: next.toString() });
   };
 
+  const chips = useMemo(() => {
+    const metricLabel = METRIC_OPTIONS.find((option) => option.key === controls.metric)?.label ?? "Cost";
+    const configLabel =
+      controls.metric === "cost"
+        ? controls.costBasis === "amortized_cost"
+          ? "Amortized Cost"
+          : controls.costBasis === "billed_cost"
+            ? "Billed Cost"
+            : "Effective Cost"
+        : controls.metric === "usage"
+          ? controls.usageMetric === "network_in"
+            ? "Network In"
+            : controls.usageMetric === "network_out"
+              ? "Network Out"
+              : controls.usageMetric === "disk_read"
+                ? "Disk Read"
+                : controls.usageMetric === "disk_write"
+                  ? "Disk Write"
+                  : "CPU"
+          : controls.instancesCondition === "underutilized"
+            ? "Underutilized"
+            : controls.instancesCondition === "overutilized"
+              ? "Overutilized"
+              : controls.instancesCondition === "uncovered"
+                ? "Uncovered"
+                : controls.instancesCondition === "idle"
+                  ? "Idle"
+                  : "All";
+    const groupByLabel = toApiGroupBy(controls.groupBy).replace(/_/g, " ");
+    const stateLabel = controls.instancesState;
+    const list: Array<{ id: string; label: string; value: string; onRemove: () => void }> = [
+      {
+        id: "metric",
+        label: "Metric",
+        value: metricLabel,
+        onRemove: resetControls,
+      },
+      {
+        id: "config",
+        label: controls.metric === "instances" ? "Condition" : controls.metric === "usage" ? "Usage Metric" : "Cost Basis",
+        value: configLabel,
+        onRemove: () =>
+          setControls((current) => ({
+            ...current,
+            costBasis: EC2_EXPLORER_DEFAULT_CONTROLS.costBasis,
+            usageMetric: EC2_EXPLORER_DEFAULT_CONTROLS.usageMetric,
+            instancesCondition: EC2_EXPLORER_DEFAULT_CONTROLS.instancesCondition,
+          })),
+      },
+      {
+        id: "groupBy",
+        label: "Group By",
+        value: groupByLabel.replace(/\b\w/g, (match) => match.toUpperCase()),
+        onRemove: () =>
+          setControls((current) => ({
+            ...current,
+            groupBy: EC2_EXPLORER_DEFAULT_CONTROLS.groupBy,
+            groupByValues: [],
+          })),
+      },
+    ];
+    if (controls.metric === "instances") {
+      list.push({
+        id: "state",
+        label: "State",
+        value: stateLabel.charAt(0).toUpperCase() + stateLabel.slice(1),
+        onRemove: () => setControls((current) => ({ ...current, instancesState: EC2_EXPLORER_DEFAULT_CONTROLS.instancesState })),
+      });
+    }
+    if (controls.scopeFilters.region.length > 0) {
+      list.push({
+        id: "region",
+        label: "Region",
+        value: `${controls.scopeFilters.region.length} selected`,
+        onRemove: () =>
+          setControls((current) => ({ ...current, scopeFilters: { ...current.scopeFilters, region: [] } })),
+      });
+    }
+    if (controls.groupByValues.length > 0) {
+      list.push({
+        id: "groupValues",
+        label: "Values",
+        value: `${controls.groupByValues.length} selected`,
+        onRemove: () => setControls((current) => ({ ...current, groupByValues: [] })),
+      });
+    }
+    return list;
+  }, [controls, resetControls]);
+
   return (
     <div className="dashboard-page cost-explorer-page">
-      <section className="cost-explorer-unified-shell">
-        <EC2ExplorerTopControls value={controls} onChange={setControls} onReset={resetControls} />
-        <div className="cost-explorer-unified-shell__divider" aria-hidden="true" />
+      <section className="ec2-explorer-head-stack" aria-label="EC2 explorer controls and summary">
+        <EC2ExplorerTopControls value={controls} onChange={setControls} onReset={resetControls}>
+          <div className="cost-explorer-chip-bar" aria-label="Selected filter summary">
+            <div className="cost-explorer-chip-row">
+              {chips.map((chip) => (
+                <span key={chip.id} className="cost-explorer-chip">
+                  <span className="cost-explorer-chip__edit">
+                    {chip.label}: {chip.value}
+                  </span>
+                  <button type="button" className="cost-explorer-chip__remove" onClick={chip.onRemove} aria-label={`Remove ${chip.label}`}>
+                    <X size={13} aria-hidden="true" />
+                  </button>
+                </span>
+              ))}
+              <button type="button" className="cost-explorer-chip-bar__clear cost-explorer-chip-bar__clear--inline" onClick={resetControls}>
+                Clear all
+              </button>
+            </div>
+          </div>
+        </EC2ExplorerTopControls>
 
         <EC2SummaryCards summary={query.data?.summary ?? defaultSummary} loading={query.isLoading} />
+      </section>
 
+      <section className="ec2-explorer-chart-panel" aria-label="EC2 explorer chart panel">
         <EC2ExplorerChart
           title={`${metricLabel} Breakdown`}
           chartType={resolvedGraphType}
-          canUseStackedBar={controls.groupBy !== "none"}
+          canUseStackedBar
           onChartTypeChange={(nextChartType) => {
             setControls((current) => ({ ...current, chartType: nextChartType }));
           }}
@@ -200,7 +320,9 @@ export default function EC2ExplorerPage() {
             });
           }}
         />
+      </section>
 
+      <section className="ec2-explorer-table-panel" aria-label="EC2 explorer table panel">
         <EC2ExplorerTable
           loading={query.isLoading}
           error={query.isError ? query.error : null}

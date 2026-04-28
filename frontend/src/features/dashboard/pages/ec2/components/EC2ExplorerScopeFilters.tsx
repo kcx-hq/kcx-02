@@ -42,6 +42,7 @@ export function EC2ExplorerScopeFilters({ value, onChange, onApply }: EC2Explore
   const [activeGroup, setActiveGroup] = useState<FilterGroupKey>("region");
   const [draft, setDraft] = useState<EC2ScopeFilters>(value);
   const [groupSearch, setGroupSearch] = useState("");
+  const [valueSearch, setValueSearch] = useState("");
 
   useEffect(() => {
     setDraft(value);
@@ -51,6 +52,11 @@ export function EC2ExplorerScopeFilters({ value, onChange, onApply }: EC2Explore
     () => FILTER_GROUPS.find((group) => group.key === activeGroup)?.values ?? [],
     [activeGroup],
   );
+  const filteredValues = useMemo(() => {
+    const query = valueSearch.trim().toLowerCase();
+    if (!query) return activeValues;
+    return activeValues.filter((entry) => entry.label.toLowerCase().includes(query));
+  }, [activeValues, valueSearch]);
 
   const filteredGroups = useMemo(() => {
     const query = groupSearch.trim().toLowerCase();
@@ -64,6 +70,10 @@ export function EC2ExplorerScopeFilters({ value, onChange, onApply }: EC2Explore
       setActiveGroup(filteredGroups[0].key);
     }
   }, [activeGroup, filteredGroups]);
+
+  useEffect(() => {
+    setValueSearch("");
+  }, [activeGroup]);
 
   const toggle = (group: FilterGroupKey, option: string) => {
     const selected = draft[group];
@@ -115,6 +125,16 @@ export function EC2ExplorerScopeFilters({ value, onChange, onApply }: EC2Explore
 
         <div className="cost-explorer-filter-popover__split-pane cost-explorer-filter-popover__split-pane--right">
           <p className="cost-explorer-filter-popover__title">Values</p>
+          <label className="cost-explorer-filter-popover__search-wrap">
+            <Search className="cost-explorer-filter-popover__search-icon" size={14} aria-hidden="true" />
+            <input
+              type="search"
+              className="cost-explorer-filter-popover__search-input"
+              value={valueSearch}
+              onChange={(event) => setValueSearch(event.target.value)}
+              placeholder="Search values..."
+            />
+          </label>
           <div className="cost-explorer-filter-popover__list cost-explorer-filter-popover__list--value-boxes" role="listbox" aria-label="Filter values">
             <button
               type="button"
@@ -130,7 +150,7 @@ export function EC2ExplorerScopeFilters({ value, onChange, onApply }: EC2Explore
                 <Check className="cost-explorer-filter-option__check" size={15} aria-hidden="true" />
               ) : null}
             </button>
-            {activeValues.map((entry) => {
+            {filteredValues.map((entry) => {
               const selected = draft[activeGroup].includes(entry.key);
               return (
                 <button
@@ -144,7 +164,10 @@ export function EC2ExplorerScopeFilters({ value, onChange, onApply }: EC2Explore
                   <span className="cost-explorer-filter-option__content">
                     <span className="cost-explorer-filter-option__label">{entry.label}</span>
                   </span>
-                  <span className="cost-explorer-filter-option__label">{entry.count}</span>
+                  <span className="cost-explorer-filter-option__meta">
+                    <span className="cost-explorer-filter-option__label">{entry.count}</span>
+                    {selected ? <Check className="cost-explorer-filter-option__check" size={15} aria-hidden="true" /> : null}
+                  </span>
                 </button>
               );
             })}

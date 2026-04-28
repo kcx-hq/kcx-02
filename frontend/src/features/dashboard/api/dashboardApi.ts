@@ -288,6 +288,7 @@ function withS3CostInsightsFilters(
   };
 
   appendArray("costCategory", filters?.costCategory);
+  appendArray("seriesValues", filters?.seriesValues);
   appendArray("storageClass", filters?.storageClass);
   appendArray("region", filters?.region);
   appendArray("account", filters?.account);
@@ -299,6 +300,9 @@ function withS3CostInsightsFilters(
   }
   if (filters?.seriesBy) {
     params.set("seriesBy", filters.seriesBy);
+  }
+  if (filters?.yAxisMetric) {
+    params.set("yAxisMetric", filters.yAxisMetric);
   }
 
   const query = params.toString();
