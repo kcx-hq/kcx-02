@@ -375,11 +375,14 @@ export function DashboardGlobalHeader() {
     if (path.startsWith("/dashboard/inventory/aws/ec2/snapshots")) {
       return [rootCrumb, "Services", "EC2", "Snapshots"];
     }
-    if (path === "/dashboard/ec2") {
-      return [rootCrumb, "Services", "EC2"];
-    }
     if (path.startsWith("/dashboard/ec2/performance")) {
       return [rootCrumb, "Services", "EC2", "Performance"];
+    }
+    if (path.startsWith("/dashboard/ec2/optimization")) {
+      return [rootCrumb, "Services", "EC2", "Optimization"];
+    }
+    if (path.startsWith("/dashboard/ec2/explorer")) {
+      return [rootCrumb, "Services", "EC2", "Explorer"];
     }
     if (path === "/dashboard/s3") {
       return [rootCrumb, "Services", "S3"];
@@ -389,6 +392,9 @@ export function DashboardGlobalHeader() {
     }
     if (path.startsWith("/dashboard/s3/usage")) {
       return [rootCrumb, "Services", "S3", "Usage"];
+    }
+    if (path === "/dashboard/services/database") {
+      return [rootCrumb, "Services", "Database"];
     }
 
     const bestMatch = dashboardNavLinks

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { NavLink, useLocation } from "react-router-dom";
+import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import kcxLogo from "@/assets/logos/kcx-logo.svg";
 import { handleAppLinkClick } from "@/lib/navigation";
 import { dashboardNav, dashboardNavLinks } from "../common/navigation";
@@ -15,7 +15,7 @@ function getLinkKey(path: string): string {
 }
 
 function isNavGroupActive(pathname: string, group: DashboardNavGroup): boolean {
-  return group.items.some((item) => isNavItemActive(pathname, item));
+  return (group.path ? pathname.startsWith(group.path) : false) || group.items.some((item) => isNavItemActive(pathname, item));
 }
 
 function isNavItemActive(pathname: string, item: DashboardNavLink): boolean {
@@ -32,6 +32,7 @@ export function DashboardSidebar() {
   );
   const sidebarRef = useRef<HTMLElement | null>(null);
   const location = useLocation();
+  const navigate = useNavigate();
   const collapsed = desktop ? !expanded : false;
 
   const groupNodes = useMemo(
@@ -255,6 +256,7 @@ export function DashboardSidebar() {
                     {childGroups.map((group) => {
                       const groupKey = getGroupKey(group.label, node.path);
                       const isGroupActive = isNavGroupActive(location.pathname, group);
+                      const hasSubmenuItems = group.items.length > 0;
                       const isGroupOpen = openGroups[groupKey] ?? true;
                       const groupId = `dashboard-nav-group-${groupKey
                         .toLowerCase()
@@ -266,9 +268,21 @@ export function DashboardSidebar() {
                             type="button"
                             className={`dashboard-nav-item dashboard-nav-item--group dashboard-nav-item--sub ${isGroupActive || (group.path ? location.pathname.startsWith(group.path) : false) ? "dashboard-nav-item--active" : ""}`}
                             title={collapsed ? group.label : undefined}
-                            aria-expanded={isGroupOpen}
-                            aria-controls={groupId}
+                            aria-expanded={hasSubmenuItems ? isGroupOpen : undefined}
+                            aria-controls={hasSubmenuItems ? groupId : undefined}
                             onClick={() => {
+                              if (group.path && !hasSubmenuItems) {
+                                navigate({ pathname: group.path, search: location.search });
+                                return;
+                              }
+                              if (group.path && (group.label === "S3" || group.label === "EC2")) {
+                                navigate({ pathname: group.path, search: location.search });
+                                setOpenGroups((current) => ({
+                                  ...current,
+                                  [groupKey]: true,
+                                }));
+                                return;
+                              }
                               setOpenGroups((current) => ({
                                 ...current,
                                 [groupKey]: !(current[groupKey] ?? true),
@@ -277,15 +291,17 @@ export function DashboardSidebar() {
                           >
                             <DashboardIcon name={group.icon} className="dashboard-nav-item__icon" />
                             <span className="dashboard-nav-item__label">{group.label}</span>
-                            <span className="dashboard-nav-group__chevron" aria-hidden="true">
-                              <DashboardIcon
-                                name="chevron-right"
-                                className={`dashboard-nav-group__chevron-icon ${isGroupOpen ? "dashboard-nav-group__chevron-icon--open" : ""}`}
-                              />
-                            </span>
+                            {hasSubmenuItems ? (
+                              <span className="dashboard-nav-group__chevron" aria-hidden="true">
+                                <DashboardIcon
+                                  name="chevron-right"
+                                  className={`dashboard-nav-group__chevron-icon ${isGroupOpen ? "dashboard-nav-group__chevron-icon--open" : ""}`}
+                                />
+                              </span>
+                            ) : null}
                           </button>
 
-                          {isGroupOpen ? (
+                          {hasSubmenuItems && isGroupOpen ? (
                             <div id={groupId} className="dashboard-nav-submenu">
                               {group.items.map((item) => (
                                 <NavLink

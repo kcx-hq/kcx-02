@@ -5,6 +5,8 @@ import {
   type AnomaliesListResponse,
   type CostExplorerFiltersQuery,
   type DashboardResolvedScope,
+  type DatabaseExplorerFilters,
+  type DatabaseExplorerResponse,
   type Ec2OverviewFiltersQuery,
   type Ec2OverviewResponse,
   type Ec2InstanceUsageFiltersQuery,
@@ -90,6 +92,17 @@ export function useCostExplorerGroupOptionsQuery(groupBy?: CostExplorerFiltersQu
     enabled: Boolean(scope),
     staleTime: 30_000,
     placeholderData: (previousData) => previousData,
+  });
+}
+
+export function useDatabaseExplorerQuery(filters: DatabaseExplorerFilters) {
+  const { scope } = useDashboardScope();
+  return useQuery<DatabaseExplorerResponse, Error>({
+    queryKey: ["dashboard", "services", "database", "explorer", scope, filters],
+    queryFn: () => dashboardApi.getDatabaseExplorer(assertScope(scope), filters),
+    enabled: Boolean(scope?.from && scope?.to),
+    placeholderData: (previousData) => previousData,
+    staleTime: 30_000,
   });
 }
 
@@ -262,30 +275,32 @@ export function useReportQuery() {
   });
 }
 
-export function useEc2InstanceUsageQuery(filters?: Ec2InstanceUsageFiltersQuery) {
+export function useEc2OptimizationSummaryQuery(filters?: Ec2OptimizationSummaryFiltersQuery) {
   const { scope } = useDashboardScope();
-  return useQuery<Ec2InstanceUsageResponse, Error>({
-    queryKey: ["dashboard", "ec2", "instance-usage", scope, filters],
-    queryFn: () => dashboardApi.getEc2InstanceUsage(assertScope(scope), filters),
+  return useQuery<Ec2OptimizationSummaryResponse, Error>({
+    queryKey: ["dashboard", "ec2", "optimization", "summary", scope, filters],
+    queryFn: () => dashboardApi.getEc2OptimizationSummary(assertScope(scope), filters),
     enabled: Boolean(scope),
   });
 }
 
-export function useEc2OverviewQuery(filters?: Ec2OverviewFiltersQuery) {
+export function useEc2OptimizationInstancesQuery(filters?: Ec2OptimizationInstancesFiltersQuery) {
   const { scope } = useDashboardScope();
-  return useQuery<Ec2OverviewResponse, Error>({
-    queryKey: ["dashboard", "ec2", "overview", scope, filters],
-    queryFn: () => dashboardApi.getEc2Overview(assertScope(scope), filters),
+  return useQuery<Ec2OptimizationInstancesResponse, Error>({
+    queryKey: ["dashboard", "ec2", "optimization", "instances", scope, filters],
+    queryFn: () => dashboardApi.getEc2OptimizationInstances(assertScope(scope), filters),
     enabled: Boolean(scope),
+    placeholderData: (previous) => previous,
   });
 }
 
-export function useEc2InstanceHoursQuery(filters?: Ec2InstanceHoursFiltersQuery) {
+export function useEc2ExplorerQuery(filters: Ec2ExplorerFiltersQuery, enabledOverride: boolean = true) {
   const { scope } = useDashboardScope();
-  return useQuery<Ec2InstanceHoursResponse, Error>({
-    queryKey: ["dashboard", "ec2", "instance-hours", scope, filters],
-    queryFn: () => dashboardApi.getEc2InstanceHours(assertScope(scope), filters),
-    enabled: Boolean(scope),
+  return useQuery<Ec2ExplorerResponse, Error>({
+    queryKey: ["dashboard", "ec2", "explorer", scope, filters],
+    queryFn: () => dashboardApi.getEc2Explorer(assertScope(scope), filters),
+    enabled: Boolean(scope) && enabledOverride,
+    placeholderData: (previous) => previous,
   });
 }
 

@@ -13,16 +13,13 @@ import InventoryInstancesPage from "../pages/inventory/InventoryInstancesPage";
 import InventorySnapshotsPage from "../pages/inventory/InventorySnapshotsPage";
 import InventoryVolumesPage from "../pages/inventory/InventoryVolumesPage";
 import AwsInventoryPage from "../pages/inventory/AwsInventoryPage";
-import EC2CostPage from "../pages/ec2/EC2CostPage";
-import EC2OverviewPage from "../pages/ec2/EC2OverviewPage";
-import EC2UsagePage from "../pages/ec2/EC2UsagePage";
-import EC2UsageHoursPage from "../pages/ec2/EC2UsageHoursPage";
+import EC2ExplorerPage from "../pages/ec2/EC2ExplorerPage";
 import EC2PerformancePage from "../pages/ec2/EC2PerformancePage";
 import EC2VolumesPage from "../pages/ec2/EC2VolumesPage";
+import EC2OptimizationPage from "../pages/ec2/EC2OptimizationPage";
 import S3OverviewPage from "../pages/s3/S3OverviewPage";
 import S3BucketDetailPage from "../pages/s3/S3BucketDetailPage";
 import S3UsagePage from "../pages/s3/S3UsagePage";
-import S3UsageBucketDetailPage from "../pages/s3/S3UsageBucketDetailPage";
 import "../styles/tokens.css";
 import "../styles/dashboard.css";
 
@@ -107,17 +104,13 @@ export default function DashboardRoutes() {
         <Route path="cost/explorer" element={<CostExplorerPage />} />
         <Route path="cost/history" element={<CostHistoryPage />} />
         <Route path="cost-explorer" element={<DashboardCostRedirect />} />
+        <Route path="ec2/explorer" element={<EC2ExplorerPage />} />
         <Route path="ec2/volumes" element={<EC2VolumesPage />} />
-        <Route path="ec2" element={<EC2OverviewPage />} />
-        <Route path="ec2/cost" element={<EC2CostPage />} />
-        <Route path="ec2/usage" element={<EC2UsagePage />} />
-        <Route path="ec2/instance-hours" element={<EC2UsageHoursPage />} />
         <Route path="ec2/performance" element={<EC2PerformancePage />} />
         <Route path="s3" element={<DashboardS3Redirect />} />
         <Route path="s3/cost" element={<S3OverviewPage />} />
         <Route path="s3/cost/bucket/:bucketName" element={<S3BucketDetailPage />} />
         <Route path="s3/usage" element={<S3UsagePage />} />
-        <Route path="s3/usage/bucket/:bucketName" element={<S3UsageBucketDetailPage />} />
         <Route path="resources" element={<ResourcesPage />} />
         <Route path="allocation" element={<AllocationPage />} />
         <Route path="optimization" element={<OptimizationPage />} />

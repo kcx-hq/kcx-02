@@ -59,7 +59,7 @@ export const dashboardNav: DashboardNavNode[] = [
         kind: "group",
         label: "EC2",
         icon: "boxes",
-        path: "/dashboard/ec2",
+        path: "/dashboard/ec2/explorer",
         items: [
           {
             kind: "link",
@@ -81,27 +81,15 @@ export const dashboardNav: DashboardNavNode[] = [
           },
           {
             kind: "link",
-            label: "Cost",
-            path: "/dashboard/ec2/cost",
-            icon: "line-chart",
-          },
-          {
-            kind: "link",
-            label: "Usage",
-            path: "/dashboard/ec2/usage",
-            icon: "activity",
-          },
-          {
-            kind: "link",
-            label: "EC2 Instance Hours",
-            path: "/dashboard/ec2/instance-hours",
-            icon: "activity",
-          },
-          {
-            kind: "link",
             label: "Performance",
             path: "/dashboard/ec2/performance",
             icon: "line-chart",
+          },
+          {
+            kind: "link",
+            label: "Optimization",
+            path: "/dashboard/ec2/optimization",
+            icon: "gauge",
           },
         ],
       },
@@ -124,6 +112,13 @@ export const dashboardNav: DashboardNavNode[] = [
             icon: "activity",
           },
         ],
+      },
+      {
+        kind: "group",
+        label: "Database",
+        icon: "server",
+        path: "/dashboard/services/database",
+        items: [],
       },
     ],
   },
@@ -165,7 +160,17 @@ const flattenDashboardNode = (node: DashboardNavNode): DashboardNavLink[] =>
           : []),
         ...node.items.flatMap((item) => flattenDashboardLink(item)),
       ]
-    : flattenDashboardLink(node);
+    : [
+        ...flattenDashboardLink(node),
+        ...((node.children ?? [])
+          .filter((group) => group.path && group.items.length === 0)
+          .map((group) => ({
+            kind: "link" as const,
+            label: group.label,
+            path: group.path as string,
+            icon: group.icon,
+          }))),
+      ];
 
 export const dashboardNavLinks: DashboardNavLink[] = dashboardNav.flatMap((node) =>
   flattenDashboardNode(node),

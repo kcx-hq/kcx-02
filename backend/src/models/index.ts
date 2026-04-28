@@ -64,6 +64,10 @@ import createEc2LoadBalancerInventorySnapshotModel from "./ec2/ec2_load_balancer
 import createEc2TargetGroupInventorySnapshotModel from "./ec2/ec2_target_group_inventory_snapshots.js";
 import createEc2InstanceUtilizationHourlyModel from "./ec2/ec2_instance_utilization_hourly.js";
 import createEc2InstanceUtilizationDailyModel from "./ec2/ec2_instance_utilization_daily.js";
+import createDbResourceInventorySnapshotModel from "./db/db_resource_inventory_snapshots.js";
+import createDbCostHistoryDailyModel from "./db/db_cost_history_daily.js";
+import createDbUtilizationDailyModel from "./db/db_utilization_daily.js";
+import createFactDbResourceDailyModel from "./db/fact_db_resource_daily.js";
 import createFactEc2InstanceDailyModel from "./ec2/fact_ec2_instance_daily.js";
 import createFactEc2InstanceCostDailyModel from "./ec2/fact_ec2_instance_cost_daily.js";
 import createFactEc2InstanceCoverageDailyModel from "./ec2/fact_ec2_instance_coverage_daily.js";
@@ -152,6 +156,10 @@ const Ec2LoadBalancerInventorySnapshot = createEc2LoadBalancerInventorySnapshotM
 const Ec2TargetGroupInventorySnapshot = createEc2TargetGroupInventorySnapshotModel(sequelize);
 const Ec2InstanceUtilizationHourly = createEc2InstanceUtilizationHourlyModel(sequelize);
 const Ec2InstanceUtilizationDaily = createEc2InstanceUtilizationDailyModel(sequelize);
+const DbResourceInventorySnapshot = createDbResourceInventorySnapshotModel(sequelize);
+const DbCostHistoryDaily = createDbCostHistoryDailyModel(sequelize);
+const DbUtilizationDaily = createDbUtilizationDailyModel(sequelize);
+const FactDbResourceDaily = createFactDbResourceDailyModel(sequelize);
 const FactEc2InstanceDaily = createFactEc2InstanceDailyModel(sequelize);
 const FactEc2InstanceCostDaily = createFactEc2InstanceCostDailyModel(sequelize);
 const FactEc2InstanceCoverageDaily = createFactEc2InstanceCoverageDailyModel(sequelize);
@@ -331,6 +339,34 @@ ResourceUtilizationDaily.belongsTo(DimRegion, { foreignKey: "regionKey" });
 DimSubAccount.hasMany(ResourceUtilizationDaily, { foreignKey: "subAccountKey" });
 ResourceUtilizationDaily.belongsTo(DimSubAccount, { foreignKey: "subAccountKey" });
 
+Tenant.hasMany(DbUtilizationDaily, { foreignKey: "tenantId" });
+DbUtilizationDaily.belongsTo(Tenant, { foreignKey: "tenantId" });
+CloudConnectionV2.hasMany(DbUtilizationDaily, { foreignKey: "cloudConnectionId" });
+DbUtilizationDaily.belongsTo(CloudConnectionV2, { foreignKey: "cloudConnectionId" });
+CloudProvider.hasMany(DbUtilizationDaily, { foreignKey: "providerId" });
+DbUtilizationDaily.belongsTo(CloudProvider, { foreignKey: "providerId" });
+DimResource.hasMany(DbUtilizationDaily, { foreignKey: "resourceKey" });
+DbUtilizationDaily.belongsTo(DimResource, { foreignKey: "resourceKey" });
+DimRegion.hasMany(DbUtilizationDaily, { foreignKey: "regionKey" });
+DbUtilizationDaily.belongsTo(DimRegion, { foreignKey: "regionKey" });
+DimSubAccount.hasMany(DbUtilizationDaily, { foreignKey: "subAccountKey" });
+DbUtilizationDaily.belongsTo(DimSubAccount, { foreignKey: "subAccountKey" });
+
+Tenant.hasMany(FactDbResourceDaily, { foreignKey: "tenantId" });
+FactDbResourceDaily.belongsTo(Tenant, { foreignKey: "tenantId" });
+CloudConnectionV2.hasMany(FactDbResourceDaily, { foreignKey: "cloudConnectionId" });
+FactDbResourceDaily.belongsTo(CloudConnectionV2, { foreignKey: "cloudConnectionId" });
+BillingSource.hasMany(FactDbResourceDaily, { foreignKey: "billingSourceId" });
+FactDbResourceDaily.belongsTo(BillingSource, { foreignKey: "billingSourceId" });
+CloudProvider.hasMany(FactDbResourceDaily, { foreignKey: "providerId" });
+FactDbResourceDaily.belongsTo(CloudProvider, { foreignKey: "providerId" });
+DimResource.hasMany(FactDbResourceDaily, { foreignKey: "resourceKey" });
+FactDbResourceDaily.belongsTo(DimResource, { foreignKey: "resourceKey" });
+DimRegion.hasMany(FactDbResourceDaily, { foreignKey: "regionKey" });
+FactDbResourceDaily.belongsTo(DimRegion, { foreignKey: "regionKey" });
+DimSubAccount.hasMany(FactDbResourceDaily, { foreignKey: "subAccountKey" });
+FactDbResourceDaily.belongsTo(DimSubAccount, { foreignKey: "subAccountKey" });
+
 Tenant.hasMany(Ec2InstanceInventorySnapshot, { foreignKey: "tenantId" });
 Ec2InstanceInventorySnapshot.belongsTo(Tenant, { foreignKey: "tenantId" });
 CloudConnectionV2.hasMany(Ec2InstanceInventorySnapshot, { foreignKey: "cloudConnectionId" });
@@ -343,6 +379,19 @@ DimRegion.hasMany(Ec2InstanceInventorySnapshot, { foreignKey: "regionKey" });
 Ec2InstanceInventorySnapshot.belongsTo(DimRegion, { foreignKey: "regionKey" });
 DimSubAccount.hasMany(Ec2InstanceInventorySnapshot, { foreignKey: "subAccountKey" });
 Ec2InstanceInventorySnapshot.belongsTo(DimSubAccount, { foreignKey: "subAccountKey" });
+
+Tenant.hasMany(DbResourceInventorySnapshot, { foreignKey: "tenantId" });
+DbResourceInventorySnapshot.belongsTo(Tenant, { foreignKey: "tenantId" });
+CloudConnectionV2.hasMany(DbResourceInventorySnapshot, { foreignKey: "cloudConnectionId" });
+DbResourceInventorySnapshot.belongsTo(CloudConnectionV2, { foreignKey: "cloudConnectionId" });
+CloudProvider.hasMany(DbResourceInventorySnapshot, { foreignKey: "providerId" });
+DbResourceInventorySnapshot.belongsTo(CloudProvider, { foreignKey: "providerId" });
+DimResource.hasMany(DbResourceInventorySnapshot, { foreignKey: "resourceKey" });
+DbResourceInventorySnapshot.belongsTo(DimResource, { foreignKey: "resourceKey" });
+DimRegion.hasMany(DbResourceInventorySnapshot, { foreignKey: "regionKey" });
+DbResourceInventorySnapshot.belongsTo(DimRegion, { foreignKey: "regionKey" });
+DimSubAccount.hasMany(DbResourceInventorySnapshot, { foreignKey: "subAccountKey" });
+DbResourceInventorySnapshot.belongsTo(DimSubAccount, { foreignKey: "subAccountKey" });
 
 Tenant.hasMany(Ec2InstanceUtilizationHourly, { foreignKey: "tenantId" });
 Ec2InstanceUtilizationHourly.belongsTo(Tenant, { foreignKey: "tenantId" });
@@ -573,6 +622,17 @@ Ec2CostHistoryDaily.belongsTo(CloudConnectionV2, { foreignKey: "cloudConnectionI
 BillingIngestionRun.hasMany(Ec2CostHistoryDaily, { foreignKey: "ingestionRunId" });
 Ec2CostHistoryDaily.belongsTo(BillingIngestionRun, { foreignKey: "ingestionRunId" });
 
+Tenant.hasMany(DbCostHistoryDaily, { foreignKey: "tenantId" });
+DbCostHistoryDaily.belongsTo(Tenant, { foreignKey: "tenantId" });
+CloudProvider.hasMany(DbCostHistoryDaily, { foreignKey: "providerId" });
+DbCostHistoryDaily.belongsTo(CloudProvider, { foreignKey: "providerId" });
+BillingSource.hasMany(DbCostHistoryDaily, { foreignKey: "billingSourceId" });
+DbCostHistoryDaily.belongsTo(BillingSource, { foreignKey: "billingSourceId" });
+CloudConnectionV2.hasMany(DbCostHistoryDaily, { foreignKey: "cloudConnectionId" });
+DbCostHistoryDaily.belongsTo(CloudConnectionV2, { foreignKey: "cloudConnectionId" });
+BillingIngestionRun.hasMany(DbCostHistoryDaily, { foreignKey: "ingestionRunId" });
+DbCostHistoryDaily.belongsTo(BillingIngestionRun, { foreignKey: "ingestionRunId" });
+
 Tenant.hasMany(Ec2CostHistoryMonthly, { foreignKey: "tenantId" });
 Ec2CostHistoryMonthly.belongsTo(Tenant, { foreignKey: "tenantId" });
 CloudProvider.hasMany(Ec2CostHistoryMonthly, { foreignKey: "providerId" });
@@ -670,6 +730,10 @@ export {
   Ec2TargetGroupInventorySnapshot,
   Ec2InstanceUtilizationHourly,
   Ec2InstanceUtilizationDaily,
+  DbResourceInventorySnapshot,
+  DbCostHistoryDaily,
+  DbUtilizationDaily,
+  FactDbResourceDaily,
   FactEc2InstanceDaily,
   FactEc2InstanceCostDaily,
   FactEc2InstanceCoverageDaily,

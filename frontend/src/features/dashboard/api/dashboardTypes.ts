@@ -49,19 +49,97 @@ export type DashboardSectionData = {
   summary: DashboardSummaryItem[];
 };
 
-export type Ec2InstanceUsageFiltersQuery = {
+export type Ec2OptimizationSummaryFiltersQuery = {
   cloudConnectionId?: string;
-  subAccountKey?: number;
+  billingSourceId?: number;
   regionKey?: number;
-  category?: "none" | "region" | "instance_type" | "reservation_type";
+  subAccountKey?: number;
+  recommendationType?:
+    | "overview"
+    | "rightsizing"
+    | "idle_waste"
+    | "coverage"
+    | "performance_risk"
+    | "all"
+    | "idle_instance"
+    | "underutilized_instance"
+    | "overutilized_instance"
+    | "uncovered_on_demand"
+    | "ebs_waste";
+  region?: string;
+  riskLevel?: "low" | "medium" | "high";
+  status?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  page?: number;
+  pageSize?: number;
 };
 
-export type Ec2OverviewFiltersQuery = {
+export type DatabaseExplorerMetric = "cost" | "usage";
+export type DatabaseExplorerGroupBy = "db_service" | "db_engine" | "region";
+
+export type DatabaseExplorerFilters = {
+  metric: DatabaseExplorerMetric;
+  groupBy: DatabaseExplorerGroupBy;
+  regionKey?: number | string;
+  dbService?: string;
+  dbEngine?: string;
   cloudConnectionId?: string;
-  subAccountKey?: number;
-  regionKey?: number;
-  instanceType?: string;
-  state?: string;
+};
+
+export type DatabaseExplorerAppliedFilters = {
+  tenantId: string;
+  startDate: string;
+  endDate: string;
+  cloudConnectionId?: string;
+  regionKey?: string;
+  dbService?: string;
+  dbEngine?: string;
+  metric: DatabaseExplorerMetric;
+  groupBy: DatabaseExplorerGroupBy;
+};
+
+export type DatabaseExplorerCards = {
+  totalCost: number;
+  costTrendPct: number | null;
+  activeResources: number;
+  dataFootprintGb: number;
+  avgLoad: number | null;
+  connections: number | null;
+};
+
+export type DatabaseExplorerCostTrendItem = {
+  date: string;
+  compute: number;
+  storage: number;
+  io: number;
+  backup: number;
+  total: number;
+};
+
+export type DatabaseExplorerUsageTrendItem = {
+  date: string;
+  load: number | null;
+  connections: number | null;
+};
+
+export type DatabaseExplorerTableRow = {
+  group: string;
+  totalCost: number;
+  computeCost: number;
+  storageCost: number;
+  ioCost: number;
+  backupCost: number;
+  resourceCount: number;
+  avgLoad: number | null;
+  connections: number | null;
+};
+
+export type DatabaseExplorerResponse = {
+  filters: DatabaseExplorerAppliedFilters;
+  cards: DatabaseExplorerCards;
+  trend: Array<DatabaseExplorerCostTrendItem | DatabaseExplorerUsageTrendItem>;
+  table: DatabaseExplorerTableRow[];
 };
 
 export type Ec2OverviewResponse = {
@@ -106,75 +184,134 @@ export type Ec2OverviewResponse = {
     states: string[];
   };
 };
+export type Ec2OptimizationInstancesFiltersQuery = Ec2OptimizationSummaryFiltersQuery;
 
-export type Ec2InstanceUsageResponse = {
-  section: "ec2-instance-usage";
-  title: "EC2 Instance Usage";
-  message: string;
-  filtersApplied: {
-    tenantId: string;
-    startDate: string;
-    endDate: string;
-    cloudConnectionId: string | null;
-    subAccountKey: number | null;
-    regionKey: number | null;
-    category: "none" | "region" | "instance_type" | "reservation_type";
-    interval: "daily";
-    chartType: "bar";
-  };
-  metric: "instance_count";
-  items: Array<{
-    date: string;
-    category: string | null;
-    value: number;
-  }>;
-  chart: {
-    labels: Array<{
-      usageDate: string;
-      short: string;
-      long: string;
-    }>;
-    series: Array<{
-      name: string;
-      kind: "primary";
-      values: number[];
-    }>;
-  };
+export type Ec2ExplorerMetric = "cost" | "usage" | "instances";
+export type Ec2ExplorerGroupBy =
+  | "none"
+  | "region"
+  | "instance_type"
+  | "reservation_type"
+  | "usage_category"
+  | "cost_category"
+  | "tag";
+export type Ec2ExplorerCostBasis = "billed_cost" | "effective_cost" | "amortized_cost";
+export type Ec2ExplorerUsageMetric = "cpu" | "network_in" | "network_out" | "disk_read" | "disk_write";
+export type Ec2ExplorerAggregation = "avg" | "max" | "p95";
+export type Ec2ExplorerCondition = "all" | "idle" | "underutilized" | "overutilized" | "uncovered";
+
+export type Ec2ExplorerFiltersQuery = {
+  startDate?: string;
+  endDate?: string;
+  metric: Ec2ExplorerMetric;
+  groupBy: Ec2ExplorerGroupBy;
+  tagKey?: string | null;
+  regions?: string[];
+  tags?: string[];
+  costBasis?: Ec2ExplorerCostBasis;
+  usageMetric?: Ec2ExplorerUsageMetric;
+  aggregation?: Ec2ExplorerAggregation;
+  condition?: Ec2ExplorerCondition;
+  groupValues?: string[];
+  minCost?: number | null;
+  maxCost?: number | null;
+  minCpu?: number | null;
+  maxCpu?: number | null;
+  minNetwork?: number | null;
+  maxNetwork?: number | null;
+  states?: string[];
+  instanceTypes?: string[];
+};
+
+export type Ec2ExplorerResponse = {
   summary: {
-    totalInstanceDays: number;
-    avgDailyInstances: number;
-    peakDailyInstances: number;
+    totalCost: number;
+    previousCost: number;
+    trendPercent: number;
+    instanceCount: number;
+    avgCpu: number;
+    totalNetworkGb: number;
+  };
+  graph: {
+    type: "bar" | "stacked_bar" | "line" | "area" | "stacked_area";
+    xKey: "date";
+    series: Array<{
+      key: string;
+      label: string;
+      data: Array<{ date: string; value: number }>;
+    }>;
+  };
+  table: {
+    columns: Array<{ key: string; label: string }>;
+    rows: Array<{ id: string; [key: string]: string | number | null }>;
   };
 };
 
-export type Ec2InstanceHoursFiltersQuery = {
-  cloudConnectionId?: string;
-  subAccountKey?: number;
-  regionKey?: number;
+export type Ec2OptimizationSummaryResponse = {
+  overview: {
+    totalPotentialSavings: number;
+    currencyCode: "USD";
+    categories: Array<{
+      key: "rightsizing" | "idle_waste" | "coverage" | "performance_risk";
+      label: "Rightsizing" | "Idle & Waste" | "Coverage" | "Performance Risk";
+      savings: number;
+      count: number;
+      percent: number;
+    }>;
+    lifecycle: {
+      verifiedSavings: number;
+      appliedActions: number;
+      pendingActions: number;
+      ignoredRecommendations: number;
+    };
+    topActions: Array<{
+      recommendationId: number;
+      category: "rightsizing" | "idle_waste" | "coverage" | "performance_risk";
+      recommendationType: string;
+      title: string;
+      resourceId: string;
+      resourceName: string;
+      estimatedSavings: number;
+      riskLevel: "low" | "medium" | "high";
+      actionLabel: string;
+      drilldownUrl: string;
+    }>;
+  };
+  recommendations: {
+    rightsizing: Ec2OptimizationRecommendationItem[];
+    idle_waste: Ec2OptimizationRecommendationItem[];
+    coverage: Ec2OptimizationRecommendationItem[];
+    performance_risk: Ec2OptimizationRecommendationItem[];
+  };
 };
 
-export type Ec2InstanceHoursResponse = {
-  section: "ec2-instance-hours";
-  title: "EC2 Instance Hours";
-  message: string;
-  filtersApplied: {
-    tenantId: string;
-    startDate: string;
-    endDate: string;
-    cloudConnectionId: string | null;
-    subAccountKey: number | null;
-    regionKey: number | null;
-  };
-  items: Array<{
-    accountName: string;
-    instanceId: string;
-    instanceName: string | null;
-    instanceType: string | null;
-    availabilityZone: string | null;
-    isSpot: boolean;
-    totalHours: number;
-    computeCost: number;
+export type Ec2OptimizationInstancesResponse = Ec2OptimizationSummaryResponse;
+
+export type Ec2OptimizationRecommendationItem = {
+  recommendationId: number;
+  recommendationType: string;
+  resourceType: string;
+  resourceId: string;
+  resourceName: string;
+  accountName: string | null;
+  region: string | null;
+  availabilityZone: string | null;
+  currentResourceType: string | null;
+  recommendedResourceType: string | null;
+  monthlyCost: number;
+  estimatedSavings: number;
+  projectedMonthlyCost: number;
+  riskLevel: "low" | "medium" | "high";
+  effortLevel: "low" | "medium" | "high";
+  status: string;
+  reason: string;
+  evidence: Array<{
+    label: string;
+    value: string;
   }>;
+  recommendedAction: string;
+  actionLabel: string;
+  drilldownUrl: string;
 };
 
 export type OptimizationRightsizingOverview = {
