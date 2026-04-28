@@ -49,19 +49,30 @@ export type DashboardSectionData = {
   summary: DashboardSummaryItem[];
 };
 
-export type Ec2InstanceUsageFiltersQuery = {
+export type Ec2OptimizationSummaryFiltersQuery = {
   cloudConnectionId?: string;
-  subAccountKey?: number;
+  billingSourceId?: number;
   regionKey?: number;
-  category?: "none" | "region" | "instance_type" | "reservation_type";
-};
-
-export type Ec2OverviewFiltersQuery = {
-  cloudConnectionId?: string;
   subAccountKey?: number;
-  regionKey?: number;
-  instanceType?: string;
-  state?: string;
+  recommendationType?:
+    | "overview"
+    | "rightsizing"
+    | "idle_waste"
+    | "coverage"
+    | "performance_risk"
+    | "all"
+    | "idle_instance"
+    | "underutilized_instance"
+    | "overutilized_instance"
+    | "uncovered_on_demand"
+    | "ebs_waste";
+  region?: string;
+  riskLevel?: "low" | "medium" | "high";
+  status?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  page?: number;
+  pageSize?: number;
 };
 
 export type DatabaseExplorerMetric = "cost" | "usage";
@@ -172,76 +183,134 @@ export type Ec2OverviewResponse = {
     instanceTypes: string[];
     states: string[];
   };
+export type Ec2OptimizationInstancesFiltersQuery = Ec2OptimizationSummaryFiltersQuery;
+
+export type Ec2ExplorerMetric = "cost" | "usage" | "instances";
+export type Ec2ExplorerGroupBy =
+  | "none"
+  | "region"
+  | "instance_type"
+  | "reservation_type"
+  | "usage_category"
+  | "cost_category"
+  | "tag";
+export type Ec2ExplorerCostBasis = "billed_cost" | "effective_cost" | "amortized_cost";
+export type Ec2ExplorerUsageMetric = "cpu" | "network_in" | "network_out" | "disk_read" | "disk_write";
+export type Ec2ExplorerAggregation = "avg" | "max" | "p95";
+export type Ec2ExplorerCondition = "all" | "idle" | "underutilized" | "overutilized" | "uncovered";
+
+export type Ec2ExplorerFiltersQuery = {
+  startDate?: string;
+  endDate?: string;
+  metric: Ec2ExplorerMetric;
+  groupBy: Ec2ExplorerGroupBy;
+  tagKey?: string | null;
+  regions?: string[];
+  tags?: string[];
+  costBasis?: Ec2ExplorerCostBasis;
+  usageMetric?: Ec2ExplorerUsageMetric;
+  aggregation?: Ec2ExplorerAggregation;
+  condition?: Ec2ExplorerCondition;
+  groupValues?: string[];
+  minCost?: number | null;
+  maxCost?: number | null;
+  minCpu?: number | null;
+  maxCpu?: number | null;
+  minNetwork?: number | null;
+  maxNetwork?: number | null;
+  states?: string[];
+  instanceTypes?: string[];
 };
 
-export type Ec2InstanceUsageResponse = {
-  section: "ec2-instance-usage";
-  title: "EC2 Instance Usage";
-  message: string;
-  filtersApplied: {
-    tenantId: string;
-    startDate: string;
-    endDate: string;
-    cloudConnectionId: string | null;
-    subAccountKey: number | null;
-    regionKey: number | null;
-    category: "none" | "region" | "instance_type" | "reservation_type";
-    interval: "daily";
-    chartType: "bar";
-  };
-  metric: "instance_count";
-  items: Array<{
-    date: string;
-    category: string | null;
-    value: number;
-  }>;
-  chart: {
-    labels: Array<{
-      usageDate: string;
-      short: string;
-      long: string;
-    }>;
-    series: Array<{
-      name: string;
-      kind: "primary";
-      values: number[];
-    }>;
-  };
+export type Ec2ExplorerResponse = {
   summary: {
-    totalInstanceDays: number;
-    avgDailyInstances: number;
-    peakDailyInstances: number;
+    totalCost: number;
+    previousCost: number;
+    trendPercent: number;
+    instanceCount: number;
+    avgCpu: number;
+    totalNetworkGb: number;
+  };
+  graph: {
+    type: "bar" | "stacked_bar" | "line" | "area" | "stacked_area";
+    xKey: "date";
+    series: Array<{
+      key: string;
+      label: string;
+      data: Array<{ date: string; value: number }>;
+    }>;
+  };
+  table: {
+    columns: Array<{ key: string; label: string }>;
+    rows: Array<{ id: string; [key: string]: string | number | null }>;
   };
 };
 
-export type Ec2InstanceHoursFiltersQuery = {
-  cloudConnectionId?: string;
-  subAccountKey?: number;
-  regionKey?: number;
+export type Ec2OptimizationSummaryResponse = {
+  overview: {
+    totalPotentialSavings: number;
+    currencyCode: "USD";
+    categories: Array<{
+      key: "rightsizing" | "idle_waste" | "coverage" | "performance_risk";
+      label: "Rightsizing" | "Idle & Waste" | "Coverage" | "Performance Risk";
+      savings: number;
+      count: number;
+      percent: number;
+    }>;
+    lifecycle: {
+      verifiedSavings: number;
+      appliedActions: number;
+      pendingActions: number;
+      ignoredRecommendations: number;
+    };
+    topActions: Array<{
+      recommendationId: number;
+      category: "rightsizing" | "idle_waste" | "coverage" | "performance_risk";
+      recommendationType: string;
+      title: string;
+      resourceId: string;
+      resourceName: string;
+      estimatedSavings: number;
+      riskLevel: "low" | "medium" | "high";
+      actionLabel: string;
+      drilldownUrl: string;
+    }>;
+  };
+  recommendations: {
+    rightsizing: Ec2OptimizationRecommendationItem[];
+    idle_waste: Ec2OptimizationRecommendationItem[];
+    coverage: Ec2OptimizationRecommendationItem[];
+    performance_risk: Ec2OptimizationRecommendationItem[];
+  };
 };
 
-export type Ec2InstanceHoursResponse = {
-  section: "ec2-instance-hours";
-  title: "EC2 Instance Hours";
-  message: string;
-  filtersApplied: {
-    tenantId: string;
-    startDate: string;
-    endDate: string;
-    cloudConnectionId: string | null;
-    subAccountKey: number | null;
-    regionKey: number | null;
-  };
-  items: Array<{
-    accountName: string;
-    instanceId: string;
-    instanceName: string | null;
-    instanceType: string | null;
-    availabilityZone: string | null;
-    isSpot: boolean;
-    totalHours: number;
-    computeCost: number;
+export type Ec2OptimizationInstancesResponse = Ec2OptimizationSummaryResponse;
+
+export type Ec2OptimizationRecommendationItem = {
+  recommendationId: number;
+  recommendationType: string;
+  resourceType: string;
+  resourceId: string;
+  resourceName: string;
+  accountName: string | null;
+  region: string | null;
+  availabilityZone: string | null;
+  currentResourceType: string | null;
+  recommendedResourceType: string | null;
+  monthlyCost: number;
+  estimatedSavings: number;
+  projectedMonthlyCost: number;
+  riskLevel: "low" | "medium" | "high";
+  effortLevel: "low" | "medium" | "high";
+  status: string;
+  reason: string;
+  evidence: Array<{
+    label: string;
+    value: string;
   }>;
+  recommendedAction: string;
+  actionLabel: string;
+  drilldownUrl: string;
 };
 
 export type OptimizationRightsizingOverview = {
@@ -735,13 +804,15 @@ export type S3CostInsightsResponse = {
     scopeType: DashboardResolvedScope["scopeType"];
     s3Filters: {
       costCategory: string[];
+      seriesValues: string[];
       bucket: string | null;
       storageClass: string[];
       region: string[];
-      account: string[];
-      costBy: "date" | "bucket" | "region" | "account";
-      seriesBy: "cost_category" | "usage_type" | "operation" | "product_family";
-    };
+        account: string[];
+        costBy: "date" | "bucket" | "region" | "account";
+        seriesBy: "cost_category" | "usage_type" | "operation" | "product_family" | "bucket" | "storage_class";
+        yAxisMetric: "billed_cost" | "effective_cost" | "amortized_cost";
+      };
   };
   columnsUsed: Array<
     | "service_name"
@@ -765,6 +836,7 @@ export type S3CostInsightsResponse = {
   };
   bucketTable: Array<{
     bucketName: string;
+    account: string;
     cost: number;
     storage: number;
     requests: number;
@@ -776,6 +848,20 @@ export type S3CostInsightsResponse = {
     retrieval: number;
     other: number;
     trendPct: number;
+  }>;
+  costCategoryTable: Array<{
+    costCategory: "Storage" | "Request" | "Transfer" | "Retrieval" | "Other";
+    cost: number;
+    usageQuantity: number;
+    pricingUnit: string;
+    percentOfBucketCost: number;
+  }>;
+  usageOperationTable: Array<{
+    usageType: string;
+    operation: string;
+    cost: number;
+    quantity: number;
+    unit: string;
   }>;
   chart: {
     bucketCosts: Array<{
@@ -809,23 +895,29 @@ export type S3CostInsightsResponse = {
   };
   filterOptions: {
     costCategory: string[];
+    usageType: string[];
+    operation: string[];
+    productFamily: string[];
     bucket: string[];
     storageClass: string[];
     region: string[];
-    account: string[];
-    costBy: Array<"date" | "bucket" | "region" | "account">;
-    seriesBy: Array<"cost_category" | "usage_type" | "operation" | "product_family">;
+      account: string[];
+      costBy: Array<"date" | "bucket" | "region" | "account">;
+      seriesBy: Array<"cost_category" | "usage_type" | "operation" | "product_family" | "bucket" | "storage_class">;
+      yAxisMetric: Array<"billed_cost" | "effective_cost" | "amortized_cost">;
+    };
   };
-};
 
 export type S3CostInsightsFiltersQuery = {
   costCategory?: string[];
+  seriesValues?: string[];
   bucket?: string | null;
   storageClass?: string[];
   region?: string[];
   account?: string[];
   costBy?: "date" | "bucket" | "region" | "account";
-  seriesBy?: "cost_category" | "usage_type" | "operation" | "product_family";
+  seriesBy?: "cost_category" | "usage_type" | "operation" | "product_family" | "bucket" | "storage_class";
+  yAxisMetric?: "billed_cost" | "effective_cost" | "amortized_cost";
 };
 
 export type AnomaliesListResponse = {

@@ -1,421 +1,265 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import type { EChartsOption } from "echarts";
-import { Check, ChevronDown, Search, X } from "lucide-react";
+import { useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useLocation, useNavigate } from "react-router-dom";
 
-import { BaseEChart } from "../../common/charts/BaseEChart";
 import { useS3CostInsightsQuery } from "../../hooks/useDashboardQueries";
-import type { S3CostInsightsFiltersQuery } from "../../api/dashboardApi";
+import { dashboardApi, type S3CostInsightsFiltersQuery } from "../../api/dashboardApi";
+import { useDashboardScope } from "../../hooks/useDashboardScope";
+import { S3BucketInsightsTable, type S3BucketTableRow } from "./components/S3BucketInsightsTable";
+import { S3CostCategoryTable, type S3CostCategoryTableRow } from "./components/S3CostCategoryTable";
+import { S3UsageOperationTable, type S3UsageOperationTableRow } from "./components/S3UsageOperationTable";
+import { S3OverviewChartPanel } from "./components/S3OverviewChartPanel";
+import { S3OverviewFilters } from "./components/S3OverviewFilters";
+import type { S3OverviewFilterValue } from "./components/s3Overview.types";
 
-const graphCurrencyFormatter = new Intl.NumberFormat("en-US", {
-  style: "currency",
-  currency: "USD",
-  minimumFractionDigits: 5,
-  maximumFractionDigits: 5,
-});
-
-const xAxisFormatter = new Intl.DateTimeFormat("en-US", {
-  month: "short",
-  day: "2-digit",
-  timeZone: "UTC",
-});
-
-const CHART_COLORS = [
-  "#1f77b4",
-  "#2ca02c",
-  "#ff7f0e",
-  "#d62728",
-  "#9467bd",
-  "#17becf",
-  "#8c564b",
-  "#e377c2",
-  "#7f7f7f",
-  "#bcbd22",
-];
-
-type FilterChip = {
-  key: keyof Required<S3CostInsightsFiltersQuery> | "bucket";
-  label: string;
-  value: string;
+const DEFAULT_FILTERS: S3OverviewFilterValue = {
+  seriesBy: "bucket",
+  seriesValues: [],
+  storageClass: [],
+  region: "",
+  costBy: "date",
+  yAxisMetric: "billed_cost",
+  chartType: "bar",
+  compareMode: "none",
 };
 
-type S3FilterPopoverKey = "costCategory" | "region" | "seriesBy" | "costBy";
+const SERIES_BY_OPTIONS: Array<S3OverviewFilterValue["seriesBy"]> = [
+  "bucket",
+  "cost_category",
+  "operation",
+  "product_family",
+  "storage_class",
+];
+const COST_BY_OPTIONS: Array<S3OverviewFilterValue["costBy"]> = ["date", "bucket", "region", "account"];
+const Y_AXIS_OPTIONS: Array<S3OverviewFilterValue["yAxisMetric"]> = ["billed_cost", "effective_cost", "amortized_cost"];
+const CHART_TYPE_OPTIONS: Array<S3OverviewFilterValue["chartType"]> = ["bar", "line"];
+const COMPARE_MODE_OPTIONS: Array<S3OverviewFilterValue["compareMode"]> = ["none", "previous_period"];
+
+const parseListParam = (value: string | null): string[] => {
+  if (!value) return [];
+  return value
+    .split(",")
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0);
+};
+
+const parseIsoDate = (value: string): Date | null => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const formatIsoDate = (value: Date): string => {
+  const y = value.getUTCFullYear();
+  const m = String(value.getUTCMonth() + 1).padStart(2, "0");
+  const d = String(value.getUTCDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+};
+
+const parseFiltersFromSearch = (search: string): S3OverviewFilterValue => {
+  const params = new URLSearchParams(search);
+  const seriesBy = params.get("s3SeriesBy");
+  const seriesValues = parseListParam(params.get("s3SeriesValues"));
+  const storageClass = parseListParam(params.get("s3StorageClass"));
+  const region = (params.get("s3Region") ?? "").trim();
+  const costBy = params.get("s3CostBy");
+  const yAxisMetric = params.get("s3YAxisMetric");
+  const chartType = params.get("s3ChartType");
+  const compareMode = params.get("s3Compare");
+
+  return {
+    seriesBy: SERIES_BY_OPTIONS.includes(seriesBy as S3OverviewFilterValue["seriesBy"])
+      ? (seriesBy as S3OverviewFilterValue["seriesBy"])
+      : DEFAULT_FILTERS.seriesBy,
+    seriesValues,
+    storageClass,
+    region,
+    costBy: COST_BY_OPTIONS.includes(costBy as S3OverviewFilterValue["costBy"])
+      ? (costBy as S3OverviewFilterValue["costBy"])
+      : DEFAULT_FILTERS.costBy,
+    yAxisMetric: Y_AXIS_OPTIONS.includes(yAxisMetric as S3OverviewFilterValue["yAxisMetric"])
+      ? (yAxisMetric as S3OverviewFilterValue["yAxisMetric"])
+      : DEFAULT_FILTERS.yAxisMetric,
+    chartType: CHART_TYPE_OPTIONS.includes(chartType as S3OverviewFilterValue["chartType"])
+      ? (chartType as S3OverviewFilterValue["chartType"])
+      : DEFAULT_FILTERS.chartType,
+    compareMode: COMPARE_MODE_OPTIONS.includes(compareMode as S3OverviewFilterValue["compareMode"])
+      ? (compareMode as S3OverviewFilterValue["compareMode"])
+      : DEFAULT_FILTERS.compareMode,
+  };
+};
 
 export default function S3OverviewPage() {
-  const rootRef = useRef<HTMLDivElement | null>(null);
-  const [activePopover, setActivePopover] = useState<S3FilterPopoverKey | null>(null);
-  const [searchByPopover, setSearchByPopover] = useState<Record<S3FilterPopoverKey, string>>({
-    costCategory: "",
-    region: "",
-    seriesBy: "",
-    costBy: "",
-  });
-  const [selectedCostCategory, setSelectedCostCategory] = useState<string>("");
-  const [selectedRegion, setSelectedRegion] = useState<string>("");
-  const [costBy, setCostBy] = useState<NonNullable<S3CostInsightsFiltersQuery["costBy"]>>("date");
-  const [seriesBy, setSeriesBy] = useState<NonNullable<S3CostInsightsFiltersQuery["seriesBy"]>>("usage_type");
+  const location = useLocation();
+  const navigate = useNavigate();
+  const { scope } = useDashboardScope();
+  const filters = useMemo(() => parseFiltersFromSearch(location.search), [location.search]);
+
+  const applyFiltersToUrl = (nextFilters: S3OverviewFilterValue) => {
+    const params = new URLSearchParams(location.search);
+    if (nextFilters.seriesBy !== DEFAULT_FILTERS.seriesBy) params.set("s3SeriesBy", nextFilters.seriesBy);
+    else params.delete("s3SeriesBy");
+    if (nextFilters.seriesValues.length > 0) params.set("s3SeriesValues", nextFilters.seriesValues.join(","));
+    else params.delete("s3SeriesValues");
+    if (nextFilters.storageClass.length > 0) params.set("s3StorageClass", nextFilters.storageClass.join(","));
+    else params.delete("s3StorageClass");
+    if (nextFilters.region) params.set("s3Region", nextFilters.region);
+    else params.delete("s3Region");
+    if (nextFilters.costBy !== DEFAULT_FILTERS.costBy) params.set("s3CostBy", nextFilters.costBy);
+    else params.delete("s3CostBy");
+    if (nextFilters.yAxisMetric !== DEFAULT_FILTERS.yAxisMetric) params.set("s3YAxisMetric", nextFilters.yAxisMetric);
+    else params.delete("s3YAxisMetric");
+    if (nextFilters.chartType !== DEFAULT_FILTERS.chartType) params.set("s3ChartType", nextFilters.chartType);
+    else params.delete("s3ChartType");
+    if (nextFilters.compareMode !== DEFAULT_FILTERS.compareMode) params.set("s3Compare", nextFilters.compareMode);
+    else params.delete("s3Compare");
+    params.delete("s3TopN");
+    params.delete("s3SortOrder");
+
+    const nextSearch = params.toString();
+    const currentSearch = location.search.startsWith("?") ? location.search.slice(1) : location.search;
+    if (nextSearch !== currentSearch) {
+      navigate({ pathname: location.pathname, search: nextSearch }, { replace: true });
+    }
+  };
 
   const queryFilters = useMemo<S3CostInsightsFiltersQuery>(
     () => ({
-      ...(selectedCostCategory ? { costCategory: [selectedCostCategory] } : {}),
-      ...(selectedRegion ? { region: [selectedRegion] } : {}),
-      costBy,
-      seriesBy,
+      ...(filters.seriesBy === "cost_category" && filters.seriesValues.length > 0 ? { costCategory: filters.seriesValues } : {}),
+      ...(filters.seriesValues.length > 0 ? { seriesValues: filters.seriesValues } : {}),
+      ...(filters.storageClass.length > 0 ? { storageClass: filters.storageClass } : {}),
+      ...(filters.region ? { region: [filters.region] } : {}),
+      costBy: filters.costBy,
+      seriesBy: filters.seriesBy,
+      yAxisMetric: filters.yAxisMetric,
     }),
-    [costBy, selectedCostCategory, selectedRegion, seriesBy],
+    [filters],
   );
 
   const query = useS3CostInsightsQuery(queryFilters);
-
   const breakdown = query.data?.chart.breakdown;
-  const chartReady = Boolean(breakdown && breakdown.labels.length > 0 && breakdown.series.length > 0);
-  const filterOptions = query.data?.filterOptions;
-
-  const labels = useMemo(
-    () =>
-      (breakdown?.labels ?? []).map((label) => {
-        if (costBy !== "date") return label;
-        const parsed = new Date(`${label}T00:00:00.000Z`);
-        return Number.isNaN(parsed.getTime()) ? label : xAxisFormatter.format(parsed);
-      }),
-    [breakdown?.labels, costBy],
+  const bucketRows = useMemo(() => (query.data?.bucketTable ?? []) as S3BucketTableRow[], [query.data?.bucketTable]);
+  const costCategoryRows = useMemo(
+    () => (query.data?.costCategoryTable ?? []) as S3CostCategoryTableRow[],
+    [query.data?.costCategoryTable],
   );
+  const usageOperationRows = useMemo(
+    () => (query.data?.usageOperationTable ?? []) as S3UsageOperationTableRow[],
+    [query.data?.usageOperationTable],
+  );
+  const filteredBucketRows = useMemo(() => {
+    if (filters.seriesBy !== "bucket" || filters.seriesValues.length === 0) {
+      return bucketRows;
+    }
+    const selected = new Set(filters.seriesValues.map((item) => item.trim().toLowerCase()).filter((item) => item.length > 0));
+    return bucketRows.filter((row) => selected.has(String(row.bucketName ?? "").trim().toLowerCase()));
+  }, [bucketRows, filters.seriesBy, filters.seriesValues]);
+  const showCostCategoryTable = filters.seriesBy === "cost_category";
+  const showCostCategoryUsageInsightTable = showCostCategoryTable && filters.seriesValues.length > 0;
+  const showUsageOperationTable = filters.seriesBy === "usage_type" || filters.seriesBy === "operation";
+  const isInitialLoading = query.isLoading && !query.data;
+  const hasBlockingError = query.isError && !query.data;
 
-  const chartOption = useMemo<EChartsOption>(() => {
-    const series = breakdown?.series ?? [];
+  const previousRange = useMemo(() => {
+    if (!scope?.from || !scope?.to) return null;
+    const start = parseIsoDate(scope.from);
+    const end = parseIsoDate(scope.to);
+    if (!start || !end || end < start) return null;
+    const dayMs = 24 * 60 * 60 * 1000;
+    const days = Math.floor((end.getTime() - start.getTime()) / dayMs) + 1;
+    const previousEnd = new Date(start.getTime() - dayMs);
+    const previousStart = new Date(previousEnd.getTime() - (days - 1) * dayMs);
     return {
-      color: series.map((_, index) => CHART_COLORS[index % CHART_COLORS.length]),
-      tooltip: {
-        trigger: "axis",
-        axisPointer: { type: "shadow" },
-        valueFormatter: (value: unknown) => graphCurrencyFormatter.format(Number(value ?? 0)),
-      },
-      legend: {
-        top: 0,
-        icon: "roundRect",
-        itemHeight: 6,
-        itemWidth: 18,
-        textStyle: { color: "#58706d", fontSize: 11 },
-      },
-      grid: { left: 10, right: 10, top: 36, bottom: 14, containLabel: true },
-      xAxis: {
-        type: "category",
-        data: labels,
-        axisLine: { lineStyle: { color: "#d7e4df" } },
-        axisLabel: { color: "#5c7370", fontSize: 11, hideOverlap: true, rotate: labels.length > 24 ? 28 : 0 },
-      },
-      yAxis: {
-        type: "value",
-        axisLine: { show: false },
-        splitLine: { lineStyle: { color: "#e1eae7", type: "dashed" } },
-        axisLabel: {
-          color: "#6d837e",
-          fontSize: 11,
-          formatter: (value: number) => graphCurrencyFormatter.format(value),
-        },
-      },
-      dataZoom: labels.length > 45 ? [{ type: "inside", start: 0, end: 100 }] : undefined,
-      series: series.map((item) => ({
-        name: item.name,
-        type: "bar",
-        stack: "s3-overview",
-        barWidth: 44,
-        barMaxWidth: 52,
-        barCategoryGap: "34%",
-        barGap: "10%",
-        itemStyle: { borderRadius: 0 },
-        data: item.values.map((value) => Number(value ?? 0)),
-      })),
+      from: formatIsoDate(previousStart),
+      to: formatIsoDate(previousEnd),
+      days,
     };
-  }, [breakdown?.series, labels]);
+  }, [scope]);
 
-  const chips = useMemo<FilterChip[]>(() => {
-    const items: FilterChip[] = [];
-    items.push({ key: "seriesBy", label: "Cost By", value: seriesBy });
-    if (selectedCostCategory) items.push({ key: "costCategory", label: "Cost Category", value: selectedCostCategory });
-    if (selectedRegion) items.push({ key: "region", label: "Region", value: selectedRegion });
-    items.push({ key: "costBy", label: "Cost By (X-Axis)", value: costBy });
-    return items;
-  }, [costBy, selectedCostCategory, selectedRegion, seriesBy]);
+  const previousScope = useMemo(() => {
+    if (!scope || !previousRange) return null;
+    return { ...scope, from: previousRange.from, to: previousRange.to };
+  }, [previousRange, scope]);
 
-  const clearOne = (key: FilterChip["key"]) => {
-    if (key === "costCategory") setSelectedCostCategory("");
-    if (key === "region") setSelectedRegion("");
-    if (key === "costBy") setCostBy("date");
-    if (key === "seriesBy") setSeriesBy("usage_type");
-  };
+  const comparisonQuery = useQuery({
+    queryKey: ["dashboard", "s3", "cost-insights", "previous-period", previousScope, queryFilters, filters.compareMode],
+    queryFn: () => dashboardApi.getS3CostInsights(previousScope as NonNullable<typeof previousScope>, queryFilters),
+    enabled: filters.compareMode === "previous_period" && Boolean(previousScope),
+  });
 
-  const clearAll = () => {
-    setSelectedCostCategory("");
-    setSelectedRegion("");
-    setCostBy("date");
-    setSeriesBy("usage_type");
-  };
-
-  useEffect(() => {
-    const handlePointerDown = (event: MouseEvent) => {
-      if (!rootRef.current) return;
-      if (rootRef.current.contains(event.target as Node)) return;
-      setActivePopover(null);
-    };
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setActivePopover(null);
-      }
-    };
-    window.addEventListener("mousedown", handlePointerDown);
-    window.addEventListener("keydown", handleKeyDown);
-    return () => {
-      window.removeEventListener("mousedown", handlePointerDown);
-      window.removeEventListener("keydown", handleKeyDown);
-    };
-  }, []);
-
-  const normalize = (value: string) => value.trim().toLowerCase();
-  const filterOptionsBySearch = (options: string[], key: S3FilterPopoverKey): string[] => {
-    const needle = normalize(searchByPopover[key]);
-    if (!needle) return options;
-    return options.filter((option) => normalize(option).includes(needle));
-  };
-  const setSearch = (key: S3FilterPopoverKey, value: string) => {
-    setSearchByPopover((current) => ({ ...current, [key]: value }));
-  };
-  const togglePopover = (key: S3FilterPopoverKey) => {
-    setActivePopover((current) => (current === key ? null : key));
-  };
-
-  const renderPopoverSearch = (key: S3FilterPopoverKey, placeholder: string) => (
-    <label className="cost-explorer-filter-popover__search-wrap">
-      <Search className="cost-explorer-filter-popover__search-icon" size={14} aria-hidden="true" />
-      <input
-        type="search"
-        className="cost-explorer-filter-popover__search-input"
-        value={searchByPopover[key]}
-        onChange={(event) => setSearch(key, event.target.value)}
-        placeholder={placeholder}
-      />
-    </label>
-  );
+  const comparisonTotal = comparisonQuery.data?.kpis.totalS3Cost ?? null;
 
   return (
-    <div className="dashboard-page s3-overview-page" ref={rootRef}>
-      {query.isLoading ? <p className="dashboard-note">Loading S3 overview...</p> : null}
-      {query.isError ? <p className="dashboard-note">Failed to load S3 overview: {query.error.message}</p> : null}
-
-      {!query.isLoading && !query.isError ? (
-        <>
-          <section className="cost-explorer-control-surface s3-overview-filter-panel" aria-label="S3 overview filters">
-            <div className="cost-explorer-toolbar-row">
-              <div className="cost-explorer-toolbar-item" style={{ order: 2 }}>
-                <button
-                  type="button"
-                  className={`cost-explorer-toolbar-trigger${activePopover === "costCategory" ? " is-active" : ""}`}
-                  onClick={() => togglePopover("costCategory")}
-                  aria-expanded={activePopover === "costCategory"}
-                  aria-haspopup="dialog"
-                >
-                  <span className="cost-explorer-toolbar-trigger__label">Cost Category</span>
-                  <span className="cost-explorer-toolbar-trigger__row">
-                    <span className="cost-explorer-toolbar-trigger__value">{selectedCostCategory || "All"}</span>
-                    <ChevronDown className="cost-explorer-toolbar-trigger__caret" size={14} aria-hidden="true" />
-                  </span>
-                </button>
-                {activePopover === "costCategory" ? (
-                  <div className="cost-explorer-filter-popover" role="dialog" aria-label="Cost Category options">
-                    <p className="cost-explorer-filter-popover__title">Cost Category</p>
-                    {renderPopoverSearch("costCategory", "Search cost category...")}
-                    <div className="cost-explorer-filter-popover__list" role="listbox">
-                      {["All", ...filterOptionsBySearch(filterOptions?.costCategory ?? [], "costCategory")].map((option) => {
-                        const selected = (option === "All" && !selectedCostCategory) || option === selectedCostCategory;
-                        return (
-                          <button
-                            key={option}
-                            type="button"
-                            className={`cost-explorer-filter-option${selected ? " is-active" : ""}`}
-                            onClick={() => {
-                              setSelectedCostCategory(option === "All" ? "" : option);
-                              setActivePopover(null);
-                            }}
-                          >
-                            <span className="cost-explorer-filter-option__content">
-                              <span className="cost-explorer-filter-option__label">{option}</span>
-                            </span>
-                            {selected ? <Check className="cost-explorer-filter-option__check" size={15} aria-hidden="true" /> : null}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-
-              <div className="cost-explorer-toolbar-item" style={{ order: 3 }}>
-                <button
-                  type="button"
-                  className={`cost-explorer-toolbar-trigger${activePopover === "region" ? " is-active" : ""}`}
-                  onClick={() => togglePopover("region")}
-                  aria-expanded={activePopover === "region"}
-                  aria-haspopup="dialog"
-                >
-                  <span className="cost-explorer-toolbar-trigger__label">Region</span>
-                  <span className="cost-explorer-toolbar-trigger__row">
-                    <span className="cost-explorer-toolbar-trigger__value">{selectedRegion || "All"}</span>
-                    <ChevronDown className="cost-explorer-toolbar-trigger__caret" size={14} aria-hidden="true" />
-                  </span>
-                </button>
-                {activePopover === "region" ? (
-                  <div className="cost-explorer-filter-popover" role="dialog" aria-label="Region options">
-                    <p className="cost-explorer-filter-popover__title">Region</p>
-                    {renderPopoverSearch("region", "Search region...")}
-                    <div className="cost-explorer-filter-popover__list" role="listbox">
-                      {["All", ...filterOptionsBySearch(filterOptions?.region ?? [], "region")].map((option) => {
-                        const selected = (option === "All" && !selectedRegion) || option === selectedRegion;
-                        return (
-                          <button
-                            key={option}
-                            type="button"
-                            className={`cost-explorer-filter-option${selected ? " is-active" : ""}`}
-                            onClick={() => {
-                              setSelectedRegion(option === "All" ? "" : option);
-                              setActivePopover(null);
-                            }}
-                          >
-                            <span className="cost-explorer-filter-option__content">
-                              <span className="cost-explorer-filter-option__label">{option}</span>
-                            </span>
-                            {selected ? <Check className="cost-explorer-filter-option__check" size={15} aria-hidden="true" /> : null}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-
-              <div className="cost-explorer-toolbar-item" style={{ order: 1 }}>
-                <button
-                  type="button"
-                  className={`cost-explorer-toolbar-trigger${activePopover === "seriesBy" ? " is-active" : ""}`}
-                  onClick={() => togglePopover("seriesBy")}
-                  aria-expanded={activePopover === "seriesBy"}
-                  aria-haspopup="dialog"
-                >
-                  <span className="cost-explorer-toolbar-trigger__label">Cost by</span>
-                  <span className="cost-explorer-toolbar-trigger__row">
-                    <span className="cost-explorer-toolbar-trigger__value">{seriesBy}</span>
-                    <ChevronDown className="cost-explorer-toolbar-trigger__caret" size={14} aria-hidden="true" />
-                  </span>
-                </button>
-                {activePopover === "seriesBy" ? (
-                  <div className="cost-explorer-filter-popover" role="dialog" aria-label="Cost by options">
-                    <p className="cost-explorer-filter-popover__title">Cost by</p>
-                    {renderPopoverSearch("seriesBy", "Search type...")}
-                    <div className="cost-explorer-filter-popover__list" role="listbox">
-                      {filterOptionsBySearch(
-                        ["usage_type", "cost_category", "operation", "product_family"],
-                        "seriesBy",
-                      ).map((option) => {
-                        const selected = option === seriesBy;
-                        return (
-                          <button
-                            key={option}
-                            type="button"
-                            className={`cost-explorer-filter-option${selected ? " is-active" : ""}`}
-                            onClick={() => {
-                              setSeriesBy(option as NonNullable<S3CostInsightsFiltersQuery["seriesBy"]>);
-                              setActivePopover(null);
-                            }}
-                          >
-                            <span className="cost-explorer-filter-option__content">
-                              <span className="cost-explorer-filter-option__label">{option}</span>
-                            </span>
-                            {selected ? <Check className="cost-explorer-filter-option__check" size={15} aria-hidden="true" /> : null}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-
-              <div className="cost-explorer-toolbar-item" style={{ order: 4 }}>
-                <button
-                  type="button"
-                  className={`cost-explorer-toolbar-trigger${activePopover === "costBy" ? " is-active" : ""}`}
-                  onClick={() => togglePopover("costBy")}
-                  aria-expanded={activePopover === "costBy"}
-                  aria-haspopup="dialog"
-                >
-                  <span className="cost-explorer-toolbar-trigger__label">Cost by (X-Axis)</span>
-                  <span className="cost-explorer-toolbar-trigger__row">
-                    <span className="cost-explorer-toolbar-trigger__value">{costBy}</span>
-                    <ChevronDown className="cost-explorer-toolbar-trigger__caret" size={14} aria-hidden="true" />
-                  </span>
-                </button>
-                {activePopover === "costBy" ? (
-                  <div className="cost-explorer-filter-popover cost-explorer-filter-popover--right" role="dialog" aria-label="Cost by X-axis options">
-                    <p className="cost-explorer-filter-popover__title">Cost by (X-Axis)</p>
-                    {renderPopoverSearch("costBy", "Search axis...")}
-                    <div className="cost-explorer-filter-popover__list" role="listbox">
-                      {filterOptionsBySearch(["date", "bucket", "region", "account"], "costBy").map((option) => {
-                        const selected = option === costBy;
-                        return (
-                          <button
-                            key={option}
-                            type="button"
-                            className={`cost-explorer-filter-option${selected ? " is-active" : ""}`}
-                            onClick={() => {
-                              setCostBy(option as NonNullable<S3CostInsightsFiltersQuery["costBy"]>);
-                              setActivePopover(null);
-                            }}
-                          >
-                            <span className="cost-explorer-filter-option__content">
-                              <span className="cost-explorer-filter-option__label">{option}</span>
-                            </span>
-                            {selected ? <Check className="cost-explorer-filter-option__check" size={15} aria-hidden="true" /> : null}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-            </div>
-
-            <div className="cost-explorer-chip-bar" aria-label="Selected filter summary">
-              <div className="cost-explorer-chip-row">
-                {chips.map((chip) => (
-                  <span key={`${chip.key}-${chip.value}`} className="cost-explorer-chip">
-                    <span className="cost-explorer-chip__edit">{chip.label}: {chip.value}</span>
-                    <button
-                      type="button"
-                      className="cost-explorer-chip__remove"
-                      onClick={() => clearOne(chip.key)}
-                      aria-label={`Remove ${chip.label}`}
-                    >
-                      <X size={13} aria-hidden="true" />
-                    </button>
-                  </span>
-                ))}
-                <button type="button" className="cost-explorer-chip-bar__clear cost-explorer-chip-bar__clear--inline" onClick={clearAll}>
-                  Clear all
-                </button>
-              </div>
-            </div>
-          </section>
-
-          <section className="cost-explorer-chart-panel s3-overview-chart-panel" aria-label="S3 date vs cost chart">
-            <div className="cost-explorer-chart-panel__header">
-              <h2 className="cost-explorer-chart-panel__title">S3 Cost Breakdown</h2>
-            </div>
-            <div className="cost-explorer-chart-panel__body">
-              {chartReady ? (
-                <BaseEChart option={chartOption} height={420} />
-              ) : (
-                <p className="dashboard-note">No S3 data available for the selected filters.</p>
-              )}
-            </div>
-          </section>
-        </>
+    <div className="dashboard-page s3-overview-page">
+      <S3OverviewFilters
+        value={filters}
+        onChange={applyFiltersToUrl}
+        filterOptions={query.data?.filterOptions}
+        isLoading={isInitialLoading}
+        isError={hasBlockingError}
+        errorMessage={query.error?.message}
+        onRetry={() => {
+          void query.refetch();
+        }}
+      />
+      <S3OverviewChartPanel
+        breakdown={breakdown}
+        costBy={filters.costBy}
+        yAxisMetric={filters.yAxisMetric}
+        chartType={filters.chartType}
+        compareMode={filters.compareMode}
+        currentPeriodTotal={query.data?.kpis.totalS3Cost ?? null}
+        previousPeriodTotal={comparisonTotal}
+        comparisonLoading={filters.compareMode === "previous_period" && comparisonQuery.isLoading}
+        comparisonError={filters.compareMode === "previous_period" && comparisonQuery.isError}
+        comparisonErrorMessage={comparisonQuery.error?.message}
+        isLoading={isInitialLoading}
+        isError={hasBlockingError}
+        errorMessage={query.error?.message}
+        onRetry={() => {
+          void query.refetch();
+        }}
+        onReset={() => applyFiltersToUrl(DEFAULT_FILTERS)}
+        onChartTypeChange={(nextType) => applyFiltersToUrl({ ...filters, chartType: nextType })}
+      />
+      {!hasBlockingError ? (
+        <section
+          className="s3-overview-table-panel"
+          aria-label={
+            showCostCategoryUsageInsightTable || showUsageOperationTable
+              ? "S3 usage operation insights table"
+              : showCostCategoryTable
+              ? "S3 cost category insights table"
+              : "S3 bucket insights table"
+          }
+        >
+          {isInitialLoading ? (
+            <p className="dashboard-note">
+              {showCostCategoryUsageInsightTable || showUsageOperationTable
+                ? "Loading S3 usage type operation insights..."
+                : showCostCategoryTable
+                ? "Loading S3 cost category insights..."
+                : "Loading S3 bucket insights..."}
+            </p>
+          ) : showCostCategoryUsageInsightTable ? (
+            <S3UsageOperationTable rows={usageOperationRows} />
+          ) : showCostCategoryTable ? (
+            <S3CostCategoryTable rows={costCategoryRows} />
+          ) : showUsageOperationTable ? (
+            <S3UsageOperationTable rows={usageOperationRows} />
+          ) : (
+            <S3BucketInsightsTable
+              rows={filteredBucketRows}
+              totalS3Cost={query.data?.kpis.totalS3Cost ?? 0}
+              onBucketClick={(bucketName) => {
+                navigate({
+                  pathname: `/dashboard/s3/cost/bucket/${encodeURIComponent(bucketName)}`,
+                  search: location.search,
+                });
+              }}
+            />
+          )}
+        </section>
       ) : null}
     </div>
   );

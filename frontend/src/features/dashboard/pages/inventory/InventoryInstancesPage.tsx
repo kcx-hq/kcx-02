@@ -1,6 +1,6 @@
-import { ClientInventoryInstancesPage } from "@/features/client-home/pages/ClientInventoryInstancesPage";
+import EC2InstancesPage from "@/features/dashboard/pages/ec2/EC2InstancesPage";
 
 export default function InventoryInstancesPage() {
-  return <ClientInventoryInstancesPage />;
+  return <EC2InstancesPage />;
 }
 

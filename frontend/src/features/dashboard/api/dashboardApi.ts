@@ -236,46 +236,71 @@ function withAnomaliesAlertsFilters(
   return query.length > 0 ? `${path}?${query}` : path;
 }
 
-function withEc2InstanceUsageFilters(
+function withEc2OptimizationFilters(
   path: string,
   scope: DashboardResolvedScope,
-  filters?: Ec2InstanceUsageFiltersQuery,
+  filters?: Ec2OptimizationSummaryFiltersQuery | Ec2OptimizationInstancesFiltersQuery,
 ): string {
   const params = new URLSearchParams(buildDashboardQueryParams(scope));
+
   if (filters?.cloudConnectionId) params.set("cloud_connection_id", filters.cloudConnectionId);
-  if (typeof filters?.subAccountKey === "number") params.set("sub_account_key", String(filters.subAccountKey));
+  if (typeof filters?.billingSourceId === "number") params.set("billing_source_id", String(filters.billingSourceId));
   if (typeof filters?.regionKey === "number") params.set("region_key", String(filters.regionKey));
-  if (filters?.category) params.set("category", filters.category);
+  if (typeof filters?.subAccountKey === "number") params.set("sub_account_key", String(filters.subAccountKey));
+  if (filters?.recommendationType) params.set("recommendation_type", filters.recommendationType);
+  if (filters?.region) params.set("region", filters.region);
+  if (filters?.riskLevel) params.set("risk_level", filters.riskLevel);
+  if (filters?.status) params.set("status", filters.status);
+  if (filters?.dateFrom) params.set("dateFrom", filters.dateFrom);
+  if (filters?.dateTo) params.set("dateTo", filters.dateTo);
+  if (typeof filters?.page === "number") {
+    params.set("page", String(filters.page));
+  }
+  if (typeof filters?.pageSize === "number") {
+    params.set("page_size", String(filters.pageSize));
+  }
 
   const query = params.toString();
   return query.length > 0 ? `${path}?${query}` : path;
 }
 
-function withEc2OverviewFilters(
+function withEc2ExplorerFilters(
   path: string,
   scope: DashboardResolvedScope,
-  filters?: Ec2OverviewFiltersQuery,
+  filters: Ec2ExplorerFiltersQuery,
 ): string {
   const params = new URLSearchParams(buildDashboardQueryParams(scope));
-  if (filters?.cloudConnectionId) params.set("cloud_connection_id", filters.cloudConnectionId);
-  if (typeof filters?.subAccountKey === "number") params.set("sub_account_key", String(filters.subAccountKey));
-  if (typeof filters?.regionKey === "number") params.set("region_key", String(filters.regionKey));
-  if (filters?.instanceType) params.set("instance_type", filters.instanceType);
-  if (filters?.state) params.set("state", filters.state);
+  const appendArray = (key: string, values?: Array<string | number>) => {
+    if (!Array.isArray(values) || values.length === 0) return;
+    params.set(key, values.join(","));
+  };
 
-  const query = params.toString();
-  return query.length > 0 ? `${path}?${query}` : path;
-}
+  params.set("metric", filters.metric);
+  params.set("groupBy", filters.groupBy);
+  if (filters.startDate) params.set("startDate", filters.startDate);
+  if (filters.endDate) params.set("endDate", filters.endDate);
+  if (typeof filters.tagKey === "string" && filters.tagKey.trim().length > 0) {
+    params.set("tagKey", filters.tagKey.trim());
+  }
 
-function withEc2InstanceHoursFilters(
-  path: string,
-  scope: DashboardResolvedScope,
-  filters?: Ec2InstanceHoursFiltersQuery,
-): string {
-  const params = new URLSearchParams(buildDashboardQueryParams(scope));
-  if (filters?.cloudConnectionId) params.set("cloud_connection_id", filters.cloudConnectionId);
-  if (typeof filters?.subAccountKey === "number") params.set("sub_account_key", String(filters.subAccountKey));
-  if (typeof filters?.regionKey === "number") params.set("region_key", String(filters.regionKey));
+  appendArray("regions", filters.regions);
+  appendArray("tags", filters.tags);
+
+  if (filters.costBasis) params.set("costBasis", filters.costBasis);
+  if (filters.usageMetric) params.set("usageMetric", filters.usageMetric);
+  if (filters.aggregation) params.set("aggregation", filters.aggregation);
+  if (filters.condition) params.set("condition", filters.condition);
+  appendArray("groupValues", filters.groupValues);
+
+  if (typeof filters.minCost === "number") params.set("minCost", String(filters.minCost));
+  if (typeof filters.maxCost === "number") params.set("maxCost", String(filters.maxCost));
+  if (typeof filters.minCpu === "number") params.set("minCpu", String(filters.minCpu));
+  if (typeof filters.maxCpu === "number") params.set("maxCpu", String(filters.maxCpu));
+  if (typeof filters.minNetwork === "number") params.set("minNetwork", String(filters.minNetwork));
+  if (typeof filters.maxNetwork === "number") params.set("maxNetwork", String(filters.maxNetwork));
+
+  appendArray("states", filters.states);
+  appendArray("instanceTypes", filters.instanceTypes);
 
   const query = params.toString();
   return query.length > 0 ? `${path}?${query}` : path;
@@ -293,6 +318,7 @@ function withS3CostInsightsFilters(
   };
 
   appendArray("costCategory", filters?.costCategory);
+  appendArray("seriesValues", filters?.seriesValues);
   appendArray("storageClass", filters?.storageClass);
   appendArray("region", filters?.region);
   appendArray("account", filters?.account);
@@ -304,6 +330,9 @@ function withS3CostInsightsFilters(
   }
   if (filters?.seriesBy) {
     params.set("seriesBy", filters.seriesBy);
+  }
+  if (filters?.yAxisMetric) {
+    params.set("yAxisMetric", filters.yAxisMetric);
   }
 
   const query = params.toString();
@@ -530,14 +559,18 @@ export const dashboardApi = {
     return apiGet<DashboardSectionData>(withDashboardQuery("/dashboard/report", scope));
   },
 
-  getEc2InstanceUsage(scope: DashboardResolvedScope, filters?: Ec2InstanceUsageFiltersQuery) {
-    return apiGet<Ec2InstanceUsageResponse>(withEc2InstanceUsageFilters("/dashboard/ec2/instance-usage", scope, filters));
+  getEc2OptimizationSummary(scope: DashboardResolvedScope, filters?: Ec2OptimizationSummaryFiltersQuery) {
+    return apiGet<Ec2OptimizationSummaryResponse>(
+      withEc2OptimizationFilters("/dashboard/ec2/optimization/summary", scope, filters),
+    );
   },
-  getEc2Overview(scope: DashboardResolvedScope, filters?: Ec2OverviewFiltersQuery) {
-    return apiGet<Ec2OverviewResponse>(withEc2OverviewFilters("/dashboard/ec2/overview", scope, filters));
+  getEc2OptimizationInstances(scope: DashboardResolvedScope, filters?: Ec2OptimizationInstancesFiltersQuery) {
+    return apiGet<Ec2OptimizationInstancesResponse>(
+      withEc2OptimizationFilters("/dashboard/ec2/optimization/instances", scope, filters),
+    );
   },
-  getEc2InstanceHours(scope: DashboardResolvedScope, filters?: Ec2InstanceHoursFiltersQuery) {
-    return apiGet<Ec2InstanceHoursResponse>(withEc2InstanceHoursFilters("/dashboard/ec2/instance-hours", scope, filters));
+  getEc2Explorer(scope: DashboardResolvedScope, filters: Ec2ExplorerFiltersQuery) {
+    return apiGet<Ec2ExplorerResponse>(withEc2ExplorerFilters("/dashboard/ec2/explorer", scope, filters));
   },
   getS3CostInsights(scope: DashboardResolvedScope, filters?: S3CostInsightsFiltersQuery) {
     return apiGet<S3CostInsightsResponse>(withS3CostInsightsFilters("/dashboard/s3/cost-insights", scope, filters));
@@ -584,12 +617,18 @@ export type {
   DashboardResolvedScope,
   DashboardScopeInput,
   DashboardSectionData,
-  Ec2OverviewFiltersQuery,
-  Ec2OverviewResponse,
-  Ec2InstanceHoursFiltersQuery,
-  Ec2InstanceHoursResponse,
-  Ec2InstanceUsageFiltersQuery,
-  Ec2InstanceUsageResponse,
+  Ec2OptimizationSummaryFiltersQuery,
+  Ec2OptimizationInstancesFiltersQuery,
+  Ec2OptimizationSummaryResponse,
+  Ec2OptimizationInstancesResponse,
+  Ec2ExplorerMetric,
+  Ec2ExplorerGroupBy,
+  Ec2ExplorerCostBasis,
+  Ec2ExplorerUsageMetric,
+  Ec2ExplorerAggregation,
+  Ec2ExplorerCondition,
+  Ec2ExplorerFiltersQuery,
+  Ec2ExplorerResponse,
   S3CostInsightsFiltersQuery,
   S3CostInsightsResponse,
   OptimizationIdleOverview,

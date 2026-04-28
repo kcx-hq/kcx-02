@@ -58,6 +58,13 @@ const sanitizeFilters = (filters?: Partial<S3CostInsightsFilters>): S3CostInsigh
     "usage_type",
     "operation",
     "product_family",
+    "bucket",
+    "storage_class",
+  ];
+  const allowedYAxisMetric: S3CostInsightsFilters["yAxisMetric"][] = [
+    "billed_cost",
+    "effective_cost",
+    "amortized_cost",
   ];
   const allowedCostCategory = new Set([
     "Storage",
@@ -71,6 +78,7 @@ const sanitizeFilters = (filters?: Partial<S3CostInsightsFilters>): S3CostInsigh
     costCategory: toUnique(filters?.costCategory as string[]).filter((item) =>
       allowedCostCategory.has(item),
     ) as S3CostInsightsFilters["costCategory"],
+    seriesValues: toUnique(filters?.seriesValues as string[]),
     bucket: filters?.bucket && String(filters.bucket).trim().length > 0 ? String(filters.bucket).trim() : null,
     storageClass: toUnique(filters?.storageClass as string[]),
     region: toUnique(filters?.region as string[]),
@@ -80,7 +88,10 @@ const sanitizeFilters = (filters?: Partial<S3CostInsightsFilters>): S3CostInsigh
       : "date",
     seriesBy: allowedSeriesBy.includes(filters?.seriesBy as S3CostInsightsFilters["seriesBy"])
       ? (filters?.seriesBy as S3CostInsightsFilters["seriesBy"])
-      : "cost_category",
+      : "bucket",
+    yAxisMetric: allowedYAxisMetric.includes(filters?.yAxisMetric as S3CostInsightsFilters["yAxisMetric"])
+      ? (filters?.yAxisMetric as S3CostInsightsFilters["yAxisMetric"])
+      : "billed_cost",
   };
 };
 
@@ -112,21 +123,37 @@ export class S3CostInsightsService {
       featureTrend,
       breakdown,
       filterOptions,
-      currentBucketTable,
-      previousBucketTable,
-    ] =
-      await Promise.all([
-        this.repository.getTotalS3Cost(scope),
-        monthToDateScope ? this.repository.getTotalS3Cost(monthToDateScope) : Promise.resolve(0),
-        this.repository.getTotalS3EffectiveCost(scope),
-        this.repository.getBucketCosts(scope),
-        this.repository.getTrend(scope),
-        this.repository.getFeatureTrend(scope),
-        this.repository.getBreakdownChart(scope, effectiveFilters),
-        this.repository.getBreakdownFilterOptions(scope),
-        this.repository.getBucketCostBreakdown(scope),
-        previousScope ? this.repository.getBucketCostBreakdown(previousScope) : Promise.resolve([]),
-      ]);
+    ] = await Promise.all([
+      this.repository.getTotalS3Cost(scope),
+      monthToDateScope ? this.repository.getTotalS3Cost(monthToDateScope) : Promise.resolve(0),
+      this.repository.getTotalS3EffectiveCost(scope),
+      this.repository.getBucketCosts(scope),
+      this.repository.getTrend(scope),
+      this.repository.getFeatureTrend(scope),
+      this.repository.getBreakdownChart(scope, effectiveFilters),
+      this.repository.getBreakdownFilterOptions(scope),
+    ]);
+
+    const [costCategoryTable, usageOperationTable, currentBucketTable, previousBucketTable] = await Promise.all([
+      this.repository.getCostCategoryTable(scope, effectiveFilters).catch((error: unknown) => {
+        console.error("[S3CostInsightsService] Failed to load costCategoryTable", error);
+        return [];
+      }),
+      this.repository.getUsageOperationTable(scope, effectiveFilters).catch((error: unknown) => {
+        console.error("[S3CostInsightsService] Failed to load usageOperationTable", error);
+        return [];
+      }),
+      this.repository.getBucketCostBreakdown(scope, effectiveFilters).catch((error: unknown) => {
+        console.error("[S3CostInsightsService] Failed to load currentBucketTable", error);
+        return [];
+      }),
+      previousScope
+        ? this.repository.getBucketCostBreakdown(previousScope, effectiveFilters).catch((error: unknown) => {
+            console.error("[S3CostInsightsService] Failed to load previousBucketTable", error);
+            return [];
+          })
+        : Promise.resolve([]),
+    ]);
 
     const previousCostByBucket = new Map(previousBucketTable.map((row) => [row.bucketName, row.cost]));
     const bucketTable = currentBucketTable.map((row) => {
@@ -169,6 +196,8 @@ export class S3CostInsightsService {
         effectiveCost,
       },
       bucketTable,
+      costCategoryTable,
+      usageOperationTable,
       chart: {
         bucketCosts,
         trend,

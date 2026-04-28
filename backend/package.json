@@ -19,6 +19,7 @@
     "backfill:ec2-instance-coverage-daily": "npm run build && node dist/scripts/backfill-ec2-instance-coverage-daily.js",
     "backfill:ec2-instance-daily": "npm run build && node dist/scripts/backfill-ec2-instance-daily.js",
     "demo:anomaly-data": "npm run build && node dist/scripts/generate-anomaly-demo-data.js",
+    "demo:ec2-optimization-data": "npm run build && node dist/scripts/generate-ec2-optimization-demo-data.js",
     "seed:cloud-connections:demo": "npm run build && node dist/scripts/seed-cloud-connections-demo.js",
     "seed:database-explorer:dev": "npm run build && node dist/scripts/seed/dev/seed-database-explorer-dev.js",
     "backfill:ebs-volume-utilization-hourly": "npm run build && node dist/scripts/backfill-ebs-volume-utilization-hourly.js",

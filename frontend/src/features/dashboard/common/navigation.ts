@@ -59,7 +59,7 @@ export const dashboardNav: DashboardNavNode[] = [
         kind: "group",
         label: "EC2",
         icon: "boxes",
-        path: "/dashboard/ec2",
+        path: "/dashboard/ec2/explorer",
         items: [
           {
             kind: "link",
@@ -81,27 +81,15 @@ export const dashboardNav: DashboardNavNode[] = [
           },
           {
             kind: "link",
-            label: "Cost",
-            path: "/dashboard/ec2/cost",
-            icon: "line-chart",
-          },
-          {
-            kind: "link",
-            label: "Usage",
-            path: "/dashboard/ec2/usage",
-            icon: "activity",
-          },
-          {
-            kind: "link",
-            label: "EC2 Instance Hours",
-            path: "/dashboard/ec2/instance-hours",
-            icon: "activity",
-          },
-          {
-            kind: "link",
             label: "Performance",
             path: "/dashboard/ec2/performance",
             icon: "line-chart",
+          },
+          {
+            kind: "link",
+            label: "Optimization",
+            path: "/dashboard/ec2/optimization",
+            icon: "gauge",
           },
         ],
       },

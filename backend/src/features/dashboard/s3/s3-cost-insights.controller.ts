@@ -34,6 +34,7 @@ const parseStringList = (value: unknown): string[] => {
 
 const parseS3Filters = (req: Request): Partial<S3CostInsightsFilters> => ({
   costCategory: parseStringList(req.query.costCategory) as S3CostInsightsFilters["costCategory"],
+  seriesValues: parseStringList(req.query.seriesValues),
   bucket: parseOptionalString(req.query.bucket),
   storageClass: parseStringList(req.query.storageClass),
   region: parseStringList(req.query.region),
@@ -41,6 +42,9 @@ const parseS3Filters = (req: Request): Partial<S3CostInsightsFilters> => ({
   costBy: (parseOptionalString(req.query.costBy) ?? undefined) as S3CostInsightsFilters["costBy"] | undefined,
   seriesBy: (parseOptionalString(req.query.seriesBy) ?? undefined) as
     | S3CostInsightsFilters["seriesBy"]
+    | undefined,
+  yAxisMetric: (parseOptionalString(req.query.yAxisMetric) ?? undefined) as
+    | S3CostInsightsFilters["yAxisMetric"]
     | undefined,
 });
 
