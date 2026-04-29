@@ -30,6 +30,9 @@ class S3StorageLensDaily extends Model<
   declare bytesGlacier: CreationOptional<string | null>;
   declare bytesDeepArchive: CreationOptional<string | null>;
   declare accessCount: CreationOptional<string | null>;
+  declare ingestionSource: CreationOptional<string | null>;
+  declare reportObjectKey: CreationOptional<string | null>;
+  declare reportGeneratedDate: CreationOptional<string | null>;
   declare createdAt: CreationOptional<Date>;
   declare updatedAt: CreationOptional<Date>;
 }
@@ -56,6 +59,9 @@ const createS3StorageLensDailyModel = (sequelize: Sequelize): typeof S3StorageLe
       bytesGlacier: { type: DataTypes.DECIMAL(30, 0), allowNull: true, field: "bytes_glacier" },
       bytesDeepArchive: { type: DataTypes.DECIMAL(30, 0), allowNull: true, field: "bytes_deep_archive" },
       accessCount: { type: DataTypes.DECIMAL(30, 0), allowNull: true, field: "access_count" },
+      ingestionSource: { type: DataTypes.STRING(50), allowNull: true, field: "ingestion_source" },
+      reportObjectKey: { type: DataTypes.TEXT, allowNull: true, field: "report_object_key" },
+      reportGeneratedDate: { type: DataTypes.DATEONLY, allowNull: true, field: "report_generated_date" },
       createdAt: { type: DataTypes.DATE, allowNull: false, defaultValue: sequelize.literal("NOW()"), field: "created_at" },
       updatedAt: { type: DataTypes.DATE, allowNull: false, defaultValue: sequelize.literal("NOW()"), field: "updated_at" },
     },

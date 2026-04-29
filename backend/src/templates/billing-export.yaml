@@ -44,6 +44,16 @@ Parameters:
     Default: KCX-CUR2-Export
     Description: Name of the AWS Data Export
 
+  StorageLensExportPrefix:
+    Type: String
+    Default: kcx/storage-lens
+    Description: Prefix where S3 Storage Lens daily exports will be delivered
+
+  StorageLensConfigId:
+    Type: String
+    Default: kcx-storage-lens
+    Description: S3 Storage Lens configuration ID (must be unique per account)
+
   CloudTrailBucketName:
     Type: String
     Default: ''
@@ -136,6 +146,8 @@ Resources:
                       - !Sub ${ExportPrefix}/*
                       - !Sub ${ExportPrefix}/metadata/*
                       - !Sub ${ExportPrefix}/data/*
+                      - !Ref StorageLensExportPrefix
+                      - !Sub ${StorageLensExportPrefix}/*
 
               - Sid: GetExportBucketLocation
                 Effect: Allow
@@ -148,6 +160,19 @@ Resources:
                 Action:
                   - s3:GetObject
                 Resource: !Sub ${KCXExportBucket.Arn}/${ExportPrefix}/*
+
+              - Sid: ReadStorageLensExportObjects
+                Effect: Allow
+                Action:
+                  - s3:GetObject
+                Resource: !Sub ${KCXExportBucket.Arn}/${StorageLensExportPrefix}/*
+
+              - Sid: ReadStorageLensConfiguration
+                Effect: Allow
+                Action:
+                  - s3:GetStorageLensConfiguration
+                  - s3:ListStorageLensConfigurations
+                Resource: "*"
 
               - !If
                 - HasCloudTrailBucket
@@ -207,6 +232,65 @@ Resources:
                 aws:SourceAccount: !Ref AWS::AccountId
               ArnLike:
                 aws:SourceArn: !Sub arn:aws:bcm-data-exports:${AWS::Region}:${AWS::AccountId}:export/*
+
+          - Sid: AllowS3StorageLensToWrite
+            Effect: Allow
+            Principal:
+              Service: storage-lens.s3.amazonaws.com
+            Action:
+              - s3:PutObject
+            Resource: !Sub ${KCXExportBucket.Arn}/${StorageLensExportPrefix}/*
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+                s3:x-amz-acl: bucket-owner-full-control
+
+          - Sid: AllowS3StorageLensBucketChecks
+            Effect: Allow
+            Principal:
+              Service: storage-lens.s3.amazonaws.com
+            Action:
+              - s3:GetBucketLocation
+              - s3:ListBucket
+            Resource: !GetAtt KCXExportBucket.Arn
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+
+  KCXStorageLens:
+    Type: AWS::S3::StorageLens
+    DependsOn:
+      - KCXExportBucket
+      - ExportBucketPolicy
+    Properties:
+      StorageLensConfiguration:
+        Id: !Ref StorageLensConfigId
+        AccountLevel:
+          ActivityMetrics:
+            IsEnabled: true
+          BucketLevel:
+            ActivityMetrics:
+              IsEnabled: true
+            AdvancedCostOptimizationMetrics:
+              IsEnabled: true
+            AdvancedDataProtectionMetrics:
+              IsEnabled: true
+            DetailedStatusCodesMetrics:
+              IsEnabled: true
+            PrefixLevel:
+              StorageMetrics:
+                IsEnabled: true
+              SelectionCriteria:
+                Delimiter: /
+                MaxDepth: 5
+        IsEnabled: true
+        DataExport:
+          S3BucketDestination:
+            AccountId: !Ref AWS::AccountId
+            Arn: !GetAtt KCXExportBucket.Arn
+            Format: Parquet
+            OutputSchemaVersion: V_1
+            Prefix: !Ref StorageLensExportPrefix
 
   KCXCur2Export:
     Type: AWS::BCMDataExports::Export
@@ -671,6 +755,14 @@ Outputs:
   ExportPrefix:
     Description: Export S3 prefix
     Value: !Ref ExportPrefix
+
+  StorageLensExportPrefix:
+    Description: S3 Storage Lens export prefix
+    Value: !Ref StorageLensExportPrefix
+
+  StorageLensConfigId:
+    Description: S3 Storage Lens configuration ID
+    Value: !Ref StorageLensConfigId
 
   ExportArn:
     Description: ARN of AWS Data Export

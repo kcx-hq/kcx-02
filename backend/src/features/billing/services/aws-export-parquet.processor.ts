@@ -29,11 +29,6 @@ import {
 import { syncEc2CostHistoryForIngestionRun } from "./ec2-cost-history.service.js";
 import { createTagDimensionCache, resolveFactPrimaryTagId, resolveFactTagIds } from "./dim-tag.service.js";
 import { assertTagDimensionSchemaReady } from "./ingestion-schema-guard.service.js";
-import {
-  extractStorageLensSnapshotFromRow,
-  mergeStorageLensSnapshot,
-  upsertStorageLensSnapshots,
-} from "./s3-storage-lens-ingestion.service.js";
 import { Ec2RecommendationsService } from "../../ec2/optimization/ec2-recommendations.service.js";
 
 const STAGE_MESSAGE = {
@@ -227,7 +222,6 @@ export async function processAwsExportParquetRun({ run }) {
     const tagCache = createTagDimensionCache();
     const failedReasonCounts = {};
     const allRowErrors = [];
-    const storageLensSnapshotByKey = new Map();
 
     let rowsRead = 0;
     let rowsLoaded = 0;
@@ -307,27 +301,6 @@ export async function processAwsExportParquetRun({ run }) {
               const rowNumber = chunkOffset + chunkIndexPosition + 1;
               try {
                 const normalizedRow = normalizeRowToCanonical(rawRow, canonicalHeaderMap);
-                const storageLensSnapshot = extractStorageLensSnapshotFromRow({
-                  rawRow,
-                  normalizedRow,
-                  tenantId: rawFile.tenantId,
-                  cloudConnectionId: source.cloudConnectionId,
-                  billingSourceId: source.id,
-                  providerId: source.cloudProviderId,
-                  regionKey: null,
-                  subAccountKey: null,
-                });
-                if (storageLensSnapshot) {
-                  const snapshotKey = `${storageLensSnapshot.tenantId}|${storageLensSnapshot.bucketName}|${storageLensSnapshot.usageDate}`;
-                  const existingSnapshot = storageLensSnapshotByKey.get(snapshotKey);
-                  storageLensSnapshotByKey.set(
-                    snapshotKey,
-                    existingSnapshot
-                      ? mergeStorageLensSnapshot(existingSnapshot, storageLensSnapshot)
-                      : storageLensSnapshot,
-                  );
-                }
-
                 const dimensions = await resolveDimensionsWithCache({
                   rawRow: normalizedRow,
                   tenantId: rawFile.tenantId,
@@ -578,21 +551,7 @@ export async function processAwsExportParquetRun({ run }) {
       total_rows_estimated: rowsRead,
     });
 
-    const storageLensSnapshotRows = Array.from(storageLensSnapshotByKey.values());
-    if (storageLensSnapshotRows.length > 0) {
-      try {
-        await upsertStorageLensSnapshots(storageLensSnapshotRows);
-      } catch (storageLensError) {
-        logger.warn("Storage Lens snapshot upsert failed during AWS parquet ingestion", {
-          ingestionRunId: runId,
-          tenantId: source.tenantId ?? null,
-          billingSourceId: source.id ?? null,
-          reason: toErrorMessage(storageLensError),
-        });
-      }
-    }
-
-    if (rowsLoaded === 0 && rowsFailed > 0 && storageLensSnapshotRows.length === 0) {
+    if (rowsLoaded === 0 && rowsFailed > 0) {
       throw new Error("All rows failed during AWS parquet ingestion");
     }
 
