@@ -4,6 +4,7 @@ import { HTTP_STATUS } from "../../../constants/http-status.js";
 import { sendSuccess } from "../../../utils/api-response.js";
 import { buildEc2OptimizationRecommendationsQuery } from "./ec2-optimization.schema.js";
 import { Ec2OptimizationService } from "./ec2-optimization.service.js";
+import type { Ec2OptimizationRecommendationFilterType } from "./ec2-optimization.types.js";
 
 const ec2OptimizationService = new Ec2OptimizationService();
 
@@ -41,35 +42,28 @@ export async function handleGetEc2OptimizationInstancesByType(
   const optimizationTypeRaw = typeof req.params.optimizationType === "string"
     ? req.params.optimizationType.trim().toLowerCase()
     : null;
-  const normalizedType =
+  const normalizedType: Ec2OptimizationRecommendationFilterType | null =
     optimizationTypeRaw === "overview" ? "overview" :
       optimizationTypeRaw === "rightsizing" ? "rightsizing" :
-        optimizationTypeRaw === "idle_waste" ? "idle_waste" :
+        optimizationTypeRaw === "idle_waste" || optimizationTypeRaw === "idle-waste" ? "idle_waste" :
           optimizationTypeRaw === "coverage" ? "coverage" :
-            optimizationTypeRaw === "performance_risk" ? "performance_risk" :
-              optimizationTypeRaw === "idle-waste" ? "idle_waste" :
-                optimizationTypeRaw === "performance-risk" ? "performance_risk" :
-    optimizationTypeRaw === "idle" ? "idle_instance" :
-      optimizationTypeRaw === "underutilized" ? "underutilized_instance" :
-        optimizationTypeRaw === "overutilized" ? "overutilized_instance" :
-          optimizationTypeRaw === "uncovered" ? "uncovered_on_demand" :
-            optimizationTypeRaw;
+            optimizationTypeRaw === "performance_risk" || optimizationTypeRaw === "performance-risk"
+              ? "performance_risk"
+              : optimizationTypeRaw === "all" ? "all" :
+                optimizationTypeRaw === "idle" || optimizationTypeRaw === "idle_instance"
+                  ? "idle_instance"
+                  : optimizationTypeRaw === "underutilized" || optimizationTypeRaw === "underutilized_instance"
+                    ? "underutilized_instance"
+                    : optimizationTypeRaw === "overutilized" || optimizationTypeRaw === "overutilized_instance"
+                      ? "overutilized_instance"
+                      : optimizationTypeRaw === "uncovered" || optimizationTypeRaw === "uncovered_on_demand"
+                        ? "uncovered_on_demand"
+                        : optimizationTypeRaw === "ebs_waste" ? "ebs_waste" :
+                          null;
 
   const data = await ec2OptimizationService.getRecommendations({
     ...input,
-    recommendationType: normalizedType === null ? input.recommendationType : normalizedType as
-      | "overview"
-      | "rightsizing"
-      | "idle_waste"
-      | "coverage"
-      | "performance_risk"
-      | "all"
-      | "idle_instance"
-      | "underutilized_instance"
-      | "overutilized_instance"
-      | "uncovered_on_demand"
-      | "ebs_waste"
-      | "high_cost",
+    recommendationType: normalizedType === null ? input.recommendationType : normalizedType,
   });
 
   sendSuccess({

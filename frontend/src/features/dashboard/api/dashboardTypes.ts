@@ -186,6 +186,66 @@ export type Ec2OverviewResponse = {
 };
 export type Ec2OptimizationInstancesFiltersQuery = Ec2OptimizationSummaryFiltersQuery;
 
+export type Ec2RecommendationCategory = "compute" | "storage" | "pricing";
+export type Ec2RecommendationType =
+  | "idle_instance"
+  | "underutilized_instance"
+  | "overutilized_instance"
+  | "unattached_volume"
+  | "old_snapshot"
+  | "uncovered_on_demand";
+export type Ec2RecommendationStatus = "open" | "accepted" | "ignored" | "snoozed" | "completed";
+
+export type Ec2RecommendationsFiltersQuery = {
+  cloudConnectionId?: string;
+  billingSourceId?: number;
+  category?: Ec2RecommendationCategory;
+  type?: Ec2RecommendationType;
+  status?: Ec2RecommendationStatus;
+  account?: string;
+  region?: string;
+  team?: string;
+  product?: string;
+  environment?: string;
+  tags?: string[];
+  dateFrom?: string;
+  dateTo?: string;
+};
+
+export type Ec2RecommendationRecord = {
+  id: number;
+  category: Ec2RecommendationCategory;
+  type: Ec2RecommendationType;
+  resourceType: "instance" | "volume" | "snapshot";
+  resourceId: string;
+  resourceName: string;
+  accountId: string | null;
+  region: string | null;
+  problem: string;
+  evidence: string;
+  action: string;
+  estimatedMonthlySaving: number;
+  risk: "low" | "medium" | "high";
+  status: Ec2RecommendationStatus;
+  detectedAt: string | null;
+  lastSeenAt: string | null;
+  metadata: Record<string, unknown> | null;
+};
+
+export type Ec2RecommendationsResponse = {
+  overview: {
+    totalPotentialMonthlySaving: number;
+    countByCategory: Record<Ec2RecommendationCategory, number>;
+    savingByCategory: Record<Ec2RecommendationCategory, number>;
+    countByType: Record<Ec2RecommendationType, number>;
+  };
+  recommendations: {
+    compute: Ec2RecommendationRecord[];
+    storage: Ec2RecommendationRecord[];
+    pricing: Ec2RecommendationRecord[];
+  };
+};
+
 export type Ec2ExplorerMetric = "cost" | "usage" | "instances";
 export type Ec2ExplorerGroupBy =
   | "none"

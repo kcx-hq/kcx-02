@@ -5,14 +5,17 @@ import {
   type AnomaliesListResponse,
   type CostExplorerFiltersQuery,
   type DashboardResolvedScope,
+  type Ec2OptimizationSummaryFiltersQuery,
+  type Ec2OptimizationInstancesFiltersQuery,
+  type Ec2OptimizationSummaryResponse,
+  type Ec2OptimizationInstancesResponse,
+  type Ec2RecommendationsFiltersQuery,
+  type Ec2RecommendationsResponse,
+  type Ec2ExplorerFiltersQuery,
+  type Ec2ExplorerResponse,
   type DatabaseExplorerFilters,
   type DatabaseExplorerResponse,
-  type Ec2OverviewFiltersQuery,
-  type Ec2OverviewResponse,
-  type Ec2InstanceUsageFiltersQuery,
-  type Ec2InstanceHoursFiltersQuery,
-  type Ec2InstanceHoursResponse,
-  type Ec2InstanceUsageResponse,
+
   type S3CostInsightsFiltersQuery,
   type S3CostInsightsResponse,
   type OptimizationIdleOverview,
@@ -289,6 +292,16 @@ export function useEc2OptimizationInstancesQuery(filters?: Ec2OptimizationInstan
   return useQuery<Ec2OptimizationInstancesResponse, Error>({
     queryKey: ["dashboard", "ec2", "optimization", "instances", scope, filters],
     queryFn: () => dashboardApi.getEc2OptimizationInstances(assertScope(scope), filters),
+    enabled: Boolean(scope),
+    placeholderData: (previous) => previous,
+  });
+}
+
+export function useEc2RecommendationsQuery(filters?: Ec2RecommendationsFiltersQuery) {
+  const { scope } = useDashboardScope();
+  return useQuery<Ec2RecommendationsResponse, Error>({
+    queryKey: ["dashboard", "ec2", "recommendations", scope, filters],
+    queryFn: () => dashboardApi.getEc2Recommendations(assertScope(scope), filters),
     enabled: Boolean(scope),
     placeholderData: (previous) => previous,
   });

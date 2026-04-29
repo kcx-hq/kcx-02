@@ -38,6 +38,9 @@ export type InventoryEc2InstancesListItem = {
   coveredHours: number;
   uncoveredHours: number;
   monthToDateCost: number;
+  dataTransferCost: number;
+  networkUsageBytes: number;
+  otherUnallocatedCost: number;
   latestDailyCost: number;
   imageId: string | null;
   tenancy: string | null;
@@ -48,6 +51,7 @@ export type InventoryEc2InstancesListItem = {
   attachedVolumeCount: number;
   attachedVolumeTotalSizeGb: number | null;
   attachedVolumeIds: string[];
+  tags: Record<string, unknown> | null;
 };
 
 export type InventoryEc2InstancesListResponse = {
@@ -120,5 +124,83 @@ export type InventoryEc2InstancePerformanceResponse = {
   startDate: string;
   endDate: string;
   series: InventoryEc2InstancePerformanceSeries[];
+};
+
+export type InventoryEc2InstanceDetailQuery = {
+  instanceId: string;
+  cloudConnectionId: string | null;
+  startDate: string | null;
+  endDate: string | null;
+};
+
+export type InventoryEc2InstanceDetailResponse = {
+  identity: {
+    instanceId: string;
+    name: string;
+    state: string | null;
+    type: string | null;
+    region: string | null;
+    account: string | null;
+    launchTime: string | null;
+    availabilityZone: string | null;
+    cloudConnectionId: string | null;
+  };
+  tags: Record<string, unknown>;
+  costSummary: {
+    totalCost: number;
+    computeCost: number;
+    ebsCost: number;
+    networkCost: number;
+    otherCost: number;
+  };
+  usageSummary: {
+    avgCpu: number | null;
+    maxCpu: number | null;
+    networkInBytes: number;
+    networkOutBytes: number;
+    networkUsageBytes: number;
+    networkCost: number;
+  };
+  pricingSummary: {
+    pricingType: "on_demand" | "reserved" | "savings_plan" | "spot" | "other" | null;
+    coveredHours: number;
+    uncoveredHours: number;
+    coveragePercent: number;
+    computeCost: number;
+    potentialSavings: number | null;
+  };
+  attachedVolumes: Array<{
+    volumeId: string;
+    sizeGb: number | null;
+    volumeType: string | null;
+    cost: number;
+    state: string | null;
+    iops: number | null;
+    throughput: number | null;
+    attachedSince: string | null;
+    deleteOnTermination: boolean | null;
+  }>;
+  recommendations: Array<{
+    id: number;
+    type: string;
+    problem: string;
+    evidence: string;
+    action: string;
+    saving: number;
+    risk: string;
+    status: string;
+  }>;
+  trends: {
+    costTrend: Array<{
+      date: string;
+      totalCost: number;
+      computeCost: number;
+      ebsCost: number;
+      networkCost: number;
+      otherCost: number;
+    }>;
+    cpuTrend: Array<{ date: string; avgCpu: number; maxCpu: number | null }>;
+    networkTrend: Array<{ date: string; totalGb: number; inGb: number; outGb: number }>;
+  };
 };
 

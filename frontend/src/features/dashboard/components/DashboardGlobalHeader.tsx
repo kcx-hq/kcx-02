@@ -9,6 +9,10 @@ import type { S3OverviewFilterValue, S3OverviewSavedPreset } from "../pages/s3/c
 
 const rootCrumb = "Dashboard";
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
+type BreadcrumbItem = {
+  label: string;
+  path?: string;
+};
 
 const parseDateValue = (value: string | null): string => {
   if (!value) return "";
@@ -360,38 +364,107 @@ export function DashboardGlobalHeader() {
   });
   const uploadHistoryQuery = useTenantUploadHistory(scope?.scopeType === "upload");
 
-  const breadcrumbs = useMemo(() => {
+  const breadcrumbs = useMemo<BreadcrumbItem[]>(() => {
     const path = location.pathname;
 
     if (path.startsWith("/dashboard/inventory/aws/ec2/instances")) {
-      return [rootCrumb, "Services", "EC2", "Instances"];
+      const match = path.match(/^\/dashboard\/inventory\/aws\/ec2\/instances\/([^/]+)$/);
+      if (match?.[1]) {
+        return [
+          { label: rootCrumb, path: "/dashboard/overview" },
+          { label: "Services", path: "/dashboard/inventory" },
+          { label: "EC2", path: "/dashboard/ec2/explorer" },
+          { label: "Instances", path: "/dashboard/inventory/aws/ec2/instances" },
+          { label: decodeURIComponent(match[1]) },
+        ];
+      }
+      return [
+        { label: rootCrumb, path: "/dashboard/overview" },
+        { label: "Services", path: "/dashboard/inventory" },
+        { label: "EC2", path: "/dashboard/ec2/explorer" },
+        { label: "Instances" },
+      ];
     }
     if (path.startsWith("/dashboard/inventory/aws/ec2/volumes")) {
-      return [rootCrumb, "Services", "EC2", "Volumes"];
+      const match = path.match(/^\/dashboard\/inventory\/aws\/ec2\/volumes\/([^/]+)$/);
+      if (match?.[1]) {
+        const volumeLabel = searchParams.get("volumeName")?.trim() || decodeURIComponent(match[1]);
+        return [
+          { label: rootCrumb, path: "/dashboard/overview" },
+          { label: "Services", path: "/dashboard/inventory" },
+          { label: "EC2", path: "/dashboard/ec2/explorer" },
+          { label: "Volumes", path: "/dashboard/inventory/aws/ec2/volumes" },
+          { label: volumeLabel },
+        ];
+      }
+      return [
+        { label: rootCrumb, path: "/dashboard/overview" },
+        { label: "Services", path: "/dashboard/inventory" },
+        { label: "EC2", path: "/dashboard/ec2/explorer" },
+        { label: "Volumes" },
+      ];
     }
     if (path.startsWith("/dashboard/ec2/volumes")) {
-      return [rootCrumb, "Services", "EC2", "Volumes"];
+      return [
+        { label: rootCrumb, path: "/dashboard/overview" },
+        { label: "Services", path: "/dashboard/inventory" },
+        { label: "EC2", path: "/dashboard/ec2/explorer" },
+        { label: "Volumes" },
+      ];
     }
     if (path.startsWith("/dashboard/inventory/aws/ec2/snapshots")) {
-      return [rootCrumb, "Services", "EC2", "Snapshots"];
+      return [
+        { label: rootCrumb, path: "/dashboard/overview" },
+        { label: "Services", path: "/dashboard/inventory" },
+        { label: "EC2", path: "/dashboard/ec2/explorer" },
+        { label: "Snapshots" },
+      ];
     }
     if (path.startsWith("/dashboard/ec2/performance")) {
-      return [rootCrumb, "Services", "EC2", "Performance"];
+      return [
+        { label: rootCrumb, path: "/dashboard/overview" },
+        { label: "Services", path: "/dashboard/inventory" },
+        { label: "EC2", path: "/dashboard/ec2/explorer" },
+        { label: "Performance" },
+      ];
     }
     if (path.startsWith("/dashboard/ec2/optimization")) {
-      return [rootCrumb, "Services", "EC2", "Optimization"];
+      return [
+        { label: rootCrumb, path: "/dashboard/overview" },
+        { label: "Services", path: "/dashboard/inventory" },
+        { label: "EC2", path: "/dashboard/ec2/explorer" },
+        { label: "Optimization" },
+      ];
     }
     if (path.startsWith("/dashboard/ec2/explorer")) {
-      return [rootCrumb, "Services", "EC2", "Explorer"];
+      return [
+        { label: rootCrumb, path: "/dashboard/overview" },
+        { label: "Services", path: "/dashboard/inventory" },
+        { label: "EC2" },
+      ];
     }
     if (path === "/dashboard/s3") {
-      return [rootCrumb, "Services", "S3"];
+      return [
+        { label: rootCrumb, path: "/dashboard/overview" },
+        { label: "Services", path: "/dashboard/inventory" },
+        { label: "S3" },
+      ];
     }
     if (path.startsWith("/dashboard/s3/cost")) {
-      return [rootCrumb, "Services", "S3", "Cost"];
+      return [
+        { label: rootCrumb, path: "/dashboard/overview" },
+        { label: "Services", path: "/dashboard/inventory" },
+        { label: "S3", path: "/dashboard/s3" },
+        { label: "Cost" },
+      ];
     }
     if (path.startsWith("/dashboard/s3/usage")) {
-      return [rootCrumb, "Services", "S3", "Usage"];
+      return [
+        { label: rootCrumb, path: "/dashboard/overview" },
+        { label: "Services", path: "/dashboard/inventory" },
+        { label: "S3", path: "/dashboard/s3" },
+        { label: "Usage" },
+      ];
     }
     if (path === "/dashboard/services/database") {
       return [rootCrumb, "Services", "Database"];
@@ -401,8 +474,11 @@ export function DashboardGlobalHeader() {
       .filter((item) => path.startsWith(item.path))
       .sort((a, b) => b.path.length - a.path.length)[0];
 
-    return [rootCrumb, bestMatch?.label ?? "Overview Dashboard"];
-  }, [location.pathname]);
+    return [
+      { label: rootCrumb, path: "/dashboard/overview" },
+      { label: bestMatch?.label ?? "Overview Dashboard" },
+    ];
+  }, [location.pathname, searchParams]);
 
   const uploadedFileLabel = useMemo(() => {
     if (scope?.scopeType !== "upload") {
@@ -626,15 +702,25 @@ export function DashboardGlobalHeader() {
           {breadcrumbs.map((crumb, index) => {
             const isCurrent = index === breadcrumbs.length - 1;
             return (
-              <span key={`${crumb}-${index}`}>
+              <span key={`${crumb.label}-${index}`}>
                 {index > 0 ? (
                   <span className="dashboard-breadcrumb__separator" aria-hidden="true">
                     /
                   </span>
                 ) : null}
-                <span className={isCurrent ? "dashboard-breadcrumb dashboard-breadcrumb--current" : "dashboard-breadcrumb dashboard-breadcrumb--muted"}>
-                  {crumb}
-                </span>
+                {isCurrent || !crumb.path ? (
+                  <span className={isCurrent ? "dashboard-breadcrumb dashboard-breadcrumb--current" : "dashboard-breadcrumb dashboard-breadcrumb--muted"}>
+                    {crumb.label}
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    className="dashboard-breadcrumb dashboard-breadcrumb--muted dashboard-breadcrumb__link"
+                    onClick={() => navigate({ pathname: crumb.path, search: location.search })}
+                  >
+                    {crumb.label}
+                  </button>
+                )}
               </span>
             );
           })}

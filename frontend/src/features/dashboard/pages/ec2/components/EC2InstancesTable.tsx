@@ -7,9 +7,12 @@ import { BaseDataTable } from "@/features/dashboard/common/tables/BaseDataTable"
 
 type EC2InstancesTableProps = {
   rows: InventoryEc2InstanceRow[];
+  volumeCostByInstanceId: Map<string, number>;
   loading: boolean;
   error: Error | null;
   onRetry: () => void;
+  onOpenVolumesForInstance: (instanceId: string) => void;
+  onOpenInstance: (instanceId: string) => void;
 };
 
 const CURRENCY_FORMATTER = new Intl.NumberFormat("en-US", {
@@ -65,7 +68,30 @@ const getRecommendation = (instance: InventoryEc2InstanceRow): string => {
   return "Healthy";
 };
 
-export function EC2InstancesTable({ rows, loading, error, onRetry }: EC2InstancesTableProps) {
+const formatCount = (value: number | null | undefined): string => {
+  if (value === null || typeof value === "undefined" || !Number.isFinite(value)) return "-";
+  return Math.trunc(value).toLocaleString();
+};
+
+const formatSize = (value: number | null | undefined): string => {
+  if (value === null || typeof value === "undefined" || !Number.isFinite(value)) return "-";
+  return `${value.toLocaleString()} GB`;
+};
+
+const formatBytesToGb = (value: number | null | undefined): string => {
+  if (value === null || typeof value === "undefined" || !Number.isFinite(value)) return "-";
+  return `${(value / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+};
+
+export function EC2InstancesTable({
+  rows,
+  volumeCostByInstanceId,
+  loading,
+  error,
+  onRetry,
+  onOpenVolumesForInstance,
+  onOpenInstance,
+}: EC2InstancesTableProps) {
   const columnDefs = useMemo<ColDef<InventoryEc2InstanceRow>[]>(
     () => [
       {
@@ -91,6 +117,13 @@ export function EC2InstancesTable({ rows, loading, error, onRetry }: EC2Instance
           formatCurrency(params.value),
       },
       {
+        headerName: "Compute Cost",
+        field: "computeCost",
+        minWidth: 132,
+        valueFormatter: (params: ValueFormatterParams<InventoryEc2InstanceRow, number | null | undefined>) =>
+          formatCurrency(params.value),
+      },
+      {
         headerName: "CPU %",
         field: "cpuAvg",
         minWidth: 110,
@@ -98,14 +131,81 @@ export function EC2InstancesTable({ rows, loading, error, onRetry }: EC2Instance
           formatPercent(params.value),
       },
       {
-        headerName: "Network",
-        valueGetter: () => "-",
-        minWidth: 106,
+        headerName: "Network Usage",
+        field: "networkUsageBytes",
+        minWidth: 130,
+        valueFormatter: (params: ValueFormatterParams<InventoryEc2InstanceRow, number | null | undefined>) =>
+          formatBytesToGb(params.value),
+      },
+      {
+        headerName: "Network Cost",
+        minWidth: 120,
+        field: "dataTransferCost",
+        valueFormatter: (params: ValueFormatterParams<InventoryEc2InstanceRow, number | null | undefined>) =>
+          formatCurrency(params.value),
       },
       {
         headerName: "Volume Cost",
-        valueGetter: () => "-",
         minWidth: 128,
+        cellRenderer: (params: ICellRendererParams<InventoryEc2InstanceRow>) => {
+          const row = params.data;
+          if (!row) return "-";
+          const cost = volumeCostByInstanceId.get(row.instanceId);
+          return (
+            <button
+              type="button"
+              className="ec2-linked-cell-btn"
+              onClick={(event) => {
+                event.stopPropagation();
+                onOpenVolumesForInstance(row.instanceId);
+              }}
+            >
+              {formatCurrency(cost)}
+            </button>
+          );
+        },
+      },
+      {
+        headerName: "Volume Count",
+        field: "attachedVolumeCount",
+        minWidth: 132,
+        cellRenderer: (params: ICellRendererParams<InventoryEc2InstanceRow>) => {
+          const row = params.data;
+          if (!row) return "-";
+          return (
+            <button
+              type="button"
+              className="ec2-linked-cell-btn"
+              onClick={(event) => {
+                event.stopPropagation();
+                onOpenVolumesForInstance(row.instanceId);
+              }}
+            >
+              {formatCount(row.attachedVolumeCount)}
+            </button>
+          );
+        },
+      },
+      {
+        headerName: "Attached Volume Size",
+        field: "attachedVolumeTotalSizeGb",
+        minWidth: 172,
+        cellRenderer: (params: ICellRendererParams<InventoryEc2InstanceRow>) => {
+          const row = params.data;
+          if (!row) return "-";
+          return (
+            <button
+              type="button"
+              className="ec2-linked-cell-btn"
+              onClick={(event) => {
+                event.stopPropagation();
+                onOpenVolumesForInstance(row.instanceId);
+              }}
+            >
+              {formatSize(row.attachedVolumeTotalSizeGb)}
+            </button>
+          );
+        },
       },
       {
         headerName: "State",
@@ -147,7 +247,7 @@ export function EC2InstancesTable({ rows, loading, error, onRetry }: EC2Instance
         valueGetter: (params) => (params.data ? getRecommendation(params.data) : "-"),
       },
     ],
-    [],
+    [onOpenVolumesForInstance, volumeCostByInstanceId],
   );
 
   if (loading) {
@@ -179,7 +279,14 @@ export function EC2InstancesTable({ rows, loading, error, onRetry }: EC2Instance
 
   return (
     <section className="ec2-explorer-table ec2-instances-table" aria-label="EC2 instances table">
-      <BaseDataTable columnDefs={columnDefs} rowData={rows} pagination paginationPageSize={10}  autoHeight />
+      <BaseDataTable
+        columnDefs={columnDefs}
+        rowData={rows}
+        pagination
+        paginationPageSize={10}
+        autoHeight
+        onRowClick={(row) => onOpenInstance(row.instanceId)}
+      />
     </section>
   );
 }

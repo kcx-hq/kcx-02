@@ -288,7 +288,9 @@ export function DashboardSidebar() {
                                 [groupKey]: !(current[groupKey] ?? true),
                               }));
                             }}
+                      
                           >
+                        
                             <DashboardIcon name={group.icon} className="dashboard-nav-item__icon" />
                             <span className="dashboard-nav-item__label">{group.label}</span>
                             {hasSubmenuItems ? (

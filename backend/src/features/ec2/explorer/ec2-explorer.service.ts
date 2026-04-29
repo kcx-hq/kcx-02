@@ -12,6 +12,7 @@ import type {
   Ec2ExplorerTableRow,
 } from "./ec2-explorer.types.js";
 import { Ec2ExplorerQuery } from "./ec2-explorer.query.js";
+import { logger } from "../../../utils/logger.js";
 
 const NETWORK_DIVISOR_GB = 1024 * 1024 * 1024;
 const COST_COMPONENTS = [
@@ -80,7 +81,7 @@ const toCostParts = (
 
 const toCostByBasis = (row: Ec2ExplorerFactRow, basis: Ec2CostBasis): number => {
   if (basis === "billed_cost") return row.totalBilledCost;
-  if (basis === "amortized_cost") return row.totalEffectiveCost;
+  if (basis === "amortized_cost") return row.totalAmortizedCost ?? row.totalEffectiveCost;
   return row.totalEffectiveCost;
 };
 
@@ -695,6 +696,11 @@ export class Ec2ExplorerService {
   }
 
   async getExplorer(input: Ec2ExplorerInput): Promise<Ec2ExplorerResponse> {
+    if (input.costBasis === "amortized_cost" && !(await this.query.supportsAmortizedCost())) {
+      logger.warn("EC2 explorer amortized cost basis requested but total_amortized_cost is unavailable; falling back to effective_cost", {
+        tenantId: input.scope.tenantId,
+      });
+    }
     const durationDays = dateRangeDaysInclusive(input.startDate, input.endDate);
     const previousStartDate = shiftDate(input.startDate, -durationDays);
     const previousEndDate = shiftDate(input.endDate, -durationDays);
