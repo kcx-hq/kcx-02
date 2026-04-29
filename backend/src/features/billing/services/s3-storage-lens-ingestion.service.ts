@@ -36,6 +36,24 @@ const parseBucketNameFromArn = (value) => {
   return raw;
 };
 
+const parseBucketNameFromResourceId = (value) => {
+  const raw = String(value ?? "").trim();
+  if (!raw) return null;
+  const lowered = raw.toLowerCase();
+
+  if (lowered.startsWith("bucket/")) {
+    const bucket = raw.slice("bucket/".length).split("/")[0]?.trim();
+    return bucket || null;
+  }
+  if (lowered.startsWith("arn:aws:s3:::")) {
+    return parseBucketNameFromArn(raw);
+  }
+  if (lowered.startsWith("s3://")) {
+    return parseBucketNameFromArn(raw);
+  }
+  return null;
+};
+
 const lookupByAliases = (rawRow, aliases) => {
   const entries = Object.entries(rawRow ?? {});
   const aliasSet = new Set((aliases ?? []).map((alias) => normalizeKey(alias)));
@@ -86,6 +104,25 @@ const STORAGE_LENS_METRIC_FIELDS = [
   "bytesDeepArchive",
   "accessCount",
 ];
+
+const isLikelyS3CostRow = ({ rawRow, normalizedRow }) => {
+  const serviceName =
+    lookupByAliases(rawRow, ["service_name", "ServiceName", "product_servicecode", "ProductServiceCode"]) ??
+    normalizedRow?.ServiceName;
+  const usageType =
+    lookupByAliases(rawRow, ["usage_type", "UsageType", "product_usagetype", "ProductUsageType"]) ??
+    normalizedRow?.UsageType;
+  const operation = lookupByAliases(rawRow, ["operation", "Operation"]) ?? normalizedRow?.Operation;
+  const resourceId =
+    lookupByAliases(rawRow, ["resource_id", "ResourceId", "line_item_resource_id", "LineItemResourceId"]) ??
+    normalizedRow?.ResourceId;
+
+  const text = [serviceName, usageType, operation, resourceId]
+    .map((value) => String(value ?? "").trim().toLowerCase())
+    .join(" ");
+
+  return text.includes("amazon simple storage service") || text.includes("amazon s3") || text.includes(" s3");
+};
 
 function createEmptySnapshot({ tenantId, cloudConnectionId, billingSourceId, providerId, regionKey, subAccountKey, usageDate, bucketName }) {
   return {
@@ -139,7 +176,7 @@ export function extractStorageLensSnapshotFromRow({
     lookupByAliases(rawRow, ["record_value", "RecordValue"]) ??
     normalizedRow?.ResourceId ??
     normalizedRow?.ResourceName;
-  const bucketName = parseBucketNameFromArn(bucketValue);
+  const bucketName = parseBucketNameFromArn(bucketValue) ?? parseBucketNameFromResourceId(normalizedRow?.ResourceId);
   if (!bucketName) return null;
 
   const usageDate =
@@ -223,7 +260,12 @@ export function extractStorageLensSnapshotFromRow({
   }
 
   const hasAnyMetric = STORAGE_LENS_METRIC_FIELDS.some((field) => snapshot[field] !== null);
-  if (!hasAnyMetric) return null;
+  if (!hasAnyMetric) {
+    // Fallback for CUR rows without Storage Lens metrics: still persist tenant/bucket/date snapshot.
+    if (!isLikelyS3CostRow({ rawRow, normalizedRow })) {
+      return null;
+    }
+  }
 
   return snapshot;
 }
