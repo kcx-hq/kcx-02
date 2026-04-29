@@ -1,14 +1,10 @@
 export type EC2VolumeDetailTabKey =
   | "overview"
-  | "performance"
-  | "snapshots"
-  | "recommendations";
+  | "deepDive";
 
 const DETAIL_TABS: Array<{ key: EC2VolumeDetailTabKey; label: string }> = [
   { key: "overview", label: "Overview" },
-  { key: "performance", label: "Performance" },
-  { key: "snapshots", label: "Snapshots" },
-  { key: "recommendations", label: "Recommendations" },
+  { key: "deepDive", label: "Deep Dive" },
 ];
 
 type EC2VolumeDetailHeaderTabsProps = {

@@ -528,29 +528,36 @@ export default function EC2VolumeDetailPage() {
             <table className="ec2-instance-detail__simple-table">
               <tbody>
                 <tr>
-                  <th>Attached Instance</th>
+                  <th>Context</th>
                   <td>
-                    {attachedInstance ? (
-                      <button
-                        type="button"
-                        className="ec2-linked-cell-btn"
-                        onClick={() => {
-                          const next = new URLSearchParams(location.search);
-                          next.set("instanceId", attachedInstance);
-                          next.set("search", attachedInstance);
-                          navigate({ pathname: `${INSTANCES_PAGE_PATH}/${attachedInstance}`, search: next.toString() });
-                        }}
-                      >
-                        {selectedVolume.attachedInstanceName ?? attachedInstance}
-                      </button>
-                    ) : (
-                      "Unattached"
-                    )}
+                    <span>
+                      Attached:{" "}
+                      {attachedInstance ? (
+                        <>
+                          <button
+                            type="button"
+                            className="ec2-linked-cell-btn"
+                            onClick={() => {
+                              const next = new URLSearchParams(location.search);
+                              next.set("instanceId", attachedInstance);
+                              next.set("search", attachedInstance);
+                              navigate({ pathname: `${INSTANCES_PAGE_PATH}/${attachedInstance}`, search: next.toString() });
+                            }}
+                          >
+                            {selectedVolume.attachedInstanceName ?? attachedInstance}
+                          </button>{" "}
+                          ({toTitle(selectedVolume.attachedInstanceState)})
+                        </>
+                      ) : (
+                        "Unattached"
+                      )}
+                    </span>
+                    <br />
+                    <span>
+                      Region: {selectedVolume.regionName ?? selectedVolume.regionId ?? selectedVolume.regionKey ?? "-"} | AZ: {selectedVolume.availabilityZone ?? "-"}
+                    </span>
                   </td>
                 </tr>
-                <tr><th>Instance State</th><td>{toTitle(selectedVolume.attachedInstanceState)}</td></tr>
-                <tr><th>Region</th><td>{selectedVolume.regionName ?? selectedVolume.regionId ?? selectedVolume.regionKey ?? "-"}</td></tr>
-                <tr><th>Availability Zone</th><td>{selectedVolume.availabilityZone ?? "-"}</td></tr>
               </tbody>
             </table>
 
@@ -559,29 +566,28 @@ export default function EC2VolumeDetailPage() {
               <span>{insight.message}</span>
             </div>
 
-            <div>
-              <h4>Cost Breakdown</h4>
-              {volumeDetailQuery.isLoading ? (
-                <p className="dashboard-note">Loading cost breakdown...</p>
-              ) : volumeDetailQuery.isError ? (
-                <p className="dashboard-note">Needs backend source</p>
-              ) : (
-                <table className="ec2-instance-detail__simple-table">
-                  <thead><tr><th>Cost Type</th><th>Cost</th><th>%</th></tr></thead>
-                  <tbody>
-                    {costRows.map((row) => (
-                      <tr key={row.type}>
-                        <td>{row.type}</td>
-                        <td>{formatCurrency(row.cost)}</td>
-                        <td>{DECIMAL_FORMATTER.format(row.pct)}%</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-            </div>
-
             <div className="ec2-instance-detail__charts2">
+              <div>
+                <h4>Cost Breakdown</h4>
+                {volumeDetailQuery.isLoading ? (
+                  <p className="dashboard-note">Loading cost breakdown...</p>
+                ) : overviewCostTrend.length > 0 ? (
+                  <table className="ec2-instance-detail__simple-table">
+                    <thead><tr><th>Cost Type</th><th>Cost</th><th>%</th></tr></thead>
+                    <tbody>
+                      {costRows.map((row) => (
+                        <tr key={row.type}>
+                          <td>{row.type}</td>
+                          <td>{formatCurrency(row.cost)}</td>
+                          <td>{DECIMAL_FORMATTER.format(row.pct)}%</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                ) : (
+                  <p className="dashboard-note">Needs backend source</p>
+                )}
+              </div>
               <div>
                 <h4>Cost Trend</h4>
                 {volumeDetailQuery.isLoading ? (
@@ -592,43 +598,47 @@ export default function EC2VolumeDetailPage() {
                   <p className="dashboard-note">Needs backend source</p>
                 )}
               </div>
-              <div>
-                <h4>Size Trend</h4>
-                {volumeDetailQuery.isLoading ? (
-                  <p className="dashboard-note">Loading trend...</p>
-                ) : overviewSizeTrend.length > 0 ? (
-                  <BaseEChart option={sizeTrendOption} height={260} />
-                ) : (
-                  <p className="dashboard-note">No size history available</p>
-                )}
-              </div>
             </div>
 
-            <h4>Metadata</h4>
-            <table className="ec2-instance-detail__simple-table">
-              <tbody>
-                <tr><th>Volume ID</th><td>{selectedVolume.volumeId}</td></tr>
-                <tr><th>Name</th><td>{volumeName}</td></tr>
-                <tr><th>Created Time</th><td>{formatDateTime(selectedVolume.discoveredAt ?? selectedVolume.usageDate)}</td></tr>
-                <tr><th>Attach Time</th><td>{formatDateTime(attachTime)}</td></tr>
-                <tr><th>Delete on Termination</th><td>{deleteOnTermination ?? "-"}</td></tr>
-                <tr><th>Encrypted</th><td>{encrypted ?? "-"}</td></tr>
-                <tr><th>KMS Key</th><td>{kmsKey ?? "-"}</td></tr>
-              </tbody>
-            </table>
+            <div>
+              <h4>Size Trend</h4>
+              {volumeDetailQuery.isLoading ? (
+                <p className="dashboard-note">Loading trend...</p>
+              ) : overviewSizeTrend.length > 0 ? (
+                <BaseEChart option={sizeTrendOption} height={260} />
+              ) : (
+                <p className="dashboard-note">No size history available</p>
+              )}
+            </div>
 
-            <table className="ec2-instance-detail__simple-table">
-              <thead><tr><th>Tag</th><th>Value</th></tr></thead>
-              <tbody>
-                {metadataRows.length === 0 ? <tr><td colSpan={2}>No tags available</td></tr> : null}
-                {metadataRows.map((row) => <tr key={row.key}><td>{row.key}</td><td>{row.value}</td></tr>)}
-              </tbody>
-            </table>
+            <details>
+              <summary><strong>Metadata</strong></summary>
+              <table className="ec2-instance-detail__simple-table">
+                <tbody>
+                  <tr><th>Volume ID</th><td>{selectedVolume.volumeId}</td></tr>
+                  <tr><th>Name</th><td>{volumeName}</td></tr>
+                  <tr><th>Created Time</th><td>{formatDateTime(selectedVolume.discoveredAt ?? selectedVolume.usageDate)}</td></tr>
+                  <tr><th>Attach Time</th><td>{formatDateTime(attachTime)}</td></tr>
+                  <tr><th>Delete on Termination</th><td>{deleteOnTermination ?? "-"}</td></tr>
+                  <tr><th>Encrypted</th><td>{encrypted ?? "-"}</td></tr>
+                  <tr><th>KMS Key</th><td>{kmsKey ?? "-"}</td></tr>
+                </tbody>
+              </table>
+
+              <table className="ec2-instance-detail__simple-table">
+                <thead><tr><th>Tag</th><th>Value</th></tr></thead>
+                <tbody>
+                  {metadataRows.length === 0 ? <tr><td colSpan={2}>No tags available</td></tr> : null}
+                  {metadataRows.map((row) => <tr key={row.key}><td>{row.key}</td><td>{row.value}</td></tr>)}
+                </tbody>
+              </table>
+            </details>
           </section>
         ) : null}
 
-        {activeTab === "performance" ? (
+        {activeTab === "deepDive" ? (
           <section className="ec2-instance-detail__panel">
+            <h4>Performance</h4>
             {performanceQuery.isLoading ? <p className="dashboard-note">Loading performance data...</p> : null}
             {performanceQuery.isError ? <p className="dashboard-note">Failed to load performance data: {performanceQuery.error.message}</p> : null}
             {!performanceQuery.isLoading && !performanceQuery.isError && !performanceReady ? <p className="dashboard-note">No performance data available</p> : null}
@@ -653,11 +663,8 @@ export default function EC2VolumeDetailPage() {
                 </div>
               </>
             ) : null}
-          </section>
-        ) : null}
 
-        {activeTab === "snapshots" ? (
-          <section className="ec2-instance-detail__panel">
+            <h4>Snapshots</h4>
             {snapshotsQuery.isLoading ? <p className="dashboard-note">Loading snapshots...</p> : null}
             {snapshotsQuery.isError ? <p className="dashboard-note">Failed to load snapshots: {snapshotsQuery.error.message}</p> : null}
 
@@ -671,16 +678,15 @@ export default function EC2VolumeDetailPage() {
                 </section>
                 {snapshotRows.length === 0 ? (
                   <p className="dashboard-note">No data available</p>
-                ) : (
+                ) : overviewSizeTrend.length > 0 ? (
                   <BaseDataTable columnDefs={snapshotColumns} rowData={snapshotRows} autoHeight />
+                ) : (
+                  <p className="dashboard-note">No data available</p>
                 )}
               </>
             ) : null}
-          </section>
-        ) : null}
 
-        {activeTab === "recommendations" ? (
-          <section className="ec2-instance-detail__panel">
+            <h4>Recommendations</h4>
             {recommendationsRows.length === 0 ? (
               <p className="dashboard-note">No optimization opportunities found for this volume.</p>
             ) : (
