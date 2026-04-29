@@ -73,6 +73,17 @@ const METRIC_NAME_KEY_MAP = {
   intelligenttieringstoragebytes: "bytesIntelligentTiering",
   glacierstoragebytes: "bytesGlacier",
   deeparchivestoragebytes: "bytesDeepArchive",
+  noncurrentversionobjectcount: "noncurrentVersionObjectCount",
+  noncurrentversionbytes: "noncurrentVersionBytes",
+  deletemarkerobjectcount: "deleteMarkerObjectCount",
+  deletemarkerbytes: "deleteMarkerBytes",
+  incompletemultipartuploadstoragebytes: "incompleteMultipartUploadBytes",
+  incompletemultipartuploadbytes: "incompleteMultipartUploadBytes",
+  incompletemultipartuploadobjectcount: "incompleteMultipartUploadObjectCount",
+  bytesuploaded: "bytesUploaded",
+  bytesdownloaded: "bytesDownloaded",
+  getrequestcount: "getRequestsCount",
+  putrequestcount: "putRequestsCount",
 };
 
 const STORAGE_LENS_METRIC_FIELDS = [
@@ -86,6 +97,16 @@ const STORAGE_LENS_METRIC_FIELDS = [
   "bytesGlacier",
   "bytesDeepArchive",
   "accessCount",
+  "noncurrentVersionObjectCount",
+  "noncurrentVersionBytes",
+  "deleteMarkerObjectCount",
+  "deleteMarkerBytes",
+  "incompleteMultipartUploadBytes",
+  "incompleteMultipartUploadObjectCount",
+  "bytesUploaded",
+  "bytesDownloaded",
+  "getRequestsCount",
+  "putRequestsCount",
 ];
 
 
@@ -109,6 +130,16 @@ function createEmptySnapshot({ tenantId, cloudConnectionId, billingSourceId, pro
     bytesGlacier: null,
     bytesDeepArchive: null,
     accessCount: null,
+    noncurrentVersionObjectCount: null,
+    noncurrentVersionBytes: null,
+    deleteMarkerObjectCount: null,
+    deleteMarkerBytes: null,
+    incompleteMultipartUploadBytes: null,
+    incompleteMultipartUploadObjectCount: null,
+    bytesUploaded: null,
+    bytesDownloaded: null,
+    getRequestsCount: null,
+    putRequestsCount: null,
     ingestionSource: null,
     reportObjectKey: null,
     reportGeneratedDate: null,
@@ -206,6 +237,55 @@ export function extractStorageLensSnapshotFromRow({
     snapshot.bytesDeepArchive = parseNumeric(
       lookupByAliases(rawRow, ["bytes_deep_archive", "BytesDeepArchive", "deep_archive_storage_bytes"]),
     );
+    snapshot.noncurrentVersionObjectCount = parseNumeric(
+      lookupByAliases(rawRow, [
+        "noncurrent_version_object_count",
+        "NoncurrentVersionObjectCount",
+      ]),
+    );
+    snapshot.noncurrentVersionBytes = parseNumeric(
+      lookupByAliases(rawRow, [
+        "noncurrent_version_bytes",
+        "NoncurrentVersionBytes",
+      ]),
+    );
+    snapshot.deleteMarkerObjectCount = parseNumeric(
+      lookupByAliases(rawRow, [
+        "delete_marker_object_count",
+        "DeleteMarkerObjectCount",
+      ]),
+    );
+    snapshot.deleteMarkerBytes = parseNumeric(
+      lookupByAliases(rawRow, [
+        "delete_marker_bytes",
+        "DeleteMarkerBytes",
+      ]),
+    );
+    snapshot.incompleteMultipartUploadBytes = parseNumeric(
+      lookupByAliases(rawRow, [
+        "incomplete_multipart_upload_bytes",
+        "IncompleteMultipartUploadBytes",
+        "incomplete_multipart_upload_storage_bytes",
+      ]),
+    );
+    snapshot.incompleteMultipartUploadObjectCount = parseNumeric(
+      lookupByAliases(rawRow, [
+        "incomplete_multipart_upload_object_count",
+        "IncompleteMultipartUploadObjectCount",
+      ]),
+    );
+    snapshot.bytesUploaded = parseNumeric(
+      lookupByAliases(rawRow, ["bytes_uploaded", "BytesUploaded"]),
+    );
+    snapshot.bytesDownloaded = parseNumeric(
+      lookupByAliases(rawRow, ["bytes_downloaded", "BytesDownloaded"]),
+    );
+    snapshot.getRequestsCount = parseNumeric(
+      lookupByAliases(rawRow, ["get_requests_count", "GetRequestsCount", "get_request_count"]),
+    );
+    snapshot.putRequestsCount = parseNumeric(
+      lookupByAliases(rawRow, ["put_requests_count", "PutRequestsCount", "put_request_count"]),
+    );
   }
 
   const storageClassValue = lookupByAliases(rawRow, ["storage_class", "StorageClass"]);
@@ -263,6 +343,16 @@ export async function upsertStorageLensSnapshots(snapshots) {
       "bytesGlacier",
       "bytesDeepArchive",
       "accessCount",
+      "noncurrentVersionObjectCount",
+      "noncurrentVersionBytes",
+      "deleteMarkerObjectCount",
+      "deleteMarkerBytes",
+      "incompleteMultipartUploadBytes",
+      "incompleteMultipartUploadObjectCount",
+      "bytesUploaded",
+      "bytesDownloaded",
+      "getRequestsCount",
+      "putRequestsCount",
       "ingestionSource",
       "reportObjectKey",
       "reportGeneratedDate",
