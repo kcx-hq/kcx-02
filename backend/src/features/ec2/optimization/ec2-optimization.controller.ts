@@ -68,8 +68,7 @@ export async function handleGetEc2OptimizationInstancesByType(
       | "underutilized_instance"
       | "overutilized_instance"
       | "uncovered_on_demand"
-      | "ebs_waste"
-      | "high_cost",
+      | "ebs_waste",
   });
 
   sendSuccess({

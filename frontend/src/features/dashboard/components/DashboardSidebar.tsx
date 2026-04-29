@@ -275,7 +275,6 @@ export function DashboardSidebar() {
                                 navigate({ pathname: group.path, search: location.search });
                                 return;
                               }
-                              if (group.path && group.label === "S3") {
                               if (group.path && (group.label === "S3" || group.label === "EC2")) {
                                 navigate({ pathname: group.path, search: location.search });
                                 setOpenGroups((current) => ({
