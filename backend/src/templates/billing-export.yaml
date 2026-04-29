@@ -272,6 +272,12 @@ Resources:
         AccountLevel:
           ActivityMetrics:
             IsEnabled: true
+          AdvancedCostOptimizationMetrics:
+            IsEnabled: true
+          AdvancedDataProtectionMetrics:
+            IsEnabled: true
+          DetailedStatusCodesMetrics:
+            IsEnabled: true
           BucketLevel:
             ActivityMetrics:
               IsEnabled: true
@@ -284,6 +290,10 @@ Resources:
             PrefixLevel:
               StorageMetrics:
                 IsEnabled: true
+                SelectionCriteria:
+                  MaxDepth: 5
+                  MinStorageBytesPercentage: 1.0
+                  Delimiter: "/"
         IsEnabled: true
         DataExport:
           S3BucketDestination:
@@ -292,6 +302,8 @@ Resources:
             Format: Parquet
             OutputSchemaVersion: V_1
             Prefix: !Ref StorageLensExportPrefix
+            Encryption:
+              SSES3: {}
 
   KCXCur2Export:
     Type: AWS::BCMDataExports::Export
