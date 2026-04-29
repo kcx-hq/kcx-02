@@ -86,6 +86,21 @@ type S3BreakdownRow = {
   metric_cost: number | string | null;
 };
 
+type S3StorageLensRow = {
+  bucket_name: string | null;
+  usage_date: string | null;
+  object_count: number | string | null;
+  current_version_bytes: number | string | null;
+  avg_object_size_bytes: number | string | null;
+  access_count: number | string | null;
+  bytes_standard: number | string | null;
+  bytes_standard_ia: number | string | null;
+  bytes_onezone_ia: number | string | null;
+  bytes_intelligent_tiering: number | string | null;
+  bytes_glacier: number | string | null;
+  bytes_deep_archive: number | string | null;
+};
+
 type S3OptionRow = {
   value: string | null;
 };
@@ -118,24 +133,19 @@ END
 
 const S3_TRANSFER_COST_CONDITION_SQL = `
 (
-  LOWER(COALESCE(usage_type, '')) LIKE '%data%transfer%'
-  OR LOWER(COALESCE(line_item_description, '')) LIKE '%data transfer%'
+  LOWER(TRIM(COALESCE(NULLIF(product_family, ''), ''))) = 'data transfer'
   OR LOWER(COALESCE(usage_type, '')) LIKE '%datatransfer%'
+  OR LOWER(COALESCE(usage_type, '')) LIKE '%out-bytes%'
+  OR LOWER(COALESCE(usage_type, '')) LIKE '%in-bytes%'
+  OR LOWER(COALESCE(usage_type, '')) LIKE '%data%transfer%'
+  OR LOWER(COALESCE(line_item_description, '')) LIKE '%data transfer%'
   OR LOWER(COALESCE(operation, '')) LIKE '%datatransfer%'
 )
 `;
 
 const S3_REQUEST_COST_CONDITION_SQL = `
 (
-  LOWER(COALESCE(operation, '')) LIKE '%put%'
-  OR LOWER(COALESCE(operation, '')) LIKE '%get%'
-  OR LOWER(COALESCE(operation, '')) LIKE '%list%'
-  OR LOWER(COALESCE(operation, '')) LIKE '%head%'
-  OR LOWER(COALESCE(operation, '')) LIKE '%post%'
-  OR LOWER(COALESCE(operation, '')) LIKE '%delete%'
-  OR LOWER(COALESCE(operation, '')) LIKE '%select%'
-  OR LOWER(COALESCE(usage_type, '')) LIKE '%requests%'
-  OR LOWER(COALESCE(usage_type, '')) LIKE '%request%'
+  LOWER(COALESCE(usage_type, '')) LIKE 'requests%'
 )
 `;
 
@@ -164,6 +174,16 @@ const S3_RETRIEVAL_COST_CONDITION_SQL = `
   OR LOWER(COALESCE(operation, '')) LIKE '%retrieval%'
   OR LOWER(COALESCE(operation, '')) LIKE '%restoreobject%'
   OR LOWER(COALESCE(operation, '')) LIKE '%selectobjectcontent%'
+)
+`;
+
+const S3_STORAGE_USAGE_ONLY_CONDITION_SQL = `
+(
+  LOWER(TRIM(COALESCE(NULLIF(product_family, ''), ''))) = 'storage'
+  AND (
+    LOWER(COALESCE(usage_type, '')) LIKE '%timedstorage%'
+    OR LOWER(COALESCE(product_usage_type, '')) LIKE '%timedstorage%'
+  )
 )
 `;
 
@@ -243,7 +263,7 @@ const S3_COST_CATEGORY_OPTIONS: S3CostCategory[] = [
 
 const S3_COST_BY_OPTIONS: S3CostChartBy[] = ["date", "bucket", "region", "account"];
 const S3_SERIES_BY_OPTIONS: S3CostSeriesBy[] = ["bucket", "usage_type", "cost_category", "operation", "product_family", "storage_class"];
-const S3_Y_AXIS_METRIC_OPTIONS: S3CostYAxisMetric[] = ["billed_cost", "effective_cost", "amortized_cost"];
+const S3_Y_AXIS_METRIC_OPTIONS: S3CostYAxisMetric[] = ["billed_cost", "effective_cost", "amortized_cost", "usage_quantity"];
 
 const OWNER_TAG_KEYS_SQL = `
 (
@@ -276,6 +296,134 @@ const toNumber = (value: number | string | null | undefined): number => {
 };
 
 export class S3CostInsightsRepository {
+  async getBucketStorageLens(
+    scope: DashboardScope,
+    buckets: string[],
+  ): Promise<
+    Map<
+      string,
+      {
+        usageDate: string;
+        objectCount: number | null;
+        currentVersionBytes: number | null;
+        avgObjectSizeBytes: number | null;
+        accessCount: number | null;
+        percentInGlacier: number;
+        storageClassDistribution: Array<{ name: string; bytes: number; percent: number }>;
+      }
+    >
+  > {
+    if (scope.scopeType !== "global" || buckets.length === 0) {
+      return new Map();
+    }
+
+    const binds: unknown[] = [scope.tenantId, scope.from, scope.to, buckets];
+    const conditions: string[] = [
+      "tenant_id = $1::uuid",
+      "usage_date >= $2::date",
+      "usage_date <= $3::date",
+      "bucket_name = ANY($4::text[])",
+    ];
+
+    if (typeof scope.providerId === "number") {
+      binds.push(scope.providerId);
+      conditions.push(`provider_id = $${binds.length}`);
+    }
+    if (Array.isArray(scope.billingSourceIds) && scope.billingSourceIds.length > 0) {
+      binds.push(scope.billingSourceIds);
+      conditions.push(`billing_source_id = ANY($${binds.length}::bigint[])`);
+    }
+    if (typeof scope.regionKey === "number") {
+      binds.push(scope.regionKey);
+      conditions.push(`region_key = $${binds.length}`);
+    }
+    if (typeof scope.subAccountKey === "number") {
+      binds.push(scope.subAccountKey);
+      conditions.push(`sub_account_key = $${binds.length}`);
+    }
+
+    const rows = await sequelize.query<S3StorageLensRow>(
+      `
+      SELECT DISTINCT ON (bucket_name)
+        bucket_name,
+        usage_date::text AS usage_date,
+        object_count,
+        current_version_bytes,
+        avg_object_size_bytes,
+        access_count,
+        bytes_standard,
+        bytes_standard_ia,
+        bytes_onezone_ia,
+        bytes_intelligent_tiering,
+        bytes_glacier,
+        bytes_deep_archive
+      FROM s3_storage_lens_daily
+      WHERE ${conditions.join("\n        AND ")}
+      ORDER BY bucket_name ASC, usage_date DESC
+      `,
+      { bind: binds, type: QueryTypes.SELECT },
+    );
+
+    const result = new Map<
+      string,
+      {
+        usageDate: string;
+        objectCount: number | null;
+        currentVersionBytes: number | null;
+        avgObjectSizeBytes: number | null;
+        accessCount: number | null;
+        percentInGlacier: number;
+        storageClassDistribution: Array<{ name: string; bytes: number; percent: number }>;
+      }
+    >();
+
+    for (const row of rows) {
+      const bucketName = String(row.bucket_name ?? "").trim();
+      if (!bucketName) continue;
+
+      const bytesStandard = toNumber(row.bytes_standard);
+      const bytesStandardIa = toNumber(row.bytes_standard_ia);
+      const bytesOnezoneIa = toNumber(row.bytes_onezone_ia);
+      const bytesIntelligentTiering = toNumber(row.bytes_intelligent_tiering);
+      const bytesGlacier = toNumber(row.bytes_glacier);
+      const bytesDeepArchive = toNumber(row.bytes_deep_archive);
+      const totalBytes =
+        bytesStandard +
+        bytesStandardIa +
+        bytesOnezoneIa +
+        bytesIntelligentTiering +
+        bytesGlacier +
+        bytesDeepArchive;
+      const glacierBytes = bytesGlacier + bytesDeepArchive;
+
+      const distributionRaw = [
+        { name: "S3 Standard", bytes: bytesStandard },
+        { name: "Standard-IA", bytes: bytesStandardIa },
+        { name: "One Zone-IA", bytes: bytesOnezoneIa },
+        { name: "Intelligent-Tiering", bytes: bytesIntelligentTiering },
+        { name: "Glacier", bytes: bytesGlacier },
+        { name: "Deep Archive", bytes: bytesDeepArchive },
+      ].filter((item) => item.bytes > 0);
+
+      result.set(bucketName, {
+        usageDate: String(row.usage_date ?? ""),
+        objectCount: row.object_count == null ? null : toNumber(row.object_count),
+        currentVersionBytes: row.current_version_bytes == null ? null : toNumber(row.current_version_bytes),
+        avgObjectSizeBytes: row.avg_object_size_bytes == null ? null : toNumber(row.avg_object_size_bytes),
+        accessCount: row.access_count == null ? null : toNumber(row.access_count),
+        percentInGlacier: totalBytes > 0 ? (glacierBytes / totalBytes) * 100 : 0,
+        storageClassDistribution: distributionRaw
+          .map((item) => ({
+            ...item,
+            percent: totalBytes > 0 ? (item.bytes / totalBytes) * 100 : 0,
+          }))
+          .sort((a, b) => b.bytes - a.bytes),
+      });
+    }
+
+    return result;
+  }
+
   private buildS3ScopedWhere(scope: DashboardScope): { whereClause: string; params: unknown[]; nextIndex: number } {
     const filter = buildDashboardFilter(scope);
     return {
@@ -367,6 +515,8 @@ export class S3CostInsightsRepository {
 
   private getMetricCostExpression(metric: S3CostYAxisMetric): string {
     switch (metric) {
+      case "usage_quantity":
+        return "fcli.consumed_quantity";
       case "effective_cost":
         return "fcli.effective_cost";
       case "amortized_cost":
@@ -389,6 +539,7 @@ export class S3CostInsightsRepository {
     const xExpr = this.getXAxisExpression(filters.costBy);
     const seriesExpr = this.getSeriesExpression(filters.seriesBy);
     const metricCostExpr = this.getMetricCostExpression(filters.yAxisMetric);
+    const selectedUsageCategory = filters.costCategory.length === 1 ? filters.costCategory[0] : null;
 
     const rows = await sequelize.query<S3BreakdownRow>(
       `
@@ -423,6 +574,26 @@ export class S3CostInsightsRepository {
         SELECT *
         FROM scoped
         WHERE ${filterPredicates.clause}
+          AND (
+            NOT (
+              $${scoped.nextIndex + filterPredicates.params.length + 1}::text = 'bucket'
+              AND $${scoped.nextIndex + filterPredicates.params.length + 2}::text = 'usage_quantity'
+            )
+            OR (
+              CASE
+                WHEN $${scoped.nextIndex + filterPredicates.params.length + 3}::text = 'Transfer' THEN ${S3_TRANSFER_COST_CONDITION_SQL}
+                WHEN $${scoped.nextIndex + filterPredicates.params.length + 3}::text = 'Request' THEN ${S3_REQUEST_COST_CONDITION_SQL}
+                WHEN $${scoped.nextIndex + filterPredicates.params.length + 3}::text = 'Retrieval' THEN ${S3_RETRIEVAL_COST_CONDITION_SQL}
+                WHEN $${scoped.nextIndex + filterPredicates.params.length + 3}::text = 'Other' THEN NOT (
+                  ${S3_STORAGE_COST_CONDITION_SQL}
+                  OR ${S3_REQUEST_COST_CONDITION_SQL}
+                  OR ${S3_TRANSFER_COST_CONDITION_SQL}
+                  OR ${S3_RETRIEVAL_COST_CONDITION_SQL}
+                )
+                ELSE ${S3_STORAGE_USAGE_ONLY_CONDITION_SQL}
+              END
+            )
+          )
       ),
       ranked_x AS (
         SELECT
@@ -454,7 +625,7 @@ export class S3CostInsightsRepository {
         CASE WHEN $${scoped.nextIndex + filterPredicates.params.length}::text <> 'date' THEN SUM(metric_cost) END DESC;
       `,
       {
-        bind: [...scoped.params, ...filterPredicates.params, filters.costBy],
+        bind: [...scoped.params, ...filterPredicates.params, filters.costBy, filters.seriesBy, filters.yAxisMetric, selectedUsageCategory],
         type: QueryTypes.SELECT,
       },
     );
@@ -756,6 +927,7 @@ export class S3CostInsightsRepository {
           COALESCE(DATE(COALESCE(fcli.usage_start_time, fcli.usage_end_time)), dd.full_date)::text AS usage_start_time,
           COALESCE(NULLIF(${S3_BUCKET_NAME_SQL}, ''), 'unattributed') AS bucket_name,
           COALESCE(fcli.billed_cost, 0)::double precision AS billed_cost,
+          COALESCE(fcli.product_family, '') AS product_family,
           COALESCE(fcli.usage_type, '') AS usage_type,
           COALESCE(fcli.product_usage_type, '') AS product_usage_type,
           COALESCE(fcli.operation, '') AS operation,
@@ -966,12 +1138,15 @@ export class S3CostInsightsRepository {
       },
     );
 
+    const isTransferOnly = filters.costCategory.length === 1 && filters.costCategory[0] === "Transfer";
+    const isRequestOnly = filters.costCategory.length === 1 && filters.costCategory[0] === "Request";
+
     return rows.map((row) => ({
       usageType: String(row.usage_type ?? "Unspecified"),
       operation: String(row.operation ?? "Unspecified"),
       cost: toNumber(row.cost),
       quantity: toNumber(row.quantity),
-      unit: String(row.unit ?? "Units"),
+      unit: isTransferOnly ? "GB" : isRequestOnly ? "Requests" : String(row.unit ?? "Units"),
     }));
   }
 
@@ -993,6 +1168,7 @@ export class S3CostInsightsRepository {
           COALESCE(fcli.billed_cost, 0)::double precision AS billed_cost,
           COALESCE(fcli.effective_cost, 0)::double precision AS effective_cost,
           COALESCE(fcli.list_cost, 0)::double precision AS list_cost,
+          COALESCE(fcli.product_family, '') AS product_family,
           COALESCE(fcli.usage_type, '') AS usage_type,
           COALESCE(fcli.product_usage_type, '') AS product_usage_type,
           COALESCE(fcli.operation, '') AS operation,

@@ -113,10 +113,36 @@ export function S3OverviewChartPanel({
           : "Date";
 
   const chartOption = useMemo<EChartsOption>(() => {
-    const series = breakdown?.series ?? [];
+    const rawSeries = breakdown?.series ?? [];
     const isLineChart = chartType === "line";
+    const preparedSeries = (() => {
+      if (isLineChart) return rawSeries;
+
+      const positiveOnly = rawSeries.map((series) => ({
+        name: series.name,
+        values: series.values.map((value) => Math.max(0, Number(value ?? 0))),
+      }));
+
+      const ranked = [...positiveOnly]
+        .map((series) => ({
+          ...series,
+          total: series.values.reduce((sum, value) => sum + value, 0),
+        }))
+        .sort((left, right) => right.total - left.total);
+
+      const topSeries = ranked.slice(0, 8).map(({ name, values }) => ({ name, values }));
+      if (ranked.length <= 8) return topSeries;
+
+      const remaining = ranked.slice(8);
+      const othersValues = labels.map((_, index) =>
+        remaining.reduce((sum, series) => sum + Number(series.values[index] ?? 0), 0),
+      );
+      const othersTotal = othersValues.reduce((sum, value) => sum + value, 0);
+      return othersTotal > 0 ? [...topSeries, { name: "Others", values: othersValues }] : topSeries;
+    })();
+
     return {
-      color: series.map((_, index) => CHART_COLORS[index % CHART_COLORS.length]),
+      color: preparedSeries.map((_, index) => CHART_COLORS[index % CHART_COLORS.length]),
       tooltip: {
         trigger: "axis",
         axisPointer: { type: isLineChart ? "line" : "shadow" },
@@ -143,6 +169,7 @@ export function S3OverviewChartPanel({
       },
       yAxis: {
         type: "value",
+        min: isLineChart ? undefined : 0,
         name:
           yAxisMetric === "effective_cost"
             ? "Effective Cost ($)"
@@ -162,17 +189,17 @@ export function S3OverviewChartPanel({
         },
       },
       dataZoom: labels.length > 45 ? [{ type: "inside", start: 0, end: 100 }] : undefined,
-      series: series.map((item) => ({
+      series: preparedSeries.map((item) => ({
         name: item.name,
         type: isLineChart ? "line" : "bar",
         stack: isLineChart ? undefined : "s3-overview",
         smooth: isLineChart,
         showSymbol: isLineChart ? labels.length <= 60 : false,
         symbolSize: isLineChart ? 5 : undefined,
-        barWidth: isLineChart ? undefined : 44,
-        barMaxWidth: isLineChart ? undefined : 52,
-        barCategoryGap: isLineChart ? undefined : "34%",
-        barGap: isLineChart ? undefined : "10%",
+        barWidth: isLineChart ? undefined : "86%",
+        barMaxWidth: isLineChart ? undefined : 80,
+        barCategoryGap: isLineChart ? undefined : "8%",
+        barGap: isLineChart ? undefined : "0%",
         lineStyle: isLineChart ? { width: 2.3 } : undefined,
         itemStyle: isLineChart ? undefined : { borderRadius: 0 },
         data: item.values.map((value) => Number(value ?? 0)),

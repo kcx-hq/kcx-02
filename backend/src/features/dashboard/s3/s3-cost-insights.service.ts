@@ -65,6 +65,7 @@ const sanitizeFilters = (filters?: Partial<S3CostInsightsFilters>): S3CostInsigh
     "billed_cost",
     "effective_cost",
     "amortized_cost",
+    "usage_quantity",
   ];
   const allowedCostCategory = new Set([
     "Storage",
@@ -154,6 +155,15 @@ export class S3CostInsightsService {
           })
         : Promise.resolve([]),
     ]);
+    const storageLensByBucket = await this.repository
+      .getBucketStorageLens(
+        scope,
+        currentBucketTable.map((row) => row.bucketName),
+      )
+      .catch((error: unknown) => {
+        console.warn("[S3CostInsightsService] Storage Lens snapshot lookup failed; using CUR fallback only", error);
+        return new Map();
+      });
 
     const previousCostByBucket = new Map(previousBucketTable.map((row) => [row.bucketName, row.cost]));
     const bucketTable = currentBucketTable.map((row) => {
@@ -162,6 +172,7 @@ export class S3CostInsightsService {
       return {
         ...row,
         trendPct,
+        storageLens: storageLensByBucket.get(row.bucketName) ?? null,
       };
     });
 

@@ -183,6 +183,7 @@ export type Ec2OverviewResponse = {
     instanceTypes: string[];
     states: string[];
   };
+};
 export type Ec2OptimizationInstancesFiltersQuery = Ec2OptimizationSummaryFiltersQuery;
 
 export type Ec2RecommendationCategory = "compute" | "storage" | "pricing";
@@ -871,7 +872,7 @@ export type S3CostInsightsResponse = {
         account: string[];
         costBy: "date" | "bucket" | "region" | "account";
         seriesBy: "cost_category" | "usage_type" | "operation" | "product_family" | "bucket" | "storage_class";
-        yAxisMetric: "billed_cost" | "effective_cost" | "amortized_cost";
+        yAxisMetric: "billed_cost" | "effective_cost" | "amortized_cost" | "usage_quantity";
       };
   };
   columnsUsed: Array<
@@ -908,6 +909,19 @@ export type S3CostInsightsResponse = {
     retrieval: number;
     other: number;
     trendPct: number;
+    storageLens?: {
+      usageDate: string;
+      objectCount: number | null;
+      currentVersionBytes: number | null;
+      avgObjectSizeBytes: number | null;
+      accessCount: number | null;
+      percentInGlacier: number;
+      storageClassDistribution: Array<{
+        name: string;
+        bytes: number;
+        percent: number;
+      }>;
+    } | null;
   }>;
   costCategoryTable: Array<{
     costCategory: "Storage" | "Request" | "Transfer" | "Retrieval" | "Other";
@@ -964,7 +978,7 @@ export type S3CostInsightsResponse = {
       account: string[];
       costBy: Array<"date" | "bucket" | "region" | "account">;
       seriesBy: Array<"cost_category" | "usage_type" | "operation" | "product_family" | "bucket" | "storage_class">;
-      yAxisMetric: Array<"billed_cost" | "effective_cost" | "amortized_cost">;
+      yAxisMetric: Array<"billed_cost" | "effective_cost" | "amortized_cost" | "usage_quantity">;
     };
   };
 
@@ -977,7 +991,7 @@ export type S3CostInsightsFiltersQuery = {
   account?: string[];
   costBy?: "date" | "bucket" | "region" | "account";
   seriesBy?: "cost_category" | "usage_type" | "operation" | "product_family" | "bucket" | "storage_class";
-  yAxisMetric?: "billed_cost" | "effective_cost" | "amortized_cost";
+  yAxisMetric?: "billed_cost" | "effective_cost" | "amortized_cost" | "usage_quantity";
 };
 
 export type AnomaliesListResponse = {

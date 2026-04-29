@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Check, ChevronDown, Search, X } from "lucide-react";
 
 import type { S3CostInsightsFiltersQuery } from "../../../api/dashboardApi";
@@ -45,7 +45,7 @@ export function S3OverviewFilters({
     if (seriesBy === "operation") return "Operation";
     if (seriesBy === "product_family") return "Product Family";
     if (seriesBy === "bucket") return "Bucket";
-    return "Cost Category";
+    return "Usage Type";
   };
 
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -80,6 +80,11 @@ export function S3OverviewFilters({
 
   const seriesByLabel = getSeriesByLabel(value.seriesBy);
   const draftSeriesByLabel = getSeriesByLabel(draftSeriesBy);
+  const getYAxisLabel = useCallback((metric: NonNullable<S3CostInsightsFiltersQuery["yAxisMetric"]>) => {
+    if (metric === "effective_cost") return "Effective Cost ($)";
+    if (metric === "amortized_cost") return "Amortized Cost ($)";
+    return "Billed Cost ($)";
+  }, []);
 
   const draftSeriesValueOptions = useMemo(() => {
     if (draftSeriesBy === "storage_class") return filterOptions?.storageClass ?? [];
@@ -123,12 +128,7 @@ export function S3OverviewFilters({
     items.push({
       id: "yAxisMetric",
       label: "Y-Axis",
-      value:
-        value.yAxisMetric === "effective_cost"
-          ? "Effective Cost ($)"
-          : value.yAxisMetric === "amortized_cost"
-            ? "Amortized Cost ($)"
-            : "Billed Cost ($)",
+      value: getYAxisLabel(value.yAxisMetric),
       onRemove: () => onChange({ ...value, yAxisMetric: "billed_cost" }),
     });
     items.push({
@@ -138,7 +138,7 @@ export function S3OverviewFilters({
       onRemove: () => onChange({ ...value, compareMode: "none" }),
     });
     return items;
-  }, [onChange, seriesByLabel, value]);
+  }, [getYAxisLabel, onChange, seriesByLabel, value]);
 
   const normalize = (input: string) => input.trim().toLowerCase();
   const filterOptionsBySearch = (options: string[], needle: string): string[] => {
@@ -417,11 +417,7 @@ export function S3OverviewFilters({
             <span className="cost-explorer-toolbar-trigger__label">Y-Axis</span>
             <span className="cost-explorer-toolbar-trigger__row">
               <span className="cost-explorer-toolbar-trigger__value">
-                {value.yAxisMetric === "effective_cost"
-                  ? "Effective Cost ($)"
-                  : value.yAxisMetric === "amortized_cost"
-                    ? "Amortized Cost ($)"
-                    : "Billed Cost ($)"}
+                {getYAxisLabel(value.yAxisMetric)}
               </span>
               <ChevronDown className="cost-explorer-toolbar-trigger__caret" size={14} aria-hidden="true" />
             </span>
@@ -436,12 +432,7 @@ export function S3OverviewFilters({
                   searchByPopover.yAxisMetric,
                 ).map((option) => {
                   const selected = option === value.yAxisMetric;
-                  const label =
-                    option === "effective_cost"
-                      ? "Effective Cost ($)"
-                      : option === "amortized_cost"
-                        ? "Amortized Cost ($)"
-                        : "Billed Cost ($)";
+                  const label = getYAxisLabel(option);
                   return (
                     <button
                       key={option}
