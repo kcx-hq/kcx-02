@@ -50,6 +50,7 @@ router.use(reportRoutes);
 router.use(instancesInventoryRoutes);
 router.use(snapshotsInventoryRoutes);
 router.use(volumesInventoryRoutes);
+// router.use(ec2ReportsRoutes);
 router.use(databaseRoutes);
 router.use(ec2OptimizationRoutes);
 router.use(ec2ExplorerRoutes);

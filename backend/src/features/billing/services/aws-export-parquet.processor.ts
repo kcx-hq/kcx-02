@@ -30,6 +30,8 @@ import { syncEc2CostHistoryForIngestionRun } from "./ec2-cost-history.service.js
 import { syncDbCostHistoryForIngestionRun } from "./db-cost-history.service.js";
 import { createTagDimensionCache, resolveFactPrimaryTagId, resolveFactTagIds } from "./dim-tag.service.js";
 import { assertTagDimensionSchemaReady } from "./ingestion-schema-guard.service.js";
+import { Ec2RecommendationsService } from "../../ec2/optimization/ec2-recommendations.service.js";
+import { syncStorageLensFromClientAccount } from "./s3-storage-lens-sync.service.js";
 
 const STAGE_MESSAGE = {
   validating_schema: "Validating manifest and parquet schema",
@@ -55,6 +57,39 @@ const PROGRESS_BY_STAGE = {
 };
 
 const now = () => new Date();
+const ec2RecommendationsService = new Ec2RecommendationsService();
+
+function scheduleStorageLensSyncAfterIngestion({ tenantId, billingSourceId, ingestionRunId }) {
+  const normalizedTenantId = String(tenantId ?? "").trim();
+  const normalizedBillingSourceId = String(billingSourceId ?? "").trim();
+  if (!normalizedTenantId || !normalizedBillingSourceId) {
+    return;
+  }
+
+  setImmediate(() => {
+    void syncStorageLensFromClientAccount({
+      tenantId: normalizedTenantId,
+      billingSourceId: normalizedBillingSourceId,
+    })
+      .then((result) => {
+        logger.info("Storage Lens auto-sync completed after AWS parquet ingestion", {
+          ingestionRunId: String(ingestionRunId),
+          tenantId: normalizedTenantId,
+          billingSourceId: normalizedBillingSourceId,
+          snapshotsUpserted: result.snapshotsUpserted,
+          objectsProcessed: result.objectsProcessed,
+        });
+      })
+      .catch((error) => {
+        logger.warn("Storage Lens auto-sync failed after AWS parquet ingestion", {
+          ingestionRunId: String(ingestionRunId),
+          tenantId: normalizedTenantId,
+          billingSourceId: normalizedBillingSourceId,
+          reason: error instanceof Error ? error.message : String(error),
+        });
+      });
+  });
+}
 
 const toErrorMessage = (error) => {
   if (error instanceof Error && error.message.trim().length > 0) {
@@ -580,6 +615,11 @@ export async function processAwsExportParquetRun({ run }) {
       lastIngestedAt: now(),
       status: "active",
     });
+    scheduleStorageLensSyncAfterIngestion({
+      tenantId: source.tenantId,
+      billingSourceId: source.id,
+      ingestionRunId: runId,
+    });
 
     if (rowsLoaded > 0) {
       await upsertCostAggregationsForRun({
@@ -601,6 +641,23 @@ export async function processAwsExportParquetRun({ run }) {
         providerId: source.cloudProviderId,
         billingSourceId: source.id,
       });
+
+      try {
+        await ec2RecommendationsService.refreshRecommendations({
+          tenantId: String(source.tenantId),
+          billingSourceId: Number(source.id),
+          cloudConnectionId: source.cloudConnectionId ? String(source.cloudConnectionId) : null,
+          dateFrom: String(run.periodStartDate).slice(0, 10),
+          dateTo: String(run.periodEndDate).slice(0, 10),
+        });
+      } catch (ec2V1Error) {
+        logger.warn("EC2 V1 recommendation refresh failed after AWS parquet ingestion", {
+          ingestionRunId: runId,
+          tenantId: source.tenantId ?? null,
+          billingSourceId: source.id ?? null,
+          reason: toErrorMessage(ec2V1Error),
+        });
+      }
 
       try {
         await syncAwsRightsizingRecommendationsAfterIngestion({

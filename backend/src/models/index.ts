@@ -52,6 +52,7 @@ import createAggCostHourlyModel from "./billing/agg_cost_hourly.js";
 import createAggCostDailyModel from "./billing/agg_cost_daily.js";
 import createAggCostMonthlyModel from "./billing/agg_cost_monthly.js";
 import createCostPeriodStatusModel from "./billing/cost_period_status.js";
+import createS3StorageLensDailyModel from "./billing/s3_storage_lens_daily.js";
 import createEc2CostHistoryDailyModel from "./ec2/ec2_cost_history_daily.js";
 import createEc2CostHistoryMonthlyModel from "./ec2/ec2_cost_history_monthly.js";
 import createEc2InstanceInventorySnapshotModel from "./ec2/ec2_instance_inventory_snapshots.js";
@@ -143,6 +144,7 @@ const AggCostHourly = createAggCostHourlyModel(sequelize);
 const AggCostDaily = createAggCostDailyModel(sequelize);
 const AggCostMonthly = createAggCostMonthlyModel(sequelize);
 const CostPeriodStatus = createCostPeriodStatusModel(sequelize);
+const S3StorageLensDaily = createS3StorageLensDailyModel(sequelize);
 const Ec2CostHistoryDaily = createEc2CostHistoryDailyModel(sequelize);
 const Ec2CostHistoryMonthly = createEc2CostHistoryMonthlyModel(sequelize);
 const Ec2InstanceInventorySnapshot = createEc2InstanceInventorySnapshotModel(sequelize);
@@ -716,6 +718,7 @@ export {
   AggCostDaily,
   AggCostMonthly,
   CostPeriodStatus,
+  S3StorageLensDaily,
   Ec2CostHistoryDaily,
   Ec2CostHistoryMonthly,
   Ec2InstanceInventorySnapshot,

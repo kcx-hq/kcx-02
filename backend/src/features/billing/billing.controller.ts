@@ -14,6 +14,7 @@ import {
 } from "./services/ingestion.service.js";
 import { detectFileFormat, storeManualFile } from "./services/raw-file.service.js";
 import { ingestionOrchestrator } from "./services/ingestion-orchestrator.service.js";
+import { syncStorageLensFromClientAccount } from "./services/s3-storage-lens-sync.service.js";
 
 const requireTenantId = (req: Request): string => {
   // Assumption: tenant context may come from auth middleware (`req.auth.user.tenantId`) or legacy context (`req.user.tenantId` / `req.tenantId`).
@@ -218,5 +219,36 @@ export async function handleGetBillingCloudProviders(req: Request, res: Response
       code: provider.code,
       name: provider.name,
     })),
+  });
+}
+
+export async function handleSyncStorageLensFromClientAccount(req: Request, res: Response): Promise<void> {
+  const tenantId = requireTenantId(req);
+  const body = (req.body ?? {}) as {
+    billingSourceId?: string | number;
+    bucket?: string;
+    prefix?: string;
+    maxFiles?: number;
+  };
+
+  const billingSourceId = String(body.billingSourceId ?? "").trim();
+  if (!billingSourceId || !/^\d+$/.test(billingSourceId)) {
+    throw new BadRequestError("billingSourceId is required");
+  }
+
+  const result = await syncStorageLensFromClientAccount({
+    tenantId,
+    billingSourceId,
+    bucket: typeof body.bucket === "string" ? body.bucket : undefined,
+    prefix: typeof body.prefix === "string" ? body.prefix : undefined,
+    maxFiles: Number.isFinite(Number(body.maxFiles)) ? Number(body.maxFiles) : undefined,
+  });
+
+  sendSuccess({
+    res,
+    req,
+    statusCode: HTTP_STATUS.OK,
+    message: "Storage Lens sync completed",
+    data: result,
   });
 }

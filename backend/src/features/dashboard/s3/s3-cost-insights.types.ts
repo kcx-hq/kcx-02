@@ -26,7 +26,7 @@ export type S3CostFeatureTrendInsight = {
 
 export type S3CostChartBy = "date" | "bucket" | "region" | "account";
 export type S3CostSeriesBy = "cost_category" | "usage_type" | "operation" | "product_family" | "bucket" | "storage_class";
-export type S3CostYAxisMetric = "billed_cost" | "effective_cost" | "amortized_cost";
+export type S3CostYAxisMetric = "billed_cost" | "effective_cost" | "amortized_cost" | "usage_quantity";
 export type S3CostCategory =
   | "Storage"
   | "Request"
@@ -68,6 +68,19 @@ export type S3CostBucketTableInsight = {
   retrieval: number;
   other: number;
   trendPct: number;
+  storageLens?: {
+    usageDate: string;
+    objectCount: number | null;
+    currentVersionBytes: number | null;
+    avgObjectSizeBytes: number | null;
+    accessCount: number | null;
+    percentInGlacier: number;
+    storageClassDistribution: Array<{
+      name: string;
+      bytes: number;
+      percent: number;
+    }>;
+  } | null;
 };
 
 export type S3CostCategoryTableInsight = {

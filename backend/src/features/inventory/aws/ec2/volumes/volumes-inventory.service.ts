@@ -1,7 +1,10 @@
 import { QueryTypes } from "sequelize";
 
+import { NotFoundError } from "../../../../../errors/http-errors.js";
 import { sequelize } from "../../../../../models/index.js";
 import type {
+  InventoryEc2VolumeDetailQuery,
+  InventoryEc2VolumeDetailResponse,
   InventoryEc2VolumePerformanceInterval,
   InventoryEc2VolumePerformanceMetric,
   InventoryEc2VolumePerformanceQuery,
@@ -75,6 +78,27 @@ type VolumeRow = {
 type PerformanceDataRow = {
   timestamp: Date | string;
 } & Partial<Record<InventoryEc2VolumePerformanceMetric, number | string | null>>;
+
+type VolumeIdentityRow = {
+  volumeId: string;
+  volumeName: string;
+  state: string | null;
+  volumeType: string | null;
+  sizeGb: number | string | null;
+  iops: number | string | null;
+  throughput: number | string | null;
+  availabilityZone: string | null;
+  regionId: string | null;
+  regionName: string | null;
+  subAccountName: string | null;
+  cloudConnectionId: string | null;
+  discoveredAt: Date | string | null;
+  attachedInstanceId: string | null;
+  attachedInstanceName: string | null;
+  attachedInstanceState: string | null;
+  tagsJson: Record<string, unknown> | null;
+  metadataJson: Record<string, unknown> | null;
+};
 
 const toIsoDate = (value: Date): string => value.toISOString().slice(0, 10);
 
@@ -175,6 +199,180 @@ const ORDER_BY_SQL: Record<InventoryEc2VolumesListQuery["sortBy"], string> = {
 };
 
 export class VolumesInventoryService {
+  async getVolumeDetails(input: {
+    tenantId: string;
+    query: InventoryEc2VolumeDetailQuery;
+  }): Promise<InventoryEc2VolumeDetailResponse> {
+    const dateRange = resolveDateRange({
+      ...input.query,
+      page: 1,
+      pageSize: 1,
+      subAccountKey: null,
+      attachedInstanceId: null,
+      state: null,
+      volumeType: null,
+      isAttached: null,
+      attachmentState: null,
+      optimizationStatus: null,
+      signal: null,
+      region: null,
+      search: null,
+      sortBy: "signal",
+      sortDirection: "desc",
+    });
+
+    const identityRows = await sequelize.query<VolumeIdentityRow>(
+      `
+      SELECT
+        inv.volume_id AS "volumeId",
+        COALESCE(NULLIF(TRIM(COALESCE(inv.tags_json ->> 'Name', '')), ''), inv.volume_id) AS "volumeName",
+        inv.state AS "state",
+        inv.volume_type AS "volumeType",
+        inv.size_gb::double precision AS "sizeGb",
+        inv.iops::double precision AS "iops",
+        inv.throughput::double precision AS "throughput",
+        inv.availability_zone AS "availabilityZone",
+        dr.region_id AS "regionId",
+        dr.region_name AS "regionName",
+        dsa.sub_account_name AS "subAccountName",
+        inv.cloud_connection_id::text AS "cloudConnectionId",
+        inv.discovered_at AS "discoveredAt",
+        inv.attached_instance_id AS "attachedInstanceId",
+        inst.attached_instance_name AS "attachedInstanceName",
+        inst.attached_instance_state AS "attachedInstanceState",
+        inv.tags_json AS "tagsJson",
+        inv.metadata_json AS "metadataJson"
+      FROM ec2_volume_inventory_snapshots inv
+      LEFT JOIN dim_region dr ON dr.id = inv.region_key
+      LEFT JOIN dim_sub_account dsa ON dsa.id = inv.sub_account_key
+      LEFT JOIN LATERAL (
+        SELECT
+          COALESCE(NULLIF(TRIM(COALESCE(e.tags_json ->> 'Name', '')), ''), e.instance_id) AS attached_instance_name,
+          e.state AS attached_instance_state
+        FROM ec2_instance_inventory_snapshots e
+        WHERE e.tenant_id = inv.tenant_id
+          AND e.instance_id = inv.attached_instance_id
+          AND e.is_current = true
+          AND e.deleted_at IS NULL
+        ORDER BY e.updated_at DESC NULLS LAST
+        LIMIT 1
+      ) inst ON TRUE
+      WHERE inv.tenant_id = $1::uuid
+        AND inv.volume_id = $2
+        AND inv.is_current = true
+        AND inv.deleted_at IS NULL
+        AND ($3::uuid IS NULL OR inv.cloud_connection_id = $3::uuid)
+      ORDER BY inv.updated_at DESC NULLS LAST
+      LIMIT 1;
+      `,
+      {
+        bind: [input.tenantId, input.query.volumeId, input.query.cloudConnectionId],
+        type: QueryTypes.SELECT,
+      },
+    );
+
+    const identity = identityRows[0];
+    if (!identity) {
+      throw new NotFoundError("Volume not found");
+    }
+
+    const costTrendRows = await sequelize.query<{
+      usageDate: string;
+      totalCost: number | string | null;
+      storageCost: number | string | null;
+      ioCost: number | string | null;
+      throughputCost: number | string | null;
+      sizeGb: number | string | null;
+    }>(
+      `
+      SELECT
+        f.usage_date::text AS "usageDate",
+        COALESCE(f.total_cost, 0)::double precision AS "totalCost",
+        COALESCE(f.storage_cost, 0)::double precision AS "storageCost",
+        COALESCE(f.io_cost, 0)::double precision AS "ioCost",
+        COALESCE(f.throughput_cost, 0)::double precision AS "throughputCost",
+        f.size_gb::double precision AS "sizeGb"
+      FROM fact_ebs_volume_daily f
+      WHERE f.tenant_id = $1::uuid
+        AND f.volume_id = $2
+        AND ($3::uuid IS NULL OR f.cloud_connection_id = $3::uuid)
+        AND f.usage_date >= $4::date
+        AND f.usage_date <= $5::date
+      ORDER BY f.usage_date ASC;
+      `,
+      {
+        bind: [
+          input.tenantId,
+          input.query.volumeId,
+          input.query.cloudConnectionId,
+          dateRange.startDate,
+          dateRange.endDate,
+        ],
+        type: QueryTypes.SELECT,
+      },
+    );
+
+    const totalVolumeCost = costTrendRows.reduce((sum, row) => sum + toNumberOrZero(row.totalCost), 0);
+    const storageCostTotalRaw = costTrendRows.reduce((sum, row) => sum + toNumberOrZero(row.storageCost), 0);
+    const ioCostTotalRaw = costTrendRows.reduce((sum, row) => sum + toNumberOrZero(row.ioCost), 0);
+    const throughputCostTotalRaw = costTrendRows.reduce((sum, row) => sum + toNumberOrZero(row.throughputCost), 0);
+
+    const hasSeparateCosts = storageCostTotalRaw > 0 || ioCostTotalRaw > 0 || throughputCostTotalRaw > 0;
+    const storageCost = hasSeparateCosts ? storageCostTotalRaw : totalVolumeCost;
+    const iopsCost = hasSeparateCosts ? ioCostTotalRaw : 0;
+    const throughputCost = hasSeparateCosts ? throughputCostTotalRaw : 0;
+    const snapshotCost = Math.max(totalVolumeCost - storageCost - iopsCost - throughputCost, 0);
+
+    const costTrend = costTrendRows.map((row) => ({
+      date: row.usageDate,
+      totalCost: toNumberOrZero(row.totalCost),
+    }));
+
+    const sizeTrend = costTrendRows
+      .map((row) => ({
+        date: row.usageDate,
+        sizeGb: toNullableNumber(row.sizeGb),
+      }))
+      .filter((row): row is { date: string; sizeGb: number } => row.sizeGb !== null);
+
+    return {
+      identity: {
+        volumeId: identity.volumeId,
+        name: identity.volumeName,
+        state: identity.state,
+        volumeType: identity.volumeType,
+        sizeGb: toNullableNumber(identity.sizeGb),
+        iops: toNullableNumber(identity.iops),
+        throughput: toNullableNumber(identity.throughput),
+        availabilityZone: identity.availabilityZone,
+        region: identity.regionId ?? identity.regionName ?? null,
+        subAccount: identity.subAccountName,
+        cloudConnectionId: identity.cloudConnectionId,
+        discoveredAt: toIsoOrNull(identity.discoveredAt),
+      },
+      attachment: {
+        instanceId: identity.attachedInstanceId,
+        instanceName: identity.attachedInstanceName,
+        instanceState: identity.attachedInstanceState,
+      },
+      metadata: {
+        tags: identity.tagsJson ?? {},
+        metadata: identity.metadataJson ?? {},
+      },
+      costBreakdown: {
+        totalVolumeCost,
+        storageCost,
+        iopsCost,
+        throughputCost,
+        snapshotCost,
+      },
+      trends: {
+        costTrend,
+        sizeTrend,
+      },
+    };
+  }
+
   async listVolumes(input: {
     tenantId: string;
     query: InventoryEc2VolumesListQuery;
@@ -476,21 +674,21 @@ export class VolumesInventoryService {
 
     const normalizedVolumeType = normalizeLower(input.query.volumeType);
     if (normalizedVolumeType) {
-      baseWhereParts.push(`LOWER(COALESCE(base.volume_type, '')) = $${nextIndex}`);
+      baseWhereParts.push(`LOWER(COALESCE(current.volume_type, '')) = $${nextIndex}`);
       bind.push(normalizedVolumeType);
       nextIndex += 1;
     }
 
     const normalizedState = normalizeLower(input.query.state);
     if (normalizedState) {
-      baseWhereParts.push(`LOWER(COALESCE(base.state, '')) = $${nextIndex}`);
+      baseWhereParts.push(`LOWER(COALESCE(current.state, '')) = $${nextIndex}`);
       bind.push(normalizedState);
       nextIndex += 1;
     }
 
     const normalizedAttachedInstanceId = normalizeLower(input.query.attachedInstanceId);
     if (normalizedAttachedInstanceId) {
-      baseWhereParts.push(`LOWER(COALESCE(base.attached_instance_id, '')) = $${nextIndex}`);
+      baseWhereParts.push(`LOWER(COALESCE(current.attached_instance_id, '')) = $${nextIndex}`);
       bind.push(normalizedAttachedInstanceId);
       nextIndex += 1;
     }
@@ -501,10 +699,10 @@ export class VolumesInventoryService {
       const likeIndex = nextIndex + 1;
       baseWhereParts.push(`
         (
-          LOWER(COALESCE(base.region_id, '')) = $${exactIndex}
-          OR LOWER(COALESCE(base.region_name, '')) = $${exactIndex}
-          OR LOWER(COALESCE(base.availability_zone, '')) = $${exactIndex}
-          OR LOWER(COALESCE(base.availability_zone, '')) LIKE $${likeIndex}
+          LOWER(COALESCE(dr.region_id, '')) = $${exactIndex}
+          OR LOWER(COALESCE(dr.region_name, '')) = $${exactIndex}
+          OR LOWER(COALESCE(current.availability_zone, '')) = $${exactIndex}
+          OR LOWER(COALESCE(current.availability_zone, '')) LIKE $${likeIndex}
         )
       `);
       bind.push(normalizedRegion, `${normalizedRegion}%`);
@@ -513,42 +711,51 @@ export class VolumesInventoryService {
 
     const latestWhereParts: string[] = [];
     if (typeof input.query.isAttached === "boolean") {
-      latestWhereParts.push(`base.is_attached = $${nextIndex}`);
+      latestWhereParts.push(`current.is_attached = $${nextIndex}`);
       bind.push(input.query.isAttached);
       nextIndex += 1;
     }
 
     if (input.query.attachmentState === "attached") {
-      latestWhereParts.push(`COALESCE(base.is_attached, FALSE) = TRUE`);
+      latestWhereParts.push(`COALESCE(current.is_attached, FALSE) = TRUE`);
     } else if (input.query.attachmentState === "unattached") {
-      latestWhereParts.push(`COALESCE(base.is_unattached, NOT COALESCE(base.is_attached, FALSE)) = TRUE`);
+      latestWhereParts.push(`COALESCE(NOT COALESCE(current.is_attached, FALSE), FALSE) = TRUE`);
     } else if (input.query.attachmentState === "attached_stopped") {
-      latestWhereParts.push(`COALESCE(base.is_attached_to_stopped_instance, FALSE) = TRUE`);
+      latestWhereParts.push(`COALESCE(current.is_attached, FALSE) = TRUE AND LOWER(COALESCE(inst.attached_instance_state, '')) = 'stopped'`);
     }
 
     if (input.query.optimizationStatus) {
-      latestWhereParts.push(`LOWER(COALESCE(base.optimization_status, '')) = $${nextIndex}`);
+      latestWhereParts.push(`
+        LOWER(
+          CASE
+            WHEN COALESCE(utilization.is_idle_candidate, FALSE) THEN 'idle'
+            WHEN COALESCE(utilization.is_underutilized_candidate, FALSE) THEN 'underutilized'
+            ELSE 'optimal'
+          END
+        ) = $${nextIndex}
+      `);
       bind.push(input.query.optimizationStatus);
       nextIndex += 1;
     }
 
     if (input.query.signal === "unattached") {
-      latestWhereParts.push(`COALESCE(base.is_unattached, NOT COALESCE(base.is_attached, FALSE)) = TRUE`);
+      latestWhereParts.push(`COALESCE(NOT COALESCE(current.is_attached, FALSE), FALSE) = TRUE`);
     } else if (input.query.signal === "attached_stopped") {
-      latestWhereParts.push(`COALESCE(base.is_attached_to_stopped_instance, FALSE) = TRUE`);
+      latestWhereParts.push(`COALESCE(current.is_attached, FALSE) = TRUE AND LOWER(COALESCE(inst.attached_instance_state, '')) = 'stopped'`);
     } else if (input.query.signal === "idle") {
-      latestWhereParts.push(`COALESCE(base.is_idle_candidate, FALSE) = TRUE`);
+      latestWhereParts.push(`COALESCE(utilization.is_idle_candidate, FALSE) = TRUE`);
     } else if (input.query.signal === "underutilized") {
-      latestWhereParts.push(`COALESCE(base.is_underutilized_candidate, FALSE) = TRUE`);
+      latestWhereParts.push(`COALESCE(utilization.is_underutilized_candidate, FALSE) = TRUE`);
     }
 
     const normalizedSearch = normalizeLower(input.query.search);
     if (normalizedSearch) {
       latestWhereParts.push(`
         (
-          LOWER(base.volume_id) LIKE $${nextIndex}
-          OR LOWER(COALESCE(base.attached_instance_id, '')) LIKE $${nextIndex}
-          OR LOWER(COALESCE(base.attached_instance_name, '')) LIKE $${nextIndex}
+          LOWER(current.volume_id) LIKE $${nextIndex}
+          OR LOWER(COALESCE(NULLIF(TRIM(COALESCE(current.tags_json ->> 'Name', '')), ''), current.volume_id)) LIKE $${nextIndex}
+          OR LOWER(COALESCE(current.attached_instance_id, '')) LIKE $${nextIndex}
+          OR LOWER(COALESCE(inst.attached_instance_name, '')) LIKE $${nextIndex}
         )
       `);
       bind.push(`%${normalizedSearch}%`);

@@ -66,7 +66,7 @@ export default function S3BucketDetailPage() {
       {!query.isLoading && !query.isError && selectedBucket ? (
         <S3BucketDetailPanel
           bucket={selectedBucket}
-          totalS3Cost={query.data?.kpis.totalS3Cost ?? 0}
+          usageMetrics={{ storageGb: 0, transferGb: 0, requestCount: 0 }}
           onClose={handleBack}
         />
       ) : null}

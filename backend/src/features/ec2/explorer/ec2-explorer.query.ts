@@ -81,6 +81,7 @@ type RawExplorerFactRow = {
   dataTransferCost: number | string | null;
   totalEffectiveCost: number | string | null;
   totalBilledCost: number | string | null;
+  totalAmortizedCost: number | string | null;
   cpuAvg: number | string | null;
   cpuMax: number | string | null;
   diskUsedPercentAvg: number | string | null;
@@ -105,6 +106,15 @@ const toNumber = (value: number | string | null | undefined): number => {
   }
   return 0;
 };
+const toNullableNumber = (value: number | string | null | undefined): number | null => {
+  if (value === null || typeof value === "undefined") return null;
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  if (typeof value === "string") {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+};
 
 const toExplorerFactRow = (row: RawExplorerFactRow): Ec2ExplorerFactRow => ({
   date: row.date,
@@ -119,6 +129,7 @@ const toExplorerFactRow = (row: RawExplorerFactRow): Ec2ExplorerFactRow => ({
   dataTransferCost: toNumber(row.dataTransferCost),
   totalEffectiveCost: toNumber(row.totalEffectiveCost),
   totalBilledCost: toNumber(row.totalBilledCost),
+  totalAmortizedCost: toNullableNumber(row.totalAmortizedCost),
   cpuAvg: toNumber(row.cpuAvg),
   cpuMax: toNumber(row.cpuMax),
   diskUsedPercentAvg: toNumber(row.diskUsedPercentAvg),
@@ -136,8 +147,32 @@ const toExplorerFactRow = (row: RawExplorerFactRow): Ec2ExplorerFactRow => ({
 });
 
 export class Ec2ExplorerQuery {
+  private hasCheckedAmortized = false;
+  private supportsAmortized = false;
+
+  async supportsAmortizedCost(): Promise<boolean> {
+    if (this.hasCheckedAmortized) return this.supportsAmortized;
+    const rows = await sequelize.query<{ exists: boolean }>(
+      `
+        SELECT EXISTS (
+          SELECT 1
+          FROM information_schema.columns
+          WHERE table_name = 'fact_ec2_instance_daily'
+            AND column_name = 'total_amortized_cost'
+        ) AS exists;
+      `,
+      { type: QueryTypes.SELECT },
+    );
+    this.supportsAmortized = Boolean(rows[0]?.exists);
+    this.hasCheckedAmortized = true;
+    return this.supportsAmortized;
+  }
+
   async getFactRows(input: Ec2ExplorerInput): Promise<Ec2ExplorerFactRow[]> {
     const scoped = toScopeWhereClauses(input);
+    const amortizedSql = (await this.supportsAmortizedCost())
+      ? "fed.total_amortized_cost"
+      : "NULL::numeric";
     const rows = await sequelize.query<RawExplorerFactRow>(
       `
         WITH latest_tags AS (
@@ -166,8 +201,9 @@ export class Ec2ExplorerQuery {
           fed.compute_cost AS "computeCost",
           fed.ebs_cost AS "ebsCost",
           fed.data_transfer_cost AS "dataTransferCost",
-          fed.total_effective_cost AS "totalEffectiveCost",
+          COALESCE(fed.total_effective_cost, fed.total_billed_cost, 0) AS "totalEffectiveCost",
           fed.total_billed_cost AS "totalBilledCost",
+          ${amortizedSql} AS "totalAmortizedCost",
           fed.cpu_avg AS "cpuAvg",
           fed.cpu_max AS "cpuMax",
           fed.disk_used_percent_avg AS "diskUsedPercentAvg",

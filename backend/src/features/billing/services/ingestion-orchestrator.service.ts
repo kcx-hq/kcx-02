@@ -37,6 +37,7 @@ import {
 import { upsertCostAggregationsForRun } from "./cost-aggregation.service.js";
 import { createTagDimensionCache, resolveFactPrimaryTagId, resolveFactTagIds } from "./dim-tag.service.js";
 import { assertTagDimensionSchemaReady } from "./ingestion-schema-guard.service.js";
+import { syncStorageLensFromClientAccount } from "./s3-storage-lens-sync.service.js";
 
 const SUPPORTED_FORMATS = new Set(["csv", "parquet"]);
 const PROGRESS_BY_STAGE = {
@@ -88,6 +89,38 @@ const toErrorMessage = (error) => {
 const normalizeFormat = (value) => String(value ?? "").trim().toLowerCase();
 
 const now = () => new Date();
+
+function scheduleStorageLensSyncAfterIngestion({ tenantId, billingSourceId, ingestionRunId }) {
+  const normalizedTenantId = String(tenantId ?? "").trim();
+  const normalizedBillingSourceId = String(billingSourceId ?? "").trim();
+  if (!normalizedTenantId || !normalizedBillingSourceId) {
+    return;
+  }
+
+  setImmediate(() => {
+    void syncStorageLensFromClientAccount({
+      tenantId: normalizedTenantId,
+      billingSourceId: normalizedBillingSourceId,
+    })
+      .then((result) => {
+        logger.info("Storage Lens auto-sync completed after ingestion", {
+          ingestionRunId: String(ingestionRunId),
+          tenantId: normalizedTenantId,
+          billingSourceId: normalizedBillingSourceId,
+          snapshotsUpserted: result.snapshotsUpserted,
+          objectsProcessed: result.objectsProcessed,
+        });
+      })
+      .catch((error) => {
+        logger.warn("Storage Lens auto-sync failed after ingestion", {
+          ingestionRunId: String(ingestionRunId),
+          tenantId: normalizedTenantId,
+          billingSourceId: normalizedBillingSourceId,
+          reason: error instanceof Error ? error.message : String(error),
+        });
+      });
+  });
+}
 
 function clampProgress(progressPercent) {
   if (!Number.isFinite(progressPercent)) return 0;
@@ -509,6 +542,7 @@ async function processIngestionRun(ingestionRunId) {
       const factRows = [];
       for (const [chunkRowIndex, normalizedRow] of normalizedChunk.entries()) {
         const rowNumber = chunkStartRowNumber + chunkRowIndex;
+        const rawRow = rawChunk[chunkRowIndex] ?? null;
         try {
           const {
             billingAccountKey,
@@ -860,6 +894,11 @@ async function processIngestionRun(ingestionRunId) {
       rowsLoaded,
       rowsFailed,
       warningMessage,
+    });
+    scheduleStorageLensSyncAfterIngestion({
+      tenantId: rawFile.tenantId,
+      billingSourceId: run.billingSourceId,
+      ingestionRunId: run.id,
     });
 
     console.log("[S3-UPLOAD-DEBUG][INGESTION][END]", {

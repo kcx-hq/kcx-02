@@ -68,6 +68,14 @@ const toQueryGroupBy = (groupBy: EC2ExplorerControlsState["groupBy"]): string =>
           ? "cost_category"
           : groupBy;
 
+const normalizeReservationType = (value: string): string | null => {
+  const normalized = value.trim().toLowerCase().replaceAll("-", "_").replaceAll(" ", "_");
+  if (normalized === "on_demand" || normalized === "reserved" || normalized === "savings_plan" || normalized === "spot") {
+    return normalized;
+  }
+  return null;
+};
+
 export default function EC2ExplorerPage() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -153,8 +161,16 @@ export default function EC2ExplorerPage() {
     }
     if (controls.metric === "instances") {
       next.set("condition", controls.instancesCondition);
+      next.set("state", controls.instancesState);
+      if (controls.instanceType !== "all") {
+        next.set("instanceType", controls.instanceType);
+      } else {
+        next.delete("instanceType");
+      }
     } else {
       next.delete("condition");
+      next.delete("state");
+      next.delete("instanceType");
     }
     if (controls.metric === "cost") {
       next.set("costBasis", controls.costBasis);
@@ -169,6 +185,28 @@ export default function EC2ExplorerPage() {
       next.delete("aggregation");
     }
     Object.entries(extras).forEach(([key, value]) => next.set(key, value));
+    if (extras.groupValue) {
+      const groupValue = extras.groupValue.trim();
+      if (controls.groupBy === "reservation-type") {
+        const reservationType = normalizeReservationType(groupValue);
+        if (reservationType) {
+          next.set("reservationType", reservationType);
+          next.delete("search");
+        }
+      } else if (controls.groupBy === "instance-type") {
+        next.set("instanceType", groupValue);
+        next.delete("search");
+      } else if (controls.groupBy === "region") {
+        next.set("region", groupValue);
+        next.delete("search");
+      } else if (controls.groupBy === "none") {
+        next.set("search", groupValue);
+      } else {
+        next.delete("search");
+      }
+    } else {
+      next.delete("search");
+    }
     navigate({ pathname: INSTANCE_LIST_PATH, search: next.toString() });
   };
 

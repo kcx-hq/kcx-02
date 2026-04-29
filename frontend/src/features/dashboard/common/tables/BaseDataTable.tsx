@@ -63,6 +63,13 @@ export function BaseDataTable<TData extends object>({
           onRowClick
             ? (event: RowClickedEvent<TData>) => {
                 if (!event.data) return;
+                const eventTarget = event.event?.target;
+                if (eventTarget instanceof Element) {
+                  const interactiveAncestor = eventTarget.closest(
+                    "button, a, input, select, textarea, [role='button'], [data-stop-row-click='true']",
+                  );
+                  if (interactiveAncestor) return;
+                }
                 onRowClick(event.data);
               }
             : undefined

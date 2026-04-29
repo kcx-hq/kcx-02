@@ -4,6 +4,7 @@ import { HTTP_STATUS } from "../../../../../constants/http-status.js";
 import { UnauthorizedError } from "../../../../../errors/http-errors.js";
 import { sendSuccess } from "../../../../../utils/api-response.js";
 import {
+  parseVolumesInventoryDetailQuery,
   parseVolumesInventoryListQuery,
   parseVolumesInventoryPerformanceQuery,
 } from "./volumes-inventory.schema.js";
@@ -52,6 +53,26 @@ export async function handleGetInventoryAwsEc2VolumePerformance(
     req,
     statusCode: HTTP_STATUS.OK,
     message: "Inventory EC2 volume performance fetched successfully",
+    data,
+  });
+}
+
+export async function handleGetInventoryAwsEc2VolumeDetails(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  const { tenantId } = requireTenantContext(req);
+  const query = parseVolumesInventoryDetailQuery(req);
+  const data = await volumesInventoryService.getVolumeDetails({
+    tenantId,
+    query,
+  });
+
+  sendSuccess({
+    res,
+    req,
+    statusCode: HTTP_STATUS.OK,
+    message: "Inventory EC2 volume details fetched successfully",
     data,
   });
 }

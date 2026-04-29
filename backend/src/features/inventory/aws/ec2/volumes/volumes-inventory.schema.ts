@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import { parseWithSchema } from "../../../../_shared/validation/zod-validate.js";
 import type {
+  InventoryEc2VolumeDetailQuery,
   InventoryEc2VolumePerformanceQuery,
   InventoryEc2VolumesListQuery,
 } from "./volumes-inventory.types.js";
@@ -60,6 +61,13 @@ const volumePerformanceQuerySchema = z.object({
   interval: z.enum(PERFORMANCE_INTERVAL_VALUES).default("daily"),
   topic: z.enum(PERFORMANCE_TOPIC_VALUES).default("ebs"),
   metrics: performanceMetricsSchema,
+  startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(),
+  endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(),
+});
+
+const volumeDetailQuerySchema = z.object({
+  volumeId: z.string().trim().min(1).max(200),
+  cloudConnectionId: z.string().uuid().nullable(),
   startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(),
   endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(),
 });
@@ -182,6 +190,29 @@ export function parseVolumesInventoryPerformanceQuery(
     interval,
     topic,
     metrics,
+    startDate,
+    endDate,
+  });
+}
+
+export function parseVolumesInventoryDetailQuery(
+  req: Request,
+): InventoryEc2VolumeDetailQuery {
+  const volumeIdRaw = req.params.volumeId;
+  const volumeId = toNullableString(Array.isArray(volumeIdRaw) ? volumeIdRaw[0] : volumeIdRaw);
+  const cloudConnectionId = toNullableString(
+    firstQueryValue(req.query.cloudConnectionId) ?? firstQueryValue(req.query.cloud_connection_id),
+  );
+  const startDate = toNullableString(
+    firstQueryValue(req.query.startDate) ?? firstQueryValue(req.query.start_date),
+  );
+  const endDate = toNullableString(
+    firstQueryValue(req.query.endDate) ?? firstQueryValue(req.query.end_date),
+  );
+
+  return parseWithSchema(volumeDetailQuerySchema, {
+    volumeId,
+    cloudConnectionId,
     startDate,
     endDate,
   });

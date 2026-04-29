@@ -22,6 +22,9 @@ export type InventoryEc2InstanceRow = {
   coveredHours: number
   uncoveredHours: number
   monthToDateCost: number
+  dataTransferCost: number
+  networkUsageBytes: number
+  otherUnallocatedCost: number
   latestDailyCost: number | null
   imageId: string | null
   tenancy: string | null
@@ -36,6 +39,7 @@ export type InventoryEc2InstanceRow = {
   attachedVolumeCount: number
   attachedVolumeTotalSizeGb: number | null
   attachedVolumeIds: string[]
+  tags: Record<string, unknown> | null
 }
 
 export type InventoryEc2InstancesPagination = {
@@ -125,6 +129,84 @@ export type InventoryEc2InstancePerformanceResponse = {
   series: InventoryEc2InstancePerformanceSeries[]
 }
 
+export type InventoryEc2InstanceDetailParams = {
+  instanceId: string
+  cloudConnectionId?: string | null
+  startDate?: string | null
+  endDate?: string | null
+}
+
+export type InventoryEc2InstanceDetailResponse = {
+  identity: {
+    instanceId: string
+    name: string
+    state: string | null
+    type: string | null
+    region: string | null
+    account: string | null
+    launchTime: string | null
+    availabilityZone: string | null
+    cloudConnectionId: string | null
+  }
+  tags: Record<string, unknown>
+  costSummary: {
+    totalCost: number
+    computeCost: number
+    ebsCost: number
+    networkCost: number
+    otherCost: number
+  }
+  usageSummary: {
+    avgCpu: number | null
+    maxCpu: number | null
+    networkInBytes: number
+    networkOutBytes: number
+    networkUsageBytes: number
+    networkCost: number
+  }
+  pricingSummary: {
+    pricingType: "on_demand" | "reserved" | "savings_plan" | "spot" | "other" | null
+    coveredHours: number
+    uncoveredHours: number
+    coveragePercent: number
+    computeCost: number
+    potentialSavings: number | null
+  }
+  attachedVolumes: Array<{
+    volumeId: string
+    sizeGb: number | null
+    volumeType: string | null
+    cost: number
+    state: string | null
+    iops: number | null
+    throughput: number | null
+    attachedSince: string | null
+    deleteOnTermination: boolean | null
+  }>
+  recommendations: Array<{
+    id: number
+    type: string
+    problem: string
+    evidence: string
+    action: string
+    saving: number
+    risk: string
+    status: string
+  }>
+  trends: {
+    costTrend: Array<{
+      date: string
+      totalCost: number
+      computeCost: number
+      ebsCost: number
+      networkCost: number
+      otherCost: number
+    }>
+    cpuTrend: Array<{ date: string; avgCpu: number; maxCpu: number | null }>
+    networkTrend: Array<{ date: string; totalGb: number; inGb: number; outGb: number }>
+  }
+}
+
 type UnknownRecord = Record<string, unknown>
 
 const isRecord = (value: unknown): value is UnknownRecord =>
@@ -178,6 +260,11 @@ const toStringArray = (value: unknown): string[] => {
     .filter((item) => item.length > 0)
 }
 
+const toRecordOrNull = (value: unknown): Record<string, unknown> | null => {
+  if (!isRecord(value)) return null
+  return value
+}
+
 const normalizeInstanceRow = (value: unknown): InventoryEc2InstanceRow | null => {
   if (!isRecord(value)) return null
 
@@ -217,6 +304,9 @@ const normalizeInstanceRow = (value: unknown): InventoryEc2InstanceRow | null =>
     coveredHours: toNumberOrNull(value.coveredHours) ?? 0,
     uncoveredHours: toNumberOrNull(value.uncoveredHours) ?? 0,
     monthToDateCost,
+    dataTransferCost: toNumberOrNull(value.dataTransferCost) ?? 0,
+    networkUsageBytes: toNumberOrNull(value.networkUsageBytes) ?? 0,
+    otherUnallocatedCost: toNumberOrNull(value.otherUnallocatedCost) ?? 0,
     latestDailyCost: toNumberOrNull(value.latestDailyCost),
     imageId: toStringOrNull(value.imageId),
     tenancy: toStringOrNull(value.tenancy),
@@ -231,6 +321,7 @@ const normalizeInstanceRow = (value: unknown): InventoryEc2InstanceRow | null =>
     attachedVolumeCount: toNumberOrNull(value.attachedVolumeCount) ?? 0,
     attachedVolumeTotalSizeGb: toNumberOrNull(value.attachedVolumeTotalSizeGb),
     attachedVolumeIds: toStringArray(value.attachedVolumeIds),
+    tags: toRecordOrNull(value.tags),
   }
 }
 
@@ -397,5 +488,18 @@ export async function getInventoryEc2InstancePerformance(
     endDate: toStringOrNull(response.endDate) ?? params.endDate ?? "",
     series,
   }
+}
+
+export async function getInventoryEc2InstanceDetail(
+  params: InventoryEc2InstanceDetailParams,
+): Promise<InventoryEc2InstanceDetailResponse> {
+  const searchParams = new URLSearchParams()
+  if (params.cloudConnectionId) searchParams.set("cloudConnectionId", params.cloudConnectionId)
+  if (params.startDate) searchParams.set("startDate", params.startDate)
+  if (params.endDate) searchParams.set("endDate", params.endDate)
+
+  const qs = searchParams.toString()
+  const path = `/inventory/aws/ec2/instances/${encodeURIComponent(params.instanceId)}/details${qs ? `?${qs}` : ""}`
+  return apiGet<InventoryEc2InstanceDetailResponse>(path)
 }
 

@@ -48,6 +48,9 @@ class FactRecommendations extends Model<
   declare observationStart: CreationOptional<Date | null>;
   declare observationEnd: CreationOptional<Date | null>;
   declare rawPayloadJson: CreationOptional<string | null>;
+  declare metadataJson: CreationOptional<Record<string, unknown> | null>;
+  declare detectedAt: CreationOptional<Date | null>;
+  declare lastSeenAt: CreationOptional<Date | null>;
   declare createdAt: CreationOptional<Date>;
   declare updatedAt: CreationOptional<Date>;
 }
@@ -92,6 +95,9 @@ const createFactRecommendationsModel = (sequelize: Sequelize): typeof FactRecomm
       observationStart: { type: DataTypes.DATE, allowNull: true, field: "observation_start" },
       observationEnd: { type: DataTypes.DATE, allowNull: true, field: "observation_end" },
       rawPayloadJson: { type: DataTypes.TEXT, allowNull: true, field: "raw_payload_json" },
+      metadataJson: { type: DataTypes.JSONB, allowNull: true, field: "metadata_json" },
+      detectedAt: { type: DataTypes.DATE, allowNull: true, field: "detected_at" },
+      lastSeenAt: { type: DataTypes.DATE, allowNull: true, field: "last_seen_at" },
       createdAt: { type: DataTypes.DATE, allowNull: false, defaultValue: sequelize.literal("NOW()"), field: "created_at" },
       updatedAt: { type: DataTypes.DATE, allowNull: false, defaultValue: sequelize.literal("NOW()"), field: "updated_at" },
     },

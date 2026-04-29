@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import { parseWithSchema } from "../../../../_shared/validation/zod-validate.js";
 import type {
+  InventoryEc2InstanceDetailQuery,
   InventoryEc2InstancePerformanceQuery,
   InventoryEc2InstancesListQuery,
 } from "./instances-inventory.types.js";
@@ -70,6 +71,13 @@ const instancePerformanceQuerySchema = z.object({
   interval: z.enum(PERFORMANCE_INTERVAL_VALUES).default("daily"),
   topic: z.enum(PERFORMANCE_TOPIC_VALUES).default("cpu"),
   metrics: performanceMetricsSchema,
+  startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(),
+  endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(),
+});
+
+const instanceDetailQuerySchema = z.object({
+  instanceId: z.string().trim().min(1).max(200),
+  cloudConnectionId: z.string().uuid().nullable(),
   startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(),
   endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(),
 });
@@ -166,6 +174,29 @@ export function parseInstancesInventoryPerformanceQuery(
     interval,
     topic,
     metrics,
+    startDate,
+    endDate,
+  });
+}
+
+export function parseInstancesInventoryDetailQuery(
+  req: Request,
+): InventoryEc2InstanceDetailQuery {
+  const instanceIdRaw = req.params.instanceId;
+  const instanceId = toNullableString(Array.isArray(instanceIdRaw) ? instanceIdRaw[0] : instanceIdRaw);
+  const cloudConnectionId = toNullableString(
+    firstQueryValue(req.query.cloudConnectionId) ?? firstQueryValue(req.query.cloud_connection_id),
+  );
+  const startDate = toNullableString(
+    firstQueryValue(req.query.startDate) ?? firstQueryValue(req.query.start_date),
+  );
+  const endDate = toNullableString(
+    firstQueryValue(req.query.endDate) ?? firstQueryValue(req.query.end_date),
+  );
+
+  return parseWithSchema(instanceDetailQuerySchema, {
+    instanceId,
+    cloudConnectionId,
     startDate,
     endDate,
   });

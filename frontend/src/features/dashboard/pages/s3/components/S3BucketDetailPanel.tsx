@@ -1,4 +1,5 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
+import { PanelRightOpen, X } from "lucide-react";
 
 import type { S3BucketTableRow } from "./S3BucketInsightsTable";
 
@@ -14,149 +15,200 @@ const percentFormatter = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 2,
 });
 
+const quantityFormatter = new Intl.NumberFormat("en-US", {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+const quantityFormatterPrecise = new Intl.NumberFormat("en-US", {
+  minimumFractionDigits: 5,
+  maximumFractionDigits: 5,
+});
+
+const integerFormatter = new Intl.NumberFormat("en-US", {
+  maximumFractionDigits: 0,
+});
+
 type Props = {
   bucket: S3BucketTableRow;
-  totalS3Cost: number;
+  usageMetrics: {
+    storageGb: number;
+    transferGb: number;
+    requestCount: number;
+  };
+  storageClassDistribution?: Array<{
+    name: string;
+    usage: number;
+  }>;
+  storageLens?: {
+    usageDate: string;
+    objectCount: number | null;
+    currentVersionBytes: number | null;
+    avgObjectSizeBytes: number | null;
+    accessCount: number | null;
+    percentInGlacier: number;
+    storageClassDistribution: Array<{
+      name: string;
+      bytes: number;
+      percent: number;
+    }>;
+  } | null;
   onClose: () => void;
 };
 
-type CostBreakdownItem = {
-  label: string;
-  value: number;
+const resolveEnvironment = (bucketName: string): string => {
+  const normalized = bucketName.toLowerCase();
+  if (normalized.includes("prod") || normalized.includes("production")) return "prod";
+  if (normalized.includes("dev") || normalized.includes("development")) return "dev";
+  return "N/A";
 };
 
-const buildTopDrivers = (items: CostBreakdownItem[]): CostBreakdownItem[] =>
-  [...items]
-    .sort((left, right) => right.value - left.value)
-    .filter((item) => item.value > 0)
-    .slice(0, 2);
-
-export function S3BucketDetailPanel({ bucket, totalS3Cost, onClose }: Props) {
+export function S3BucketDetailPanel({ bucket, usageMetrics, storageClassDistribution = [], storageLens = null, onClose }: Props) {
+  const [isInfoPanelOpen, setIsInfoPanelOpen] = useState(false);
   const bucketCost = Number(bucket.cost ?? 0);
   const storageCost = Number(bucket.storage ?? 0);
   const requestCost = Number(bucket.requests ?? 0);
-  const retrievalCost = Number(bucket.retrieval ?? 0);
   const transferCost = Number(bucket.transfer ?? 0);
+  const retrievalCost = Number(bucket.retrieval ?? 0);
   const otherCost = Number(bucket.other ?? 0);
-  const attributedCost = storageCost + requestCost + retrievalCost + transferCost;
-  const unattributedCost = Math.max(bucketCost - attributedCost, 0);
-  const shareOfS3Cost = totalS3Cost > 0 ? (bucketCost / totalS3Cost) * 100 : 0;
-  const attributedShare = bucketCost > 0 ? (attributedCost / bucketCost) * 100 : 0;
   const trend = Number(bucket.trendPct ?? 0);
-  const trendDirection = trend > 0 ? "Increase" : trend < 0 ? "Decrease" : "No change";
+  const environment = useMemo(() => resolveEnvironment(String(bucket.bucketName ?? "")), [bucket.bucketName]);
 
-  const breakdownItems = useMemo<CostBreakdownItem[]>(
-    () => [
-      { label: "Storage", value: storageCost },
-      { label: "Request", value: requestCost },
-      { label: "Retrieval", value: retrievalCost },
-      { label: "Transfer", value: transferCost },
-      { label: "Other", value: otherCost + unattributedCost },
-    ],
-    [otherCost, requestCost, retrievalCost, storageCost, transferCost, unattributedCost],
-  );
+  const estimatedCurrentVersionBytes = Math.max(Number(usageMetrics.storageGb ?? 0), 0) * 1024 * 1024 * 1024;
+  const totalStorageClassUsage = storageClassDistribution.reduce((sum, item) => sum + Number(item.usage ?? 0), 0);
+  const glacierUsage = storageClassDistribution
+    .filter((item) => {
+      const name = item.name.toLowerCase();
+      return name.includes("glacier") || name.includes("deep archive");
+    })
+    .reduce((sum, item) => sum + Number(item.usage ?? 0), 0);
+  const glacierPct = totalStorageClassUsage > 0 ? (glacierUsage / totalStorageClassUsage) * 100 : 0;
 
-  const topDrivers = useMemo(() => buildTopDrivers(breakdownItems), [breakdownItems]);
+  const accessPatternHint =
+    (storageLens?.accessCount ?? usageMetrics.requestCount) > 10000
+      ? "Request-heavy bucket (frequent API access)"
+      : usageMetrics.transferGb > 1
+        ? "Transfer-heavy bucket (network egress/ingress notable)"
+        : "Storage-centric bucket (capacity dominates)";
 
   return (
     <section className="s3-bucket-detail-panel" aria-label={`Selected bucket details for ${bucket.bucketName}`}>
       <header className="s3-bucket-detail-panel__header">
         <div>
-          <p className="s3-bucket-detail-panel__eyebrow">Selected Bucket</p>
           <h3 className="s3-bucket-detail-panel__title">{bucket.bucketName}</h3>
         </div>
-        <button type="button" className="s3-bucket-detail-panel__close" onClick={onClose}>
-          Close
-        </button>
+        <div className="s3-bucket-detail-panel__header-actions">
+          <button
+            type="button"
+            className="s3-bucket-detail-panel__icon-btn"
+            onClick={() => setIsInfoPanelOpen(true)}
+            aria-label="Open bucket info panel"
+          >
+            <PanelRightOpen size={14} strokeWidth={2.2} />
+          </button>
+          <button type="button" className="s3-bucket-detail-panel__close" onClick={onClose} aria-label="Close bucket detail">
+            <X size={14} strokeWidth={2.2} />
+          </button>
+        </div>
       </header>
 
-      <div className="s3-bucket-detail-panel__summary-grid">
-        <article className="s3-bucket-detail-panel__summary-card">
-          <p className="s3-bucket-detail-panel__summary-label">Total Bucket Cost</p>
-          <p className="s3-bucket-detail-panel__summary-value">{currencyFormatter.format(bucketCost)}</p>
-        </article>
-        <article className="s3-bucket-detail-panel__summary-card">
-          <p className="s3-bucket-detail-panel__summary-label">% of Total S3</p>
-          <p className="s3-bucket-detail-panel__summary-value">{percentFormatter.format(shareOfS3Cost)}%</p>
-        </article>
-        <article className="s3-bucket-detail-panel__summary-card">
-          <p className="s3-bucket-detail-panel__summary-label">Trend vs Previous Period</p>
-          <p className="s3-bucket-detail-panel__summary-value">
-            {trendDirection} ({trend >= 0 ? "+" : ""}
-            {percentFormatter.format(trend)}%)
-          </p>
-        </article>
-        <article className="s3-bucket-detail-panel__summary-card">
-          <p className="s3-bucket-detail-panel__summary-label">Attributed Coverage</p>
-          <p className="s3-bucket-detail-panel__summary-value">{percentFormatter.format(attributedShare)}%</p>
-        </article>
-      </div>
+      <div className={`s3-bucket-sidepanel-backdrop${isInfoPanelOpen ? " is-open" : ""}`} onClick={() => setIsInfoPanelOpen(false)}>
+        <aside
+          className={`s3-bucket-sidepanel${isInfoPanelOpen ? " is-open" : ""}`}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Bucket full details"
+          onClick={(event) => event.stopPropagation()}
+        >
+          <header className="s3-bucket-sidepanel__header">
+            <h3 className="s3-bucket-sidepanel__title">Bucket Details</h3>
+            <button
+              type="button"
+              className="s3-bucket-sidepanel__close"
+              onClick={() => setIsInfoPanelOpen(false)}
+              aria-label="Close bucket info panel"
+            >
+              <X size={15} strokeWidth={2.2} />
+            </button>
+          </header>
 
-      <div className="s3-bucket-detail-panel__content-grid">
-        <article className="s3-bucket-detail-panel__block">
-          <h4 className="s3-bucket-detail-panel__block-title">Cost Composition</h4>
-          <ul className="s3-bucket-detail-panel__list">
-            {breakdownItems.map((item) => {
-              const share = bucketCost > 0 ? (item.value / bucketCost) * 100 : 0;
-              return (
-                <li key={item.label} className="s3-bucket-detail-panel__list-item">
-                  <span>{item.label}</span>
-                  <span>
-                    {currencyFormatter.format(item.value)} ({percentFormatter.format(share)}%)
-                  </span>
-                </li>
-              );
-            })}
-          </ul>
-        </article>
+          <div className="s3-bucket-sidepanel__body">
+            <section className="s3-bucket-sidepanel__section">
+              <h4>Metadata</h4>
+              <dl>
+                <div><dt>Bucket Name</dt><dd>{bucket.bucketName}</dd></div>
+                <div><dt>Account</dt><dd>{bucket.account || "Unknown"}</dd></div>
+                <div><dt>Region</dt><dd>{bucket.region || "Unknown"}</dd></div>
+                <div><dt>Owner</dt><dd>{bucket.owner || "Unassigned"}</dd></div>
+                <div><dt>Environment</dt><dd>{environment}</dd></div>
+              </dl>
+            </section>
 
-        <article className="s3-bucket-detail-panel__block">
-          <h4 className="s3-bucket-detail-panel__block-title">Bucket Metadata</h4>
-          <ul className="s3-bucket-detail-panel__list">
-            <li className="s3-bucket-detail-panel__list-item">
-              <span>Account</span>
-              <span>{bucket.account || "Unknown"}</span>
-            </li>
-            <li className="s3-bucket-detail-panel__list-item">
-              <span>Region</span>
-              <span>{bucket.region || "Unknown"}</span>
-            </li>
-            <li className="s3-bucket-detail-panel__list-item">
-              <span>Owner</span>
-              <span>{bucket.owner || "Unassigned"}</span>
-            </li>
-            <li className="s3-bucket-detail-panel__list-item">
-              <span>Main Cost Driver</span>
-              <span>{topDrivers[0]?.label ?? "Other"}</span>
-            </li>
-            <li className="s3-bucket-detail-panel__list-item">
-              <span>Secondary Driver</span>
-              <span>{topDrivers[1]?.label ?? "N/A"}</span>
-            </li>
-          </ul>
-        </article>
+            <section className="s3-bucket-sidepanel__section">
+              <h4>Usage Metrics</h4>
+              <dl>
+                <div><dt>Storage (GB)</dt><dd>{quantityFormatterPrecise.format(usageMetrics.storageGb)}</dd></div>
+                <div><dt>Requests (Count)</dt><dd>{integerFormatter.format(usageMetrics.requestCount)}</dd></div>
+                <div><dt>Transfer (GB)</dt><dd>{quantityFormatter.format(usageMetrics.transferGb)}</dd></div>
+              </dl>
+            </section>
 
-        <article className="s3-bucket-detail-panel__block">
-          <h4 className="s3-bucket-detail-panel__block-title">FinOps Insights</h4>
-          <ul className="s3-bucket-detail-panel__insights">
-            <li>
-              {topDrivers[0]?.label ?? "Storage"} is the main contributor at{" "}
-              {percentFormatter.format(bucketCost > 0 ? ((topDrivers[0]?.value ?? 0) / bucketCost) * 100 : 0)}% of this bucket cost.
-            </li>
-            <li>
-              {unattributedCost > 0
-                ? `Shared or unattributed cost is ${currencyFormatter.format(unattributedCost)}.`
-                : "Transfer and shared-cost attribution are fully mapped for this bucket."}
-            </li>
-            <li>
-              {trend > 0
-                ? "This bucket is rising in spend; validate retention, request pattern, and transfer path."
-                : trend < 0
-                  ? "This bucket is trending down; keep lifecycle and access controls in place."
-                  : "This bucket cost is stable compared with the previous period."}
-            </li>
-          </ul>
-        </article>
+            <section className="s3-bucket-sidepanel__section">
+              <h4>S3 Storage Lens (FinOps View)</h4>
+              <dl>
+                <div><dt>Object Count</dt><dd>{storageLens?.objectCount != null ? integerFormatter.format(storageLens.objectCount) : "Not captured (CUR-only)"}</dd></div>
+                <div><dt>Current Version Bytes</dt><dd>{integerFormatter.format(storageLens?.currentVersionBytes ?? estimatedCurrentVersionBytes)} bytes{storageLens?.currentVersionBytes != null ? "" : " (est.)"}</dd></div>
+                <div><dt>Avg Object Size</dt><dd>{storageLens?.avgObjectSizeBytes != null ? `${integerFormatter.format(storageLens.avgObjectSizeBytes)} bytes` : "N/A (needs object count)"}</dd></div>
+                <div><dt>% in Glacier</dt><dd>{percentFormatter.format(storageLens?.percentInGlacier ?? glacierPct)}%</dd></div>
+                <div><dt>Access Pattern</dt><dd>{accessPatternHint}</dd></div>
+              </dl>
+              {(storageLens?.storageClassDistribution?.length ?? 0) > 0 || storageClassDistribution.length > 0 ? (
+                <div className="s3-bucket-sidepanel__subtable">
+                  <p className="s3-bucket-sidepanel__subtable-title">Storage Class Distribution</p>
+                  <ul>
+                    {(storageLens?.storageClassDistribution?.length
+                      ? storageLens.storageClassDistribution.slice(0, 6).map((item) => ({
+                          name: item.name,
+                          displayValue: `${integerFormatter.format(item.bytes)} bytes`,
+                          displayPct: `${percentFormatter.format(item.percent)}%`,
+                        }))
+                      : storageClassDistribution.slice(0, 6).map((item) => ({
+                          name: item.name,
+                          displayValue: quantityFormatter.format(item.usage),
+                          displayPct:
+                            totalStorageClassUsage > 0 ? `${percentFormatter.format((item.usage / totalStorageClassUsage) * 100)}%` : "",
+                        }))).map((item) => (
+                      <li key={item.name}>
+                        <span>{item.name}</span>
+                        <strong>
+                          {item.displayValue}
+                          {item.displayPct ? ` (${item.displayPct})` : ""}
+                        </strong>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+              {!storageLens ? (
+                <p className="s3-bucket-sidepanel__note">
+                  For exact AWS Storage Lens metrics (Object Count, Avg Object Size), ingest Storage Lens exports into DB during ingestion.
+                </p>
+              ) : null}
+            </section>
+
+            <section className="s3-bucket-sidepanel__section">
+              <h4>Cost Breakdown</h4>
+              <dl>
+                <div><dt>Total Cost</dt><dd>{currencyFormatter.format(bucketCost)}</dd></div>
+                <div><dt>Storage Cost</dt><dd>{currencyFormatter.format(storageCost)}</dd></div>
+                <div><dt>Request Cost</dt><dd>{currencyFormatter.format(requestCost)}</dd></div>
+                <div><dt>Transfer Cost</dt><dd>{currencyFormatter.format(transferCost)}</dd></div>
+                <div><dt>Retrieval Cost</dt><dd>{currencyFormatter.format(retrievalCost)}</dd></div>
+                <div><dt>Other Cost</dt><dd>{currencyFormatter.format(otherCost)}</dd></div>
+                <div><dt>Cost Trend</dt><dd>{trend >= 0 ? "+" : ""}{percentFormatter.format(trend)}%</dd></div>
+              </dl>
+            </section>
+          </div>
+        </aside>
       </div>
     </section>
   );

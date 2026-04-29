@@ -339,7 +339,7 @@ const mapFactMeasures = (rawRow) =>
     pricing_term: cleanStringOrNull(rawRow[RAW_COLUMNS.pricingTerm]),
     purchase_option: cleanStringOrNull(rawRow[RAW_COLUMNS.purchaseOption]),
     public_on_demand_cost: rawRow[RAW_COLUMNS.publicOnDemandCost],
-    public_on_demand_rate: cleanStringOrNull(rawRow[RAW_COLUMNS.publicOnDemandRate]),
+    public_on_demand_rate: rawRow[RAW_COLUMNS.publicOnDemandRate],
     discount_amount: rawRow[RAW_COLUMNS.discountAmount],
     bundled_discount: rawRow[RAW_COLUMNS.bundledDiscount],
     consumed_quantity: rawRow[RAW_COLUMNS.consumedQuantity],
