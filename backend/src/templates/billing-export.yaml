@@ -51,8 +51,8 @@ Parameters:
 
   StorageLensConfigId:
     Type: String
-    Default: kcx-storage-lens
-    Description: S3 Storage Lens configuration ID (must be unique per account)
+    Default: ''
+    Description: Optional S3 Storage Lens configuration ID (must be unique per account). Leave empty to auto-generate.
 
   CloudTrailBucketName:
     Type: String
@@ -66,6 +66,7 @@ Parameters:
 
 Conditions:
   HasCloudTrailBucket: !Not [!Equals [!Ref CloudTrailBucketName, '']]
+  HasStorageLensConfigId: !Not [!Equals [!Ref StorageLensConfigId, '']]
 
 Resources:
   KCXExportBucket:
@@ -264,7 +265,10 @@ Resources:
       - ExportBucketPolicy
     Properties:
       StorageLensConfiguration:
-        Id: !Ref StorageLensConfigId
+        Id: !If
+          - HasStorageLensConfigId
+          - !Ref StorageLensConfigId
+          - !Sub kcx-storage-lens-${ConnectionName}
         AccountLevel:
           ActivityMetrics:
             IsEnabled: true
@@ -280,9 +284,6 @@ Resources:
             PrefixLevel:
               StorageMetrics:
                 IsEnabled: true
-              SelectionCriteria:
-                Delimiter: /
-                MaxDepth: 5
         IsEnabled: true
         DataExport:
           S3BucketDestination:
@@ -762,7 +763,10 @@ Outputs:
 
   StorageLensConfigId:
     Description: S3 Storage Lens configuration ID
-    Value: !Ref StorageLensConfigId
+    Value: !If
+      - HasStorageLensConfigId
+      - !Ref StorageLensConfigId
+      - !Sub kcx-storage-lens-${ConnectionName}
 
   ExportArn:
     Description: ARN of AWS Data Export

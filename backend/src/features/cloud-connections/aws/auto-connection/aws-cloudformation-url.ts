@@ -6,6 +6,8 @@ export type AwsCloudFormationUrlInput = {
   fileEventCallbackUrl?: string;
   exportPrefix?: string;
   exportName?: string;
+  storageLensExportPrefix?: string;
+  storageLensConfigId?: string;
   callbackUrl?: string;
   callbackToken?: string;
   enableBillingExport?: boolean;
@@ -30,6 +32,8 @@ export function buildAwsCloudFormationCreateStackUrl({
   region,
   exportPrefix,
   exportName,
+  storageLensExportPrefix,
+  storageLensConfigId,
   callbackUrl,
   callbackToken,
   enableBillingExport = true,
@@ -149,6 +153,14 @@ export function buildAwsCloudFormationCreateStackUrl({
 
   if (exportName?.trim()) {
     queryItems.push(["param_ExportName", exportName.trim()]);
+  }
+
+  if (storageLensExportPrefix?.trim()) {
+    queryItems.push(["param_StorageLensExportPrefix", storageLensExportPrefix.trim()]);
+  }
+
+  if (storageLensConfigId?.trim()) {
+    queryItems.push(["param_StorageLensConfigId", storageLensConfigId.trim()]);
   }
 
   if (cloudTrailPrefix?.trim()) {
