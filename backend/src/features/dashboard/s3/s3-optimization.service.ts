@@ -7,7 +7,7 @@ import type {
   S3LifecyclePolicyApplyResponse,
   S3OptimizationResponse,
 } from "./s3-optimization.types.js";
-import { BadRequestError, NotFoundError } from "../../../errors/http-errors.js";
+import { BadRequestError, ForbiddenError, NotFoundError } from "../../../errors/http-errors.js";
 import { CloudConnectionV2, S3BucketConfigSnapshot } from "../../../models/index.js";
 import { assumeRole } from "../../cloud-connections/aws/infrastructure/aws-sts.service.js";
 import {
@@ -214,6 +214,12 @@ export class S3OptimizationService {
         appliedPolicy,
       };
     } catch (error) {
+      const isAwsAccessDenied =
+        typeof error === "object" &&
+        error !== null &&
+        "name" in error &&
+        (error as { name?: string }).name === "AccessDenied";
+
       await this.repository.createPolicyActionLog({
         tenantId: scope.tenantId,
         cloudConnectionId: connection.id,
@@ -231,6 +237,11 @@ export class S3OptimizationService {
         responsePayloadJson: null,
         createdByUserId,
       });
+      if (isAwsAccessDenied) {
+        throw new ForbiddenError(
+          "AWS denied lifecycle update. Ensure action role allows s3:PutLifecycleConfiguration and s3:GetLifecycleConfiguration on this bucket.",
+        );
+      }
       throw error;
     }
   }
