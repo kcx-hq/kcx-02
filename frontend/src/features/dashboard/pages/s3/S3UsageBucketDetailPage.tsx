@@ -145,6 +145,24 @@ export default function S3UsageBucketDetailPage() {
     return scanDate.toLocaleString("en-US", { year: "numeric", month: "short", day: "2-digit" });
   }, [effectiveLifecycleInsight?.scanTime]);
 
+  const shouldShowCreatePolicyButton = useMemo(() => {
+    if (!effectiveLifecycleInsight) return false;
+    if (effectiveLifecycleInsight.hasLifecyclePolicy === false) return true;
+    return Number(effectiveLifecycleInsight.lifecycleRulesCount ?? 0) === 0;
+  }, [effectiveLifecycleInsight]);
+
+  const handleCreatePolicy = () => {
+    const searchParams = new URLSearchParams(location.search);
+    if (bucketNameParam) {
+      searchParams.set("bucketName", bucketNameParam);
+    }
+
+    navigate({
+      pathname: "/dashboard/policy",
+      search: searchParams.toString() ? `?${searchParams.toString()}` : "",
+    });
+  };
+
   const handleBack = () => {
     navigate({
       pathname: "/dashboard/s3/usage",
@@ -171,9 +189,16 @@ export default function S3UsageBucketDetailPage() {
           <section className="s3-lifecycle-insight-card" aria-label="Lifecycle policy insight">
             <div className="s3-lifecycle-insight-card__header">
               <h3 className="s3-lifecycle-insight-card__title">Lifecycle Policy Insight</h3>
-              <span className={`s3-lifecycle-insight-card__status is-${lifecycleStatusTone}`}>
-                {lifecycleStatusLabel}
-              </span>
+              <div className="s3-lifecycle-insight-card__header-actions">
+                {shouldShowCreatePolicyButton ? (
+                  <button type="button" className="s3-lifecycle-insight-card__create-policy-btn" onClick={handleCreatePolicy}>
+                    Set Policy
+                  </button>
+                ) : null}
+                <span className={`s3-lifecycle-insight-card__status is-${lifecycleStatusTone}`}>
+                  {lifecycleStatusLabel}
+                </span>
+              </div>
             </div>
             <div className="s3-lifecycle-insight-card__meta">
               <article className="s3-lifecycle-insight-card__meta-item">

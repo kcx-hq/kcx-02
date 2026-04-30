@@ -3,7 +3,13 @@ import { QueryTypes } from "sequelize";
 import { sequelize } from "../../../models/index.js";
 import type { DashboardScope } from "../dashboard.types.js";
 import { NotFoundError } from "../../../errors/http-errors.js";
-import type { S3BucketLifecycleInsight, S3BucketLifecycleRuleSummary, S3OptimizationBucketRow } from "./s3-optimization.types.js";
+import type {
+  S3BucketLifecycleInsight,
+  S3BucketLifecycleRuleSummary,
+  S3OptimizationBucketRow,
+  S3PolicyActionHistoryItem,
+  S3PolicyActionStatus,
+} from "./s3-optimization.types.js";
 
 type S3OptimizationDbRow = {
   bucket_name: string | null;
@@ -22,6 +28,36 @@ type S3BucketLifecycleInsightDbRow = {
   lifecycle_rules_count: number | string | null;
   lifecycle_rules_json: unknown;
   scan_time: string | null;
+};
+
+type S3BucketLifecycleExecutionContextDbRow = {
+  bucket_name: string | null;
+  account_id: string | null;
+  region: string | null;
+  cloud_connection_id: string | null;
+};
+
+type S3PolicyActionHistoryDbRow = {
+  id: string | null;
+  service_name: string | null;
+  policy_type: string | null;
+  bucket_name: string | null;
+  account_id: string | null;
+  region: string | null;
+  rule_name: string | null;
+  scope_type: string | null;
+  scope_prefix: string | null;
+  status: string | null;
+  error_message: string | null;
+  created_at: string | null;
+  created_by_user_id: string | null;
+};
+
+export type S3BucketLifecycleExecutionContext = {
+  bucketName: string;
+  accountId: string;
+  region: string | null;
+  cloudConnectionId: string;
 };
 
 const toNumber = (value: number | string | null | undefined): number | null => {
@@ -188,6 +224,181 @@ export class S3OptimizationRepository {
       recommendation,
       topRules: rules.slice(0, 3),
     };
+  }
+
+  async getBucketLifecycleExecutionContext(
+    scope: DashboardScope,
+    bucketName: string,
+  ): Promise<S3BucketLifecycleExecutionContext> {
+    const normalizedBucketName = bucketName.trim();
+    if (normalizedBucketName.length === 0) {
+      throw new NotFoundError("Bucket name is required");
+    }
+
+    const binds: unknown[] = [scope.tenantId, normalizedBucketName];
+    const where: string[] = ["tenant_id = $1::uuid", "LOWER(bucket_name) = LOWER($2::text)"];
+
+    if (scope.scopeType === "global") {
+      if (typeof scope.providerId === "number") {
+        binds.push(scope.providerId);
+        where.push(`provider_id = $${binds.length}`);
+      }
+      if (Array.isArray(scope.billingSourceIds) && scope.billingSourceIds.length > 0) {
+        binds.push(scope.billingSourceIds);
+        where.push(`billing_source_id = ANY($${binds.length}::bigint[])`);
+      }
+    }
+
+    const row = await sequelize.query<S3BucketLifecycleExecutionContextDbRow>(
+      `
+      SELECT
+        bucket_name,
+        account_id,
+        region,
+        cloud_connection_id
+      FROM s3_bucket_config_snapshot
+      WHERE ${where.join("\n        AND ")}
+      ORDER BY scan_time DESC
+      LIMIT 1;
+      `,
+      { bind: binds, type: QueryTypes.SELECT, plain: true },
+    );
+
+    if (!row?.bucket_name || !row.cloud_connection_id) {
+      throw new NotFoundError(`No actionable lifecycle context found for bucket ${normalizedBucketName}`);
+    }
+
+    return {
+      bucketName: String(row.bucket_name).trim(),
+      accountId: String(row.account_id ?? "").trim(),
+      region: row.region ? String(row.region).trim() : null,
+      cloudConnectionId: String(row.cloud_connection_id).trim(),
+    };
+  }
+
+  async createPolicyActionLog(input: {
+    tenantId: string;
+    cloudConnectionId: string | null;
+    billingSourceId: number | null;
+    providerId: number | null;
+    accountId: string | null;
+    region: string | null;
+    bucketName: string;
+    ruleName: string | null;
+    scopeType: "entire_bucket" | "prefix" | null;
+    scopePrefix: string | null;
+    status: S3PolicyActionStatus;
+    errorMessage: string | null;
+    requestPayloadJson: Record<string, unknown> | null;
+    responsePayloadJson: Record<string, unknown> | null;
+    createdByUserId: string | null;
+  }): Promise<void> {
+    await sequelize.query(
+      `
+      INSERT INTO s3_policy_action_logs (
+        tenant_id,
+        cloud_connection_id,
+        billing_source_id,
+        provider_id,
+        service_name,
+        policy_type,
+        account_id,
+        region,
+        bucket_name,
+        rule_name,
+        scope_type,
+        scope_prefix,
+        status,
+        error_message,
+        request_payload_json,
+        response_payload_json,
+        created_by_user_id
+      )
+      VALUES (
+        :tenantId::uuid,
+        :cloudConnectionId::uuid,
+        :billingSourceId::bigint,
+        :providerId::bigint,
+        'S3',
+        'LIFECYCLE',
+        :accountId,
+        :region,
+        :bucketName,
+        :ruleName,
+        :scopeType,
+        :scopePrefix,
+        :status,
+        :errorMessage,
+        CAST(:requestPayloadJson AS jsonb),
+        CAST(:responsePayloadJson AS jsonb),
+        :createdByUserId::uuid
+      );
+      `,
+      {
+        replacements: {
+          ...input,
+          requestPayloadJson: input.requestPayloadJson ? JSON.stringify(input.requestPayloadJson) : null,
+          responsePayloadJson: input.responsePayloadJson ? JSON.stringify(input.responsePayloadJson) : null,
+        },
+        type: QueryTypes.INSERT,
+      },
+    );
+  }
+
+  async getPolicyActionHistory(scope: DashboardScope): Promise<S3PolicyActionHistoryItem[]> {
+    const binds: unknown[] = [scope.tenantId];
+    const where: string[] = ["tenant_id = $1::uuid"];
+
+    if (scope.scopeType === "global") {
+      if (typeof scope.providerId === "number") {
+        binds.push(scope.providerId);
+        where.push(`provider_id = $${binds.length}`);
+      }
+      if (Array.isArray(scope.billingSourceIds) && scope.billingSourceIds.length > 0) {
+        binds.push(scope.billingSourceIds);
+        where.push(`billing_source_id = ANY($${binds.length}::bigint[])`);
+      }
+    }
+
+    const rows = await sequelize.query<S3PolicyActionHistoryDbRow>(
+      `
+      SELECT
+        id::text AS id,
+        service_name,
+        policy_type,
+        bucket_name,
+        account_id,
+        region,
+        rule_name,
+        scope_type,
+        scope_prefix,
+        status,
+        error_message,
+        created_at::text AS created_at,
+        created_by_user_id::text AS created_by_user_id
+      FROM s3_policy_action_logs
+      WHERE ${where.join("\n        AND ")}
+      ORDER BY created_at DESC
+      LIMIT 200;
+      `,
+      { bind: binds, type: QueryTypes.SELECT },
+    );
+
+    return rows.map((row) => ({
+      id: String(row.id ?? ""),
+      serviceName: "S3",
+      policyType: "LIFECYCLE",
+      bucketName: String(row.bucket_name ?? ""),
+      accountId: row.account_id ? String(row.account_id) : null,
+      region: row.region ? String(row.region) : null,
+      ruleName: row.rule_name ? String(row.rule_name) : null,
+      scopeType: row.scope_type === "prefix" ? "prefix" : row.scope_type === "entire_bucket" ? "entire_bucket" : null,
+      scopePrefix: row.scope_prefix ? String(row.scope_prefix) : null,
+      status: row.status === "FAILED" ? "FAILED" : "SUCCEEDED",
+      errorMessage: row.error_message ? String(row.error_message) : null,
+      createdAt: String(row.created_at ?? ""),
+      createdByUserId: row.created_by_user_id ? String(row.created_by_user_id) : null,
+    }));
   }
 
   private extractRules(payload: unknown): S3BucketLifecycleRuleSummary[] {

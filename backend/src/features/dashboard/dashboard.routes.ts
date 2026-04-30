@@ -51,7 +51,12 @@ import { handleGetAnomalies as handleGetAnomaliesAlertsDashboard } from "./anoma
 import { handleGetReportDashboard } from "./report/report.controller.js";
 import { handleGetResourcesDashboard } from "./resources/resources.controller.js";
 import { handleGetS3CostInsights } from "./s3/s3-cost-insights.controller.js";
-import { handleGetS3BucketLifecycleInsight, handleGetS3Optimization } from "./s3/s3-optimization.controller.js";
+import {
+  handleApplyS3BucketLifecyclePolicy,
+  handleGetPolicyActionHistory,
+  handleGetS3BucketLifecycleInsight,
+  handleGetS3Optimization,
+} from "./s3/s3-optimization.controller.js";
 
 const router = Router();
 
@@ -157,6 +162,8 @@ router.get("/dashboard/s3/cost-insights", asyncHandler(handleGetS3CostInsights))
 router.get("/dashboard/s3/optimization", asyncHandler(handleGetS3Optimization));
 router.get("/dashboard/s3/lifecycle-insight", asyncHandler(handleGetS3BucketLifecycleInsight));
 router.get("/dashboard/s3/usage/bucket-lifecycle-insight", asyncHandler(handleGetS3BucketLifecycleInsight));
+router.post("/dashboard/s3/lifecycle-policy", asyncHandler(handleApplyS3BucketLifecyclePolicy));
+router.get("/dashboard/policy/actions", asyncHandler(handleGetPolicyActionHistory));
 router.get("/dashboard/budget", asyncHandler(handleGetBudgetDashboard));
 router.post("/dashboard/budget", asyncHandler(handleCreateBudget));
 router.patch("/dashboard/budget/:budgetId", asyncHandler(handleUpdateBudget));

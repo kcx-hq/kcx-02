@@ -35,6 +35,9 @@ import type {
   S3CostInsightsFiltersQuery,
   S3CostInsightsResponse,
   S3BucketLifecycleInsightResponse,
+  S3LifecyclePolicyApplyRequest,
+  S3LifecyclePolicyApplyResponse,
+  S3PolicyActionHistoryResponse,
   S3OptimizationResponse,
   OptimizationIdleOverview,
   OptimizationCommitmentOverview,
@@ -636,6 +639,12 @@ export const dashboardApi = {
     const query = params.toString();
     return apiGet<S3BucketLifecycleInsightResponse>(`/dashboard/s3/usage/bucket-lifecycle-insight?${query}`);
   },
+  applyS3LifecyclePolicy(scope: DashboardResolvedScope, payload: S3LifecyclePolicyApplyRequest) {
+    return apiPost<S3LifecyclePolicyApplyResponse>(withDashboardQuery("/dashboard/s3/lifecycle-policy", scope), payload);
+  },
+  getPolicyActionHistory(scope: DashboardResolvedScope) {
+    return apiGet<S3PolicyActionHistoryResponse>(withDashboardQuery("/dashboard/policy/actions", scope));
+  },
 };
 
 export type {
@@ -696,7 +705,11 @@ export type {
   Ec2NetworkBreakdownResponse,
   S3CostInsightsFiltersQuery,
   S3CostInsightsResponse,
+  S3BucketLifecycleInsightResponse,
   S3OptimizationResponse,
+  S3LifecyclePolicyApplyRequest,
+  S3LifecyclePolicyApplyResponse,
+  S3PolicyActionHistoryResponse,
   OptimizationIdleOverview,
   OptimizationCommitmentOverview,
   OptimizationIdleRecommendationsResponse,

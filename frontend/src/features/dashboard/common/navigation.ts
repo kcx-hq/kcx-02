@@ -135,6 +135,7 @@ export const dashboardNav: DashboardNavNode[] = [
     path: "/dashboard/anomalies-alerts",
     icon: "triangle-alert",
   },
+  { kind: "link", label: "Policy", path: "/dashboard/policy", icon: "file-text" },
   { kind: "link", label: "Budget", path: "/dashboard/budget", icon: "wallet" },
   { kind: "link", label: "Report", path: "/dashboard/report", icon: "file-text" },
 ];
