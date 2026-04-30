@@ -12,6 +12,13 @@ type SyncDbCostHistoryForIngestionRunParams = {
 
 type DateRow = { usage_date: string };
 type CountRow = { total: string | number };
+type SampleFactRow = {
+  service: string | null;
+  product: string | null;
+  usage_type: string | null;
+  line_item_type: string | null;
+  resource_id: string | null;
+};
 
 const EFFECTIVE_USAGE_DATE_SQL = `
 COALESCE(
@@ -122,6 +129,45 @@ async function detectDbRowsForRun({
   providerId: string;
   billingSourceId: string;
 }): Promise<{ dates: string[]; sourceRows: number }> {
+  const sampleRows = await sequelize.query<SampleFactRow>(
+    `
+SELECT
+  NULLIF(ds.service_name, '') AS service,
+  NULLIF(f.product_usage_type, '') AS product,
+  NULLIF(f.usage_type, '') AS usage_type,
+  NULLIF(f.line_item_type, '') AS line_item_type,
+  NULLIF(dres.resource_id, '') AS resource_id
+FROM fact_cost_line_items f
+LEFT JOIN dim_service ds ON ds.id = f.service_key
+LEFT JOIN dim_resource dres ON dres.id = f.resource_key
+WHERE f.ingestion_run_id = CAST(:ingestionRunId AS BIGINT)
+  AND f.tenant_id = CAST(:tenantId AS UUID)
+  AND f.provider_id = CAST(:providerId AS BIGINT)
+  AND f.billing_source_id = CAST(:billingSourceId AS BIGINT)
+ORDER BY f.id DESC
+LIMIT 5;
+`,
+    {
+      replacements: { ingestionRunId, tenantId, providerId, billingSourceId },
+      type: QueryTypes.SELECT,
+    },
+  );
+
+  const beforeFilterCountRows = await sequelize.query<CountRow>(
+    `
+SELECT COUNT(*)::text AS total
+FROM fact_cost_line_items f
+WHERE f.ingestion_run_id = CAST(:ingestionRunId AS BIGINT)
+  AND f.tenant_id = CAST(:tenantId AS UUID)
+  AND f.provider_id = CAST(:providerId AS BIGINT)
+  AND f.billing_source_id = CAST(:billingSourceId AS BIGINT);
+`,
+    {
+      replacements: { ingestionRunId, tenantId, providerId, billingSourceId },
+      type: QueryTypes.SELECT,
+    },
+  );
+
   const dates = await sequelize.query<DateRow>(
     `
 SELECT DISTINCT ${EFFECTIVE_USAGE_DATE_SQL} AS usage_date
@@ -161,6 +207,18 @@ WHERE f.ingestion_run_id = CAST(:ingestionRunId AS BIGINT)
   );
 
   const sourceRows = Number((countRows[0]?.total as string | number | undefined) ?? 0);
+  const rowsBeforeFilter = Number((beforeFilterCountRows[0]?.total as string | number | undefined) ?? 0);
+
+  logger.info(`[DB_PROCESSOR_FETCH]
+rows_fetched=${rowsBeforeFilter}
+sample_rows=${JSON.stringify(sampleRows.slice(0, 5))}`);
+
+  logger.info(`[DB_PROCESSOR_BEFORE_FILTER]
+count=${rowsBeforeFilter}`);
+
+  logger.info(`[DB_PROCESSOR_AFTER_FILTER]
+count=${sourceRows}`);
+
   return {
     dates: dates.map((row) => String(row.usage_date).slice(0, 10)),
     sourceRows,
@@ -573,11 +631,20 @@ async function syncDbCostHistoryForIngestionRun({
     billingSourceId: String(billingSourceId),
   };
 
+  logger.info(`[DB_PROCESSOR_START]
+runId=${normalized.ingestionRunId}
+tenantId=${normalized.tenantId}
+providerId=${normalized.providerId}
+billingSourceId=${normalized.billingSourceId}`);
+
   logger.info("DB processor v1: start", normalized);
 
   const detected = await detectDbRowsForRun(normalized);
 
   if (detected.dates.length === 0 || detected.sourceRows === 0) {
+    logger.info(`[DB_PROCESSOR_SKIPPED]
+reason=skipped_no_db_rows`);
+
     logger.info("DB processor v1: skipped_no_db_rows", {
       ...normalized,
       sourceRows: detected.sourceRows,
@@ -602,6 +669,9 @@ async function syncDbCostHistoryForIngestionRun({
 
   let historyRowsWritten = 0;
   let factRowsWritten = 0;
+
+  logger.info(`[DB_PROCESSOR_INSERT_PREP]
+count=${detected.sourceRows}`);
 
   await sequelize.transaction(async (transaction) => {
     historyRowsWritten = await rebuildDbCostHistoryDaily({
@@ -631,6 +701,9 @@ async function syncDbCostHistoryForIngestionRun({
       factRowsWritten,
     });
   });
+
+  logger.info(`[DB_PROCESSOR_INSERT_DONE]
+count=${historyRowsWritten}`);
 
   return {
     skipped: false,

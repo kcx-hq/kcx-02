@@ -8,6 +8,7 @@ type CliOptions = {
   providerId: string | null;
   billingSourceId: string | null;
   runIds: Set<string>;
+  runId: string | null;
   fromRunId: number | null;
   toRunId: number | null;
 };
@@ -31,6 +32,7 @@ const parseArgs = (argv: string[]): CliOptions => {
     providerId: null,
     billingSourceId: null,
     runIds: new Set<string>(),
+    runId: null,
     fromRunId: null,
     toRunId: null,
   };
@@ -62,6 +64,11 @@ const parseArgs = (argv: string[]): CliOptions => {
       }
       continue;
     }
+    if ((key === "--runId" || key === "--run-id") && value) {
+      options.runId = value;
+      options.runIds.add(value);
+      continue;
+    }
     if (key === "--from-run-id") {
       options.fromRunId = parseNumericArg(value) ?? options.fromRunId;
       continue;
@@ -84,6 +91,7 @@ Options:
   --tenant-id=<uuid>              Filter by tenant id
   --provider-id=<id>              Filter by provider id
   --billing-source-id=<id>        Filter by billing source id
+  --runId=<id>                    Process exactly one ingestion run id (alias: --run-id)
   --run-ids=<id1,id2,...>         Only process specific ingestion run ids
   --from-run-id=<id>              Process runs with id >= this value
   --to-run-id=<id>                Process runs with id <= this value
@@ -101,6 +109,7 @@ async function main(): Promise<void> {
     tenantId: options.tenantId,
     providerId: options.providerId,
     billingSourceId: options.billingSourceId,
+    runId: options.runId,
     runIds: [...options.runIds],
     fromRunId: options.fromRunId,
     toRunId: options.toRunId,
