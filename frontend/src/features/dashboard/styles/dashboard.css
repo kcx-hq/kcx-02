@@ -381,6 +381,7 @@
   display: none;
 }
 
+
 .dashboard-main {
   margin-left: var(--dashboard-sidebar-width-collapsed);
   height: 100vh;
@@ -10285,6 +10286,24 @@
   margin-bottom: 10px;
   color: #435b58;
   font-size: 0.84rem;
+}
+
+.ec2-instance-detail__network-breakdown {
+  margin-top: 18px;
+}
+
+.ec2-instance-detail__network-chart {
+  margin-top: 8px;
+}
+
+.ec2-instance-detail__network-table-wrap {
+  margin-top: 10px;
+  max-height: 320px;
+  overflow: auto;
+}
+
+.ec2-instance-detail__network-row--highlight {
+  background: rgba(24, 137, 119, 0.12);
 }
 
 .ec2-instance-detail__meta-grid {

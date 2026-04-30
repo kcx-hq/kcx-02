@@ -5,6 +5,15 @@ export type InventoryEc2InstancesListQuery = {
   region: string | null;
   instanceType: string | null;
   pricingType: "on_demand" | "reserved" | "savings_plan" | "spot" | null;
+  networkType:
+    | "Internet Data Transfer"
+    | "Inter-Region Data Transfer"
+    | "Inter-AZ Data Transfer"
+    | "NAT Gateway"
+    | "Elastic IP"
+    | "Load Balancer"
+    | "Other Network"
+    | null;
   search: string | null;
   startDate: string | null;
   endDate: string | null;
@@ -201,6 +210,16 @@ export type InventoryEc2InstanceDetailResponse = {
     }>;
     cpuTrend: Array<{ date: string; avgCpu: number; maxCpu: number | null }>;
     networkTrend: Array<{ date: string; totalGb: number; inGb: number; outGb: number }>;
+  };
+  networkInsight: {
+    totalNetworkCost: number;
+    totalNetworkUsageGb: number;
+    breakdown: Array<{
+      type: string;
+      cost: number;
+      usageGb: number;
+      percentage: number;
+    }>;
   };
 };
 

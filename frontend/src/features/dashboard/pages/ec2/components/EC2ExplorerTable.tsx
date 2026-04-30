@@ -27,7 +27,14 @@ const formatCellValue = (value: string | number | null): string => {
   return value;
 };
 
-export function EC2ExplorerTable({ loading, error, table, onRetry, onRowClick, onRecommendationClick }: EC2ExplorerTableProps) {
+export function EC2ExplorerTable({
+  loading,
+  error,
+  table,
+  onRetry,
+  onRowClick,
+  onRecommendationClick,
+}: EC2ExplorerTableProps) {
   const columnDefs = useMemo<ColDef<EC2ExplorerTableRow>[]>(() => {
     if (!table) return [];
     return table.columns.map((column) => {

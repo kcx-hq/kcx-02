@@ -5,6 +5,7 @@ import type {
   Ec2ExplorerGraph,
   Ec2ExplorerGraphSeries,
   Ec2ExplorerInput,
+  Ec2NetworkBreakdownResponse,
   Ec2ExplorerResponse,
   Ec2ExplorerSummary,
   Ec2ExplorerTable,
@@ -130,6 +131,7 @@ const applyInstancesThresholdFilters = (
 
 const applyGroupValueFilters = (rows: Ec2ExplorerFactRow[], input: Ec2ExplorerInput): Ec2ExplorerFactRow[] => {
   if (input.groupBy === "none") return rows;
+  if (input.groupBy === "network_cost" || input.groupBy === "network_type") return rows;
   if (!Array.isArray(input.groupValues) || input.groupValues.length === 0) return rows;
   const selectedValues = new Set(input.groupValues.map((value) => value.trim().toLowerCase()).filter(Boolean));
   if (selectedValues.size === 0) return rows;
@@ -138,7 +140,11 @@ const applyGroupValueFilters = (rows: Ec2ExplorerFactRow[], input: Ec2ExplorerIn
 
 const groupValueForRow = (row: Ec2ExplorerFactRow, input: Ec2ExplorerInput): string => {
   if (input.groupBy === "region") return row.region || "Unknown";
+  if (input.groupBy === "account") return row.account || "Unknown";
   if (input.groupBy === "instance_type") return row.instanceType || "Unknown";
+  if (input.groupBy === "team") return row.team || "Unassigned";
+  if (input.groupBy === "product") return row.product || "Unassigned";
+  if (input.groupBy === "environment") return row.environment || "Unassigned";
   if (input.groupBy === "reservation_type") {
     const reservation = (row.reservationType || "on_demand").toLowerCase();
     if (reservation === "savings_plan") return "savings_plan";
@@ -146,6 +152,8 @@ const groupValueForRow = (row: Ec2ExplorerFactRow, input: Ec2ExplorerInput): str
     return "on_demand";
   }
   if (input.groupBy === "cost_category") return "cost_category";
+  if (input.groupBy === "network_cost") return "network_cost";
+  if (input.groupBy === "network_type") return "network_type";
   if (input.groupBy === "tag") return tagValueForKey(row.tagsJson, input.tagKey);
   return row.instanceName || row.instanceId;
 };
@@ -158,9 +166,20 @@ const metricLabel = (key: string): string => {
   if (key === "data_transfer") return "Data Transfer";
   if (key === "eip") return "EIP";
   if (key === "other") return "Other";
+  if (key === "internet_data_transfer") return "Internet Data Transfer";
+  if (key === "inter_region_data_transfer") return "Inter-Region Data Transfer";
+  if (key === "inter_az_data_transfer") return "Inter-AZ Data Transfer";
+  if (key === "nat_gateway") return "NAT Gateway";
+  if (key === "elastic_ip") return "Elastic IP";
+  if (key === "load_balancer") return "Load Balancer";
+  if (key === "other_network") return "Other Network";
   if (key === "on_demand") return "on_demand";
   if (key === "reserved") return "reserved";
   if (key === "savings_plan") return "savings_plan";
+  if (key === "team") return "Team";
+  if (key === "product") return "Product";
+  if (key === "environment") return "Environment";
+  if (key === "account") return "Account";
   return key;
 };
 
@@ -236,6 +255,43 @@ const buildCostGraph = (
     type: input.groupBy === "none" ? "bar" : "stacked_bar",
     xKey: "date",
     series,
+  };
+};
+
+const toNetworkKey = (label: string): string =>
+  label.trim().toLowerCase().replaceAll(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+
+const buildNetworkCostGraph = (
+  dailyRows: Array<{ date: string; category: string; cost: number; billedUsage: number }>,
+  input: Ec2ExplorerInput,
+  metric: "cost" | "usage" = "cost",
+): Ec2ExplorerGraph => {
+  const dateMap = new Map<string, Map<string, number>>();
+  for (const row of dailyRows) {
+    const key = toNetworkKey(row.category);
+    if (Array.isArray(input.groupValues) && input.groupValues.length > 0) {
+      const selected = new Set(input.groupValues.map((v) => v.trim().toLowerCase()));
+      if (!selected.has(key) && !selected.has(row.category.trim().toLowerCase())) continue;
+    }
+    const byGroup = dateMap.get(row.date) ?? new Map<string, number>();
+    byGroup.set(key, (byGroup.get(key) ?? 0) + (metric === "usage" ? row.billedUsage : row.cost));
+    dateMap.set(row.date, byGroup);
+  }
+  const dates = [...dateMap.keys()].sort();
+  const groups = new Set<string>();
+  for (const byGroup of dateMap.values()) for (const key of byGroup.keys()) groups.add(key);
+  const ordered = [...groups].sort((a, b) => a.localeCompare(b));
+  return {
+    type: "stacked_bar",
+    xKey: "date",
+    series: ordered.map((group) => ({
+      key: group,
+      label: metricLabel(group),
+      data: dates.map((date) => ({
+        date,
+        value: toFixedNumber(dateMap.get(date)?.get(group) ?? 0),
+      })),
+    })),
   };
 };
 
@@ -591,6 +647,35 @@ const buildUsageTable = (rows: Ec2ExplorerFactRow[], input: Ec2ExplorerInput): E
   return { columns, rows: rowsOut.sort((a, b) => Number(b.networkIn) - Number(a.networkIn)) };
 };
 
+const buildNetworkCostTable = (
+  categories: Array<{ type: string; cost: number; percent: number; usageQuantity: number; resourceCount: number }>,
+  input: Ec2ExplorerInput,
+  metric: "cost" | "usage" = "cost",
+): Ec2ExplorerTable => {
+  const selected = new Set(input.groupValues.map((value) => value.trim().toLowerCase()));
+  const rows = categories
+    .filter((item) => selected.size === 0 || selected.has(toNetworkKey(item.type)) || selected.has(item.type.trim().toLowerCase()))
+    .map((item) => ({
+      id: `network-${toNetworkKey(item.type)}`,
+      group: item.type,
+      totalCost: toFixedNumber(item.cost),
+      percentOfNetwork: toFixedNumber(item.percent),
+      usageQuantity: toFixedNumber(item.usageQuantity),
+      resourceCount: item.resourceCount,
+    }))
+    .sort((a, b) => (metric === "usage" ? Number(b.usageQuantity) - Number(a.usageQuantity) : Number(b.totalCost) - Number(a.totalCost)));
+  return {
+    columns: [
+      { key: "group", label: metric === "usage" ? "Network Type" : "Group" },
+      { key: "usageQuantity", label: "Billed Usage (GB)" },
+      { key: "percentOfNetwork", label: metric === "usage" ? "% of Network Usage" : "% of Network" },
+      { key: "totalCost", label: metric === "usage" ? "Network Cost ($)" : "Cost ($)" },
+      { key: "resourceCount", label: "Resource Count" },
+    ],
+    rows,
+  };
+};
+
 const buildInstancesTable = (
   rows: Ec2ExplorerFactRow[],
   input: Ec2ExplorerInput,
@@ -725,6 +810,32 @@ export class Ec2ExplorerService {
     const summary = buildSummary(filteredRows, filteredPreviousRows, selectedCostBasis);
 
     let graph: Ec2ExplorerGraph;
+    if (input.metric === "cost" && input.groupBy === "network_cost") {
+      const [networkBreakdown, networkDaily] = await Promise.all([
+        this.query.getNetworkBreakdown(input),
+        this.query.getNetworkBreakdownDaily(input),
+      ]);
+      graph = buildNetworkCostGraph(networkDaily, input, "cost");
+      const table = buildNetworkCostTable(networkBreakdown.categories, input, "cost");
+      return {
+        summary,
+        graph,
+        table,
+      };
+    }
+    if (input.metric === "usage" && input.usageType === "network" && input.groupBy === "network_type") {
+      const [networkBreakdown, networkDaily] = await Promise.all([
+        this.query.getNetworkBreakdown(input),
+        this.query.getNetworkBreakdownDaily(input),
+      ]);
+      graph = buildNetworkCostGraph(networkDaily, input, "usage");
+      const table = buildNetworkCostTable(networkBreakdown.categories, input, "usage");
+      return {
+        summary,
+        graph,
+        table,
+      };
+    }
     if (input.metric === "cost") {
       graph = buildCostGraph(filteredRows, input, additionalByDate);
     } else if (input.metric === "usage") {
@@ -746,6 +857,14 @@ export class Ec2ExplorerService {
       summary,
       graph,
       table,
+    };
+  }
+
+  async getNetworkBreakdown(input: Ec2ExplorerInput): Promise<Ec2NetworkBreakdownResponse> {
+    const payload = await this.query.getNetworkBreakdown(input);
+    return {
+      ...payload,
+      note: "Breakdown is based on CUR line items and may differ slightly from EC2 daily rollup.",
     };
   }
 }
