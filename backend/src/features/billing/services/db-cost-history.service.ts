@@ -106,7 +106,7 @@ COALESCE(
     '|',
     ${DB_ENGINE_SQL},
     '|',
-    ${EFFECTIVE_USAGE_DATE_SQL}::text
+    COALESCE(f.effective_usage_date, DATE(COALESCE(f.usage_start_time, f.usage_end_time)))::text
   )
 )
 `;
@@ -184,13 +184,37 @@ async function rebuildDbCostHistoryDaily({
 }): Promise<number> {
   if (dates.length === 0) return 0;
 
+  const deleteCountRows = await sequelize.query<CountRow>(
+    `
+SELECT COUNT(*)::text AS total
+FROM db_cost_history_daily
+WHERE tenant_id = CAST(:tenantId AS UUID)
+  AND provider_id = CAST(:providerId AS BIGINT)
+  AND billing_source_id = CAST(:billingSourceId AS BIGINT)
+  AND usage_date IN (:usageDates);
+`,
+    {
+      replacements: { tenantId, providerId, billingSourceId, usageDates: dates },
+      type: QueryTypes.SELECT,
+      transaction,
+    },
+  );
+  const deletedRows = Number((deleteCountRows[0]?.total as string | number | undefined) ?? 0);
+  logger.info("DB processor v1: db_cost_history_daily_delete_count_ready", {
+    tenantId,
+    providerId,
+    billingSourceId,
+    affectedDateCount: dates.length,
+    deletedRows,
+  });
+
   await sequelize.query(
     `
 DELETE FROM db_cost_history_daily
 WHERE tenant_id = CAST(:tenantId AS UUID)
   AND provider_id = CAST(:providerId AS BIGINT)
   AND billing_source_id = CAST(:billingSourceId AS BIGINT)
-  AND usage_date = ANY(CAST(:usageDates AS date[]));
+  AND usage_date IN (:usageDates);
 `,
     {
       replacements: { tenantId, providerId, billingSourceId, usageDates: dates },
@@ -198,6 +222,12 @@ WHERE tenant_id = CAST(:tenantId AS UUID)
       transaction,
     },
   );
+  logger.info("DB processor v1: db_cost_history_daily_delete_done", {
+    tenantId,
+    providerId,
+    billingSourceId,
+    affectedDateCount: dates.length,
+  });
 
   const [result] = await sequelize.query(
     `
@@ -282,7 +312,7 @@ FROM (
     WHERE f.tenant_id = CAST(:tenantId AS UUID)
       AND f.provider_id = CAST(:providerId AS BIGINT)
       AND f.billing_source_id = CAST(:billingSourceId AS BIGINT)
-      AND ${EFFECTIVE_USAGE_DATE_SQL} = ANY(CAST(:usageDates AS date[]))
+      AND ${EFFECTIVE_USAGE_DATE_SQL} IN (:usageDates)
   )
   SELECT
     f.effective_usage_date AS usage_date,
@@ -340,8 +370,24 @@ GROUP BY
       transaction,
     },
   );
+  logger.info("DB processor v1: db_cost_history_daily_insert_done", {
+    tenantId,
+    providerId,
+    billingSourceId,
+    affectedDateCount: dates.length,
+  });
 
-  return (result as { rowCount?: number } | undefined)?.rowCount ?? 0;
+  const insertedRows = (result as { rowCount?: number } | undefined)?.rowCount ?? 0;
+
+  logger.info("DB processor v1: db_cost_history_daily_deleted", {
+    tenantId,
+    providerId,
+    billingSourceId,
+    affectedDateCount: dates.length,
+    deletedRows,
+  });
+
+  return insertedRows;
 }
 
 async function rebuildFactDbResourceDaily({
@@ -359,13 +405,37 @@ async function rebuildFactDbResourceDaily({
 }): Promise<number> {
   if (dates.length === 0) return 0;
 
+  const deleteCountRows = await sequelize.query<CountRow>(
+    `
+SELECT COUNT(*)::text AS total
+FROM fact_db_resource_daily
+WHERE tenant_id = CAST(:tenantId AS UUID)
+  AND provider_id = CAST(:providerId AS BIGINT)
+  AND billing_source_id = CAST(:billingSourceId AS BIGINT)
+  AND usage_date IN (:usageDates);
+`,
+    {
+      replacements: { tenantId, providerId, billingSourceId, usageDates: dates },
+      type: QueryTypes.SELECT,
+      transaction,
+    },
+  );
+  const deletedRows = Number((deleteCountRows[0]?.total as string | number | undefined) ?? 0);
+  logger.info("DB processor v1: fact_db_resource_daily_delete_count_ready", {
+    tenantId,
+    providerId,
+    billingSourceId,
+    affectedDateCount: dates.length,
+    deletedRows,
+  });
+
   await sequelize.query(
     `
 DELETE FROM fact_db_resource_daily
 WHERE tenant_id = CAST(:tenantId AS UUID)
   AND provider_id = CAST(:providerId AS BIGINT)
   AND billing_source_id = CAST(:billingSourceId AS BIGINT)
-  AND usage_date = ANY(CAST(:usageDates AS date[]));
+  AND usage_date IN (:usageDates);
 `,
     {
       replacements: { tenantId, providerId, billingSourceId, usageDates: dates },
@@ -373,6 +443,12 @@ WHERE tenant_id = CAST(:tenantId AS UUID)
       transaction,
     },
   );
+  logger.info("DB processor v1: fact_db_resource_daily_delete_done", {
+    tenantId,
+    providerId,
+    billingSourceId,
+    affectedDateCount: dates.length,
+  });
 
   const [result] = await sequelize.query(
     `
@@ -417,13 +493,13 @@ SELECT
     WHEN d.resource_id LIKE 'arn:%' THEN d.resource_id
     ELSE NULL
   END AS resource_arn,
-  COALESCE(NULLIF(dr.resource_name, ''), d.resource_id) AS resource_name,
-  d.db_service,
-  d.db_engine,
-  dr.resource_type,
-  d.resource_key,
-  d.region_key,
-  d.sub_account_key,
+  MAX(COALESCE(NULLIF(dr.resource_name, ''), d.resource_id)) AS resource_name,
+  MAX(d.db_service) AS db_service,
+  MAX(d.db_engine) AS db_engine,
+  MAX(dr.resource_type) AS resource_type,
+  MAX(d.resource_key) AS resource_key,
+  MAX(d.region_key) AS region_key,
+  MAX(d.sub_account_key) AS sub_account_key,
   COALESCE(SUM(CASE WHEN d.cost_category = 'compute' THEN d.effective_cost ELSE 0 END), 0)::DECIMAL(18,6) AS compute_cost,
   COALESCE(SUM(CASE WHEN d.cost_category = 'storage' THEN d.effective_cost ELSE 0 END), 0)::DECIMAL(18,6) AS storage_cost,
   COALESCE(SUM(CASE WHEN d.cost_category = 'io' THEN d.effective_cost ELSE 0 END), 0)::DECIMAL(18,6) AS io_cost,
@@ -443,21 +519,14 @@ LEFT JOIN dim_resource dr ON dr.id = d.resource_key
 WHERE d.tenant_id = CAST(:tenantId AS UUID)
   AND d.provider_id = CAST(:providerId AS BIGINT)
   AND d.billing_source_id = CAST(:billingSourceId AS BIGINT)
-  AND d.usage_date = ANY(CAST(:usageDates AS date[]))
+  AND d.usage_date IN (:usageDates)
 GROUP BY
   d.tenant_id,
   d.cloud_connection_id,
   d.billing_source_id,
   d.provider_id,
   d.usage_date,
-  d.resource_id,
-  dr.resource_name,
-  d.db_service,
-  d.db_engine,
-  dr.resource_type,
-  d.resource_key,
-  d.region_key,
-  d.sub_account_key;
+  d.resource_id;
 `,
     {
       replacements: { tenantId, providerId, billingSourceId, usageDates: dates },
@@ -465,8 +534,24 @@ GROUP BY
       transaction,
     },
   );
+  logger.info("DB processor v1: fact_db_resource_daily_insert_done", {
+    tenantId,
+    providerId,
+    billingSourceId,
+    affectedDateCount: dates.length,
+  });
 
-  return (result as { rowCount?: number } | undefined)?.rowCount ?? 0;
+  const insertedRows = (result as { rowCount?: number } | undefined)?.rowCount ?? 0;
+
+  logger.info("DB processor v1: fact_db_resource_daily_deleted", {
+    tenantId,
+    providerId,
+    billingSourceId,
+    affectedDateCount: dates.length,
+    deletedRows,
+  });
+
+  return insertedRows;
 }
 
 async function syncDbCostHistoryForIngestionRun({
@@ -511,6 +596,8 @@ async function syncDbCostHistoryForIngestionRun({
     ...normalized,
     sourceRows: detected.sourceRows,
     affectedDateCount: detected.dates.length,
+    affectedDateStart: detected.dates[0] ?? null,
+    affectedDateEnd: detected.dates[detected.dates.length - 1] ?? null,
   });
 
   let historyRowsWritten = 0;
