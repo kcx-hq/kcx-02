@@ -14,7 +14,6 @@
     "anomalies:test:backfill": "npm run build && node dist/scripts/test-billing-anomaly-detection-from-parquet.js",
     "backfill:anomalies": "npm run build && node dist/scripts/backfill-anomaly-detection.js",
     "backfill:cost-aggregations": "npm run build && node dist/scripts/backfill-cost-aggregations.js",
-    "backfill:db-explorer": "npm run build && node dist/scripts/backfill-db-explorer.js",
     "backfill:ec2-cost-history": "npm run build && node dist/scripts/backfill-ec2-cost-history.js",
     "backfill:ec2-instance-cost-daily": "npm run build && node dist/scripts/backfill-ec2-instance-cost-daily.js",
     "backfill:ec2-instance-coverage-daily": "npm run build && node dist/scripts/backfill-ec2-instance-coverage-daily.js",
