@@ -133,6 +133,16 @@ Resources:
                   - ce:StartSavingsPlansPurchaseRecommendationGeneration
                   - ce:GetSavingsPlansPurchaseRecommendation
                   - ce:GetSavingsPlanPurchaseRecommendationDetails
+                  - s3:GetBucketLocation
+                  - s3:ListAllMyBuckets
+                  - s3:GetLifecycleConfiguration
+                  - s3:GetEncryptionConfiguration
+                  - s3:GetBucketPublicAccessBlock
+                  - s3:GetBucketPolicyStatus
+                  - s3:GetBucketVersioning
+                  - s3:GetBucketLogging
+                  - s3:GetReplicationConfiguration
+                  - s3:GetBucketOwnershipControls
                 Resource: "*"
 
               - Sid: ListExportBucket

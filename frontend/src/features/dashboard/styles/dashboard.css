@@ -5726,6 +5726,163 @@
   margin-top: 10px;
 }
 
+.s3-lifecycle-insight-card {
+  margin-top: 10px;
+  border: 1px solid color-mix(in srgb, var(--dashboard-border-light) 74%, var(--dashboard-white-strong) 26%);
+  border-radius: 10px;
+  background:
+    radial-gradient(circle at 4% 8%, rgba(33, 132, 111, 0.12) 0%, rgba(33, 132, 111, 0.02) 30%, transparent 66%),
+    color-mix(in srgb, var(--dashboard-surface-card) 93%, var(--dashboard-white-strong) 7%);
+  padding: 12px;
+  display: grid;
+  gap: 10px;
+}
+
+.s3-lifecycle-insight-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.s3-lifecycle-insight-card__title {
+  margin: 0;
+  color: #193a48;
+  font-size: 0.98rem;
+  font-weight: 750;
+}
+
+.s3-lifecycle-insight-card__status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  padding: 4px 10px;
+  font-size: 0.7rem;
+  font-weight: 750;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.s3-lifecycle-insight-card__status.is-good {
+  color: #206546;
+  border-color: rgba(32, 101, 70, 0.28);
+  background: rgba(32, 101, 70, 0.12);
+}
+
+.s3-lifecycle-insight-card__status.is-warn {
+  color: #8a6223;
+  border-color: rgba(138, 98, 35, 0.3);
+  background: rgba(138, 98, 35, 0.13);
+}
+
+.s3-lifecycle-insight-card__status.is-critical {
+  color: #8c3b3b;
+  border-color: rgba(140, 59, 59, 0.3);
+  background: rgba(140, 59, 59, 0.13);
+}
+
+.s3-lifecycle-insight-card__status.is-unknown {
+  color: #546c79;
+  border-color: rgba(84, 108, 121, 0.3);
+  background: rgba(84, 108, 121, 0.12);
+}
+
+.s3-lifecycle-insight-card__meta {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.s3-lifecycle-insight-card__meta-item {
+  border: 1px solid color-mix(in srgb, var(--dashboard-border-light) 76%, var(--dashboard-white-strong) 24%);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.62);
+  padding: 8px 9px;
+}
+
+.s3-lifecycle-insight-card__meta-label {
+  margin: 0 0 4px;
+  color: #5b727d;
+  font-size: 0.69rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.s3-lifecycle-insight-card__meta-value {
+  margin: 0;
+  color: #193b4b;
+  font-size: 0.92rem;
+  font-weight: 750;
+}
+
+.s3-lifecycle-insight-card__headline {
+  margin: 0;
+  color: #173747;
+  font-size: 0.9rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.s3-lifecycle-insight-card__recommendation {
+  margin: 0;
+  color: #3e5967;
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.s3-lifecycle-insight-card__rules {
+  border-top: 1px solid color-mix(in srgb, var(--dashboard-border-light) 78%, var(--dashboard-white-strong) 22%);
+  padding-top: 8px;
+  display: grid;
+  gap: 8px;
+}
+
+.s3-lifecycle-insight-card__rules-title {
+  margin: 0;
+  color: #4f6875;
+  font-size: 0.71rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.s3-lifecycle-insight-card__rules-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.s3-lifecycle-insight-card__rule {
+  border: 1px solid color-mix(in srgb, var(--dashboard-border-light) 76%, var(--dashboard-white-strong) 24%);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.68);
+  padding: 8px;
+}
+
+.s3-lifecycle-insight-card__rule-name {
+  margin: 0 0 4px;
+  color: #1a3e4f;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.s3-lifecycle-insight-card__rule-meta {
+  margin: 0;
+  color: #46616e;
+  font-size: 0.75rem;
+  line-height: 1.35;
+}
+
+.s3-lifecycle-insight-card__error {
+  margin: 0;
+  color: #8c3b3b;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
 .s3-bucket-usage-trend-panel .cost-explorer-chart-panel__body {
   min-height: 0;
   padding: 4px 10px 8px;
@@ -5755,6 +5912,19 @@
 
 @media (max-width: 1200px) {
   .s3-bucket-usage-trend-panel__stack {
+    grid-template-columns: 1fr;
+  }
+
+  .s3-lifecycle-insight-card__header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .s3-lifecycle-insight-card__meta {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .s3-lifecycle-insight-card__rules-grid {
     grid-template-columns: 1fr;
   }
 }
@@ -6177,6 +6347,10 @@
 }
 
 @media (max-width: 640px) {
+  .s3-lifecycle-insight-card__meta {
+    grid-template-columns: 1fr;
+  }
+
   .s3-bucket-detail-panel__meta-grid {
     grid-template-columns: 1fr;
   }

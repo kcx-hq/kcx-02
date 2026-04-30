@@ -19,6 +19,8 @@ import {
 
   type S3CostInsightsFiltersQuery,
   type S3CostInsightsResponse,
+  type S3BucketLifecycleInsightResponse,
+  type S3OptimizationResponse,
   type OptimizationIdleOverview,
   type OptimizationCommitmentOverview,
   type OptimizationIdleRecommendationDetail,
@@ -336,5 +338,23 @@ export function useS3CostInsightsQuery(filters?: S3CostInsightsFiltersQuery) {
     queryKey: ["dashboard", "s3", "cost-insights", scope, filters],
     queryFn: () => dashboardApi.getS3CostInsights(assertScope(scope), filters),
     enabled: Boolean(scope),
+  });
+}
+
+export function useS3OptimizationQuery() {
+  const { scope } = useDashboardScope();
+  return useQuery<S3OptimizationResponse, Error>({
+    queryKey: ["dashboard", "s3", "optimization", scope],
+    queryFn: () => dashboardApi.getS3Optimization(assertScope(scope)),
+    enabled: Boolean(scope),
+  });
+}
+
+export function useS3BucketLifecycleInsightQuery(bucketName: string | null) {
+  const { scope } = useDashboardScope();
+  return useQuery<S3BucketLifecycleInsightResponse, Error>({
+    queryKey: ["dashboard", "s3", "lifecycle-insight", scope, bucketName],
+    queryFn: () => dashboardApi.getS3BucketLifecycleInsight(assertScope(scope), bucketName as string),
+    enabled: Boolean(scope) && Boolean(bucketName && bucketName.trim().length > 0),
   });
 }

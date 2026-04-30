@@ -466,6 +466,14 @@ export function DashboardGlobalHeader() {
         { label: "Usage" },
       ];
     }
+    if (path.startsWith("/dashboard/s3/optimization")) {
+      return [
+        { label: rootCrumb, path: "/dashboard/overview" },
+        { label: "Services", path: "/dashboard/inventory" },
+        { label: "S3", path: "/dashboard/s3" },
+        { label: "Optimization" },
+      ];
+    }
     if (path === "/dashboard/services/database") {
       return [
         { label: rootCrumb, path: "/dashboard/overview" },

@@ -17,6 +17,8 @@ import EC2VolumesPage from "../pages/ec2/EC2VolumesPage";
 import S3OverviewPage from "../pages/s3/S3OverviewPage";
 import S3BucketDetailPage from "../pages/s3/S3BucketDetailPage";
 import S3UsagePage from "../pages/s3/S3UsagePage";
+import S3UsageBucketDetailPage from "../pages/s3/S3UsageBucketDetailPage";
+import S3OptimizationPage from "../pages/s3/S3OptimizationPage";
 import "../styles/tokens.css";
 import "../styles/dashboard.css";
 import EC2InstancesPage from "../pages/ec2/EC2InstancesPage";

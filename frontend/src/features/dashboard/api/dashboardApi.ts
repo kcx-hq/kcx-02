@@ -1,4 +1,4 @@
-import { apiGet, apiPatch, apiPost } from "@/lib/api";
+import { ApiError, apiGet, apiPatch, apiPost } from "@/lib/api";
 import type {
   AnomaliesFiltersQuery,
   AnomaliesListResponse,
@@ -34,6 +34,8 @@ import type {
 
   S3CostInsightsFiltersQuery,
   S3CostInsightsResponse,
+  S3BucketLifecycleInsightResponse,
+  S3OptimizationResponse,
   OptimizationIdleOverview,
   OptimizationCommitmentOverview,
   OptimizationIdleRecommendationsResponse,
@@ -624,6 +626,39 @@ export const dashboardApi = {
   getS3CostInsights(scope: DashboardResolvedScope, filters?: S3CostInsightsFiltersQuery) {
     return apiGet<S3CostInsightsResponse>(withS3CostInsightsFilters("/dashboard/s3/cost-insights", scope, filters));
   },
+  getS3Optimization(scope: DashboardResolvedScope) {
+    return apiGet<S3OptimizationResponse>(withDashboardQuery("/dashboard/s3/optimization", scope));
+  },
+
+  getS3BucketLifecycleInsight(scope: DashboardResolvedScope, bucketName: string) {
+    const params = new URLSearchParams(buildDashboardQueryParams(scope));
+    params.set("bucket", bucketName);
+    const query = params.toString();
+    const usageRoute = `/dashboard/s3/usage/bucket-lifecycle-insight?${query}`;
+    const legacyRoute = `/dashboard/s3/lifecycle-insight?${query}`;
+
+    return (async () => {
+      try {
+        return await apiGet<S3BucketLifecycleInsightResponse>(usageRoute);
+      } catch (error) {
+        if (!(error instanceof ApiError) || error.status !== 404) {
+          throw error;
+        }
+        try {
+          return await apiGet<S3BucketLifecycleInsightResponse>(legacyRoute);
+        } catch (legacyError) {
+          if (legacyError instanceof ApiError && legacyError.status === 404) {
+            throw new ApiError(
+              "Lifecycle insight endpoint is not deployed on backend yet. Deploy latest backend routes.",
+              404,
+              legacyError.payload,
+            );
+          }
+          throw legacyError;
+        }
+      }
+    })();
+  },
 };
 
 export type {
@@ -684,6 +719,7 @@ export type {
   Ec2NetworkBreakdownResponse,
   S3CostInsightsFiltersQuery,
   S3CostInsightsResponse,
+  S3OptimizationResponse,
   OptimizationIdleOverview,
   OptimizationCommitmentOverview,
   OptimizationIdleRecommendationsResponse,
