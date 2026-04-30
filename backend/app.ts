@@ -15,9 +15,15 @@ import routes from "./src/features/_app/app.routes.js";
 
 const app = express();
 const defaultAllowedOrigins = new Set(["http://localhost:5173", "http://127.0.0.1:5173"]);
+const normalizeOrigin = (origin: string): string =>
+  origin
+    .trim()
+    .replace(/^['"]|['"]$/g, "")
+    .replace(/\/+$/, "");
+
 const configuredAllowedOrigins = `${process.env.FRONTEND_BASE_URL ?? ""},${process.env.CLIENT_URL ?? ""},${process.env.CORS_ALLOWED_ORIGINS ?? ""}`
   .split(",")
-  .map((origin) => origin.trim())
+  .map(normalizeOrigin)
   .filter((origin) => origin.length > 0);
 const allowedOrigins = new Set([...defaultAllowedOrigins, ...configuredAllowedOrigins]);
 const localhostOriginPattern = /^http:\/\/(localhost|127\.0\.0\.1):\d+$/;
@@ -30,12 +36,14 @@ const corsOptions: CorsOptions = {
       return;
     }
 
-    if (allowedOrigins.has(origin)) {
+    const normalizedRequestOrigin = normalizeOrigin(origin);
+
+    if (allowedOrigins.has(normalizedRequestOrigin)) {
       callback(null, true);
       return;
     }
 
-    if (localhostOriginPattern.test(origin)) {
+    if (localhostOriginPattern.test(normalizedRequestOrigin)) {
       callback(null, true);
       return;
     }
