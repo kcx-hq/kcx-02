@@ -81,6 +81,8 @@ export const generateAwsCloudFormationSetupSchema = z.object({
   region: z.string().trim().min(1, "region cannot be empty").optional(),
   exportPrefix: z.string().trim().min(1, "exportPrefix cannot be empty").optional(),
   exportName: z.string().trim().min(1, "exportName cannot be empty").optional(),
+  storageLensExportPrefix: z.string().trim().min(1, "storageLensExportPrefix cannot be empty").optional(),
+  storageLensConfigId: z.string().trim().min(1, "storageLensConfigId cannot be empty").optional(),
   callbackUrl: z.string().trim().min(1, "callbackUrl cannot be empty").optional(),
   callbackToken: z.string().trim().min(1, "callbackToken cannot be empty").optional(),
   fileEventCallbackUrl: z.string().trim().min(1, "fileEventCallbackUrl cannot be empty").optional(),

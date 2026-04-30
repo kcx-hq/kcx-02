@@ -10,6 +10,7 @@ import {
   handleGetLatestActiveBillingIngestion,
   handleGetLatestBillingIngestionForSource,
   handleManualUploadBillingFile,
+  handleSyncStorageLensFromClientAccount,
 } from "./billing.controller.js";
 import {
   handleCreatePersistentS3UploadConnection,
@@ -48,6 +49,7 @@ router.post("/billing/ingestion/upload", upload.single("file"), asyncHandler(han
 router.get("/billing/ingestions/latest-active", asyncHandler(handleGetLatestActiveBillingIngestion));
 router.get("/billing/ingestions/:id/status", asyncHandler(getBillingIngestionStatus));
 router.get("/billing/sources/:sourceId/latest-ingestion", asyncHandler(handleGetLatestBillingIngestionForSource));
+router.post("/billing/storage-lens/sync", asyncHandler(handleSyncStorageLensFromClientAccount));
 
 
 export default router;

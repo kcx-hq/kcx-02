@@ -36,11 +36,7 @@ import {
 import { upsertCostAggregationsForRun } from "./cost-aggregation.service.js";
 import { createTagDimensionCache, resolveFactPrimaryTagId, resolveFactTagIds } from "./dim-tag.service.js";
 import { assertTagDimensionSchemaReady } from "./ingestion-schema-guard.service.js";
-import {
-  extractStorageLensSnapshotFromRow,
-  mergeStorageLensSnapshot,
-  upsertStorageLensSnapshots,
-} from "./s3-storage-lens-ingestion.service.js";
+import { syncStorageLensFromClientAccount } from "./s3-storage-lens-sync.service.js";
 
 const SUPPORTED_FORMATS = new Set(["csv", "parquet"]);
 const PROGRESS_BY_STAGE = {
@@ -92,6 +88,38 @@ const toErrorMessage = (error) => {
 const normalizeFormat = (value) => String(value ?? "").trim().toLowerCase();
 
 const now = () => new Date();
+
+function scheduleStorageLensSyncAfterIngestion({ tenantId, billingSourceId, ingestionRunId }) {
+  const normalizedTenantId = String(tenantId ?? "").trim();
+  const normalizedBillingSourceId = String(billingSourceId ?? "").trim();
+  if (!normalizedTenantId || !normalizedBillingSourceId) {
+    return;
+  }
+
+  setImmediate(() => {
+    void syncStorageLensFromClientAccount({
+      tenantId: normalizedTenantId,
+      billingSourceId: normalizedBillingSourceId,
+    })
+      .then((result) => {
+        logger.info("Storage Lens auto-sync completed after ingestion", {
+          ingestionRunId: String(ingestionRunId),
+          tenantId: normalizedTenantId,
+          billingSourceId: normalizedBillingSourceId,
+          snapshotsUpserted: result.snapshotsUpserted,
+          objectsProcessed: result.objectsProcessed,
+        });
+      })
+      .catch((error) => {
+        logger.warn("Storage Lens auto-sync failed after ingestion", {
+          ingestionRunId: String(ingestionRunId),
+          tenantId: normalizedTenantId,
+          billingSourceId: normalizedBillingSourceId,
+          reason: error instanceof Error ? error.message : String(error),
+        });
+      });
+  });
+}
 
 function clampProgress(progressPercent) {
   if (!Number.isFinite(progressPercent)) return 0;
@@ -447,7 +475,6 @@ async function processIngestionRun(ingestionRunId) {
     let movedToInsertStage = false;
     let failedRowWriteErrors = 0;
     const failureReasonCounts = {};
-    const storageLensSnapshotByKey = new Map();
 
     console.log("[S3-UPLOAD-DEBUG][INGESTION][S3_READ_START]", {
       tenantId: rawFile.tenantId ?? null,
@@ -515,25 +542,6 @@ async function processIngestionRun(ingestionRunId) {
       for (const [chunkRowIndex, normalizedRow] of normalizedChunk.entries()) {
         const rowNumber = chunkStartRowNumber + chunkRowIndex;
         const rawRow = rawChunk[chunkRowIndex] ?? null;
-        const storageLensSnapshot = extractStorageLensSnapshotFromRow({
-          rawRow,
-          normalizedRow,
-          tenantId: rawFile.tenantId,
-          cloudConnectionId: rawFile.cloudConnectionId,
-          billingSourceId: run.billingSourceId,
-          providerId: rawFile.cloudProviderId,
-        });
-        if (storageLensSnapshot) {
-          const snapshotKey = `${storageLensSnapshot.tenantId}|${storageLensSnapshot.bucketName}|${storageLensSnapshot.usageDate}`;
-          const existingSnapshot = storageLensSnapshotByKey.get(snapshotKey);
-          storageLensSnapshotByKey.set(
-            snapshotKey,
-            existingSnapshot
-              ? mergeStorageLensSnapshot(existingSnapshot, storageLensSnapshot)
-              : storageLensSnapshot,
-          );
-        }
-
         try {
           const {
             billingAccountKey,
@@ -792,20 +800,6 @@ async function processIngestionRun(ingestionRunId) {
       total_rows_estimated: rowsRead,
     });
 
-    const storageLensSnapshotRows = Array.from(storageLensSnapshotByKey.values());
-    if (storageLensSnapshotRows.length > 0) {
-      try {
-        await upsertStorageLensSnapshots(storageLensSnapshotRows);
-      } catch (storageLensError) {
-        logger.warn("Storage Lens snapshot upsert failed during ingestion finalization", {
-          ingestionRunId: run.id,
-          tenantId: rawFile.tenantId ?? null,
-          billingSourceId: run.billingSourceId ?? null,
-          reason: toErrorMessage(storageLensError),
-        });
-      }
-    }
-
     if (rowsLoaded > 0) {
       await upsertCostAggregationsForRun({
         ingestionRunId: run.id,
@@ -858,7 +852,7 @@ async function processIngestionRun(ingestionRunId) {
     }
 
     const topReasons = summarizeTopFailureReasons(failureReasonCounts);
-    if (rowsLoaded === 0 && rowsFailed > 0 && storageLensSnapshotRows.length === 0) {
+    if (rowsLoaded === 0 && rowsFailed > 0) {
       const allRowsFailedMessage =
         topReasons.length > 0
           ? `Ingestion failed: all rows were rejected. Top reasons: ${topReasons.join(", ")}`
@@ -893,6 +887,11 @@ async function processIngestionRun(ingestionRunId) {
       rowsLoaded,
       rowsFailed,
       warningMessage,
+    });
+    scheduleStorageLensSyncAfterIngestion({
+      tenantId: rawFile.tenantId,
+      billingSourceId: run.billingSourceId,
+      ingestionRunId: run.id,
     });
 
     console.log("[S3-UPLOAD-DEBUG][INGESTION][END]", {

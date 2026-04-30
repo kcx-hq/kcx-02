@@ -36,23 +36,6 @@ const parseBucketNameFromArn = (value) => {
   return raw;
 };
 
-const parseBucketNameFromResourceId = (value) => {
-  const raw = String(value ?? "").trim();
-  if (!raw) return null;
-  const lowered = raw.toLowerCase();
-
-  if (lowered.startsWith("bucket/")) {
-    const bucket = raw.slice("bucket/".length).split("/")[0]?.trim();
-    return bucket || null;
-  }
-  if (lowered.startsWith("arn:aws:s3:::")) {
-    return parseBucketNameFromArn(raw);
-  }
-  if (lowered.startsWith("s3://")) {
-    return parseBucketNameFromArn(raw);
-  }
-  return null;
-};
 
 const lookupByAliases = (rawRow, aliases) => {
   const entries = Object.entries(rawRow ?? {});
@@ -90,6 +73,17 @@ const METRIC_NAME_KEY_MAP = {
   intelligenttieringstoragebytes: "bytesIntelligentTiering",
   glacierstoragebytes: "bytesGlacier",
   deeparchivestoragebytes: "bytesDeepArchive",
+  noncurrentversionobjectcount: "noncurrentVersionObjectCount",
+  noncurrentversionbytes: "noncurrentVersionBytes",
+  deletemarkerobjectcount: "deleteMarkerObjectCount",
+  deletemarkerbytes: "deleteMarkerBytes",
+  incompletemultipartuploadstoragebytes: "incompleteMultipartUploadBytes",
+  incompletemultipartuploadbytes: "incompleteMultipartUploadBytes",
+  incompletemultipartuploadobjectcount: "incompleteMultipartUploadObjectCount",
+  bytesuploaded: "bytesUploaded",
+  bytesdownloaded: "bytesDownloaded",
+  getrequestcount: "getRequestsCount",
+  putrequestcount: "putRequestsCount",
 };
 
 const STORAGE_LENS_METRIC_FIELDS = [
@@ -103,26 +97,18 @@ const STORAGE_LENS_METRIC_FIELDS = [
   "bytesGlacier",
   "bytesDeepArchive",
   "accessCount",
+  "noncurrentVersionObjectCount",
+  "noncurrentVersionBytes",
+  "deleteMarkerObjectCount",
+  "deleteMarkerBytes",
+  "incompleteMultipartUploadBytes",
+  "incompleteMultipartUploadObjectCount",
+  "bytesUploaded",
+  "bytesDownloaded",
+  "getRequestsCount",
+  "putRequestsCount",
 ];
 
-const isLikelyS3CostRow = ({ rawRow, normalizedRow }) => {
-  const serviceName =
-    lookupByAliases(rawRow, ["service_name", "ServiceName", "product_servicecode", "ProductServiceCode"]) ??
-    normalizedRow?.ServiceName;
-  const usageType =
-    lookupByAliases(rawRow, ["usage_type", "UsageType", "product_usagetype", "ProductUsageType"]) ??
-    normalizedRow?.UsageType;
-  const operation = lookupByAliases(rawRow, ["operation", "Operation"]) ?? normalizedRow?.Operation;
-  const resourceId =
-    lookupByAliases(rawRow, ["resource_id", "ResourceId", "line_item_resource_id", "LineItemResourceId"]) ??
-    normalizedRow?.ResourceId;
-
-  const text = [serviceName, usageType, operation, resourceId]
-    .map((value) => String(value ?? "").trim().toLowerCase())
-    .join(" ");
-
-  return text.includes("amazon simple storage service") || text.includes("amazon s3") || text.includes(" s3");
-};
 
 function createEmptySnapshot({ tenantId, cloudConnectionId, billingSourceId, providerId, regionKey, subAccountKey, usageDate, bucketName }) {
   return {
@@ -144,6 +130,19 @@ function createEmptySnapshot({ tenantId, cloudConnectionId, billingSourceId, pro
     bytesGlacier: null,
     bytesDeepArchive: null,
     accessCount: null,
+    noncurrentVersionObjectCount: null,
+    noncurrentVersionBytes: null,
+    deleteMarkerObjectCount: null,
+    deleteMarkerBytes: null,
+    incompleteMultipartUploadBytes: null,
+    incompleteMultipartUploadObjectCount: null,
+    bytesUploaded: null,
+    bytesDownloaded: null,
+    getRequestsCount: null,
+    putRequestsCount: null,
+    ingestionSource: null,
+    reportObjectKey: null,
+    reportGeneratedDate: null,
   };
 }
 
@@ -176,7 +175,7 @@ export function extractStorageLensSnapshotFromRow({
     lookupByAliases(rawRow, ["record_value", "RecordValue"]) ??
     normalizedRow?.ResourceId ??
     normalizedRow?.ResourceName;
-  const bucketName = parseBucketNameFromArn(bucketValue) ?? parseBucketNameFromResourceId(normalizedRow?.ResourceId);
+  const bucketName = parseBucketNameFromArn(bucketValue);
   if (!bucketName) return null;
 
   const usageDate =
@@ -238,6 +237,55 @@ export function extractStorageLensSnapshotFromRow({
     snapshot.bytesDeepArchive = parseNumeric(
       lookupByAliases(rawRow, ["bytes_deep_archive", "BytesDeepArchive", "deep_archive_storage_bytes"]),
     );
+    snapshot.noncurrentVersionObjectCount = parseNumeric(
+      lookupByAliases(rawRow, [
+        "noncurrent_version_object_count",
+        "NoncurrentVersionObjectCount",
+      ]),
+    );
+    snapshot.noncurrentVersionBytes = parseNumeric(
+      lookupByAliases(rawRow, [
+        "noncurrent_version_bytes",
+        "NoncurrentVersionBytes",
+      ]),
+    );
+    snapshot.deleteMarkerObjectCount = parseNumeric(
+      lookupByAliases(rawRow, [
+        "delete_marker_object_count",
+        "DeleteMarkerObjectCount",
+      ]),
+    );
+    snapshot.deleteMarkerBytes = parseNumeric(
+      lookupByAliases(rawRow, [
+        "delete_marker_bytes",
+        "DeleteMarkerBytes",
+      ]),
+    );
+    snapshot.incompleteMultipartUploadBytes = parseNumeric(
+      lookupByAliases(rawRow, [
+        "incomplete_multipart_upload_bytes",
+        "IncompleteMultipartUploadBytes",
+        "incomplete_multipart_upload_storage_bytes",
+      ]),
+    );
+    snapshot.incompleteMultipartUploadObjectCount = parseNumeric(
+      lookupByAliases(rawRow, [
+        "incomplete_multipart_upload_object_count",
+        "IncompleteMultipartUploadObjectCount",
+      ]),
+    );
+    snapshot.bytesUploaded = parseNumeric(
+      lookupByAliases(rawRow, ["bytes_uploaded", "BytesUploaded"]),
+    );
+    snapshot.bytesDownloaded = parseNumeric(
+      lookupByAliases(rawRow, ["bytes_downloaded", "BytesDownloaded"]),
+    );
+    snapshot.getRequestsCount = parseNumeric(
+      lookupByAliases(rawRow, ["get_requests_count", "GetRequestsCount", "get_request_count"]),
+    );
+    snapshot.putRequestsCount = parseNumeric(
+      lookupByAliases(rawRow, ["put_requests_count", "PutRequestsCount", "put_request_count"]),
+    );
   }
 
   const storageClassValue = lookupByAliases(rawRow, ["storage_class", "StorageClass"]);
@@ -260,12 +308,7 @@ export function extractStorageLensSnapshotFromRow({
   }
 
   const hasAnyMetric = STORAGE_LENS_METRIC_FIELDS.some((field) => snapshot[field] !== null);
-  if (!hasAnyMetric) {
-    // Fallback for CUR rows without Storage Lens metrics: still persist tenant/bucket/date snapshot.
-    if (!isLikelyS3CostRow({ rawRow, normalizedRow })) {
-      return null;
-    }
-  }
+  if (!hasAnyMetric) return null;
 
   return snapshot;
 }
@@ -300,6 +343,19 @@ export async function upsertStorageLensSnapshots(snapshots) {
       "bytesGlacier",
       "bytesDeepArchive",
       "accessCount",
+      "noncurrentVersionObjectCount",
+      "noncurrentVersionBytes",
+      "deleteMarkerObjectCount",
+      "deleteMarkerBytes",
+      "incompleteMultipartUploadBytes",
+      "incompleteMultipartUploadObjectCount",
+      "bytesUploaded",
+      "bytesDownloaded",
+      "getRequestsCount",
+      "putRequestsCount",
+      "ingestionSource",
+      "reportObjectKey",
+      "reportGeneratedDate",
       "updatedAt",
     ],
   });

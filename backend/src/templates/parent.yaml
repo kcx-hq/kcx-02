@@ -42,6 +42,16 @@ Parameters:
     Default: KCX-CUR2-Export
     Description: Name of the AWS Data Export
 
+  StorageLensExportPrefix:
+    Type: String
+    Default: kcx/storage-lens
+    Description: Prefix where S3 Storage Lens exports will be delivered
+
+  StorageLensConfigId:
+    Type: String
+    Default: ''
+    Description: Optional unique Storage Lens configuration ID
+
   EnableBillingExport:
     Type: String
     AllowedValues: ['true', 'false']
@@ -175,6 +185,8 @@ Resources:
           - ''
         ExportPrefix: !Ref ExportPrefix
         ExportName: !Ref ExportName
+        StorageLensExportPrefix: !Ref StorageLensExportPrefix
+        StorageLensConfigId: !Ref StorageLensConfigId
 
   CloudTrailStack:
     Type: AWS::CloudFormation::Stack
