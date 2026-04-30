@@ -114,6 +114,7 @@ export default function DashboardRoutes() {
         <Route path="s3/cost" element={<S3OverviewPage />} />
         <Route path="s3/cost/bucket/:bucketName" element={<S3BucketDetailPage />} />
         <Route path="s3/usage" element={<S3UsagePage />} />
+        <Route path="s3/usage/bucket/:bucketName" element={<S3UsageBucketDetailPage />} />
         <Route path="services/database" element={<DatabaseExplorerPage />} />
         <Route path="resources" element={<ResourcesPage />} />
         <Route path="allocation" element={<AllocationPage />} />

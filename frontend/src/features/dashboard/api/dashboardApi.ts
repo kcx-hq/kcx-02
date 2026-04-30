@@ -1,4 +1,4 @@
-import { ApiError, apiGet, apiPatch, apiPost } from "@/lib/api";
+import { apiGet, apiPatch, apiPost } from "@/lib/api";
 import type {
   AnomaliesFiltersQuery,
   AnomaliesListResponse,
@@ -634,30 +634,7 @@ export const dashboardApi = {
     const params = new URLSearchParams(buildDashboardQueryParams(scope));
     params.set("bucket", bucketName);
     const query = params.toString();
-    const usageRoute = `/dashboard/s3/usage/bucket-lifecycle-insight?${query}`;
-    const legacyRoute = `/dashboard/s3/lifecycle-insight?${query}`;
-
-    return (async () => {
-      try {
-        return await apiGet<S3BucketLifecycleInsightResponse>(usageRoute);
-      } catch (error) {
-        if (!(error instanceof ApiError) || error.status !== 404) {
-          throw error;
-        }
-        try {
-          return await apiGet<S3BucketLifecycleInsightResponse>(legacyRoute);
-        } catch (legacyError) {
-          if (legacyError instanceof ApiError && legacyError.status === 404) {
-            throw new ApiError(
-              "Lifecycle insight endpoint is not deployed on backend yet. Deploy latest backend routes.",
-              404,
-              legacyError.payload,
-            );
-          }
-          throw legacyError;
-        }
-      }
-    })();
+    return apiGet<S3BucketLifecycleInsightResponse>(`/dashboard/s3/usage/bucket-lifecycle-insight?${query}`);
   },
 };
 
