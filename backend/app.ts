@@ -15,11 +15,12 @@ import routes from "./src/features/_app/app.routes.js";
 
 const app = express();
 const defaultAllowedOrigins = new Set(["http://localhost:5173", "http://127.0.0.1:5173"]);
-const configuredAllowedOrigins = `${process.env.FRONTEND_BASE_URL ?? ""},${process.env.CORS_ALLOWED_ORIGINS ?? ""}`
+const configuredAllowedOrigins = `${process.env.FRONTEND_BASE_URL ?? ""},${process.env.CLIENT_URL ?? ""},${process.env.CORS_ALLOWED_ORIGINS ?? ""}`
   .split(",")
   .map((origin) => origin.trim())
   .filter((origin) => origin.length > 0);
 const allowedOrigins = new Set([...defaultAllowedOrigins, ...configuredAllowedOrigins]);
+const localhostOriginPattern = /^http:\/\/(localhost|127\.0\.0\.1):\d+$/;
 
 const corsOptions: CorsOptions = {
   origin(origin, callback) {
@@ -34,11 +35,15 @@ const corsOptions: CorsOptions = {
       return;
     }
 
-    callback(new Error("CORS origin not allowed"));
+    if (localhostOriginPattern.test(origin)) {
+      callback(null, true);
+      return;
+    }
+
+    callback(null, false);
   },
   credentials: true,
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
   optionsSuccessStatus: 204,
 };
 
@@ -46,7 +51,7 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(helmet());
 app.use(cors(corsOptions));
-app.options("*", cors(corsOptions));
+app.options(/.*/, cors(corsOptions));
 app.use(requestIdMiddleware);
 app.use(requestLoggerMiddleware);
 app.use(apiSecurityMiddleware);
