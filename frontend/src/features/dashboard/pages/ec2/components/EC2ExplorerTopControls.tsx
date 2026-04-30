@@ -10,7 +10,7 @@ import {
   GROUP_BY_OPTIONS,
   METRIC_OPTIONS,
   STATE_OPTIONS,
-  USAGE_METRIC_OPTIONS,
+  USAGE_TYPE_OPTIONS,
   type EC2Aggregation,
   type EC2Condition,
   type EC2CostBasis,
@@ -18,7 +18,7 @@ import {
   type EC2GroupBy,
   type EC2Metric,
   type EC2State,
-  type EC2UsageMetric,
+  type EC2UsageType,
 } from "../ec2ExplorerControls.types";
 import { EC2ExplorerGroupByPopover } from "./EC2ExplorerGroupByPopover";
 import { EC2ExplorerScopeFilters } from "./EC2ExplorerScopeFilters";
@@ -82,19 +82,15 @@ export function EC2ExplorerTopControls({ value, onChange, onReset, children }: E
       return COST_BASIS_OPTIONS.find((item) => item.key === value.costBasis)?.label ?? "Effective Cost";
     }
     if (value.metric === "usage") {
-      if (value.groupBy === "usage-category") {
-        return "All Categories";
-      }
-      return USAGE_METRIC_OPTIONS.find((item) => item.key === value.usageMetric)?.label ?? "CPU";
+      return USAGE_TYPE_OPTIONS.find((item) => item.key === value.usageType)?.label ?? "CPU";
     }
     return CONDITION_OPTIONS.find((item) => item.key === value.instancesCondition)?.label ?? "All";
-  }, [value.costBasis, value.groupBy, value.instancesCondition, value.metric, value.usageMetric]);
+  }, [value.costBasis, value.groupBy, value.instancesCondition, value.metric, value.usageType]);
 
   const configLabel = value.metric === "cost" ? "Cost Basis" : value.metric === "usage" ? "Usage Metric" : "Condition";
   const groupByLabel = GROUP_BY_OPTIONS.find((item) => item.key === value.groupBy)?.label ?? "None";
   const aggregationLabel = AGGREGATION_OPTIONS.find((item) => item.key === value.usageAggregation)?.label ?? "Avg";
   const stateLabel = STATE_OPTIONS.find((item) => item.key === value.instancesState)?.label ?? "Running";
-  const isUsageCategoryGroupBy = value.metric === "usage" && value.groupBy === "usage-category";
   const hasActiveThresholds = useMemo(
     () => Object.values(value.thresholds).some((entry) => entry.trim().length > 0),
     [value.thresholds],
@@ -107,15 +103,35 @@ export function EC2ExplorerTopControls({ value, onChange, onReset, children }: E
   const visibleGroupByOptions = useMemo(
     () =>
       GROUP_BY_OPTIONS.filter((option) => {
-        if (option.key === "usage-category") return value.metric === "usage";
+        if (value.metric === "usage") {
+          if (value.usageType === "network") {
+            return ["region", "account", "instance-type", "network-type", "tag"].includes(option.key);
+          }
+          if (value.usageType === "cpu") {
+            return ["region", "account", "instance-type", "team", "product", "environment", "tag"].includes(option.key);
+          }
+          return ["region", "account", "instance-type", "tag"].includes(option.key);
+        }
+        if (option.key === "network-type") return value.metric === "usage" && value.usageType === "network";
         if (option.key === "cost-category") return value.metric === "cost";
+        if (option.key === "network-cost") return value.metric === "cost";
         return true;
       }),
-    [value.metric],
+    [value.metric, value.usageType],
   );
   const isGroupByVisibleForMetric = (groupBy: EC2GroupBy, metric: EC2Metric): boolean => {
-    if (groupBy === "usage-category") return metric === "usage";
+    if (groupBy === "network-type") return metric === "usage" && value.usageType === "network";
+    if (metric === "usage") {
+      if (value.usageType === "network") {
+        return ["region", "account", "instance-type", "network-type", "tag"].includes(groupBy);
+      }
+      if (value.usageType === "cpu") {
+        return ["region", "account", "instance-type", "team", "product", "environment", "tag"].includes(groupBy);
+      }
+      return ["region", "account", "instance-type", "tag"].includes(groupBy);
+    }
     if (groupBy === "cost-category") return metric === "cost";
+    if (groupBy === "network-cost") return metric === "cost";
     return true;
   };
 
@@ -149,11 +165,11 @@ export function EC2ExplorerTopControls({ value, onChange, onReset, children }: E
     </div>
   );
 
-  const metricConfigOptions: Array<Option<EC2CostBasis | EC2UsageMetric | EC2Condition>> =
+  const metricConfigOptions: Array<Option<EC2CostBasis | EC2UsageType | EC2Condition>> =
     value.metric === "cost"
       ? COST_BASIS_OPTIONS
       : value.metric === "usage"
-        ? USAGE_METRIC_OPTIONS
+        ? USAGE_TYPE_OPTIONS
         : CONDITION_OPTIONS;
 
   return (
@@ -202,7 +218,7 @@ export function EC2ExplorerTopControls({ value, onChange, onReset, children }: E
                     const currentGroupByVisible = isGroupByVisibleForMetric(value.groupBy, nextMetric);
                     const fallbackGroupBy: EC2GroupBy =
                       nextMetric === "usage"
-                        ? "usage-category"
+                        ? (value.usageType === "network" ? "network-type" : "region")
                         : nextMetric === "cost"
                           ? "cost-category"
                           : "instance-type";
@@ -222,12 +238,11 @@ export function EC2ExplorerTopControls({ value, onChange, onReset, children }: E
               type="button"
               className={`cost-explorer-toolbar-trigger${activePopover === "config" ? " is-active" : ""}`}
               onClick={() => {
-                if (isUsageCategoryGroupBy) return;
                 togglePopover("config");
               }}
               aria-expanded={activePopover === "config"}
               aria-haspopup="dialog"
-              disabled={isUsageCategoryGroupBy}
+              disabled={false}
             >
               <span className="cost-explorer-toolbar-trigger__label">{configLabel}</span>
               <span className="cost-explorer-toolbar-trigger__row">
@@ -246,10 +261,25 @@ export function EC2ExplorerTopControls({ value, onChange, onReset, children }: E
                   })
                 : renderOptionList({
                     options: metricConfigOptions,
-                    selected: value.metric === "usage" ? value.usageMetric : value.instancesCondition,
+                    selected: value.metric === "usage" ? value.usageType : value.instancesCondition,
                     onSelect: (next) => {
                       if (value.metric === "usage") {
-                        update({ usageMetric: next as EC2UsageMetric });
+                        const nextUsageType = next as EC2UsageType;
+                        update({
+                          usageType: nextUsageType,
+                          groupBy:
+                            nextUsageType === "network"
+                              ? (value.groupBy === "team" || value.groupBy === "product" || value.groupBy === "environment" ? "network-type" : value.groupBy)
+                              : value.groupBy === "network-type"
+                                ? "region"
+                                : value.groupBy,
+                          groupByValues:
+                            nextUsageType === "network"
+                              ? value.groupByValues
+                              : value.groupBy === "network-type"
+                                ? []
+                                : value.groupByValues,
+                        });
                         return;
                       }
                       update({ instancesCondition: next as EC2Condition });

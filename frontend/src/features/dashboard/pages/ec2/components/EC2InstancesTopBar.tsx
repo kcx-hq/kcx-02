@@ -11,11 +11,22 @@ import {
   EC2_INSTANCES_STATE_OPTIONS,
   type EC2InstancesCondition,
   type EC2InstancesControlsState,
+  type EC2InstancesNetworkType,
   type EC2InstancesReservationType,
   type EC2InstancesStateFilter,
 } from "./ec2Instances.types";
 
-type PopoverKey = "condition" | "state" | "instanceType" | "reservationType" | "thresholds";
+type PopoverKey = "condition" | "state" | "instanceType" | "reservationType" | "networkType" | "thresholds";
+const NETWORK_TYPE_OPTIONS: Array<{ key: EC2InstancesNetworkType; label: string }> = [
+  { key: "all", label: "All" },
+  { key: "Internet Data Transfer", label: "Internet Data Transfer" },
+  { key: "Inter-Region Data Transfer", label: "Inter-Region Data Transfer" },
+  { key: "Inter-AZ Data Transfer", label: "Inter-AZ Data Transfer" },
+  { key: "NAT Gateway", label: "NAT Gateway" },
+  { key: "Elastic IP", label: "Elastic IP" },
+  { key: "Load Balancer", label: "Load Balancer" },
+  { key: "Other Network", label: "Other Network" },
+];
 
 type Option<T extends string> = {
   key: T;
@@ -225,6 +236,31 @@ export function EC2InstancesTopBar({
                   selected: value.reservationType,
                   onSelect: (nextReservationType: EC2InstancesReservationType) =>
                     update({ reservationType: nextReservationType }),
+                })
+              : null}
+          </div>
+
+          <div className="cost-explorer-toolbar-item">
+            <button
+              type="button"
+              className={`cost-explorer-toolbar-trigger${activePopover === "networkType" ? " is-active" : ""}`}
+              onClick={() => togglePopover("networkType")}
+              aria-expanded={activePopover === "networkType"}
+              aria-haspopup="dialog"
+            >
+              <span className="cost-explorer-toolbar-trigger__label">Network Type</span>
+              <span className="cost-explorer-toolbar-trigger__row">
+                <span className="cost-explorer-toolbar-trigger__value">
+                  {NETWORK_TYPE_OPTIONS.find((item) => item.key === value.networkType)?.label ?? "All"}
+                </span>
+                <ChevronDown className="cost-explorer-toolbar-trigger__caret" size={14} aria-hidden="true" />
+              </span>
+            </button>
+            {activePopover === "networkType"
+              ? renderOptionList({
+                  options: NETWORK_TYPE_OPTIONS,
+                  selected: value.networkType,
+                  onSelect: (nextNetworkType: EC2InstancesNetworkType) => update({ networkType: nextNetworkType }),
                 })
               : null}
           </div>

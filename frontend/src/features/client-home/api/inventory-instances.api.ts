@@ -61,6 +61,15 @@ export type InventoryEc2InstancesListParams = {
   region?: string | null
   instanceType?: string | null
   pricingType?: "on_demand" | "reserved" | "savings_plan" | "spot" | null
+  networkType?:
+    | "Internet Data Transfer"
+    | "Inter-Region Data Transfer"
+    | "Inter-AZ Data Transfer"
+    | "NAT Gateway"
+    | "Elastic IP"
+    | "Load Balancer"
+    | "Other Network"
+    | null
   search?: string | null
   startDate?: string | null
   endDate?: string | null
@@ -204,6 +213,16 @@ export type InventoryEc2InstanceDetailResponse = {
     }>
     cpuTrend: Array<{ date: string; avgCpu: number; maxCpu: number | null }>
     networkTrend: Array<{ date: string; totalGb: number; inGb: number; outGb: number }>
+  }
+  networkInsight: {
+    totalNetworkCost: number
+    totalNetworkUsageGb: number
+    breakdown: Array<{
+      type: string
+      cost: number
+      usageGb: number
+      percentage: number
+    }>
   }
 }
 
@@ -382,6 +401,7 @@ export async function getInventoryEc2Instances(
   if (params.region) searchParams.set("region", params.region)
   if (params.instanceType) searchParams.set("instanceType", params.instanceType)
   if (params.pricingType) searchParams.set("pricingType", params.pricingType)
+  if (params.networkType) searchParams.set("networkType", params.networkType)
   if (params.search) searchParams.set("search", params.search)
   if (params.startDate) searchParams.set("startDate", params.startDate)
   if (params.endDate) searchParams.set("endDate", params.endDate)

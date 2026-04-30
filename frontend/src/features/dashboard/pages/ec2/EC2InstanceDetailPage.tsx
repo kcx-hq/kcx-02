@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { EChartsOption } from "echarts";
 import type { ColDef, ValueFormatterParams } from "ag-grid-community";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
@@ -78,6 +78,10 @@ const toPricingLabel = (value: "on_demand" | "reserved" | "savings_plan" | "spot
   return "Unknown";
 };
 
+const NETWORK_BREAKDOWN_COLORS = ["#188977", "#2A5CAA", "#E07A2A", "#8D5A97", "#68757D"];
+
+const normalizeNetworkTypeKey = (value: string): string => value.trim().toLowerCase().replaceAll(/\s+/g, " ");
+
 const getTagValue = (tags: Record<string, unknown>, key: string): string => {
   const exact = tags[key];
   if (typeof exact === "string" && exact.trim().length > 0) return exact;
@@ -91,12 +95,14 @@ export default function EC2InstanceDetailPage() {
   const location = useLocation();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<EC2InstanceDetailTabKey>("overview");
+  const networkRowRefs = useRef(new Map<string, HTMLTableRowElement>());
 
   const queryParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
   const defaults = getDefaultDateRange();
   const startDate = queryParams.get("startDate") ?? queryParams.get("from") ?? queryParams.get("billingPeriodStart") ?? defaults.start;
   const endDate = queryParams.get("endDate") ?? queryParams.get("to") ?? queryParams.get("billingPeriodEnd") ?? defaults.end;
   const cloudConnectionId = queryParams.get("cloudConnectionId") ?? queryParams.get("cloud_connection_id");
+  const selectedNetworkType = queryParams.get("networkType");
 
   const detailQuery = useInventoryEc2InstanceDetail({
     instanceId: instanceId ?? "",
@@ -104,6 +110,75 @@ export default function EC2InstanceDetailPage() {
     startDate,
     endDate,
   });
+  const networkInsight = detailQuery.data?.networkInsight;
+
+  const networkBreakdownRows = useMemo(() => {
+    const rows = [...(networkInsight?.breakdown ?? [])]
+      .filter((item) => item.cost > 0)
+      .sort((a, b) => b.cost - a.cost);
+    if (rows.length <= 4) return rows;
+    const topRows = rows.slice(0, 4);
+    const remaining = rows.slice(4);
+    const other = remaining.reduce(
+      (acc, item) => ({
+        cost: acc.cost + item.cost,
+        usageGb: acc.usageGb + item.usageGb,
+      }),
+      { cost: 0, usageGb: 0 },
+    );
+    topRows.push({
+      type: "Other Network",
+      cost: other.cost,
+      usageGb: other.usageGb,
+      percentage: (networkInsight?.totalNetworkCost ?? 0) > 0 ? (other.cost / (networkInsight?.totalNetworkCost ?? 0)) * 100 : 0,
+    });
+    return topRows;
+  }, [networkInsight]);
+
+  const highlightedNetworkType = useMemo(() => {
+    if (!selectedNetworkType) return null;
+    const selected = normalizeNetworkTypeKey(selectedNetworkType);
+    const match = networkBreakdownRows.find((row) => normalizeNetworkTypeKey(row.type) === selected);
+    return match?.type ?? null;
+  }, [networkBreakdownRows, selectedNetworkType]);
+
+  useEffect(() => {
+    if (!highlightedNetworkType || activeTab !== "overview") return;
+    const node = networkRowRefs.current.get(highlightedNetworkType);
+    if (!node) return;
+    node.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [activeTab, highlightedNetworkType]);
+
+  const networkBreakdownDonutOption: EChartsOption = useMemo(() => ({
+    tooltip: { trigger: "item", confine: true, valueFormatter: (value) => formatCurrency(Number(value ?? 0)) },
+    legend: { show: true, bottom: 0, left: "center", textStyle: { fontSize: 11 } },
+    series: [
+      {
+        name: "Network Cost",
+        type: "pie",
+        radius: ["54%", "75%"],
+        center: ["50%", "42%"],
+        avoidLabelOverlap: true,
+        label: { show: false },
+        itemStyle: { borderRadius: 3, borderColor: "#fff", borderWidth: 1 },
+        data: networkBreakdownRows.map((row, index) => ({
+          name: row.type,
+          value: row.cost,
+          itemStyle: { color: NETWORK_BREAKDOWN_COLORS[index % NETWORK_BREAKDOWN_COLORS.length] },
+        })),
+      },
+    ],
+  }), [networkBreakdownRows]);
+
+  const dominantNetworkInsight = useMemo(() => {
+    const interRegion = networkBreakdownRows.find((item) => item.type === "Inter-Region Data Transfer");
+    const internet = networkBreakdownRows.find((item) => item.type === "Internet Data Transfer");
+    const nat = networkBreakdownRows.find((item) => item.type === "NAT Gateway");
+    if ((interRegion?.percentage ?? 0) > 40) return "High inter-region traffic detected. Consider co-locating services.";
+    if ((internet?.percentage ?? 0) > 50) return "High internet egress cost. Consider CDN or caching.";
+    if ((nat?.percentage ?? 0) > 20) return "NAT Gateway cost is significant. Evaluate VPC endpoints.";
+    return null;
+  }, [networkBreakdownRows]);
 
   const backToInstances = () => {
     const next = new URLSearchParams(location.search);
@@ -343,6 +418,60 @@ export default function EC2InstanceDetailPage() {
                 <h4>Network Trend</h4>
                 {detail.trends.networkTrend.length > 0 ? <BaseEChart option={overviewNetworkOption} height={260} /> : <p className="dashboard-note">Needs backend source</p>}
               </div>
+            </div>
+            <div className="ec2-instance-detail__network-breakdown">
+              <h4>Network Cost Breakdown</h4>
+              <div className="ec2-instance-detail__kpis ec2-instance-detail__kpis--compact">
+                <div className="ec2-instance-detail__kpi"><span>Total Network Cost ($)</span><strong>{formatCurrency(detail.networkInsight.totalNetworkCost)}</strong></div>
+                <div className="ec2-instance-detail__kpi"><span>Total Network Usage (GB)</span><strong>{formatNumber(detail.networkInsight.totalNetworkUsageGb)}</strong></div>
+              </div>
+              {networkBreakdownRows.length > 1 ? (
+                <div className="ec2-instance-detail__network-chart">
+                  <BaseEChart option={networkBreakdownDonutOption} height={280} />
+                </div>
+              ) : networkBreakdownRows.length === 1 ? (
+                <p className="dashboard-note">100% of network cost is from {networkBreakdownRows[0].type}</p>
+              ) : (
+                <p className="dashboard-note">No network cost data available for this range.</p>
+              )}
+              {dominantNetworkInsight ? <p className="dashboard-note">{dominantNetworkInsight}</p> : null}
+              {networkBreakdownRows.length > 0 ? (
+                <div className="ec2-instance-detail__network-table-wrap">
+                  <table className="ec2-instance-detail__simple-table">
+                    <thead>
+                      <tr>
+                        <th>Network Type</th>
+                        <th>Cost ($)</th>
+                        <th>% of Network</th>
+                        <th title="Billing usage from CUR consumed_quantity. This may differ from CloudWatch Network Usage.">Billed Usage (GB)</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {networkBreakdownRows.map((row) => {
+                        const isHighlighted = highlightedNetworkType === row.type;
+                        return (
+                          <tr
+                            key={row.type}
+                            ref={(node) => {
+                              if (!node) {
+                                networkRowRefs.current.delete(row.type);
+                                return;
+                              }
+                              networkRowRefs.current.set(row.type, node);
+                            }}
+                            className={isHighlighted ? "ec2-instance-detail__network-row--highlight" : undefined}
+                          >
+                            <td>{row.type}</td>
+                            <td>{formatCurrency(row.cost)}</td>
+                            <td>{formatPercent(row.percentage)}</td>
+                            <td>{formatNumber(row.usageGb)}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              ) : null}
             </div>
           </section>
         ) : null}

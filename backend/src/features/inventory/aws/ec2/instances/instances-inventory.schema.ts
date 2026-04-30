@@ -15,6 +15,15 @@ const instancesInventoryQuerySchema = z.object({
   region: z.string().trim().min(1).max(100).nullable(),
   instanceType: z.string().trim().min(1).max(100).nullable(),
   pricingType: z.enum(["on_demand", "reserved", "savings_plan", "spot"]).nullable(),
+  networkType: z.enum([
+    "Internet Data Transfer",
+    "Inter-Region Data Transfer",
+    "Inter-AZ Data Transfer",
+    "NAT Gateway",
+    "Elastic IP",
+    "Load Balancer",
+    "Other Network",
+  ]).nullable(),
   search: z.string().trim().min(1).max(200).nullable(),
   startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(),
   endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(),
@@ -113,6 +122,9 @@ export function parseInstancesInventoryListQuery(req: Request): InventoryEc2Inst
     firstQueryValue(req.query.pricingType) ?? firstQueryValue(req.query.pricing_type),
   );
   const search = toNullableString(firstQueryValue(req.query.search));
+  const networkType = toNullableString(
+    firstQueryValue(req.query.networkType) ?? firstQueryValue(req.query.network_type),
+  );
   const startDate = toNullableString(
     firstQueryValue(req.query.startDate) ?? firstQueryValue(req.query.start_date),
   );
@@ -132,6 +144,7 @@ export function parseInstancesInventoryListQuery(req: Request): InventoryEc2Inst
     region,
     instanceType,
     pricingType,
+    networkType,
     search,
     startDate,
     endDate,

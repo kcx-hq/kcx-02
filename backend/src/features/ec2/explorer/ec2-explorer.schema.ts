@@ -96,6 +96,18 @@ const querySchema = z
         message: "tagKey is required when groupBy=tag",
       });
     }
+    if (value.metric === "usage") {
+      const allowedForCpu = new Set(["team", "product", "environment", "region", "account", "instance_type", "tag"]);
+      const allowedForNetwork = new Set(["network_type", "region", "account", "instance_type", "tag"]);
+      const allowed = value.usageType === "network" ? allowedForNetwork : allowedForCpu;
+      if (!allowed.has(value.groupBy)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["groupBy"],
+          message: `groupBy=${value.groupBy} is not allowed for usageType=${value.usageType}`,
+        });
+      }
+    }
   });
 
 export function buildEc2ExplorerInput(req: Request, scope: DashboardScope): Ec2ExplorerInput {
@@ -115,6 +127,10 @@ export function buildEc2ExplorerInput(req: Request, scope: DashboardScope): Ec2E
     ? "instance_type"
     : groupByRaw === "reservation-type"
       ? "reservation_type"
+      : groupByRaw === "network-cost"
+        ? "network_cost"
+        : groupByRaw === "network-type"
+          ? "network_type"
       : groupByRaw;
   const tagKeyRaw = firstQueryValue(req.query.tagKey);
   const tagKey = tagKeyRaw && tagKeyRaw.trim().length > 0 ? tagKeyRaw.trim() : null;

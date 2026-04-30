@@ -27,3 +27,19 @@ export async function handleGetEc2Explorer(req: Request, res: Response): Promise
     data: mapEc2ExplorerResponse(data),
   });
 }
+
+export async function handleGetEc2ExplorerNetworkBreakdown(req: Request, res: Response): Promise<void> {
+  const dashboardRequest = buildDashboardRequest(req);
+  validateDashboardRequest(dashboardRequest);
+  const scope = await scopeResolver.resolve(dashboardRequest);
+  const input = buildEc2ExplorerInput(req, scope);
+  const data = await explorerService.getNetworkBreakdown(input);
+
+  sendSuccess({
+    res,
+    req,
+    statusCode: HTTP_STATUS.OK,
+    message: "EC2 explorer network breakdown fetched successfully",
+    data,
+  });
+}

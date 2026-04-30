@@ -24,10 +24,12 @@ const toApiGroupBy = (
     ? "instance_type"
     : groupBy === "reservation-type"
       ? "reservation_type"
-      : groupBy === "usage-category"
-        ? "usage_category"
       : groupBy === "cost-category"
         ? "cost_category"
+      : groupBy === "network-cost"
+        ? "network_cost"
+        : groupBy === "network-type"
+          ? "network_type"
       : groupBy;
 
 const toApiCostBasis = (
@@ -62,10 +64,12 @@ const toQueryGroupBy = (groupBy: EC2ExplorerControlsState["groupBy"]): string =>
     ? "instance_type"
     : groupBy === "reservation-type"
       ? "reservation_type"
-      : groupBy === "usage-category"
-        ? "usage_category"
-        : groupBy === "cost-category"
+      : groupBy === "cost-category"
           ? "cost_category"
+        : groupBy === "network-cost"
+          ? "network_cost"
+          : groupBy === "network-type"
+            ? "network_type"
           : groupBy;
 
 const normalizeReservationType = (value: string): string | null => {
@@ -95,8 +99,6 @@ export default function EC2ExplorerPage() {
     undefined;
 
   const [controls, setControls] = useState<EC2ExplorerControlsState>(EC2_EXPLORER_DEFAULT_CONTROLS);
-  const shouldSendUsageMetric =
-    controls.metric === "usage" && controls.groupBy !== "usage-category";
   const filters = useMemo(
     () => ({
       startDate: scopeStartDate,
@@ -107,7 +109,7 @@ export default function EC2ExplorerPage() {
       regions: controls.scopeFilters.region,
       tags: controls.scopeFilters.tags.map((tagValue) => `tag:${tagValue}`),
       costBasis: controls.metric === "cost" ? toApiCostBasis(controls.costBasis) : undefined,
-      usageMetric: shouldSendUsageMetric ? controls.usageMetric : undefined,
+      usageType: controls.metric === "usage" ? controls.usageType : undefined,
       aggregation: controls.metric === "usage" ? toApiAggregation(controls.usageAggregation) : undefined,
       condition: controls.metric === "instances" ? controls.instancesCondition : undefined,
       groupValues: controls.groupByValues,
@@ -120,7 +122,7 @@ export default function EC2ExplorerPage() {
       states: controls.instancesState ? [controls.instancesState] : [],
       instanceTypes: controls.instanceType && controls.instanceType !== "all" ? [controls.instanceType] : [],
     }),
-    [controls, scopeEndDate, scopeStartDate, shouldSendUsageMetric],
+    [controls, scopeEndDate, scopeStartDate],
   );
 
   const query = useEc2ExplorerQuery(filters, Boolean(scope));
@@ -178,13 +180,17 @@ export default function EC2ExplorerPage() {
       next.delete("costBasis");
     }
     if (controls.metric === "usage") {
-      next.set("usageMetric", controls.usageMetric);
+      next.set("usageType", controls.usageType);
       next.set("aggregation", controls.usageAggregation);
     } else {
-      next.delete("usageMetric");
       next.delete("aggregation");
     }
     Object.entries(extras).forEach(([key, value]) => next.set(key, value));
+    if ((controls.groupBy === "network-cost" || controls.groupBy === "network-type") && extras.networkType) {
+      next.set("networkType", extras.networkType);
+    } else if (controls.groupBy !== "network-cost" && controls.groupBy !== "network-type") {
+      next.delete("networkType");
+    }
     if (extras.groupValue) {
       const groupValue = extras.groupValue.trim();
       if (controls.groupBy === "reservation-type") {
@@ -220,15 +226,11 @@ export default function EC2ExplorerPage() {
             ? "Billed Cost"
             : "Effective Cost"
         : controls.metric === "usage"
-          ? controls.usageMetric === "network_in"
-            ? "Network In"
-            : controls.usageMetric === "network_out"
-              ? "Network Out"
-              : controls.usageMetric === "disk_read"
-                ? "Disk Read"
-                : controls.usageMetric === "disk_write"
-                  ? "Disk Write"
-                  : "CPU"
+          ? controls.usageType === "network"
+            ? "Network"
+            : controls.usageType === "disk"
+              ? "Disk"
+              : "CPU"
           : controls.instancesCondition === "underutilized"
             ? "Underutilized"
             : controls.instancesCondition === "overutilized"
@@ -255,7 +257,7 @@ export default function EC2ExplorerPage() {
           setControls((current) => ({
             ...current,
             costBasis: EC2_EXPLORER_DEFAULT_CONTROLS.costBasis,
-            usageMetric: EC2_EXPLORER_DEFAULT_CONTROLS.usageMetric,
+            usageType: EC2_EXPLORER_DEFAULT_CONTROLS.usageType,
             instancesCondition: EC2_EXPLORER_DEFAULT_CONTROLS.instancesCondition,
           })),
       },
@@ -326,6 +328,11 @@ export default function EC2ExplorerPage() {
       </section>
 
       <section className="ec2-explorer-chart-panel" aria-label="EC2 explorer chart panel">
+        {(controls.groupBy === "network-cost" || (controls.metric === "usage" && controls.usageType === "network" && controls.groupBy === "network-type")) ? (
+          <p className="dashboard-note">
+            Billed Usage is from AWS billing data and may differ from CloudWatch Network Usage.
+          </p>
+        ) : null}
         <EC2ExplorerChart
           title={`${metricLabel} Breakdown`}
           chartType={resolvedGraphType}
@@ -355,6 +362,7 @@ export default function EC2ExplorerPage() {
             navigateToInstanceList("explorer-graph", {
               selectedDate: date,
               groupValue: seriesLabel ?? seriesKey ?? "all",
+              ...((controls.groupBy === "network-cost" || controls.groupBy === "network-type") && seriesLabel ? { networkType: seriesLabel } : {}),
             });
           }}
         />
@@ -375,6 +383,7 @@ export default function EC2ExplorerPage() {
                 : String(row.group ?? row.id);
             navigateToInstanceList("explorer-table", {
               groupValue,
+              ...(controls.groupBy === "network-cost" || controls.groupBy === "network-type" ? { networkType: groupValue } : {}),
             });
           }}
           onRecommendationClick={() => {

@@ -6,9 +6,15 @@ export type Ec2ExplorerMetric = (typeof EC2_EXPLORER_METRICS)[number];
 export const EC2_EXPLORER_GROUP_BY = [
   "none",
   "region",
+  "account",
   "instance_type",
+  "team",
+  "product",
+  "environment",
   "reservation_type",
   "cost_category",
+  "network_cost",
+  "network_type",
   "tag",
 ] as const;
 export type Ec2ExplorerGroupBy = (typeof EC2_EXPLORER_GROUP_BY)[number];
@@ -113,6 +119,32 @@ export type Ec2ExplorerResponse = {
   summary: Ec2ExplorerSummary;
   graph: Ec2ExplorerGraph;
   table: Ec2ExplorerTable;
+};
+
+export const EC2_NETWORK_BREAKDOWN_TYPES = [
+  "Internet Data Transfer",
+  "Inter-Region Data Transfer",
+  "Inter-AZ Data Transfer",
+  "NAT Gateway",
+  "Elastic IP",
+  "Load Balancer",
+  "Other Network",
+] as const;
+export type Ec2NetworkBreakdownType = (typeof EC2_NETWORK_BREAKDOWN_TYPES)[number];
+
+export type Ec2NetworkBreakdownCategory = {
+  type: Ec2NetworkBreakdownType;
+  cost: number;
+  percent: number;
+  usageQuantity: number;
+  resourceCount: number;
+};
+
+export type Ec2NetworkBreakdownResponse = {
+  totalNetworkCost: number;
+  totalNetworkUsageGb: number | null;
+  categories: Ec2NetworkBreakdownCategory[];
+  note: string | null;
 };
 
 export type Ec2ExplorerFactRow = {

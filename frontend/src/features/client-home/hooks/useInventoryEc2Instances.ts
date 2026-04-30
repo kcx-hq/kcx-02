@@ -22,6 +22,7 @@ export function useInventoryEc2Instances(params: InventoryEc2InstancesListParams
       params.region ?? "all",
       params.instanceType ?? "all",
       params.pricingType ?? "all",
+      params.networkType ?? "all",
       params.search ?? "",
       params.startDate ?? "default-start",
       params.endDate ?? "default-end",
