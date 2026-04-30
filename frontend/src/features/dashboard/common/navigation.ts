@@ -111,6 +111,12 @@ export const dashboardNav: DashboardNavNode[] = [
             path: "/dashboard/s3/usage",
             icon: "activity",
           },
+          {
+            kind: "link",
+            label: "Optimization",
+            path: "/dashboard/s3/optimization",
+            icon: "gauge",
+          },
         ],
       },
       {

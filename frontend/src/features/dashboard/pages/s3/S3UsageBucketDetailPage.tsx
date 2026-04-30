@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 
 import { type S3CostInsightsFiltersQuery } from "../../api/dashboardApi";
-import { useS3CostInsightsQuery } from "../../hooks/useDashboardQueries";
+import { useS3BucketLifecycleInsightQuery, useS3CostInsightsQuery } from "../../hooks/useDashboardQueries";
 import { S3BucketDetailPanel } from "./components/S3BucketDetailPanel";
 import { type S3BucketTableRow } from "./components/S3BucketInsightsTable";
 import { S3BucketUsageTrendPanel } from "./components/S3BucketUsageTrendPanel";
@@ -45,6 +45,7 @@ export default function S3UsageBucketDetailPage() {
   }, [location.search]);
 
   const query = useS3CostInsightsQuery(queryFilters);
+  const lifecycleInsightQuery = useS3BucketLifecycleInsightQuery(bucketNameParam || null);
   const storageUsageQuery = useS3CostInsightsQuery({
     ...queryFilters,
     bucket: bucketNameParam,
@@ -116,6 +117,34 @@ export default function S3UsageBucketDetailPage() {
     [storageClassUsageQuery.data?.chart.breakdown.series],
   );
 
+  const lifecycleInsight = lifecycleInsightQuery.data?.insight ?? null;
+  const effectiveLifecycleInsight = lifecycleInsight;
+  const lifecycleStatusLabel = useMemo(() => {
+    if (!effectiveLifecycleInsight?.lifecycleStatus) return effectiveLifecycleInsight?.hasLifecyclePolicy ? "Present" : "Unknown";
+    return String(effectiveLifecycleInsight.lifecycleStatus)
+      .trim()
+      .toLowerCase()
+      .split("_")
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(" ");
+  }, [effectiveLifecycleInsight?.hasLifecyclePolicy, effectiveLifecycleInsight?.lifecycleStatus]);
+
+  const lifecycleStatusTone = useMemo(() => {
+    const risk = effectiveLifecycleInsight?.riskLevel ?? "";
+    if (risk === "low") return "good";
+    if (risk === "medium") return "warn";
+    if (risk === "high") return "critical";
+    return "unknown";
+  }, [effectiveLifecycleInsight?.riskLevel]);
+
+  const lifecycleScanLabel = useMemo(() => {
+    const value = effectiveLifecycleInsight?.scanTime;
+    if (!value) return "--";
+    const scanDate = new Date(value);
+    if (Number.isNaN(scanDate.getTime())) return "--";
+    return scanDate.toLocaleString("en-US", { year: "numeric", month: "short", day: "2-digit" });
+  }, [effectiveLifecycleInsight?.scanTime]);
+
   const handleBack = () => {
     navigate({
       pathname: "/dashboard/s3/usage",
@@ -139,6 +168,58 @@ export default function S3UsageBucketDetailPage() {
             storageLens={selectedBucket.storageLens ?? null}
             onClose={handleBack}
           />
+          <section className="s3-lifecycle-insight-card" aria-label="Lifecycle policy insight">
+            <div className="s3-lifecycle-insight-card__header">
+              <h3 className="s3-lifecycle-insight-card__title">Lifecycle Policy Insight</h3>
+              <span className={`s3-lifecycle-insight-card__status is-${lifecycleStatusTone}`}>
+                {lifecycleStatusLabel}
+              </span>
+            </div>
+            <div className="s3-lifecycle-insight-card__meta">
+              <article className="s3-lifecycle-insight-card__meta-item">
+                <p className="s3-lifecycle-insight-card__meta-label">Rules Count</p>
+                <p className="s3-lifecycle-insight-card__meta-value">{effectiveLifecycleInsight?.lifecycleRulesCount ?? "--"}</p>
+              </article>
+              <article className="s3-lifecycle-insight-card__meta-item">
+                <p className="s3-lifecycle-insight-card__meta-label">Enabled Rules</p>
+                <p className="s3-lifecycle-insight-card__meta-value">{effectiveLifecycleInsight?.enabledRulesCount ?? "--"}</p>
+              </article>
+              <article className="s3-lifecycle-insight-card__meta-item">
+                <p className="s3-lifecycle-insight-card__meta-label">Transition Coverage</p>
+                <p className="s3-lifecycle-insight-card__meta-value">{effectiveLifecycleInsight?.transitionRulesCount ?? "--"}</p>
+              </article>
+              <article className="s3-lifecycle-insight-card__meta-item">
+                <p className="s3-lifecycle-insight-card__meta-label">Last Scan</p>
+                <p className="s3-lifecycle-insight-card__meta-value">{lifecycleScanLabel}</p>
+              </article>
+            </div>
+            <p className="s3-lifecycle-insight-card__headline">
+              {effectiveLifecycleInsight?.headline ?? "Lifecycle policy status is not available yet for this bucket."}
+            </p>
+            <p className="s3-lifecycle-insight-card__recommendation">
+              {effectiveLifecycleInsight?.recommendation ?? "Run S3 bucket config snapshot sync to load lifecycle metadata."}
+            </p>
+            {Array.isArray(effectiveLifecycleInsight?.topRules) && effectiveLifecycleInsight.topRules.length > 0 ? (
+              <div className="s3-lifecycle-insight-card__rules">
+                <p className="s3-lifecycle-insight-card__rules-title">Top Lifecycle Rules</p>
+                <div className="s3-lifecycle-insight-card__rules-grid">
+                  {effectiveLifecycleInsight.topRules.map((rule, idx) => (
+                    <article key={`${rule.id ?? "rule"}-${idx}`} className="s3-lifecycle-insight-card__rule">
+                      <p className="s3-lifecycle-insight-card__rule-name">{rule.id || `Rule ${idx + 1}`}</p>
+                      <p className="s3-lifecycle-insight-card__rule-meta">
+                        {rule.status} • Transition: {rule.hasTransition ? "Yes" : "No"} • Expiration: {rule.hasExpiration ? "Yes" : "No"}
+                      </p>
+                    </article>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+            {lifecycleInsightQuery.isError ? (
+              <p className="s3-lifecycle-insight-card__error">
+                Failed to load lifecycle snapshot: {lifecycleInsightQuery.error.message}
+              </p>
+            ) : null}
+          </section>
           <S3BucketUsageTrendPanel
             breakdown={usageByTypeTrendQuery.data?.chart.breakdown}
             isLoading={usageByTypeTrendQuery.isLoading && !usageByTypeTrendQuery.data}
