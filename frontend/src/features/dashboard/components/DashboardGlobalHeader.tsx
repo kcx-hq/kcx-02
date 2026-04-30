@@ -475,7 +475,11 @@ export function DashboardGlobalHeader() {
       ];
     }
     if (path === "/dashboard/services/database") {
-      return [rootCrumb, "Services", "Database"];
+      return [
+        { label: rootCrumb, path: "/dashboard/overview" },
+        { label: "Services", path: "/dashboard/inventory" },
+        { label: "Database" },
+      ];
     }
 
     const bestMatch = dashboardNavLinks

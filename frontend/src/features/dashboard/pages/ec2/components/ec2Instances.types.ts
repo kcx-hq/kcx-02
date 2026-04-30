@@ -3,12 +3,22 @@ import type { EC2ScopeFilters, EC2Thresholds } from "../ec2ExplorerControls.type
 export type EC2InstancesCondition = "all" | "idle" | "underutilized" | "overutilized" | "uncovered";
 export type EC2InstancesStateFilter = "all" | "running" | "stopped" | "terminated";
 export type EC2InstancesReservationType = "all" | "on_demand" | "reserved" | "savings_plan" | "spot";
+export type EC2InstancesNetworkType =
+  | "all"
+  | "Internet Data Transfer"
+  | "Inter-Region Data Transfer"
+  | "Inter-AZ Data Transfer"
+  | "NAT Gateway"
+  | "Elastic IP"
+  | "Load Balancer"
+  | "Other Network";
 
 export type EC2InstancesControlsState = {
   condition: EC2InstancesCondition;
   state: EC2InstancesStateFilter;
   instanceType: string;
   reservationType: EC2InstancesReservationType;
+  networkType: EC2InstancesNetworkType;
   scopeFilters: EC2ScopeFilters;
   thresholds: EC2Thresholds;
   search: string;
@@ -45,6 +55,7 @@ export const EC2_INSTANCES_DEFAULT_CONTROLS: EC2InstancesControlsState = {
   state: "all",
   instanceType: "all",
   reservationType: "all",
+  networkType: "all",
   scopeFilters: {
     region: [],
     tags: [],

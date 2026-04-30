@@ -2,6 +2,8 @@ import { QueryTypes } from "sequelize";
 
 import { BadRequestError, NotFoundError } from "../../../../../errors/http-errors.js";
 import { sequelize } from "../../../../../models/index.js";
+import { logger } from "../../../../../utils/logger.js";
+import { classifyNetworkCostType } from "../../../../ec2/explorer/network-cost-classifier.js";
 import type {
   InventoryEc2InstanceDetailQuery,
   InventoryEc2InstanceDetailResponse,
@@ -112,6 +114,33 @@ const toNullableNumber = (value: number | string | null | undefined): number | n
 const toNumberOrZero = (value: number | string | null | undefined): number => {
   const parsed = toNullableNumber(value);
   return parsed ?? 0;
+};
+
+const BYTES_TO_GB_DIVISOR = 1024 * 1024 * 1024;
+const USAGE_UNIT_BYTES = "bytes";
+const USAGE_UNIT_GB = "gb";
+const BYTE_LIKE_THRESHOLD = 1024 * 1024;
+
+const detectUsageUnitFromText = (value: string | null | undefined): "bytes" | "gb" | null => {
+  if (!value) return null;
+  const normalized = value.toLowerCase();
+  if (normalized.includes("byte")) return USAGE_UNIT_BYTES;
+  if (normalized.includes("gb") || normalized.includes("gib")) return USAGE_UNIT_GB;
+  return null;
+};
+
+const shouldConvertByteLikeQuantityToGb = (usageQuantity: number, usageUnit: "bytes" | "gb" | null): boolean => {
+  if (usageQuantity <= 0) return false;
+  if (usageUnit === USAGE_UNIT_GB) return false;
+  if (usageUnit === USAGE_UNIT_BYTES) return true;
+  return usageQuantity >= BYTE_LIKE_THRESHOLD;
+};
+
+const shouldLogNetworkBreakdownDebug = (): boolean => {
+  if (process.env.NETWORK_BREAKDOWN_USAGE_DEBUG === "1" || process.env.NETWORK_BREAKDOWN_USAGE_DEBUG === "true") {
+    return true;
+  }
+  return process.env.NODE_ENV !== "production";
 };
 
 const toIsoOrNull = (value: Date | string | null): string | null => {
@@ -240,6 +269,7 @@ export class InstancesInventoryService {
       state: null,
       instanceType: null,
       pricingType: null,
+      networkType: null,
       region: null,
       search: null,
       subAccountKey: null,
@@ -406,6 +436,143 @@ export class InstancesInventoryService {
       outGb: toNumberOrZero(row.networkOutBytes) / (1024 * 1024 * 1024),
     }));
 
+    const networkLineItems = await sequelize.query<{
+      usageType: string | null;
+      productUsageType: string | null;
+      productFamily: string | null;
+      operation: string | null;
+      lineItemDescription: string | null;
+      fromLocation: string | null;
+      toLocation: string | null;
+      fromRegionCode: string | null;
+      toRegionCode: string | null;
+      cost: number | string | null;
+      usageQuantity: number | string | null;
+      pricingUnitSample: string | null;
+    }>(
+      `
+      SELECT
+        fcli.usage_type AS "usageType",
+        fcli.product_usage_type AS "productUsageType",
+        fcli.product_family AS "productFamily",
+        fcli.operation AS operation,
+        fcli.line_item_description AS "lineItemDescription",
+        fcli.from_location AS "fromLocation",
+        fcli.to_location AS "toLocation",
+        fcli.from_region_code AS "fromRegionCode",
+        fcli.to_region_code AS "toRegionCode",
+        SUM(COALESCE(fcli.effective_cost, fcli.billed_cost, 0))::double precision AS cost,
+        SUM(COALESCE(fcli.consumed_quantity, fcli.pricing_quantity, 0))::double precision AS "usageQuantity",
+        MAX(NULLIF(TRIM(dsku.pricing_unit), '')) AS "pricingUnitSample"
+      FROM fact_cost_line_items fcli
+      INNER JOIN dim_resource dr
+        ON dr.id = fcli.resource_key
+       AND dr.tenant_id = fcli.tenant_id
+      LEFT JOIN dim_sku dsku
+        ON dsku.id = fcli.sku_key
+      LEFT JOIN dim_date dd
+        ON dd.id = fcli.usage_date_key
+      WHERE fcli.tenant_id = $1::uuid
+        AND dr.resource_id = $2
+        AND COALESCE(dd.full_date, DATE(COALESCE(fcli.usage_start_time, fcli.usage_end_time)))
+            BETWEEN $3::date AND $4::date
+        AND (
+          LOWER(COALESCE(fcli.usage_type, '')) LIKE '%datatransfer%'
+          OR LOWER(COALESCE(fcli.product_usage_type, '')) LIKE '%datatransfer%'
+          OR LOWER(COALESCE(fcli.product_family, '')) LIKE '%data transfer%'
+          OR LOWER(COALESCE(fcli.line_item_description, '')) LIKE '%data transfer%'
+          OR LOWER(COALESCE(fcli.usage_type, '')) LIKE '%natgateway%'
+          OR LOWER(COALESCE(fcli.usage_type, '')) LIKE '%elasticip%'
+          OR LOWER(COALESCE(fcli.usage_type, '')) LIKE '%loadbalancer%'
+          OR LOWER(COALESCE(fcli.usage_type, '')) LIKE '%lcu%'
+          OR LOWER(COALESCE(fcli.operation, '')) LIKE '%natgateway%'
+          OR LOWER(COALESCE(fcli.operation, '')) LIKE '%loadbalanc%'
+        )
+      GROUP BY
+        fcli.usage_type,
+        fcli.product_usage_type,
+        fcli.product_family,
+        fcli.operation,
+        fcli.line_item_description,
+        fcli.from_location,
+        fcli.to_location,
+        fcli.from_region_code,
+        fcli.to_region_code;
+      `,
+      {
+        bind: [
+          input.tenantId,
+          input.query.instanceId,
+          dateRange.startDate,
+          dateRange.endDate,
+        ],
+        type: QueryTypes.SELECT,
+      },
+    );
+
+    const breakdownAccumulator = new Map<string, { cost: number; usageGb: number }>();
+    let totalNetworkCostFromLineItems = 0;
+    let totalNetworkUsageGbFromLineItems = 0;
+    const networkBreakdownDebugRows: Array<{
+      usageType: string | null;
+      productUsageType: string | null;
+      operation: string | null;
+      lineItemDescription: string | null;
+      consumedQuantity: number;
+      cost: number;
+      classifiedNetworkType: string;
+    }> = [];
+    for (const row of networkLineItems) {
+      const type = classifyNetworkCostType(row);
+      const costValue = Math.max(0, toNumberOrZero(row.cost));
+      const usageQuantityRaw = Math.max(0, toNumberOrZero(row.usageQuantity));
+      const usageUnit =
+        detectUsageUnitFromText(row.pricingUnitSample) ??
+        detectUsageUnitFromText(row.lineItemDescription);
+      const usageGb = shouldConvertByteLikeQuantityToGb(usageQuantityRaw, usageUnit)
+        ? usageQuantityRaw / BYTES_TO_GB_DIVISOR
+        : usageQuantityRaw;
+
+      totalNetworkCostFromLineItems += costValue;
+      totalNetworkUsageGbFromLineItems += usageGb;
+      const current = breakdownAccumulator.get(type) ?? { cost: 0, usageGb: 0 };
+      current.cost += costValue;
+      current.usageGb += usageGb;
+      breakdownAccumulator.set(type, current);
+
+      if (networkBreakdownDebugRows.length < 30) {
+        networkBreakdownDebugRows.push({
+          usageType: row.usageType,
+          productUsageType: row.productUsageType,
+          operation: row.operation,
+          lineItemDescription: row.lineItemDescription,
+          consumedQuantity: usageQuantityRaw,
+          cost: costValue,
+          classifiedNetworkType: type,
+        });
+      }
+    }
+
+    if (shouldLogNetworkBreakdownDebug() && networkBreakdownDebugRows.length > 0) {
+      logger.debug("EC2 instance detail network breakdown sample rows", {
+        instanceId: input.query.instanceId,
+        cloudConnectionId: input.query.cloudConnectionId ?? null,
+        startDate: dateRange.startDate,
+        endDate: dateRange.endDate,
+        rows: networkBreakdownDebugRows,
+      });
+    }
+
+    const networkInsightBreakdown = [...breakdownAccumulator.entries()]
+      .map(([type, values]) => ({
+        type,
+        cost: values.cost,
+        usageGb: values.usageGb,
+        percentage: totalNetworkCostFromLineItems > 0 ? (values.cost / totalNetworkCostFromLineItems) * 100 : 0,
+      }))
+      .filter((item) => item.cost > 0)
+      .sort((a, b) => b.cost - a.cost);
+
     return {
       identity: {
         instanceId: instance.instanceId,
@@ -465,6 +632,11 @@ export class InstancesInventoryService {
         status: row.status ?? "open",
       })),
       trends: { costTrend, cpuTrend, networkTrend },
+      networkInsight: {
+        totalNetworkCost: totalNetworkCostFromLineItems,
+        totalNetworkUsageGb: totalNetworkUsageGbFromLineItems,
+        breakdown: networkInsightBreakdown,
+      },
     };
   }
 
@@ -830,6 +1002,104 @@ export class InstancesInventoryService {
           AND fed.usage_date <= $${dateEndIndex}::date
       )
     `);
+
+    const normalizedNetworkType = input.query.networkType?.trim();
+    if (normalizedNetworkType) {
+      whereParts.push(`
+        EXISTS (
+          SELECT 1
+          FROM fact_cost_line_items fcli
+          LEFT JOIN dim_date dd
+            ON dd.id = fcli.usage_date_key
+          LEFT JOIN dim_resource dres
+            ON dres.id = fcli.resource_key
+          WHERE fcli.tenant_id = inv.tenant_id
+            AND COALESCE(dd.full_date, DATE(COALESCE(fcli.usage_start_time, fcli.usage_end_time)))
+              >= $${dateStartIndex}::date
+            AND COALESCE(dd.full_date, DATE(COALESCE(fcli.usage_start_time, fcli.usage_end_time)))
+              <= $${dateEndIndex}::date
+            AND (
+              LOWER(COALESCE(fcli.usage_type, '')) LIKE '%datatransfer%'
+              OR LOWER(COALESCE(fcli.product_usage_type, '')) LIKE '%datatransfer%'
+              OR LOWER(COALESCE(fcli.product_family, '')) LIKE '%data transfer%'
+              OR LOWER(COALESCE(fcli.line_item_description, '')) LIKE '%data transfer%'
+              OR LOWER(COALESCE(fcli.usage_type, '')) LIKE '%natgateway%'
+              OR LOWER(COALESCE(fcli.usage_type, '')) LIKE '%elasticip%'
+              OR LOWER(COALESCE(fcli.usage_type, '')) LIKE '%loadbalancer%'
+              OR LOWER(COALESCE(fcli.usage_type, '')) LIKE '%lcu%'
+              OR LOWER(COALESCE(fcli.operation, '')) LIKE '%natgateway%'
+              OR LOWER(COALESCE(fcli.operation, '')) LIKE '%loadbalanc%'
+            )
+            AND (
+              dres.resource_id = inv.instance_id
+              OR dres.resource_id ILIKE ('%' || inv.instance_id || '%')
+            )
+            AND (
+              CASE
+                WHEN (
+                  LOWER(COALESCE(fcli.usage_type, '') || ' ' || COALESCE(fcli.product_usage_type, '') || ' ' || COALESCE(fcli.product_family, '') || ' ' || COALESCE(fcli.operation, '') || ' ' || COALESCE(fcli.line_item_description, '') || ' ' || COALESCE(fcli.from_location, '') || ' ' || COALESCE(fcli.to_location, ''))
+                    LIKE '%natgateway%'
+                  OR LOWER(COALESCE(fcli.usage_type, '') || ' ' || COALESCE(fcli.product_usage_type, '') || ' ' || COALESCE(fcli.product_family, '') || ' ' || COALESCE(fcli.operation, '') || ' ' || COALESCE(fcli.line_item_description, '') || ' ' || COALESCE(fcli.from_location, '') || ' ' || COALESCE(fcli.to_location, ''))
+                    LIKE '%nat-gateway%'
+                  OR LOWER(COALESCE(fcli.usage_type, '') || ' ' || COALESCE(fcli.product_usage_type, '') || ' ' || COALESCE(fcli.product_family, '') || ' ' || COALESCE(fcli.operation, '') || ' ' || COALESCE(fcli.line_item_description, '') || ' ' || COALESCE(fcli.from_location, '') || ' ' || COALESCE(fcli.to_location, ''))
+                    LIKE '%nat gateway%'
+                ) THEN 'NAT Gateway'
+                WHEN (
+                  LOWER(COALESCE(fcli.usage_type, '') || ' ' || COALESCE(fcli.product_usage_type, '') || ' ' || COALESCE(fcli.product_family, '') || ' ' || COALESCE(fcli.operation, '') || ' ' || COALESCE(fcli.line_item_description, '') || ' ' || COALESCE(fcli.from_location, '') || ' ' || COALESCE(fcli.to_location, ''))
+                    LIKE '%elasticip%'
+                  OR LOWER(COALESCE(fcli.usage_type, '') || ' ' || COALESCE(fcli.product_usage_type, '') || ' ' || COALESCE(fcli.product_family, '') || ' ' || COALESCE(fcli.operation, '') || ' ' || COALESCE(fcli.line_item_description, '') || ' ' || COALESCE(fcli.from_location, '') || ' ' || COALESCE(fcli.to_location, ''))
+                    LIKE '%elastic ip%'
+                  OR LOWER(COALESCE(fcli.usage_type, '') || ' ' || COALESCE(fcli.product_usage_type, '') || ' ' || COALESCE(fcli.product_family, '') || ' ' || COALESCE(fcli.operation, '') || ' ' || COALESCE(fcli.line_item_description, '') || ' ' || COALESCE(fcli.from_location, '') || ' ' || COALESCE(fcli.to_location, ''))
+                    LIKE '%idleaddress%'
+                  OR LOWER(COALESCE(fcli.usage_type, '') || ' ' || COALESCE(fcli.product_usage_type, '') || ' ' || COALESCE(fcli.product_family, '') || ' ' || COALESCE(fcli.operation, '') || ' ' || COALESCE(fcli.line_item_description, '') || ' ' || COALESCE(fcli.from_location, '') || ' ' || COALESCE(fcli.to_location, ''))
+                    LIKE '%inuseaddress%'
+                ) THEN 'Elastic IP'
+                WHEN (
+                  LOWER(COALESCE(fcli.usage_type, '') || ' ' || COALESCE(fcli.product_usage_type, '') || ' ' || COALESCE(fcli.product_family, '') || ' ' || COALESCE(fcli.operation, '') || ' ' || COALESCE(fcli.line_item_description, '') || ' ' || COALESCE(fcli.from_location, '') || ' ' || COALESCE(fcli.to_location, ''))
+                    LIKE '%loadbalancer%'
+                  OR LOWER(COALESCE(fcli.usage_type, '') || ' ' || COALESCE(fcli.product_usage_type, '') || ' ' || COALESCE(fcli.product_family, '') || ' ' || COALESCE(fcli.operation, '') || ' ' || COALESCE(fcli.line_item_description, '') || ' ' || COALESCE(fcli.from_location, '') || ' ' || COALESCE(fcli.to_location, ''))
+                    LIKE '%load balancer%'
+                  OR LOWER(COALESCE(fcli.usage_type, '') || ' ' || COALESCE(fcli.product_usage_type, '') || ' ' || COALESCE(fcli.product_family, '') || ' ' || COALESCE(fcli.operation, '') || ' ' || COALESCE(fcli.line_item_description, '') || ' ' || COALESCE(fcli.from_location, '') || ' ' || COALESCE(fcli.to_location, ''))
+                    LIKE '%lcu%'
+                  OR LOWER(COALESCE(fcli.usage_type, '') || ' ' || COALESCE(fcli.product_usage_type, '') || ' ' || COALESCE(fcli.product_family, '') || ' ' || COALESCE(fcli.operation, '') || ' ' || COALESCE(fcli.line_item_description, '') || ' ' || COALESCE(fcli.from_location, '') || ' ' || COALESCE(fcli.to_location, ''))
+                    LIKE '%alb%'
+                  OR LOWER(COALESCE(fcli.usage_type, '') || ' ' || COALESCE(fcli.product_usage_type, '') || ' ' || COALESCE(fcli.product_family, '') || ' ' || COALESCE(fcli.operation, '') || ' ' || COALESCE(fcli.line_item_description, '') || ' ' || COALESCE(fcli.from_location, '') || ' ' || COALESCE(fcli.to_location, ''))
+                    LIKE '%nlb%'
+                  OR LOWER(COALESCE(fcli.usage_type, '') || ' ' || COALESCE(fcli.product_usage_type, '') || ' ' || COALESCE(fcli.product_family, '') || ' ' || COALESCE(fcli.operation, '') || ' ' || COALESCE(fcli.line_item_description, '') || ' ' || COALESCE(fcli.from_location, '') || ' ' || COALESCE(fcli.to_location, ''))
+                    LIKE '%elb%'
+                  OR LOWER(COALESCE(fcli.usage_type, '') || ' ' || COALESCE(fcli.product_usage_type, '') || ' ' || COALESCE(fcli.product_family, '') || ' ' || COALESCE(fcli.operation, '') || ' ' || COALESCE(fcli.line_item_description, '') || ' ' || COALESCE(fcli.from_location, '') || ' ' || COALESCE(fcli.to_location, ''))
+                    LIKE '%loadbalancing%'
+                ) THEN 'Load Balancer'
+                WHEN (
+                  LOWER(COALESCE(fcli.to_location, '')) LIKE '%internet%'
+                  OR LOWER(COALESCE(fcli.to_location, '')) LIKE '%external%'
+                  OR LOWER(COALESCE(fcli.from_location, '')) LIKE '%internet%'
+                  OR LOWER(COALESCE(fcli.from_location, '')) LIKE '%external%'
+                ) THEN 'Internet Data Transfer'
+                WHEN (
+                  LENGTH(COALESCE(fcli.from_region_code, '')) > 0
+                  AND LENGTH(COALESCE(fcli.to_region_code, '')) > 0
+                  AND LOWER(COALESCE(fcli.from_region_code, '')) <> LOWER(COALESCE(fcli.to_region_code, ''))
+                ) THEN 'Inter-Region Data Transfer'
+                WHEN (
+                  LENGTH(COALESCE(fcli.from_region_code, '')) > 0
+                  AND LENGTH(COALESCE(fcli.to_region_code, '')) > 0
+                  AND LOWER(COALESCE(fcli.from_region_code, '')) = LOWER(COALESCE(fcli.to_region_code, ''))
+                ) THEN 'Inter-AZ Data Transfer'
+                WHEN (
+                  LOWER(COALESCE(fcli.usage_type, '') || ' ' || COALESCE(fcli.product_usage_type, '') || ' ' || COALESCE(fcli.product_family, '') || ' ' || COALESCE(fcli.operation, '') || ' ' || COALESCE(fcli.line_item_description, '') || ' ' || COALESCE(fcli.from_location, '') || ' ' || COALESCE(fcli.to_location, ''))
+                    LIKE '%datatransfer-out%'
+                  OR LOWER(COALESCE(fcli.usage_type, '') || ' ' || COALESCE(fcli.product_usage_type, '') || ' ' || COALESCE(fcli.product_family, '') || ' ' || COALESCE(fcli.operation, '') || ' ' || COALESCE(fcli.line_item_description, '') || ' ' || COALESCE(fcli.from_location, '') || ' ' || COALESCE(fcli.to_location, ''))
+                    LIKE '%aws-out-bytes%'
+                ) THEN 'Internet Data Transfer'
+                ELSE 'Other Network'
+              END
+            ) = $${nextIndex}
+        )
+      `);
+      bind.push(normalizedNetworkType);
+      nextIndex += 1;
+    }
 
     const normalizedPricingType = normalizeLower(input.query.pricingType);
     if (normalizedPricingType) {

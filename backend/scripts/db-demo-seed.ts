@@ -196,6 +196,12 @@ function cpuBandForScenario(item: InstanceScenario): { min: number; max: number 
   return { min: 0, max: 99 };
 }
 
+function otherRegion(region: (typeof REGIONS)[number]): (typeof REGIONS)[number] {
+  if (region === "us-east-1") return "us-west-2";
+  if (region === "us-west-2") return "ap-south-1";
+  return "us-east-1";
+}
+
 export async function runDemoSeed(): Promise<void> {
   activateDemoDbEnv();
 
@@ -811,42 +817,141 @@ export async function runDemoSeed(): Promise<void> {
         ingestedAt: new Date(),
       });
 
-      await FactCostLineItems.create({
-        tenantId: tenant.id,
-        billingSourceId: billingSource.id,
-        providerId: provider.id,
-        billingAccountKey: billingAccount.id,
-        subAccountKey: subAccount.id,
-        regionKey: regionMap.get(item.region) ?? null,
-        serviceKey: ec2Service.id,
-        resourceKey: resourceKeyMap.get(item.instanceId) ?? null,
-        usageDateKey,
-        billingPeriodStartDateKey: billingStartDateKey,
-        billingPeriodEndDateKey: billingEndDateKey,
-        billedCost: dataTransferCost,
-        effectiveCost: dataTransferCost,
-        listCost: dataTransferCost,
-        consumedQuantity: round6((networkInBytes + networkOutBytes) / (1024 * 1024 * 1024)),
-        pricingQuantity: round6((networkInBytes + networkOutBytes) / (1024 * 1024 * 1024)),
-        usageStartTime: new Date(`${usageDate}T00:00:00.000Z`),
-        usageEndTime: new Date(`${usageDate}T23:59:59.999Z`),
-        usageType: "DataTransfer-Out-Bytes",
-        productUsageType: "DataTransfer-Out-Bytes",
-        productFamily: "Data Transfer",
-        fromRegionCode: item.region,
-        toRegionCode: "internet",
-        billType: "Anniversary",
-        lineItemDescription: `Demo data transfer cost for ${item.instanceId}`,
-        legalEntity: "Amazon Web Services, Inc.",
-        operation: "DataTransfer",
-        lineItemType: "Usage",
-        pricingTerm: "OnDemand",
-        purchaseOption: "on_demand",
-        taxCost: 0,
-        creditAmount: 0,
-        refundAmount: 0,
-        ingestedAt: new Date(),
-      });
+      const networkTotalGb = round6((networkInBytes + networkOutBytes) / (1024 * 1024 * 1024));
+      const internetCost = round6(dataTransferCost * 0.4);
+      const interRegionCost = round6(dataTransferCost * 0.3);
+      const interAzCost = round6(dataTransferCost * 0.2);
+      const natCost = round6(dataTransferCost * 0.04);
+      const eipCost = round6(dataTransferCost * 0.03);
+      const lbCost = round6(Math.max(0, dataTransferCost - internetCost - interRegionCost - interAzCost - natCost - eipCost));
+      const internetGb = round6(networkTotalGb * 0.4);
+      const interRegionGb = round6(networkTotalGb * 0.3);
+      const interAzGb = round6(networkTotalGb * 0.2);
+      const natGb = round6(networkTotalGb * 0.04);
+      const eipGb = round6(networkTotalGb * 0.03);
+      const lbGb = round6(Math.max(0, networkTotalGb - internetGb - interRegionGb - interAzGb - natGb - eipGb));
+      const crossRegion = otherRegion(item.region);
+      const networkLineItems = [
+        {
+          billedCost: internetCost,
+          usageGb: internetGb,
+          usageType: "DataTransfer-Out-Bytes",
+          productUsageType: "DataTransfer-Out-Bytes",
+          productFamily: "Data Transfer",
+          fromRegionCode: item.region,
+          toRegionCode: "",
+          fromLocation: item.region,
+          toLocation: "internet",
+          lineItemDescription: `Demo internet egress data transfer for ${item.instanceId}`,
+          operation: "DataTransfer",
+        },
+        {
+          billedCost: interRegionCost,
+          usageGb: interRegionGb,
+          usageType: "DataTransfer-Regional-Bytes",
+          productUsageType: "DataTransfer-InterRegion-Bytes",
+          productFamily: "Data Transfer",
+          fromRegionCode: item.region,
+          toRegionCode: crossRegion,
+          fromLocation: item.region,
+          toLocation: crossRegion,
+          lineItemDescription: `Demo inter-region data transfer for ${item.instanceId}`,
+          operation: "InterRegionDataTransfer",
+        },
+        {
+          billedCost: interAzCost,
+          usageGb: interAzGb,
+          usageType: "DataTransfer-Regional-Bytes",
+          productUsageType: "DataTransfer-Regional-Bytes",
+          productFamily: "Data Transfer",
+          fromRegionCode: item.region,
+          toRegionCode: item.region,
+          fromLocation: `${item.region}a`,
+          toLocation: `${item.region}b`,
+          lineItemDescription: `Demo inter-AZ data transfer for ${item.instanceId}`,
+          operation: "DataTransfer-Regional",
+        },
+        {
+          billedCost: natCost,
+          usageGb: natGb,
+          usageType: "NatGateway-Bytes",
+          productUsageType: "NatGateway-Bytes",
+          productFamily: "NAT Gateway",
+          fromRegionCode: item.region,
+          toRegionCode: item.region,
+          fromLocation: item.region,
+          toLocation: item.region,
+          lineItemDescription: `Demo NAT Gateway processing for ${item.instanceId}`,
+          operation: "NatGateway",
+        },
+        {
+          billedCost: eipCost,
+          usageGb: eipGb,
+          usageType: "ElasticIP:IdleAddress",
+          productUsageType: "ElasticIP:IdleAddress",
+          productFamily: "IP Address",
+          fromRegionCode: item.region,
+          toRegionCode: item.region,
+          fromLocation: item.region,
+          toLocation: item.region,
+          lineItemDescription: `Demo Elastic IP cost for ${item.instanceId}`,
+          operation: "AllocateAddress",
+        },
+        {
+          billedCost: lbCost,
+          usageGb: lbGb,
+          usageType: "LoadBalancerUsage",
+          productUsageType: "LCUUsage",
+          productFamily: "Load Balancer",
+          fromRegionCode: item.region,
+          toRegionCode: item.region,
+          fromLocation: item.region,
+          toLocation: item.region,
+          lineItemDescription: `Demo load balancer network charge for ${item.instanceId}`,
+          operation: "LoadBalancing",
+        },
+      ];
+
+      for (const networkItem of networkLineItems) {
+        await FactCostLineItems.create({
+          tenantId: tenant.id,
+          billingSourceId: billingSource.id,
+          providerId: provider.id,
+          billingAccountKey: billingAccount.id,
+          subAccountKey: subAccount.id,
+          regionKey: regionMap.get(item.region) ?? null,
+          serviceKey: ec2Service.id,
+          resourceKey: resourceKeyMap.get(item.instanceId) ?? null,
+          usageDateKey,
+          billingPeriodStartDateKey: billingStartDateKey,
+          billingPeriodEndDateKey: billingEndDateKey,
+          billedCost: networkItem.billedCost,
+          effectiveCost: networkItem.billedCost,
+          listCost: networkItem.billedCost,
+          consumedQuantity: networkItem.usageGb,
+          pricingQuantity: networkItem.usageGb,
+          usageStartTime: new Date(`${usageDate}T00:00:00.000Z`),
+          usageEndTime: new Date(`${usageDate}T23:59:59.999Z`),
+          usageType: networkItem.usageType,
+          productUsageType: networkItem.productUsageType,
+          productFamily: networkItem.productFamily,
+          fromLocation: networkItem.fromLocation,
+          toLocation: networkItem.toLocation,
+          fromRegionCode: networkItem.fromRegionCode,
+          toRegionCode: networkItem.toRegionCode,
+          billType: "Anniversary",
+          lineItemDescription: networkItem.lineItemDescription,
+          legalEntity: "Amazon Web Services, Inc.",
+          operation: networkItem.operation,
+          lineItemType: "Usage",
+          pricingTerm: "OnDemand",
+          purchaseOption: "on_demand",
+          taxCost: 0,
+          creditAmount: 0,
+          refundAmount: 0,
+          ingestedAt: new Date(),
+        });
+      }
 
       await FactCostLineItems.create({
         tenantId: tenant.id,

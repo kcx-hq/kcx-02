@@ -14,7 +14,6 @@ import AwsInventoryPage from "../pages/inventory/AwsInventoryPage";
 import EC2ExplorerPage from "../pages/ec2/EC2ExplorerPage";
 import EC2PerformancePage from "../pages/ec2/EC2PerformancePage";
 import EC2VolumesPage from "../pages/ec2/EC2VolumesPage";
-import EC2OptimizationPage from "../pages/ec2/EC2OptimizationPage";
 import S3OverviewPage from "../pages/s3/S3OverviewPage";
 import S3BucketDetailPage from "../pages/s3/S3BucketDetailPage";
 import S3UsagePage from "../pages/s3/S3UsagePage";
@@ -25,6 +24,7 @@ import "../styles/dashboard.css";
 import EC2InstancesPage from "../pages/ec2/EC2InstancesPage";
 import EC2InstanceDetailPage from "../pages/ec2/EC2InstanceDetailPage";
 import EC2VolumeDetailPage from "../pages/ec2/EC2VolumeDetailPage";
+import DatabaseExplorerPage from "../pages/database/DatabaseExplorerPage";
 
 function DashboardOverviewRedirect() {
   const location = useLocation();
@@ -114,8 +114,7 @@ export default function DashboardRoutes() {
         <Route path="s3/cost" element={<S3OverviewPage />} />
         <Route path="s3/cost/bucket/:bucketName" element={<S3BucketDetailPage />} />
         <Route path="s3/usage" element={<S3UsagePage />} />
-        <Route path="s3/usage/bucket/:bucketName" element={<S3UsageBucketDetailPage />} />
-        <Route path="s3/optimization" element={<S3OptimizationPage />} />
+        <Route path="services/database" element={<DatabaseExplorerPage />} />
         <Route path="resources" element={<ResourcesPage />} />
         <Route path="allocation" element={<AllocationPage />} />
         <Route path="optimization" element={<OptimizationPage />} />

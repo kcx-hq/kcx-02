@@ -250,13 +250,19 @@ export type Ec2ExplorerMetric = "cost" | "usage" | "instances";
 export type Ec2ExplorerGroupBy =
   | "none"
   | "region"
+  | "account"
   | "instance_type"
+  | "team"
+  | "product"
+  | "environment"
   | "reservation_type"
-  | "usage_category"
   | "cost_category"
+  | "network_cost"
+  | "network_type"
   | "tag";
 export type Ec2ExplorerCostBasis = "billed_cost" | "effective_cost" | "amortized_cost";
 export type Ec2ExplorerUsageMetric = "cpu" | "network_in" | "network_out" | "disk_read" | "disk_write";
+export type Ec2ExplorerUsageType = "cpu" | "network" | "disk";
 export type Ec2ExplorerAggregation = "avg" | "max" | "p95";
 export type Ec2ExplorerCondition = "all" | "idle" | "underutilized" | "overutilized" | "uncovered";
 
@@ -270,6 +276,7 @@ export type Ec2ExplorerFiltersQuery = {
   tags?: string[];
   costBasis?: Ec2ExplorerCostBasis;
   usageMetric?: Ec2ExplorerUsageMetric;
+  usageType?: Ec2ExplorerUsageType;
   aggregation?: Ec2ExplorerAggregation;
   condition?: Ec2ExplorerCondition;
   groupValues?: string[];
@@ -305,6 +312,28 @@ export type Ec2ExplorerResponse = {
     columns: Array<{ key: string; label: string }>;
     rows: Array<{ id: string; [key: string]: string | number | null }>;
   };
+};
+
+export type Ec2NetworkBreakdownType =
+  | "Internet Data Transfer"
+  | "Inter-Region Data Transfer"
+  | "Inter-AZ Data Transfer"
+  | "NAT Gateway"
+  | "Elastic IP"
+  | "Load Balancer"
+  | "Other Network";
+
+export type Ec2NetworkBreakdownResponse = {
+  totalNetworkCost: number;
+  totalNetworkUsageGb: number | null;
+  categories: Array<{
+    type: Ec2NetworkBreakdownType;
+    cost: number;
+    percent: number;
+    usageQuantity: number;
+    resourceCount: number;
+  }>;
+  note: string | null;
 };
 
 export type Ec2OptimizationSummaryResponse = {

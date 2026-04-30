@@ -28,6 +28,7 @@ import type {
   Ec2RecommendationStatus,
   Ec2ExplorerFiltersQuery,
   Ec2ExplorerResponse,
+  Ec2NetworkBreakdownResponse,
   DatabaseExplorerFilters,
   DatabaseExplorerResponse,
 
@@ -294,6 +295,7 @@ function withEc2ExplorerFilters(
 
   if (filters.costBasis) params.set("costBasis", filters.costBasis);
   if (filters.usageMetric) params.set("usageMetric", filters.usageMetric);
+  if (filters.usageType) params.set("usageType", filters.usageType);
   if (filters.aggregation) params.set("aggregation", filters.aggregation);
   if (filters.condition) params.set("condition", filters.condition);
   appendArray("groupValues", filters.groupValues);
@@ -618,6 +620,9 @@ export const dashboardApi = {
   getEc2Explorer(scope: DashboardResolvedScope, filters: Ec2ExplorerFiltersQuery) {
     return apiGet<Ec2ExplorerResponse>(withEc2ExplorerFilters("/dashboard/ec2/explorer", scope, filters));
   },
+  getEc2ExplorerNetworkBreakdown(scope: DashboardResolvedScope, filters: Ec2ExplorerFiltersQuery) {
+    return apiGet<Ec2NetworkBreakdownResponse>(withEc2ExplorerFilters("/dashboard/ec2/explorer/network-breakdown", scope, filters));
+  },
   getS3CostInsights(scope: DashboardResolvedScope, filters?: S3CostInsightsFiltersQuery) {
     return apiGet<S3CostInsightsResponse>(withS3CostInsightsFilters("/dashboard/s3/cost-insights", scope, filters));
   },
@@ -711,6 +716,7 @@ export type {
   Ec2ExplorerCondition,
   Ec2ExplorerFiltersQuery,
   Ec2ExplorerResponse,
+  Ec2NetworkBreakdownResponse,
   S3CostInsightsFiltersQuery,
   S3CostInsightsResponse,
   S3OptimizationResponse,

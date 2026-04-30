@@ -2,7 +2,7 @@ export type EC2Metric = "cost" | "usage" | "instances";
 
 export type EC2CostBasis = "billed_cost" | "effective_cost" | "amortized_cost";
 
-export type EC2UsageMetric = "cpu" | "network_in" | "network_out" | "disk_read" | "disk_write";
+export type EC2UsageType = "cpu" | "network" | "disk";
 export type EC2Aggregation = "avg" | "max" | "p95";
 export type EC2ChartType = "line" | "stacked_bar";
 export type EC2Condition = "all" | "idle" | "underutilized" | "overutilized" | "uncovered";
@@ -10,10 +10,15 @@ export type EC2State = "running" | "stopped" | "terminated";
 export type EC2GroupBy =
   | "none"
   | "region"
+  | "account"
   | "instance-type"
+  | "team"
+  | "product"
+  | "environment"
   | "reservation-type"
-  | "usage-category"
   | "cost-category"
+  | "network-cost"
+  | "network-type"
   | "tag";
 
 export type EC2ScopeFilters = {
@@ -33,7 +38,7 @@ export type EC2Thresholds = {
 export type EC2ExplorerControlsState = {
   metric: EC2Metric;
   costBasis: EC2CostBasis;
-  usageMetric: EC2UsageMetric;
+  usageType: EC2UsageType;
   usageAggregation: EC2Aggregation;
   chartType: EC2ChartType;
   instancesCondition: EC2Condition;
@@ -57,12 +62,10 @@ export const COST_BASIS_OPTIONS: Array<{ key: EC2CostBasis; label: string }> = [
   { key: "amortized_cost", label: "Amortized Cost" },
 ];
 
-export const USAGE_METRIC_OPTIONS: Array<{ key: EC2UsageMetric; label: string }> = [
+export const USAGE_TYPE_OPTIONS: Array<{ key: EC2UsageType; label: string }> = [
   { key: "cpu", label: "CPU" },
-  { key: "network_in", label: "Network In" },
-  { key: "network_out", label: "Network Out" },
-  { key: "disk_read", label: "Disk Read" },
-  { key: "disk_write", label: "Disk Write" },
+  { key: "network", label: "Network" },
+  { key: "disk", label: "Disk" },
 ];
 
 export const AGGREGATION_OPTIONS: Array<{ key: EC2Aggregation; label: string }> = [
@@ -93,10 +96,15 @@ export const STATE_OPTIONS: Array<{ key: EC2State; label: string }> = [
 export const GROUP_BY_OPTIONS: Array<{ key: EC2GroupBy; label: string }> = [
   { key: "none", label: "None" },
   { key: "region", label: "Region" },
+  { key: "account", label: "Account" },
   { key: "instance-type", label: "Instance Type" },
+  { key: "team", label: "Team" },
+  { key: "product", label: "Product" },
+  { key: "environment", label: "Environment" },
   { key: "reservation-type", label: "Reservation Type" },
-  { key: "usage-category", label: "Usage Category" },
   { key: "cost-category", label: "Cost Category" },
+  { key: "network-cost", label: "Network Cost" },
+  { key: "network-type", label: "Network Type" },
   { key: "tag", label: "Tag" },
 ];
 
@@ -125,7 +133,7 @@ export const DEFAULT_THRESHOLDS: EC2Thresholds = {
 export const DEFAULT_EC2_EXPLORER_CONTROLS: EC2ExplorerControlsState = {
   metric: "cost",
   costBasis: "effective_cost",
-  usageMetric: "cpu",
+  usageType: "cpu",
   usageAggregation: "avg",
   chartType: "stacked_bar",
   instancesCondition: "all",

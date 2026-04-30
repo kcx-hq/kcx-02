@@ -13,6 +13,7 @@ import {
   EC2_INSTANCES_DEFAULT_CONTROLS,
   EC2_INSTANCES_CONDITION_OPTIONS,
   EC2_INSTANCES_STATE_OPTIONS,
+  type EC2InstancesNetworkType,
   type EC2InstancesCondition,
   type EC2InstancesControlsState,
 } from "./components/ec2Instances.types";
@@ -64,6 +65,19 @@ const isValidState = (value: string | null): value is EC2InstancesControlsState[
 
 const isValidReservationType = (value: string | null): value is EC2InstancesControlsState["reservationType"] =>
   Boolean(value) && EC2_INSTANCES_RESERVATION_OPTIONS.some((option) => option.key === value);
+
+const NETWORK_TYPES: EC2InstancesNetworkType[] = [
+  "Internet Data Transfer",
+  "Inter-Region Data Transfer",
+  "Inter-AZ Data Transfer",
+  "NAT Gateway",
+  "Elastic IP",
+  "Load Balancer",
+  "Other Network",
+];
+
+const isValidNetworkType = (value: string | null): value is EC2InstancesNetworkType =>
+  Boolean(value) && NETWORK_TYPES.includes(value as EC2InstancesNetworkType);
 
 const matchesCondition = (instance: InventoryEc2InstanceRow, condition: EC2InstancesCondition): boolean => {
   if (condition === "all") return true;
@@ -134,6 +148,7 @@ export default function EC2InstancesPage() {
   const queryState = isExplorerNavigation ? queryParams.get("state") : null;
   const queryInstanceType = isExplorerNavigation ? queryParams.get("instanceType") : null;
   const queryReservationType = isExplorerNavigation ? queryParams.get("reservationType") : null;
+  const queryNetworkType = isExplorerNavigation ? queryParams.get("networkType") : null;
 
   const initialControls = useMemo<EC2InstancesControlsState>(() => ({
     ...EC2_INSTANCES_DEFAULT_CONTROLS,
@@ -143,12 +158,13 @@ export default function EC2InstancesPage() {
     reservationType: isValidReservationType(queryReservationType)
       ? queryReservationType
       : EC2_INSTANCES_DEFAULT_CONTROLS.reservationType,
+    networkType: isValidNetworkType(queryNetworkType) ? queryNetworkType : EC2_INSTANCES_DEFAULT_CONTROLS.networkType,
     search: querySearch,
     scopeFilters: {
       region: [...explorerRegions],
       tags: [...explorerTags],
     },
-  }), [explorerRegions, explorerTags, queryCondition, queryInstanceType, queryReservationType, querySearch, queryState]);
+  }), [explorerRegions, explorerTags, queryCondition, queryInstanceType, queryNetworkType, queryReservationType, querySearch, queryState]);
 
   const [controls, setControls] = useState<EC2InstancesControlsState>(initialControls);
   const [page, setPage] = useState(1);
@@ -158,6 +174,7 @@ export default function EC2InstancesPage() {
     state: controls.state === "all" ? null : controls.state,
     instanceType: controls.instanceType === "all" ? null : controls.instanceType,
     pricingType: controls.reservationType === "all" ? null : controls.reservationType,
+    networkType: controls.networkType === "all" ? null : controls.networkType,
     search: deferredSearch.length > 0 ? deferredSearch : null,
     startDate: startDateFromParams,
     endDate: endDateFromParams,
@@ -266,8 +283,16 @@ export default function EC2InstancesPage() {
       });
     }
 
+    if (controls.networkType !== "all") {
+      chips.push({
+        id: "network-type",
+        label: `Network Type: ${controls.networkType}`,
+        onRemove: () => setControls((current) => ({ ...current, networkType: "all" })),
+      });
+    }
+
     return chips;
-  }, [controls.instanceType, controls.scopeFilters.region, controls.scopeFilters.tags, controls.state]);
+  }, [controls.instanceType, controls.networkType, controls.scopeFilters.region, controls.scopeFilters.tags, controls.state]);
 
   const openInstanceDetail = (instanceId: string) => {
     const next = new URLSearchParams(location.search);
@@ -300,6 +325,7 @@ export default function EC2InstancesPage() {
                 state: "all",
                 instanceType: "all",
                 reservationType: "all",
+                networkType: "all",
                 scopeFilters: { region: [], tags: [] },
                 thresholds: {
                   cpuMin: "",

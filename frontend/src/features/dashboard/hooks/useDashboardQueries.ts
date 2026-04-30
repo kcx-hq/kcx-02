@@ -13,6 +13,7 @@ import {
   type Ec2RecommendationsResponse,
   type Ec2ExplorerFiltersQuery,
   type Ec2ExplorerResponse,
+  type Ec2NetworkBreakdownResponse,
   type DatabaseExplorerFilters,
   type DatabaseExplorerResponse,
 
@@ -316,6 +317,18 @@ export function useEc2ExplorerQuery(filters: Ec2ExplorerFiltersQuery, enabledOve
     queryFn: () => dashboardApi.getEc2Explorer(assertScope(scope), filters),
     enabled: Boolean(scope) && enabledOverride,
     placeholderData: (previous) => previous,
+  });
+}
+
+export function useEc2ExplorerNetworkBreakdownQuery(
+  filters: Ec2ExplorerFiltersQuery,
+  enabledOverride: boolean = true,
+) {
+  const { scope } = useDashboardScope();
+  return useQuery<Ec2NetworkBreakdownResponse, Error>({
+    queryKey: ["dashboard", "ec2", "explorer", "network-breakdown", scope, filters],
+    queryFn: () => dashboardApi.getEc2ExplorerNetworkBreakdown(assertScope(scope), filters),
+    enabled: Boolean(scope) && enabledOverride,
   });
 }
 

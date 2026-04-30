@@ -26,6 +26,11 @@ const GROUP_VALUE_OPTIONS: Record<EC2GroupBy, GroupByValueOption[]> = {
     { key: "Asia Pacific (Tokyo)", label: "Asia Pacific (Tokyo)", count: 4276 },
     { key: "Asia Pacific (Seoul)", label: "Asia Pacific (Seoul)", count: 4276 },
   ],
+  account: [
+    { key: "Prod Account", label: "Prod Account", count: 9430 },
+    { key: "Shared Services", label: "Shared Services", count: 3210 },
+    { key: "Dev Account", label: "Dev Account", count: 2870 },
+  ],
   "instance-type": [
     { key: "t3.medium", label: "t3.medium", count: 2471 },
     { key: "t3.large", label: "t3.large", count: 2160 },
@@ -38,10 +43,18 @@ const GROUP_VALUE_OPTIONS: Record<EC2GroupBy, GroupByValueOption[]> = {
     { key: "reserved", label: "Reserved", count: 2271 },
     { key: "savings_plan", label: "Savings Plan", count: 1492 },
   ],
-  "usage-category": [
-    { key: "cpu", label: "CPU", count: 5820 },
-    { key: "network", label: "Network", count: 4710 },
-    { key: "disk", label: "Disk", count: 3080 },
+  team: [
+    { key: "platform", label: "platform", count: 420 },
+    { key: "data", label: "data", count: 310 },
+  ],
+  product: [
+    { key: "core-app", label: "core-app", count: 360 },
+    { key: "analytics", label: "analytics", count: 280 },
+  ],
+  environment: [
+    { key: "production", label: "production", count: 620 },
+    { key: "staging", label: "staging", count: 220 },
+    { key: "dev", label: "dev", count: 180 },
   ],
   "cost-category": [
     { key: "compute", label: "Compute", count: 7540 },
@@ -50,6 +63,24 @@ const GROUP_VALUE_OPTIONS: Record<EC2GroupBy, GroupByValueOption[]> = {
     { key: "data_transfer", label: "Data Transfer", count: 1870 },
     { key: "eip", label: "EIP", count: 530 },
     { key: "other", label: "Other", count: 440 },
+  ],
+  "network-cost": [
+    { key: "internet_data_transfer", label: "Internet Data Transfer", count: 1870 },
+    { key: "inter_region_data_transfer", label: "Inter-Region Data Transfer", count: 1020 },
+    { key: "inter_az_data_transfer", label: "Inter-AZ Data Transfer", count: 760 },
+    { key: "nat_gateway", label: "NAT Gateway", count: 520 },
+    { key: "elastic_ip", label: "Elastic IP", count: 410 },
+    { key: "load_balancer", label: "Load Balancer", count: 690 },
+    { key: "other_network", label: "Other Network", count: 370 },
+  ],
+  "network-type": [
+    { key: "internet_data_transfer", label: "Internet Data Transfer", count: 1870 },
+    { key: "inter_region_data_transfer", label: "Inter-Region Data Transfer", count: 1020 },
+    { key: "inter_az_data_transfer", label: "Inter-AZ Data Transfer", count: 760 },
+    { key: "nat_gateway", label: "NAT Gateway", count: 520 },
+    { key: "elastic_ip", label: "Elastic IP", count: 410 },
+    { key: "load_balancer", label: "Load Balancer", count: 690 },
+    { key: "other_network", label: "Other Network", count: 370 },
   ],
   tag: [
     { key: "production", label: "production", count: 98 },
@@ -79,10 +110,15 @@ export function EC2ExplorerGroupByPopover({
   const [draftValuesByGroup, setDraftValuesByGroup] = useState<Record<EC2GroupBy, string[]>>({
     none: [],
     region: [],
+    account: [],
     "instance-type": [],
+    team: [],
+    product: [],
+    environment: [],
     "reservation-type": [],
-    "usage-category": [],
     "cost-category": [],
+    "network-cost": [],
+    "network-type": [],
     tag: [],
   });
   const [groupSearch, setGroupSearch] = useState("");
