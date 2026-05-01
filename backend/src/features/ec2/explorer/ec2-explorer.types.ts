@@ -179,6 +179,9 @@ export type Ec2ExplorerFactRow = {
 
 export type Ec2ExplorerAdditionalDailyCosts = {
   date: string;
+  instanceId: string;
   snapshotCost: number;
+  natGatewayCost: number;
   eipCost: number;
+  loadBalancerCost: number;
 };

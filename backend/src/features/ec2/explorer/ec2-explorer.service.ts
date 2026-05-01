@@ -21,7 +21,9 @@ const COST_COMPONENTS = [
   "ebs",
   "snapshot",
   "data_transfer",
+  "nat_gateway",
   "eip",
+  "load_balancer",
   "other",
 ] as const;
 
@@ -64,18 +66,23 @@ const toCostParts = (
   additionalByDate: Map<string, Ec2ExplorerAdditionalDailyCosts>,
   selectedCostBasis: Ec2CostBasis = "effective_cost",
 ): CostParts => {
-  const additional = additionalByDate.get(row.date);
+  const additional = additionalByDate.get(`${row.date}::${row.instanceId}`);
   const snapshotCost = additional?.snapshotCost ?? 0;
+  const natGatewayCost = additional?.natGatewayCost ?? 0;
   const eipCost = additional?.eipCost ?? 0;
-  const known = row.computeCost + row.ebsCost + row.dataTransferCost + snapshotCost + eipCost;
+  const loadBalancerCost = additional?.loadBalancerCost ?? 0;
+  const dataTransferCost = Math.max(0, row.dataTransferCost - natGatewayCost - eipCost - loadBalancerCost);
+  const known = row.computeCost + row.ebsCost + dataTransferCost + snapshotCost + natGatewayCost + eipCost + loadBalancerCost;
   const totalByBasis = toCostByBasis(row, selectedCostBasis);
   const otherCost = Math.max(0, totalByBasis - known);
   return {
     compute: row.computeCost,
     ebs: row.ebsCost,
     snapshot: snapshotCost,
-    data_transfer: row.dataTransferCost,
+    data_transfer: dataTransferCost,
+    nat_gateway: natGatewayCost,
     eip: eipCost,
+    load_balancer: loadBalancerCost,
     other: otherCost,
   };
 };
@@ -164,14 +171,14 @@ const metricLabel = (key: string): string => {
   if (key === "ebs") return "EBS";
   if (key === "snapshot") return "Snapshot";
   if (key === "data_transfer") return "Data Transfer";
+  if (key === "nat_gateway") return "NAT Gateway";
   if (key === "eip") return "EIP";
+  if (key === "load_balancer") return "Load Balancer";
   if (key === "other") return "Other";
   if (key === "internet_data_transfer") return "Internet Data Transfer";
   if (key === "inter_region_data_transfer") return "Inter-Region Data Transfer";
   if (key === "inter_az_data_transfer") return "Inter-AZ Data Transfer";
-  if (key === "nat_gateway") return "NAT Gateway";
   if (key === "elastic_ip") return "Elastic IP";
-  if (key === "load_balancer") return "Load Balancer";
   if (key === "other_network") return "Other Network";
   if (key === "on_demand") return "on_demand";
   if (key === "reserved") return "reserved";
@@ -401,6 +408,7 @@ const buildCostTable = (
       { key: "ebsCost", label: "EBS Cost" },
       { key: "snapshotCost", label: "Snapshot Cost" },
       { key: "dataTransferCost", label: "Data Transfer Cost" },
+      { key: "natGatewayCost", label: "NAT Gateway Cost" },
       { key: "instanceType", label: "Instance Type" },
       { key: "region", label: "Region" },
     ];
@@ -416,6 +424,7 @@ const buildCostTable = (
         ebsCost: 0,
         snapshotCost: 0,
         dataTransferCost: 0,
+        natGatewayCost: 0,
         instanceType: row.instanceType,
         region: row.region,
       };
@@ -424,6 +433,7 @@ const buildCostTable = (
       current.ebsCost = Number(current.ebsCost) + cost.ebs;
       current.snapshotCost = Number(current.snapshotCost) + cost.snapshot;
       current.dataTransferCost = Number(current.dataTransferCost) + cost.data_transfer;
+      current.natGatewayCost = Number(current.natGatewayCost) + cost.nat_gateway;
       grouped.set(id, current);
     }
     return {
@@ -436,6 +446,7 @@ const buildCostTable = (
           ebsCost: toFixedNumber(Number(row.ebsCost)),
           snapshotCost: toFixedNumber(Number(row.snapshotCost)),
           dataTransferCost: toFixedNumber(Number(row.dataTransferCost)),
+          natGatewayCost: toFixedNumber(Number(row.natGatewayCost)),
         }))
         .sort((a, b) => Number(b.totalCost) - Number(a.totalCost)),
     };
@@ -449,6 +460,7 @@ const buildCostTable = (
       { key: "ebsCost", label: "EBS Cost" },
       { key: "snapshotCost", label: "Snapshot Cost" },
       { key: "dataTransferCost", label: "Data Transfer Cost" },
+      { key: "natGatewayCost", label: "NAT Gateway Cost" },
       { key: "instanceCount", label: "Instance Count" },
     ];
     const groups: Array<{ key: (typeof COST_COMPONENTS)[number]; label: string }> = [
@@ -456,7 +468,9 @@ const buildCostTable = (
       { key: "ebs", label: "EBS" },
       { key: "snapshot", label: "Snapshot" },
       { key: "data_transfer", label: "Data Transfer" },
+      { key: "nat_gateway", label: "NAT Gateway" },
       { key: "eip", label: "EIP" },
+      { key: "load_balancer", label: "Load Balancer" },
       { key: "other", label: "Other" },
     ];
     const rowsOut = groups.map((group) => {
@@ -465,6 +479,7 @@ const buildCostTable = (
       let ebs = 0;
       let snapshot = 0;
       let dataTransfer = 0;
+      let natGateway = 0;
       const instanceIds = new Set<string>();
       for (const row of rows) {
         const cost = toCostParts(row, additionalByDate, input.costBasis);
@@ -474,6 +489,7 @@ const buildCostTable = (
         if (group.key === "ebs") ebs += value;
         if (group.key === "snapshot") snapshot += value;
         if (group.key === "data_transfer") dataTransfer += value;
+        if (group.key === "nat_gateway") natGateway += value;
         if (value > 0) instanceIds.add(row.instanceId);
       }
       return {
@@ -484,6 +500,7 @@ const buildCostTable = (
         ebsCost: toFixedNumber(ebs),
         snapshotCost: toFixedNumber(snapshot),
         dataTransferCost: toFixedNumber(dataTransfer),
+        natGatewayCost: toFixedNumber(natGateway),
         instanceCount: instanceIds.size,
       };
     });
@@ -497,6 +514,7 @@ const buildCostTable = (
     { key: "ebsCost", label: "EBS Cost" },
     { key: "snapshotCost", label: "Snapshot Cost" },
     { key: "dataTransferCost", label: "Data Transfer Cost" },
+    { key: "natGatewayCost", label: "NAT Gateway Cost" },
     { key: "instanceCount", label: "Instance Count" },
   ];
   type CostGroupRow = {
@@ -507,6 +525,7 @@ const buildCostTable = (
     ebsCost: number;
     snapshotCost: number;
     dataTransferCost: number;
+    natGatewayCost: number;
     instanceCount: number;
     instanceIds: Set<string>;
   };
@@ -523,6 +542,7 @@ const buildCostTable = (
       ebsCost: 0,
       snapshotCost: 0,
       dataTransferCost: 0,
+      natGatewayCost: 0,
       instanceCount: 0,
       instanceIds: new Set<string>(),
     };
@@ -531,6 +551,7 @@ const buildCostTable = (
     current.ebsCost = Number(current.ebsCost) + cost.ebs;
     current.snapshotCost = Number(current.snapshotCost) + cost.snapshot;
     current.dataTransferCost = Number(current.dataTransferCost) + cost.data_transfer;
+    current.natGatewayCost = Number(current.natGatewayCost) + cost.nat_gateway;
     current.instanceIds.add(row.instanceId);
     current.instanceCount = current.instanceIds.size;
     grouped.set(id, current);
@@ -544,6 +565,7 @@ const buildCostTable = (
       ebsCost: toFixedNumber(Number(row.ebsCost)),
       snapshotCost: toFixedNumber(Number(row.snapshotCost)),
       dataTransferCost: toFixedNumber(Number(row.dataTransferCost)),
+      natGatewayCost: toFixedNumber(Number(row.natGatewayCost)),
       instanceCount: Number(row.instanceCount),
     }))
     .sort((a, b) => Number(b.totalCost) - Number(a.totalCost));
@@ -800,7 +822,7 @@ export class Ec2ExplorerService {
       this.query.getAdditionalDailyCosts(input),
     ]);
 
-    const additionalByDate = new Map(additionalDailyCosts.map((item) => [item.date, item]));
+    const additionalByDate = new Map(additionalDailyCosts.map((item) => [`${item.date}::${item.instanceId}`, item]));
     const groupedRows = applyGroupValueFilters(rows, input);
     const groupedPreviousRows = applyGroupValueFilters(previousRows, input);
     const filteredRows = applyInstancesThresholdFilters(groupedRows, input, additionalByDate);

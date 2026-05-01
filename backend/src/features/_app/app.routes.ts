@@ -19,12 +19,14 @@ import supportMeetingsRoutes from "../support-meetings/support-meetings.routes.j
 import anomalyRoutes from "../dashboard/anomaly-alerts/anomaly.routes.js";
 import organizationUsersRoutes from "../organization-users/organization-users.routes.js";
 import reportRoutes from "../dashboard/report/report.routes.js";
-import instancesInventoryRoutes from "../inventory/aws/ec2/instances/instances-inventory.routes.js";
-import snapshotsInventoryRoutes from "../inventory/aws/ec2/snapshots/snapshots-inventory.routes.js";
-import volumesInventoryRoutes from "../inventory/aws/ec2/volumes/volumes-inventory.routes.js";
+import instancesInventoryRoutes from "../ec2/instances/instances-inventory.routes.js";
+import snapshotsInventoryRoutes from "../ec2/snapshots/snapshots-inventory.routes.js";
+import volumesInventoryRoutes from "../ec2/volumes/volumes-inventory.routes.js";
 import databaseRoutes from "../database/database.routes.js";
 import ec2OptimizationRoutes from "../ec2/optimization/ec2-optimization.routes.js";
 import ec2ExplorerRoutes from "../ec2/explorer/ec2-explorer.routes.js";
+import ec2DataTransferRoutes from "../ec2/data-transfer/ec2-data-transfer.routes.js";
+import ec2ElasticIpRoutes from "../ec2/eip/ec2-eip.routes.js";
 const router = Router();
 
 router.use(scheduleDemoRoutes);
@@ -54,6 +56,8 @@ router.use(volumesInventoryRoutes);
 router.use(databaseRoutes);
 router.use(ec2OptimizationRoutes);
 router.use(ec2ExplorerRoutes);
+router.use(ec2DataTransferRoutes);
+router.use(ec2ElasticIpRoutes);
 
 export default router;
 

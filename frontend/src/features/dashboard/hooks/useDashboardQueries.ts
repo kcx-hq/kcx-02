@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   dashboardApi,
   type AnomaliesFiltersQuery,
@@ -14,12 +14,19 @@ import {
   type Ec2ExplorerFiltersQuery,
   type Ec2ExplorerResponse,
   type Ec2NetworkBreakdownResponse,
+  type Ec2DataTransferFiltersQuery,
+  type Ec2DataTransferResponse,
+  type Ec2ElasticIpFiltersQuery,
+  type Ec2ElasticIpResponse,
   type DatabaseExplorerFilters,
   type DatabaseExplorerResponse,
 
   type S3CostInsightsFiltersQuery,
   type S3CostInsightsResponse,
   type S3BucketLifecycleInsightResponse,
+  type S3LifecyclePolicyApplyRequest,
+  type S3LifecyclePolicyApplyResponse,
+  type S3PolicyActionHistoryResponse,
   type S3OptimizationResponse,
   type OptimizationIdleOverview,
   type OptimizationCommitmentOverview,
@@ -332,6 +339,26 @@ export function useEc2ExplorerNetworkBreakdownQuery(
   });
 }
 
+export function useEc2DataTransferQuery(filters?: Ec2DataTransferFiltersQuery, enabledOverride: boolean = true) {
+  const { scope } = useDashboardScope();
+  return useQuery<Ec2DataTransferResponse, Error>({
+    queryKey: ["dashboard", "ec2", "data-transfer", scope, filters],
+    queryFn: () => dashboardApi.getEc2DataTransfer(assertScope(scope), filters),
+    enabled: Boolean(scope) && enabledOverride,
+    placeholderData: (previous) => previous,
+  });
+}
+
+export function useEc2ElasticIpsQuery(filters?: Ec2ElasticIpFiltersQuery, enabledOverride: boolean = true) {
+  const { scope } = useDashboardScope();
+  return useQuery<Ec2ElasticIpResponse, Error>({
+    queryKey: ["dashboard", "ec2", "elastic-ips", scope, filters],
+    queryFn: () => dashboardApi.getEc2ElasticIps(assertScope(scope), filters),
+    enabled: Boolean(scope) && enabledOverride,
+    placeholderData: (previous) => previous,
+  });
+}
+
 export function useS3CostInsightsQuery(filters?: S3CostInsightsFiltersQuery) {
   const { scope } = useDashboardScope();
   return useQuery<S3CostInsightsResponse, Error>({
@@ -356,5 +383,26 @@ export function useS3BucketLifecycleInsightQuery(bucketName: string | null) {
     queryKey: ["dashboard", "s3", "lifecycle-insight", scope, bucketName],
     queryFn: () => dashboardApi.getS3BucketLifecycleInsight(assertScope(scope), bucketName as string),
     enabled: Boolean(scope) && Boolean(bucketName && bucketName.trim().length > 0),
+  });
+}
+
+export function useApplyS3LifecyclePolicyMutation() {
+  const { scope } = useDashboardScope();
+  return useMutation<S3LifecyclePolicyApplyResponse, Error, S3LifecyclePolicyApplyRequest>({
+    mutationFn: (payload) => {
+      if (!scope) {
+        throw new Error("Dashboard scope is not resolved yet");
+      }
+      return dashboardApi.applyS3LifecyclePolicy(scope, payload);
+    },
+  });
+}
+
+export function usePolicyActionHistoryQuery() {
+  const { scope } = useDashboardScope();
+  return useQuery<S3PolicyActionHistoryResponse, Error>({
+    queryKey: ["dashboard", "policy", "actions", scope],
+    queryFn: () => dashboardApi.getPolicyActionHistory(assertScope(scope)),
+    enabled: Boolean(scope),
   });
 }

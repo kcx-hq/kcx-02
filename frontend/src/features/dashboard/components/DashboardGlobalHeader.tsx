@@ -420,14 +420,6 @@ export function DashboardGlobalHeader() {
         { label: "Snapshots" },
       ];
     }
-    if (path.startsWith("/dashboard/ec2/performance")) {
-      return [
-        { label: rootCrumb, path: "/dashboard/overview" },
-        { label: "Services", path: "/dashboard/inventory" },
-        { label: "EC2", path: "/dashboard/ec2/explorer" },
-        { label: "Performance" },
-      ];
-    }
     if (path.startsWith("/dashboard/ec2/optimization")) {
       return [
         { label: rootCrumb, path: "/dashboard/overview" },

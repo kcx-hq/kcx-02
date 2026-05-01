@@ -58,6 +58,9 @@ const defaultSummary = {
 
 const INSTANCE_LIST_PATH = "/dashboard/inventory/aws/ec2/instances";
 const OPTIMIZATION_PAGE_PATH = "/dashboard/ec2/optimization";
+const NAT_GATEWAY_PAGE_PATH = "/dashboard/ec2/network/nat-gateway";
+const DATA_TRANSFER_PAGE_PATH = "/dashboard/ec2/network/data-transfer";
+const ELASTIC_IP_PAGE_PATH = "/dashboard/ec2/network/elastic-ip";
 
 const toQueryGroupBy = (groupBy: EC2ExplorerControlsState["groupBy"]): string =>
   groupBy === "instance-type"
@@ -359,6 +362,36 @@ export default function EC2ExplorerPage() {
           }}
           onPointClick={({ date, seriesKey, seriesLabel }) => {
             if (!date) return;
+            if (
+              controls.metric === "cost" &&
+              controls.groupBy === "cost-category" &&
+              (seriesKey?.trim().toLowerCase() === "data_transfer" || seriesLabel?.trim().toLowerCase() === "data transfer")
+            ) {
+              const next = new URLSearchParams();
+              if (scopeStartDate) next.set("startDate", scopeStartDate);
+              if (scopeEndDate) next.set("endDate", scopeEndDate);
+              const existing = new URLSearchParams(location.search);
+              ["accountId", "region", "team", "product", "environment", "tagKey", "tagValue"].forEach((key) => {
+                const value = existing.get(key);
+                if (value && value.trim().length > 0) next.set(key, value);
+              });
+              navigate({ pathname: DATA_TRANSFER_PAGE_PATH, search: next.toString() });
+              return;
+            }
+            if (
+              controls.metric === "cost" &&
+              controls.groupBy === "cost-category" &&
+              (seriesKey?.trim().toLowerCase() === "eip" || seriesLabel?.trim().toLowerCase() === "eip")
+            ) {
+              const next = new URLSearchParams();
+              if (scopeStartDate) next.set("startDate", scopeStartDate);
+              if (scopeEndDate) next.set("endDate", scopeEndDate);
+              const existing = new URLSearchParams(location.search);
+              const region = existing.get("region");
+              if (region && region.trim().length > 0) next.set("region", region);
+              navigate({ pathname: ELASTIC_IP_PAGE_PATH, search: next.toString() });
+              return;
+            }
             navigateToInstanceList("explorer-graph", {
               selectedDate: date,
               groupValue: seriesLabel ?? seriesKey ?? "all",
@@ -381,6 +414,34 @@ export default function EC2ExplorerPage() {
               controls.groupBy === "none"
                 ? String(row.instance ?? row.id)
                 : String(row.group ?? row.id);
+            const normalizedGroupValue = groupValue.trim().toLowerCase().replaceAll(" ", "_").replaceAll("-", "_");
+            if (controls.metric === "cost" && controls.groupBy === "cost-category" && normalizedGroupValue === "nat_gateway") {
+              navigate({ pathname: NAT_GATEWAY_PAGE_PATH, search: location.search });
+              return;
+            }
+            if (controls.metric === "cost" && controls.groupBy === "cost-category" && normalizedGroupValue === "data_transfer") {
+              const next = new URLSearchParams();
+              if (scopeStartDate) next.set("startDate", scopeStartDate);
+              if (scopeEndDate) next.set("endDate", scopeEndDate);
+              const carryKeys = ["accountId", "region", "team", "product", "environment", "tagKey", "tagValue"];
+              const existing = new URLSearchParams(location.search);
+              carryKeys.forEach((key) => {
+                const value = existing.get(key);
+                if (value && value.trim().length > 0) next.set(key, value);
+              });
+              navigate({ pathname: DATA_TRANSFER_PAGE_PATH, search: next.toString() });
+              return;
+            }
+            if (controls.metric === "cost" && controls.groupBy === "cost-category" && normalizedGroupValue === "eip") {
+              const next = new URLSearchParams();
+              if (scopeStartDate) next.set("startDate", scopeStartDate);
+              if (scopeEndDate) next.set("endDate", scopeEndDate);
+              const existing = new URLSearchParams(location.search);
+              const region = existing.get("region");
+              if (region && region.trim().length > 0) next.set("region", region);
+              navigate({ pathname: ELASTIC_IP_PAGE_PATH, search: next.toString() });
+              return;
+            }
             navigateToInstanceList("explorer-table", {
               groupValue,
               ...(controls.groupBy === "network-cost" || controls.groupBy === "network-type" ? { networkType: groupValue } : {}),

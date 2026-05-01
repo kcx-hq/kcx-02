@@ -1,6 +1,7 @@
 export const KCX_AUTH_TOKEN_KEY = "kcx_auth_token"
 export const KCX_AUTH_USER_KEY = "kcx_auth_user"
 export const KCX_AUTH_EXPIRES_AT_KEY = "kcx_auth_expires_at"
+const LEGACY_AUTH_TOKEN_KEYS = ["auth_token", "token", "access_token"] as const
 
 export type AuthUser = {
   id: number | string
@@ -37,7 +38,16 @@ export function getAuthToken() {
     clearAuthSession()
     return null
   }
-  return localStorage.getItem(KCX_AUTH_TOKEN_KEY)
+  const primaryToken = localStorage.getItem(KCX_AUTH_TOKEN_KEY)
+  const rawToken =
+    primaryToken ??
+    LEGACY_AUTH_TOKEN_KEYS.map((key) => localStorage.getItem(key)).find((value) => Boolean(value)) ??
+    null
+  if (!rawToken) return null
+
+  const trimmed = String(rawToken).trim()
+  if (!trimmed) return null
+  return trimmed.startsWith("Bearer ") ? trimmed.slice("Bearer ".length).trim() : trimmed
 }
 
 export function getAuthUser(): AuthUser | null {

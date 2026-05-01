@@ -195,10 +195,11 @@ async function main(): Promise<void> {
     tags: [],
   });
 
-  const recByResource = new Map<string, { type: string; category: "compute" | "storage" | "pricing" }>();
+  const recByResource = new Map<string, { type: string; category: "compute" | "storage" | "pricing" | "network" }>();
   for (const item of recData.recommendations.compute) recByResource.set(item.resourceId, { type: item.type, category: "compute" });
   for (const item of recData.recommendations.storage) recByResource.set(item.resourceId, { type: item.type, category: "storage" });
   for (const item of recData.recommendations.pricing) recByResource.set(item.resourceId, { type: item.type, category: "pricing" });
+  for (const item of recData.recommendations.network) recByResource.set(item.resourceId, { type: item.type, category: "network" });
 
   for (const row of instanceRows) {
     const expected = EXPECTED[row.instance_id as keyof typeof EXPECTED] as any;
@@ -299,6 +300,18 @@ async function main(): Promise<void> {
   for (const item of boundary) {
     const actual = classifyByThreshold(item.cpu, item.net);
     addCheck(checks, "Boundary", `${item.label} classification`, item.expected, actual);
+  }
+
+  const networkTypesExpected = [
+    "high_internet_data_transfer",
+    "high_inter_region_data_transfer",
+    "high_inter_az_data_transfer",
+    "low_cpu_high_network",
+    "unattached_elastic_ip",
+  ];
+  const actualNetworkTypes = new Set(recData.recommendations.network.map((item) => item.type));
+  for (const type of networkTypesExpected) {
+    addCheck(checks, "Network", `recommendation exists: ${type}`, true, actualNetworkTypes.has(type));
   }
 
   const header = "Resource | Check | Expected | Actual | Status";

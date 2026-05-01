@@ -1,13 +1,20 @@
-export type Ec2RecommendationCategory = "compute" | "storage" | "pricing";
+export type Ec2RecommendationCategory = "compute" | "storage" | "pricing" | "network";
 export type Ec2RecommendationType =
   | "idle_instance"
   | "underutilized_instance"
   | "overutilized_instance"
   | "unattached_volume"
   | "old_snapshot"
-  | "uncovered_on_demand";
-export type Ec2RecommendationResourceType = "instance" | "volume" | "snapshot";
+  | "uncovered_on_demand"
+  | "high_internet_data_transfer"
+  | "high_inter_region_data_transfer"
+  | "high_inter_az_data_transfer"
+  | "low_cpu_high_network"
+  | "high_nat_gateway_cost"
+  | "unattached_elastic_ip";
+export type Ec2RecommendationResourceType = "instance" | "volume" | "snapshot" | "elastic_ip";
 export type Ec2RecommendationRisk = "low" | "medium" | "high";
+export type Ec2RecommendationEffort = "low" | "medium" | "high";
 export type Ec2RecommendationStatus = "open" | "accepted" | "ignored" | "snoozed" | "completed";
 
 export type Ec2RecommendationsQuery = {
@@ -49,6 +56,7 @@ export type Ec2RecommendationRecord = {
   action: string;
   estimatedMonthlySaving: number;
   risk: Ec2RecommendationRisk;
+  effort: Ec2RecommendationEffort;
   status: Ec2RecommendationStatus;
   detectedAt: string | null;
   lastSeenAt: string | null;
@@ -66,6 +74,6 @@ export type Ec2RecommendationsResponse = {
     compute: Ec2RecommendationRecord[];
     storage: Ec2RecommendationRecord[];
     pricing: Ec2RecommendationRecord[];
+    network: Ec2RecommendationRecord[];
   };
 };
-

@@ -9,7 +9,6 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import type {
   InventoryEc2SnapshotRow,
   InventoryEc2SnapshotSignal,
-  InventoryEc2SnapshotsSummary,
 } from "@/features/client-home/api/inventory-snapshots.api"
 import { TablePagination } from "@/features/client-home/components/TablePagination"
 import { useInventoryEc2Snapshots } from "@/features/client-home/hooks/useInventoryEc2Snapshots"
@@ -30,18 +29,15 @@ const currencyFormatter = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 2,
 })
 
-const dateTimeFormatter = new Intl.DateTimeFormat("en-US", {
-  dateStyle: "medium",
-  timeStyle: "short",
-})
-
 const EMPTY_SNAPSHOT_ITEMS: InventoryEc2SnapshotRow[] = []
-const EMPTY_SNAPSHOT_SUMMARY: InventoryEc2SnapshotsSummary = {
-  snapshotsInView: 0,
-  likelyOrphanedCount: 0,
-  oldSnapshotsCount: 0,
-  totalSnapshotCost: null,
-}
+type SnapshotDateRangeFilter = "ALL" | "LAST_30_DAYS" | "LAST_90_DAYS" | "LAST_180_DAYS"
+
+const DATE_RANGE_FILTER_OPTIONS: { value: SnapshotDateRangeFilter; label: string }[] = [
+  { value: "ALL", label: "All Dates" },
+  { value: "LAST_30_DAYS", label: "Last 30 Days" },
+  { value: "LAST_90_DAYS", label: "Last 90 Days" },
+  { value: "LAST_180_DAYS", label: "Last 180 Days" },
+]
 
 function toTitleCase(value: string): string {
   return value
@@ -51,13 +47,6 @@ function toTitleCase(value: string): string {
     .filter(Boolean)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
     .join(" ")
-}
-
-function formatDateTime(value: string | null): string {
-  if (!value) return "-"
-  const parsed = Date.parse(value)
-  if (Number.isNaN(parsed)) return "-"
-  return dateTimeFormatter.format(new Date(parsed))
 }
 
 function formatCell(value: string | number | null | undefined): string {
@@ -88,15 +77,6 @@ function formatCurrency(value: number | null, currencyCode: string | null = "USD
   return currencyFormatter.format(value)
 }
 
-function formatJson(value: Record<string, unknown> | null): string {
-  if (!value || Object.keys(value).length === 0) return "-"
-  try {
-    return JSON.stringify(value, null, 2)
-  } catch {
-    return "-"
-  }
-}
-
 function getStateTone(state: string | null): string {
   const normalized = (state ?? "").trim().toLowerCase()
   if (normalized === "completed") return "border-emerald-200 bg-emerald-50 text-emerald-700"
@@ -108,27 +88,29 @@ function getStateTone(state: string | null): string {
 }
 
 function getSignalTone(signal: InventoryEc2SnapshotSignal): string {
-  if (signal === "Orphaned") return "border-rose-200 bg-rose-50 text-rose-700"
-  if (signal === "Old") return "border-amber-200 bg-amber-50 text-amber-700"
+  if (signal === "orphaned") return "border-rose-200 bg-rose-50 text-rose-700"
+  if (signal === "old") return "border-amber-200 bg-amber-50 text-amber-700"
   return "border-emerald-200 bg-emerald-50 text-emerald-700"
 }
 
-function getEncryptedTone(encrypted: boolean | null): string {
-  if (encrypted === true) return "border-emerald-200 bg-emerald-50 text-emerald-700"
-  if (encrypted === false) return "border-slate-300 bg-slate-100 text-slate-700"
-  return "border-[color:var(--border-light)] bg-[color:var(--bg-surface)] text-text-secondary"
-}
-
 function getSourceVolumeLabel(snapshot: InventoryEc2SnapshotRow): string {
-  return snapshot.sourceVolumeName ?? snapshot.sourceVolumeId ?? "-"
+  return snapshot.sourceVolumeId ?? "-"
 }
 
 function getSourceInstanceLabel(snapshot: InventoryEc2SnapshotRow): string {
-  return snapshot.sourceInstanceName ?? snapshot.sourceInstanceId ?? "-"
+  return snapshot.sourceInstanceId ?? "-"
+}
+
+function getDateRangeDays(value: SnapshotDateRangeFilter): number | null {
+  if (value === "LAST_30_DAYS") return 30
+  if (value === "LAST_90_DAYS") return 90
+  if (value === "LAST_180_DAYS") return 180
+  return null
 }
 
 export function ClientInventorySnapshotsPage() {
   const [searchInput, setSearchInput] = useState("")
+  const [dateRangeFilter, setDateRangeFilter] = useState<SnapshotDateRangeFilter>("ALL")
   const [stateFilter, setStateFilter] = useState("ALL")
   const [storageTierFilter, setStorageTierFilter] = useState("ALL")
   const [encryptedFilter, setEncryptedFilter] = useState("ALL")
@@ -158,13 +140,41 @@ export function ClientInventorySnapshotsPage() {
     pageSize: PAGE_SIZE,
   })
 
-  const items = snapshotsQuery.data?.items ?? EMPTY_SNAPSHOT_ITEMS
-  const summary = snapshotsQuery.data?.summary ?? EMPTY_SNAPSHOT_SUMMARY
+  const items = snapshotsQuery.data?.rows ?? EMPTY_SNAPSHOT_ITEMS
+  const dateRangeDays = getDateRangeDays(dateRangeFilter)
+  const filteredItems = useMemo(() => {
+    if (dateRangeDays === null) return items
+    return items.filter((item) => {
+      const ageDays = item.ageDays
+      return typeof ageDays === "number" && Number.isFinite(ageDays) && ageDays <= dateRangeDays
+    })
+  }, [items, dateRangeDays])
+  const rows = useMemo(
+    () =>
+      [...filteredItems].sort((a, b) => {
+        const leftAge = typeof a.ageDays === "number" && Number.isFinite(a.ageDays) ? a.ageDays : -1
+        const rightAge = typeof b.ageDays === "number" && Number.isFinite(b.ageDays) ? b.ageDays : -1
+        if (rightAge !== leftAge) return rightAge - leftAge
+        const leftCost = typeof a.cost === "number" && Number.isFinite(a.cost) ? a.cost : -1
+        const rightCost = typeof b.cost === "number" && Number.isFinite(b.cost) ? b.cost : -1
+        return rightCost - leftCost
+      }),
+    [filteredItems],
+  )
+  const summary = snapshotsQuery.data?.summary
+  const hasAccountColumn = useMemo(
+    () => rows.some((snapshot) => Boolean(snapshot.accountId)),
+    [rows],
+  )
+  const hasRegionColumn = useMemo(() => rows.some((snapshot) => Boolean(snapshot.region)), [rows])
   const rawPagination = snapshotsQuery.data?.pagination
+  const isDateRangeFiltered = dateRangeFilter !== "ALL"
   const totalItems =
-    rawPagination?.total && rawPagination.total > 0 ? rawPagination.total : items.length
+    !isDateRangeFiltered && rawPagination?.total && rawPagination.total > 0
+      ? rawPagination.total
+      : rows.length
   const totalPages =
-    rawPagination?.totalPages && rawPagination.totalPages > 0
+    !isDateRangeFiltered && rawPagination?.totalPages && rawPagination.totalPages > 0
       ? rawPagination.totalPages
       : totalItems > 0
         ? Math.ceil(totalItems / PAGE_SIZE)
@@ -188,7 +198,7 @@ export function ClientInventorySnapshotsPage() {
       Array.from(
         new Set(
           items
-            .map((item) => item.regionKey)
+            .map((item) => item.region)
             .filter((value): value is string => Boolean(value)),
         ),
       ).sort((a, b) => a.localeCompare(b)),
@@ -209,8 +219,10 @@ export function ClientInventorySnapshotsPage() {
           <div className="min-h-[96px] px-6 py-4">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.08em] text-text-muted">Snapshots In View</p>
-                <p className="mt-2 text-[2rem] font-semibold leading-none text-text-primary">{summary.snapshotsInView}</p>
+                <p className="text-xs font-semibold uppercase tracking-[0.08em] text-text-muted">Total Snapshot Cost</p>
+                <p className="mt-2 text-[2rem] font-semibold leading-none text-text-primary">
+                  {summary ? formatCurrency(summary.totalSnapshotCost, "USD") : "-"}
+                </p>
               </div>
               <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-[rgba(62,138,118,0.12)] text-[color:#24755d]">
                 <Database className="h-4 w-4" />
@@ -218,17 +230,17 @@ export function ClientInventorySnapshotsPage() {
             </div>
           </div>
           <div className="min-h-[96px] border-t border-[color:var(--border-light)] px-6 py-4 md:border-l md:border-t-0">
-            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-text-muted">Likely Orphaned</p>
-            <p className="mt-2 text-[2rem] font-semibold leading-none text-text-primary">{summary.likelyOrphanedCount}</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-text-muted">Total Snapshots</p>
+            <p className="mt-2 text-[2rem] font-semibold leading-none text-text-primary">{summary?.totalSnapshots ?? "-"}</p>
           </div>
           <div className="min-h-[96px] border-t border-[color:var(--border-light)] px-6 py-4 md:border-l md:border-t-0">
             <p className="text-xs font-semibold uppercase tracking-[0.08em] text-text-muted">Old Snapshots</p>
-            <p className="mt-2 text-[2rem] font-semibold leading-none text-text-primary">{summary.oldSnapshotsCount}</p>
+            <p className="mt-2 text-[2rem] font-semibold leading-none text-text-primary">{summary?.oldSnapshots ?? "-"}</p>
           </div>
           <div className="min-h-[96px] border-t border-[color:var(--border-light)] px-6 py-4 md:border-l md:border-t-0">
-            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-text-muted">Total Snapshot Cost</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-text-muted">Potential Savings</p>
             <p className="mt-2 text-[2rem] font-semibold leading-none text-text-primary">
-              {summary.totalSnapshotCost === null ? "-" : formatCurrency(summary.totalSnapshotCost, "USD")}
+              {summary ? formatCurrency(summary.potentialSavings, "USD") : "-"}
             </p>
           </div>
         </div>
@@ -246,6 +258,24 @@ export function ClientInventorySnapshotsPage() {
                 placeholder="Search by snapshot ID or source volume ID"
                 className="h-9 w-full rounded-none border-0 border-b border-[color:var(--border-light)] bg-transparent pl-9 pr-3 text-sm text-text-primary outline-none transition-colors focus:border-[color:var(--kcx-border-strong)]"
               />
+            </div>
+
+            <div className="relative min-w-[11rem]">
+              <SlidersHorizontal className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
+              <select
+                value={dateRangeFilter}
+                onChange={(event) => {
+                  setDateRangeFilter(event.target.value as SnapshotDateRangeFilter)
+                  setPage(1)
+                }}
+                className="h-9 min-w-[11rem] rounded-none border-0 border-b border-[color:var(--border-light)] bg-transparent pl-9 pr-3 text-sm text-text-primary outline-none"
+              >
+                {DATE_RANGE_FILTER_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
             </div>
 
             <div className="relative min-w-[11rem]">
@@ -352,30 +382,37 @@ export function ClientInventorySnapshotsPage() {
                   <TableHead className="py-4">Snapshot ID</TableHead>
                   <TableHead className="py-4">Source Volume</TableHead>
                   <TableHead className="py-4">Source Instance</TableHead>
+                  {hasAccountColumn ? <TableHead className="py-4">Account</TableHead> : null}
+                  {hasRegionColumn ? <TableHead className="py-4">Region</TableHead> : null}
                   <TableHead className="py-4">State</TableHead>
                   <TableHead className="py-4">Storage Tier</TableHead>
                   <TableHead className="py-4">Age</TableHead>
                   <TableHead className="py-4">Signal</TableHead>
                   <TableHead className="py-4 text-right">Cost</TableHead>
+                  <TableHead className="py-4">Recommendation</TableHead>
+                  <TableHead className="py-4 text-right">Estimated Savings</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {items.length === 0 ? (
+                {rows.length === 0 ? (
                   <TableRow className="border-b border-[color:var(--border-light)]">
-                    <TableCell colSpan={8} className="py-12 text-center text-sm text-text-secondary">
+                    <TableCell colSpan={hasAccountColumn || hasRegionColumn ? 12 : 10} className="py-12 text-center text-sm text-text-secondary">
                       No inventory snapshots found for the selected filters.
                     </TableCell>
                   </TableRow>
                 ) : (
-                  items.map((snapshot) => (
+                  rows.map((snapshot) => {
+                    return (
                     <TableRow
-                      key={`${snapshot.snapshotId}:${snapshot.regionKey ?? "no-region"}`}
+                      key={`${snapshot.snapshotId}:${snapshot.region ?? "no-region"}:${snapshot.accountId ?? "no-account"}`}
                       className="cursor-pointer border-b border-[color:var(--border-light)] hover:bg-[rgba(62,138,118,0.06)]"
                       onClick={() => setSelectedSnapshot(snapshot)}
                     >
                       <TableCell className="py-5 font-medium text-text-primary">{snapshot.snapshotId}</TableCell>
                       <TableCell className="py-5">{getSourceVolumeLabel(snapshot)}</TableCell>
                       <TableCell className="py-5">{getSourceInstanceLabel(snapshot)}</TableCell>
+                      {hasAccountColumn ? <TableCell className="py-5">{formatCell(snapshot.accountName ?? snapshot.accountId)}</TableCell> : null}
+                      {hasRegionColumn ? <TableCell className="py-5">{formatCell(snapshot.region)}</TableCell> : null}
                       <TableCell className="py-5">
                         <Badge variant="outline" className={cn("rounded-md", getStateTone(snapshot.state))}>
                           {toTitleCase(snapshot.state ?? "unknown")}
@@ -385,20 +422,25 @@ export function ClientInventorySnapshotsPage() {
                       <TableCell className="py-5">{formatAgeDays(snapshot.ageDays)}</TableCell>
                       <TableCell className="py-5">
                         <Badge variant="outline" className={cn("rounded-md", getSignalTone(snapshot.signal))}>
-                          {snapshot.signal}
+                          {snapshot.signal ? toTitleCase(snapshot.signal) : "-"}
                         </Badge>
                       </TableCell>
                       <TableCell className="py-5 text-right font-medium text-text-primary">
-                        {formatCurrency(snapshot.cost, snapshot.currencyCode)}
+                        {formatCurrency(snapshot.cost, "USD")}
+                      </TableCell>
+                      <TableCell className="py-5">{snapshot.recommendation ?? "-"}</TableCell>
+                      <TableCell className="py-5 text-right font-medium text-text-primary">
+                        {formatCurrency(snapshot.estimatedSavings, "USD")}
                       </TableCell>
                     </TableRow>
-                  ))
+                    )
+                  })
                 )}
               </TableBody>
             </Table>
           )}
 
-          {!snapshotsQuery.isLoading && items.length > 0 ? (
+          {!snapshotsQuery.isLoading && rows.length > 0 ? (
             <TablePagination
               currentPage={currentPage}
               totalPages={Math.max(1, totalPages)}
@@ -445,20 +487,8 @@ export function ClientInventorySnapshotsPage() {
                     <dd className="mt-1 text-sm text-text-primary">{formatCell(selectedSnapshot.storageTier)}</dd>
                   </div>
                   <div>
-                    <dt className="text-xs font-semibold uppercase tracking-[0.08em] text-text-muted">Encrypted</dt>
-                    <dd className="mt-1">
-                      <Badge variant="outline" className={cn("rounded-md", getEncryptedTone(selectedSnapshot.encrypted))}>
-                        {selectedSnapshot.encrypted === null ? "Unknown" : selectedSnapshot.encrypted ? "Yes" : "No"}
-                      </Badge>
-                    </dd>
-                  </div>
-                  <div>
-                    <dt className="text-xs font-semibold uppercase tracking-[0.08em] text-text-muted">KMS Key ID</dt>
-                    <dd className="mt-1 text-sm text-text-primary">{formatCell(selectedSnapshot.kmsKeyId)}</dd>
-                  </div>
-                  <div>
-                    <dt className="text-xs font-semibold uppercase tracking-[0.08em] text-text-muted">Progress</dt>
-                    <dd className="mt-1 text-sm text-text-primary">{formatCell(selectedSnapshot.progress)}</dd>
+                    <dt className="text-xs font-semibold uppercase tracking-[0.08em] text-text-muted">Age</dt>
+                    <dd className="mt-1 text-sm text-text-primary">{formatAgeDays(selectedSnapshot.ageDays)}</dd>
                   </div>
                 </dl>
               </div>
@@ -467,94 +497,48 @@ export function ClientInventorySnapshotsPage() {
                 <h4 className="text-xs font-semibold uppercase tracking-[0.08em] text-text-muted">Source Relation</h4>
                 <dl className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
                   <div>
-                    <dt className="text-xs font-semibold uppercase tracking-[0.08em] text-text-muted">Source Volume Name</dt>
-                    <dd className="mt-1 text-sm text-text-primary">{formatCell(selectedSnapshot.sourceVolumeName)}</dd>
-                  </div>
-                  <div>
                     <dt className="text-xs font-semibold uppercase tracking-[0.08em] text-text-muted">Source Volume ID</dt>
                     <dd className="mt-1 text-sm text-text-primary">{formatCell(selectedSnapshot.sourceVolumeId)}</dd>
-                  </div>
-                  <div>
-                    <dt className="text-xs font-semibold uppercase tracking-[0.08em] text-text-muted">Source Instance Name</dt>
-                    <dd className="mt-1 text-sm text-text-primary">{formatCell(selectedSnapshot.sourceInstanceName)}</dd>
                   </div>
                   <div>
                     <dt className="text-xs font-semibold uppercase tracking-[0.08em] text-text-muted">Source Instance ID</dt>
                     <dd className="mt-1 text-sm text-text-primary">{formatCell(selectedSnapshot.sourceInstanceId)}</dd>
                   </div>
                   <div>
-                    <dt className="text-xs font-semibold uppercase tracking-[0.08em] text-text-muted">Likely Orphaned</dt>
-                    <dd className="mt-1">
-                      <Badge variant="outline" className={cn("rounded-md", getSignalTone(selectedSnapshot.signal))}>
-                        {selectedSnapshot.likelyOrphaned ? "Yes" : "No"}
-                      </Badge>
-                    </dd>
+                    <dt className="text-xs font-semibold uppercase tracking-[0.08em] text-text-muted">Account</dt>
+                    <dd className="mt-1 text-sm text-text-primary">{formatCell(selectedSnapshot.accountName ?? selectedSnapshot.accountId)}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs font-semibold uppercase tracking-[0.08em] text-text-muted">Region</dt>
+                    <dd className="mt-1 text-sm text-text-primary">{formatCell(selectedSnapshot.region)}</dd>
                   </div>
                 </dl>
               </div>
 
               <div className="rounded-md border border-[color:var(--border-light)] bg-white p-4">
-                <h4 className="text-xs font-semibold uppercase tracking-[0.08em] text-text-muted">Lifecycle Info</h4>
+                <h4 className="text-xs font-semibold uppercase tracking-[0.08em] text-text-muted">FinOps Info</h4>
                 <dl className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
-                  <div>
-                    <dt className="text-xs font-semibold uppercase tracking-[0.08em] text-text-muted">Start Time</dt>
-                    <dd className="mt-1 text-sm text-text-primary">{formatDateTime(selectedSnapshot.startTime)}</dd>
-                  </div>
-                  <div>
-                    <dt className="text-xs font-semibold uppercase tracking-[0.08em] text-text-muted">Age</dt>
-                    <dd className="mt-1 text-sm text-text-primary">{formatAgeDays(selectedSnapshot.ageDays)}</dd>
-                  </div>
                   <div>
                     <dt className="text-xs font-semibold uppercase tracking-[0.08em] text-text-muted">Signal</dt>
                     <dd className="mt-1">
                       <Badge variant="outline" className={cn("rounded-md", getSignalTone(selectedSnapshot.signal))}>
-                        {selectedSnapshot.signal}
+                        {selectedSnapshot.signal ? toTitleCase(selectedSnapshot.signal) : "-"}
                       </Badge>
                     </dd>
                   </div>
                   <div>
-                    <dt className="text-xs font-semibold uppercase tracking-[0.08em] text-text-muted">Region Key</dt>
-                    <dd className="mt-1 text-sm text-text-primary">{formatCell(selectedSnapshot.regionKey)}</dd>
-                  </div>
-                  <div>
-                    <dt className="text-xs font-semibold uppercase tracking-[0.08em] text-text-muted">Sub Account Key</dt>
-                    <dd className="mt-1 text-sm text-text-primary">{formatCell(selectedSnapshot.subAccountKey)}</dd>
-                  </div>
-                </dl>
-              </div>
-
-              <div className="rounded-md border border-[color:var(--border-light)] bg-white p-4">
-                <h4 className="text-xs font-semibold uppercase tracking-[0.08em] text-text-muted">Cost Info</h4>
-                <dl className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
-                  <div>
                     <dt className="text-xs font-semibold uppercase tracking-[0.08em] text-text-muted">Cost</dt>
-                    <dd className="mt-1 text-sm text-text-primary">
-                      {formatCurrency(selectedSnapshot.cost, selectedSnapshot.currencyCode)}
-                    </dd>
+                    <dd className="mt-1 text-sm text-text-primary">{formatCurrency(selectedSnapshot.cost, "USD")}</dd>
                   </div>
                   <div>
-                    <dt className="text-xs font-semibold uppercase tracking-[0.08em] text-text-muted">Currency</dt>
-                    <dd className="mt-1 text-sm text-text-primary">{formatCell(selectedSnapshot.currencyCode)}</dd>
+                    <dt className="text-xs font-semibold uppercase tracking-[0.08em] text-text-muted">Recommendation</dt>
+                    <dd className="mt-1 text-sm text-text-primary">{formatCell(selectedSnapshot.recommendation)}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs font-semibold uppercase tracking-[0.08em] text-text-muted">Estimated Savings</dt>
+                    <dd className="mt-1 text-sm text-text-primary">{formatCurrency(selectedSnapshot.estimatedSavings, "USD")}</dd>
                   </div>
                 </dl>
-              </div>
-
-              <div className="rounded-md border border-[color:var(--border-light)] bg-white p-4">
-                <h4 className="text-xs font-semibold uppercase tracking-[0.08em] text-text-muted">Metadata</h4>
-                <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.08em] text-text-muted">Tags</p>
-                    <pre className="mt-2 max-h-56 overflow-auto rounded-md border border-[color:var(--border-light)] bg-[color:var(--bg-surface)] p-3 text-xs text-text-primary">
-                      {formatJson(selectedSnapshot.tags)}
-                    </pre>
-                  </div>
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.08em] text-text-muted">Metadata</p>
-                    <pre className="mt-2 max-h-56 overflow-auto rounded-md border border-[color:var(--border-light)] bg-[color:var(--bg-surface)] p-3 text-xs text-text-primary">
-                      {formatJson(selectedSnapshot.metadata)}
-                    </pre>
-                  </div>
-                </div>
               </div>
             </div>
           ) : null}

@@ -86,6 +86,75 @@ WHERE tenant_id = :tenant_id
   AND usage_date BETWEEN :from_date AND :to_date;
 ```
 
+## EC2 Network Recommendations
+Important note:
+- Network cost recommendations use CUR/billing data (`fact_cost_line_items`).
+- Network usage behavior uses CloudWatch-derived daily facts (`fact_ec2_instance_daily`).
+- Billed usage can differ from CloudWatch network usage.
+
+- `high_internet_data_transfer`
+Meaning: internet egress cost/usage is high for an instance.
+Data source: `fact_cost_line_items` + `classifyNetworkCostType(lineItem)`.
+Condition: network type = Internet Data Transfer AND (`cost >= 10` OR `% network cost >= 30` OR `usage_gb >= 50`).
+Evidence fields: `network_type`, `cost`, `usage_gb`, `percent_of_network_cost`.
+Savings estimate: `internet_transfer_cost * 0.30`.
+Risk/effort: `low` / `medium`.
+Validation SQL (shape):
+```sql
+-- group instance-level internet transfer cost/usage
+SELECT resource_id AS instance_id, SUM(COALESCE(effective_cost, billed_cost, 0)) AS internet_cost
+FROM fact_cost_line_items
+WHERE tenant_id = :tenant_id
+  AND usage_start_time BETWEEN :from_date AND (:to_date::date + INTERVAL '1 day')
+GROUP BY resource_id;
+```
+
+- `high_inter_region_data_transfer`
+Meaning: cross-region transfer is costly.
+Data source: `fact_cost_line_items` + `classifyNetworkCostType(lineItem)`.
+Condition: network type = Inter-Region Data Transfer AND (`cost >= 5` OR `% network cost >= 20` OR `usage_gb >= 25`).
+Evidence fields: `network_type`, `cost`, `usage_gb`, `from_region`, `to_region`, `percent_of_network_cost`.
+Savings estimate: `inter_region_cost * 0.40`.
+Risk/effort: `medium` / `medium`.
+
+- `high_inter_az_data_transfer`
+Meaning: same-region cross-AZ transfer is costly.
+Data source: `fact_cost_line_items` + `classifyNetworkCostType(lineItem)`.
+Condition: network type = Inter-AZ Data Transfer AND (`cost >= 5` OR `% network cost >= 20` OR `usage_gb >= 25`).
+Evidence fields: `network_type`, `cost`, `usage_gb`, `percent_of_network_cost`.
+Savings estimate: `inter_az_cost * 0.25`.
+Risk/effort: `medium` / `medium`.
+
+- `low_cpu_high_network`
+Meaning: compute is low but network is meaningful.
+Data source: `fact_ec2_instance_daily`.
+Condition: `avg_cpu < 5` AND `total_network_usage_gb >= 10` AND `total_effective_cost >= 5` AND instance running.
+Evidence fields: `avg_cpu`, `network_usage_gb`, `total_effective_cost`, `running_days`.
+Savings estimate: `total_effective_cost * 0.20`.
+Risk/effort: `medium` / `medium`.
+
+- `high_nat_gateway_cost`
+Meaning: NAT Gateway charges are significant for instance-related traffic.
+Data source: `fact_cost_line_items` + `classifyNetworkCostType(lineItem)`.
+Condition: network type = NAT Gateway AND (`cost >= 10` OR `% network cost >= 20`).
+Evidence fields: `network_type`, `cost`, `usage_gb`, `percent_of_network_cost`.
+Savings estimate: `nat_gateway_cost * 0.30`.
+Risk/effort: `medium` / `medium`.
+
+- `unattached_elastic_ip`
+Meaning: EIP exists but is unattached/unassociated.
+Data source: `ec2_eip_inventory_snapshots` (+ `fact_cost_line_items` cost when available).
+Condition: `is_attached = false` OR association status in unattached states.
+Evidence fields: `public_ip`, `allocation_id`, `region`, `association_status`, `is_attached`, `eip_cost`.
+Savings estimate: actual EIP cost when found, else `3.60`.
+Risk/effort: `low` / `low`.
+
+Source tables:
+- `fact_cost_line_items`
+- `fact_ec2_instance_daily`
+- `ec2_eip_inventory_snapshots`
+- `fact_recommendations`
+
 ## Instance Detail Usage tab
 - Avg CPU (%)
 Meaning: mean cpu.
@@ -317,3 +386,130 @@ WHERE tenant_id = :tenant_id
 - CloudWatch vs CUR note
   - Explorer Network Type usage is CUR billed usage from billing line items.
   - This can differ from CloudWatch Network Usage because CloudWatch reports telemetry usage metrics, while CUR reports billable quantities and billing dimensions.
+
+## EC2 Data Transfer Page (Dedicated, Independent)
+- Route
+  - `/dashboard/ec2/network/data-transfer` (frontend)
+  - `GET /api/ec2/data-transfer` (backend)
+- Independence rule
+  - Must not depend on Explorer Network Breakdown API/types/components.
+  - Uses its own endpoint, query model, filters, row model, and UI state.
+
+- Scope and filters
+  - Required query params:
+    - `startDate`, `endDate`, `accountId`, `region`, `team`, `product`, `environment`
+    - `tagKey`, `tagValue`, `transferType`
+    - `minCost`, `maxCost`, `minUsageGb`, `maxUsageGb`
+    - `resourceId`, `search`
+  - Search fields:
+    - `resourceId`, `resourceName`, `accountName`, `region`, `team`, `product`
+
+- Included line items (Data Transfer only)
+  - Include transfer-related CUR lines only.
+  - Exclude non-transfer categories from this endpoint:
+    - NAT Gateway
+    - Elastic IP
+    - Load Balancer
+    - EBS
+    - Snapshot
+    - Compute
+
+- Transfer type enum
+  - `internet`
+  - `inter_region`
+  - `inter_az`
+  - `unknown`
+
+- Classification formulas/order
+  - Normalize text blob from:
+    - `usage_type`, `product_usage_type`, `product_family`, `operation`, `line_item_description`, `from_location`, `to_location`
+  - Exclusion first:
+    - If blob contains `natgateway`, `nat-gateway`, `nat gateway`, or NAT data processing bytes pattern, exclude row.
+  - Internet:
+    - usage/operation/description suggests `datatransfer-out`, `datatransfer-in`, `aws-out-bytes`, `internet`, `public`, `regional-datatransfer-out-bytes`
+  - Inter-Region:
+    - transfer text suggests `region-to-region`, `interregion`, `aws-datatransfer-regional-bytes`
+    - or both region codes exist and differ
+  - Inter-AZ:
+    - transfer text suggests `az-to-az`, `cross-az`, `interzone`
+    - or same-region AZ transfer inference
+  - Unknown:
+    - transfer-related line item where type cannot be safely inferred
+
+- Cost and usage formulas
+  - Cost basis:
+    - `cost = SUM(COALESCE(effective_cost, billed_cost, 0))`
+  - Usage GB:
+    - `usage_gb = SUM(COALESCE(consumed_quantity, pricing_quantity, 0))` normalized to GB where source unit is bytes
+  - Summary:
+    - `totalCost = SUM(row.cost)`
+    - `totalUsageGb = SUM(row.usageGb)`
+    - `resourceCount = COUNT(DISTINCT resourceId where resourceId is not null)`
+    - `internetCost = SUM(cost where transferType='internet')`
+    - `interRegionCost = SUM(cost where transferType='inter_region')`
+    - `interAzCost = SUM(cost where transferType='inter_az')`
+    - `unknownCost = SUM(cost where transferType='unknown')`
+    - `potentialSavings = internetCost*0.20 + interRegionCost*0.30 + interAzCost*0.25 + unknownCost*0.10`
+
+- Breakdown formulas
+  - By `transferType`:
+    - `cost = SUM(cost)`
+    - `usageGb = SUM(usageGb)`
+    - `percentageOfDataTransferCost = cost / totalDataTransferCost * 100`
+    - `resourceCount = COUNT(DISTINCT resourceId)`
+    - `recommendationCount = COUNT(rows with generated recommendation)`
+
+- Trend formulas (daily)
+  - For each date:
+    - `internetCost`, `interRegionCost`, `interAzCost`, `unknownCost`
+    - `totalCost = internetCost + interRegionCost + interAzCost + unknownCost`
+    - `usageGb = SUM(usageGb)`
+
+- Row formulas
+  - `costTrendPct`:
+    - `(current_window_cost - previous_window_cost) / previous_window_cost * 100`, else `null` when denominator is zero/unavailable
+  - `estimatedSavings`:
+    - internet: `cost * 0.20`
+    - inter_region: `cost * 0.30`
+    - inter_az: `cost * 0.25`
+    - unknown: `cost * 0.10`
+  - `confidence`:
+    - `high` when transfer type inferred from strong region/location signals
+    - `medium` when inferred from clear usage/operation text
+    - `low` when mapped to `unknown` or weak signal
+
+- Recommendation rules
+  - High Internet Data Transfer:
+    - condition: `transferType='internet'` and cost/usage above threshold
+    - recommendation: `Review public traffic, use CDN/caching/compression where applicable.`
+  - Inter-Region Data Transfer:
+    - condition: `transferType='inter_region'` and `cost > 0`
+    - recommendation: `Co-locate dependent services in the same region where possible.`
+  - Inter-AZ Data Transfer:
+    - condition: `transferType='inter_az'` and `cost > 0`
+    - recommendation: `Review cross-AZ communication and placement of chatty services.`
+  - Unknown Data Transfer:
+    - condition: `transferType='unknown'` and meaningful cost
+    - recommendation: `Review billing usage type and source resource mapping.`
+
+- Resource mapping policy
+  - Use billing-linked `resource_id` when present.
+  - If missing, return `resourceId = null` (do not synthesize/fake IDs).
+
+- Sorting/pagination
+  - Supported sorts:
+    - `cost`, `usageGb`, `resourceId`, `region`, `transferType`, `estimatedSavings`, `lastSeen`
+  - Default:
+    - `cost desc`
+  - Response integrity check:
+    - `summary.totalCost` must equal sum of filtered row costs (within rounding tolerance).
+
+- Navigation rules
+  - From Explorer category click (Data Transfer only category):
+    - Navigate to `/dashboard/ec2/network/data-transfer` with scoped filters in query.
+  - Resource link from table:
+    - If instance-like `resourceId` exists: `/dashboard/inventory/aws/ec2/instances/{resourceId}`
+    - Else show `Unmapped` (non-clickable).
+  - Recommendation link:
+    - With resource: `/dashboard/ec2/recommendations?tab=network&resourceId={resourceId}&transferType={transferType}`
+    - Without resource: `/dashboard/ec2/recommendations?tab=network&transferType={transferType}&accountId={accountId}&region={region}`

@@ -81,15 +81,21 @@ export const dashboardNav: DashboardNavNode[] = [
           },
           {
             kind: "link",
-            label: "Performance",
-            path: "/dashboard/ec2/performance",
-            icon: "line-chart",
-          },
-          {
-            kind: "link",
             label: "Optimization",
             path: "/dashboard/ec2/optimization",
             icon: "gauge",
+          },
+          {
+            kind: "link",
+            label: "Data Transfer",
+            path: "/dashboard/ec2/network/data-transfer",
+            icon: "activity",
+          },
+          {
+            kind: "link",
+            label: "Elastic IP",
+            path: "/dashboard/inventory/aws/ec2/elastic-ip",
+            icon: "activity",
           },
         ],
       },
@@ -135,6 +141,7 @@ export const dashboardNav: DashboardNavNode[] = [
     path: "/dashboard/anomalies-alerts",
     icon: "triangle-alert",
   },
+  { kind: "link", label: "Policy", path: "/dashboard/policy", icon: "file-text" },
   { kind: "link", label: "Budget", path: "/dashboard/budget", icon: "wallet" },
   { kind: "link", label: "Report", path: "/dashboard/report", icon: "file-text" },
 ];
