@@ -135,8 +135,14 @@ export type DatabaseExplorerTableRow = {
   connections: number | null;
 };
 
+export type DatabaseExplorerFilterOptions = {
+  dbServices: string[];
+  dbEngines: string[];
+};
+
 export type DatabaseExplorerResponse = {
   filters: DatabaseExplorerAppliedFilters;
+  filterOptions: DatabaseExplorerFilterOptions;
   cards: DatabaseExplorerCards;
   trend: Array<DatabaseExplorerCostTrendItem | DatabaseExplorerUsageTrendItem>;
   table: DatabaseExplorerTableRow[];

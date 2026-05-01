@@ -4,6 +4,7 @@ import { BadRequestError } from "../../../errors/http-errors.js";
 import { sequelize } from "../../../models/index.js";
 import type {
   ExplorerCards,
+  ExplorerFilterOptions,
   ExplorerQueryParams,
   ExplorerTableRow,
   ExplorerTrendItem,
@@ -52,6 +53,10 @@ type TableAggregateRow = {
   resourceCount: string | number | null;
   avgLoad: string | number | null;
   connections: string | number | null;
+};
+
+type FilterOptionValueRow = {
+  value: string | null;
 };
 
 type ExplorerCardsQueryParams = ExplorerQueryParams & {
@@ -187,6 +192,23 @@ const buildTrendFilters = (params: ExplorerQueryParams): string => {
   return filters.join("\n    AND ");
 };
 
+const buildFilterOptionsFilters = (params: Pick<ExplorerQueryParams, "tenantId" | "startDate" | "endDate" | "cloudConnectionId" | "regionKey">): string => {
+  const filters = [
+    "tenant_id = CAST(:tenantId AS uuid)",
+    "usage_date BETWEEN CAST(:startDate AS date) AND CAST(:endDate AS date)",
+  ];
+
+  if (params.cloudConnectionId) {
+    filters.push("cloud_connection_id = CAST(:cloudConnectionId AS uuid)");
+  }
+
+  if (params.regionKey) {
+    filters.push("region_key = CAST(:regionKey AS bigint)");
+  }
+
+  return filters.join("\n    AND ");
+};
+
 const buildTrendQueryParams = (params: ExplorerQueryParams): ExplorerQueryParams => ({
   ...params,
   startDate: toUtcDateOnly(params.startDate, "start_date"),
@@ -203,12 +225,58 @@ const GROUP_BY_COLUMNS = {
     groupExpression: "db_engine",
   },
   region: {
-    selectExpression: "CAST(region_key AS text)",
+    selectExpression: "COALESCE(NULLIF(MAX(dr.region_name), ''), NULLIF(MAX(dr.region_id), ''), CAST(region_key AS text))",
     groupExpression: "region_key",
   },
 } as const;
 
 export class DatabaseExplorerRepository {
+  async getFilterOptions(params: ExplorerQueryParams): Promise<ExplorerFilterOptions> {
+    const queryParams = buildTrendQueryParams(params);
+    const filters = buildFilterOptionsFilters(queryParams);
+
+    const [serviceRows, engineRows] = await Promise.all([
+      sequelize.query<FilterOptionValueRow>(
+        `
+SELECT DISTINCT db_service AS value
+FROM fact_db_resource_daily
+WHERE ${filters}
+  AND db_service IS NOT NULL
+  AND BTRIM(db_service) <> ''
+ORDER BY value ASC;
+`,
+        {
+          replacements: queryParams,
+          type: QueryTypes.SELECT,
+        },
+      ),
+      sequelize.query<FilterOptionValueRow>(
+        `
+SELECT DISTINCT db_engine AS value
+FROM fact_db_resource_daily
+WHERE ${filters}
+  AND db_engine IS NOT NULL
+  AND BTRIM(db_engine) <> ''
+  AND LOWER(BTRIM(db_engine)) <> 'unknown'
+ORDER BY value ASC;
+`,
+        {
+          replacements: queryParams,
+          type: QueryTypes.SELECT,
+        },
+      ),
+    ]);
+
+    return {
+      dbServices: serviceRows
+        .map((row) => (typeof row.value === "string" ? row.value.trim() : ""))
+        .filter((value) => value.length > 0),
+      dbEngines: engineRows
+        .map((row) => (typeof row.value === "string" ? row.value.trim() : ""))
+        .filter((value) => value.length > 0),
+    };
+  }
+
   async getCards(params: ExplorerQueryParams): Promise<ExplorerCards> {
     const previousPeriod = getPreviousPeriod(params);
     const queryParams: ExplorerCardsQueryParams = {
@@ -350,6 +418,7 @@ SELECT
   AVG(load_avg) AS "avgLoad",
   AVG(connections_avg) AS "connections"
 FROM fact_db_resource_daily
+LEFT JOIN dim_region dr ON dr.id = region_key
 WHERE ${filters}
   AND ${groupBy.groupExpression} IS NOT NULL
 GROUP BY ${groupBy.groupExpression}

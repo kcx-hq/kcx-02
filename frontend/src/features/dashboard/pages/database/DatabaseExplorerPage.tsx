@@ -43,14 +43,13 @@ export default function DatabaseExplorerPage() {
   const query = useDatabaseExplorerQuery(filters);
   const data = query.data;
 
-  const groupedValues = useMemo(() => uniqueSorted(data?.table.map((row) => row.group) ?? []), [data?.table]);
   const dbServiceOptions = useMemo(
-    () => uniqueSorted([...(groupBy === "db_service" ? groupedValues : []), dbService]),
-    [dbService, groupBy, groupedValues],
+    () => uniqueSorted(data?.filterOptions?.dbServices ?? []),
+    [data?.filterOptions?.dbServices],
   );
   const dbEngineOptions = useMemo(
-    () => uniqueSorted([...(groupBy === "db_engine" ? groupedValues : []), dbEngine]),
-    [dbEngine, groupBy, groupedValues],
+    () => uniqueSorted(data?.filterOptions?.dbEngines ?? []),
+    [data?.filterOptions?.dbEngines],
   );
 
   const pageLoading = query.isLoading && !data;

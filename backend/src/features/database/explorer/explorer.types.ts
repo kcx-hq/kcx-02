@@ -54,8 +54,14 @@ export type ExplorerTableRow = {
   connections: number | null;
 };
 
+export type ExplorerFilterOptions = {
+  dbServices: string[];
+  dbEngines: string[];
+};
+
 export type ExplorerResponse = {
   filters: ExplorerQueryParams;
+  filterOptions: ExplorerFilterOptions;
   cards: ExplorerCards;
   trend: ExplorerTrendItem[];
   table: ExplorerTableRow[];
