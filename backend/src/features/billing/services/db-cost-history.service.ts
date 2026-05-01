@@ -20,6 +20,17 @@ type SampleFactRow = {
   resource_id: string | null;
 };
 
+type DbSyncErrorLike = {
+  name?: string;
+  message?: string;
+  errors?: unknown;
+  fields?: unknown;
+  parent?: unknown;
+  original?: unknown;
+  sql?: unknown;
+  parameters?: unknown;
+};
+
 const EFFECTIVE_USAGE_DATE_SQL = `
 COALESCE(
   dd_usage.full_date,
@@ -96,11 +107,109 @@ COALESCE(
     WHEN LOWER(COALESCE(f.line_item_type, '')) IN ('tax', 'credit', 'refund') THEN 'db-scope:AmazonRDS'
     ELSE CONCAT(
       'db-unattributed:AmazonRDS|',
-      COALESCE(f.effective_usage_date, DATE(COALESCE(f.usage_start_time, f.usage_end_time)))::text
+      COALESCE(f.effective_usage_date, DATE(COALESCE(f.usage_start_time, f.usage_end_time)))::text,
+      '|',
+      ${COST_CATEGORY_SQL}
     )
   END
 )
 `;
+
+const toSerializable = (value: unknown): unknown => {
+  if (value == null) return value;
+  if (value instanceof Error) {
+    return {
+      name: value.name,
+      message: value.message,
+      stack: value.stack,
+    };
+  }
+  if (typeof value === "object") {
+    try {
+      return JSON.parse(JSON.stringify(value));
+    } catch {
+      return String(value);
+    }
+  }
+  return value;
+};
+
+const buildDbSyncErrorDetails = (error: unknown) => {
+  const err = (error ?? {}) as DbSyncErrorLike;
+  return {
+    name: err?.name ?? null,
+    message: err?.message ?? null,
+    errors: toSerializable(err?.errors),
+    fields: toSerializable(err?.fields),
+    parent: toSerializable(err?.parent),
+    original: toSerializable(err?.original),
+    sql: typeof err?.sql === "string" ? err.sql : null,
+    parameters: toSerializable(err?.parameters),
+  };
+};
+
+async function logDbHistoryInsertDiagnostics({
+  ingestionRunId,
+  tenantId,
+  providerId,
+  billingSourceId,
+}: {
+  ingestionRunId: string;
+  tenantId: string;
+  providerId: string;
+  billingSourceId: string;
+}): Promise<void> {
+  const rows = await sequelize.query(
+    `
+SELECT
+  f.id,
+  ${EFFECTIVE_USAGE_DATE_SQL} AS usage_date,
+  ${RESOURCE_ID_SQL} AS resource_id,
+  ${DB_SERVICE_SQL} AS db_service,
+  ${COST_CATEGORY_SQL} AS cost_category,
+  f.billed_cost,
+  f.effective_cost,
+  f.list_cost,
+  f.ingestion_run_id,
+  bs.cloud_connection_id
+FROM fact_cost_line_items f
+LEFT JOIN dim_date dd_usage ON dd_usage.id = f.usage_date_key
+LEFT JOIN dim_service ds ON ds.id = f.service_key
+LEFT JOIN dim_resource dres ON dres.id = f.resource_key
+LEFT JOIN billing_sources bs ON bs.id = f.billing_source_id
+WHERE f.tenant_id = CAST(:tenantId AS UUID)
+  AND f.provider_id = CAST(:providerId AS BIGINT)
+  AND f.billing_source_id = CAST(:billingSourceId AS BIGINT)
+  AND f.ingestion_run_id = CAST(:ingestionRunId AS BIGINT)
+  AND ${DB_RELATED_FILTER_SQL}
+  AND (
+    ${EFFECTIVE_USAGE_DATE_SQL} IS NULL
+    OR ${RESOURCE_ID_SQL} IS NULL
+    OR ${DB_SERVICE_SQL} IS NULL
+    OR ${COST_CATEGORY_SQL} IS NULL
+    OR ${COST_CATEGORY_SQL} NOT IN ('compute', 'storage', 'io', 'backup', 'data_transfer', 'tax', 'credit', 'refund', 'other')
+    OR f.billed_cost IS NULL
+    OR f.effective_cost IS NULL
+    OR f.list_cost IS NULL
+  )
+ORDER BY f.id DESC
+LIMIT 5;
+`,
+    {
+      replacements: { ingestionRunId, tenantId, providerId, billingSourceId },
+      type: QueryTypes.SELECT,
+    },
+  );
+
+  logger.error("DB processor v1: db_cost_history_daily_insert_validation_candidates", {
+    tenantId,
+    providerId,
+    billingSourceId,
+    ingestionRunId,
+    count: Array.isArray(rows) ? rows.length : 0,
+    sample: Array.isArray(rows) ? rows.slice(0, 1) : [],
+  });
+}
 
 async function detectDbRowsForRun({
   ingestionRunId,
@@ -302,22 +411,22 @@ SELECT
   DATE_TRUNC('month', x.usage_date)::DATE AS month_start,
   x.tenant_id,
   x.cloud_connection_id,
-  x.billing_source_id,
-  x.provider_id,
-  x.service_key,
-  x.region_key,
-  x.sub_account_key,
-  x.resource_key,
+  MIN(x.billing_source_id) AS billing_source_id,
+  MIN(x.provider_id) AS provider_id,
+  MIN(x.service_key) AS service_key,
+  MIN(x.region_key) AS region_key,
+  MIN(x.sub_account_key) AS sub_account_key,
+  MIN(x.resource_key) AS resource_key,
   x.resource_id,
-  x.db_service,
-  x.db_engine,
+  MIN(x.db_service) AS db_service,
+  COALESCE(MIN(NULLIF(x.db_engine, 'Unknown')), 'Unknown') AS db_engine,
   x.cost_category,
   COALESCE(SUM(x.billed_cost), 0)::DECIMAL(18,6) AS billed_cost,
   COALESCE(SUM(x.effective_cost), 0)::DECIMAL(18,6) AS effective_cost,
   COALESCE(SUM(x.list_cost), 0)::DECIMAL(18,6) AS list_cost,
   COALESCE(SUM(x.usage_quantity), 0)::DECIMAL(18,6) AS usage_quantity,
-  x.currency_code,
-  CAST(:ingestionRunId AS BIGINT),
+  COALESCE(MIN(NULLIF(x.currency_code, '')), 'USD') AS currency_code,
+  MIN(x.ingestion_run_id) AS ingestion_run_id,
   NOW(),
   NOW()
 FROM (
@@ -354,6 +463,7 @@ FROM (
     WHERE f.tenant_id = CAST(:tenantId AS UUID)
       AND f.provider_id = CAST(:providerId AS BIGINT)
       AND f.billing_source_id = CAST(:billingSourceId AS BIGINT)
+      AND f.ingestion_run_id = CAST(:ingestionRunId AS BIGINT)
       AND ${EFFECTIVE_USAGE_DATE_SQL} IN (:usageDates)
   )
   SELECT
@@ -369,12 +479,26 @@ FROM (
     ${RESOURCE_ID_SQL} AS resource_id,
     ${DB_SERVICE_SQL} AS db_service,
     ${DB_ENGINE_SQL} AS db_engine,
-    ${COST_CATEGORY_SQL} AS cost_category,
+    CASE
+      WHEN ${COST_CATEGORY_SQL} IN (
+        'compute',
+        'storage',
+        'io',
+        'backup',
+        'data_transfer',
+        'tax',
+        'credit',
+        'refund',
+        'other'
+      ) THEN ${COST_CATEGORY_SQL}
+      ELSE 'other'
+    END AS cost_category,
     COALESCE(f.billed_cost, 0) AS billed_cost,
     COALESCE(f.effective_cost, 0) AS effective_cost,
     COALESCE(f.list_cost, 0) AS list_cost,
     COALESCE(f.consumed_quantity, 0) AS usage_quantity,
-    COALESCE(NULLIF(dba.billing_currency, ''), 'USD') AS currency_code
+    COALESCE(NULLIF(dba.billing_currency, ''), 'USD') AS currency_code,
+    CAST(:ingestionRunId AS BIGINT) AS ingestion_run_id
   FROM ranked_facts f
   LEFT JOIN dim_service ds ON ds.id = f.service_key
   LEFT JOIN dim_resource dres ON dres.id = f.resource_key
@@ -388,17 +512,8 @@ GROUP BY
   x.usage_date,
   x.tenant_id,
   x.cloud_connection_id,
-  x.billing_source_id,
-  x.provider_id,
-  x.service_key,
-  x.region_key,
-  x.sub_account_key,
-  x.resource_key,
   x.resource_id,
-  x.db_service,
-  x.db_engine,
-  x.cost_category,
-  x.currency_code;
+  x.cost_category;
 `,
     {
       replacements: {
@@ -527,8 +642,8 @@ INSERT INTO fact_db_resource_daily (
 SELECT
   d.tenant_id,
   d.cloud_connection_id,
-  d.billing_source_id,
-  d.provider_id,
+  MIN(d.billing_source_id) AS billing_source_id,
+  MIN(d.provider_id) AS provider_id,
   d.usage_date,
   d.resource_id,
   CASE
@@ -570,8 +685,6 @@ WHERE d.tenant_id = CAST(:tenantId AS UUID)
 GROUP BY
   d.tenant_id,
   d.cloud_connection_id,
-  d.billing_source_id,
-  d.provider_id,
   d.usage_date,
   d.resource_id;
 `,
@@ -662,33 +775,48 @@ reason=skipped_no_db_rows`);
   logger.info(`[DB_PROCESSOR_INSERT_PREP]
 count=${detected.sourceRows}`);
 
-  await sequelize.transaction(async (transaction) => {
-    historyRowsWritten = await rebuildDbCostHistoryDaily({
-      transaction,
-      dates: detected.dates,
-      ingestionRunId: normalized.ingestionRunId,
-      tenantId: normalized.tenantId,
-      providerId: normalized.providerId,
-      billingSourceId: normalized.billingSourceId,
-    });
+  try {
+    await sequelize.transaction(async (transaction) => {
+      historyRowsWritten = await rebuildDbCostHistoryDaily({
+        transaction,
+        dates: detected.dates,
+        ingestionRunId: normalized.ingestionRunId,
+        tenantId: normalized.tenantId,
+        providerId: normalized.providerId,
+        billingSourceId: normalized.billingSourceId,
+      });
 
-    logger.info("DB processor v1: db_cost_history_daily_written", {
+      logger.info("DB processor v1: db_cost_history_daily_written", {
+        ...normalized,
+        historyRowsWritten,
+      });
+
+      factRowsWritten = await rebuildFactDbResourceDaily({
+        transaction,
+        dates: detected.dates,
+        tenantId: normalized.tenantId,
+        providerId: normalized.providerId,
+        billingSourceId: normalized.billingSourceId,
+      });
+
+      logger.info("DB processor v1: fact_db_resource_daily_written", {
+        ...normalized,
+        factRowsWritten,
+      });
+    });
+  } catch (error) {
+    logger.error("DB processor v1: sync_failed", {
       ...normalized,
-      historyRowsWritten,
+      ...buildDbSyncErrorDetails(error),
     });
-
-    factRowsWritten = await rebuildFactDbResourceDaily({
-      transaction,
-      dates: detected.dates,
-      tenantId: normalized.tenantId,
-      providerId: normalized.providerId,
-      billingSourceId: normalized.billingSourceId,
-    });
-
-    logger.info("DB processor v1: fact_db_resource_daily_written", {
-      ...normalized,
-      factRowsWritten,
-    });
+    await logDbHistoryInsertDiagnostics(normalized);
+    throw error;
+  }
+  
+  logger.info("DB processor v1: done", {
+    ...normalized,
+    historyRowsWritten,
+    factRowsWritten,
   });
 
   logger.info(`[DB_PROCESSOR_INSERT_DONE]
