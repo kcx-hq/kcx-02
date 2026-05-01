@@ -38,6 +38,9 @@ type EC2InstancesTopBarProps = {
   instanceTypeOptions: Array<{ key: string; label: string }>;
   onChange: (next: EC2InstancesControlsState) => void;
   onReset: () => void;
+  visibleControls?: Array<
+    "filters" | "condition" | "state" | "instanceType" | "reservationType" | "networkType" | "search" | "thresholds" | "reset"
+  >;
   children?: ReactNode;
 };
 
@@ -46,6 +49,7 @@ export function EC2InstancesTopBar({
   instanceTypeOptions,
   onChange,
   onReset,
+  visibleControls,
   children,
 }: EC2InstancesTopBarProps) {
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -88,6 +92,23 @@ export function EC2InstancesTopBar({
     () => Object.values(value.thresholds).some((entry) => entry.trim().length > 0),
     [value.thresholds],
   );
+  const controlSet = useMemo(
+    () =>
+      new Set(
+        visibleControls ?? [
+          "filters",
+          "condition",
+          "state",
+          "instanceType",
+          "reservationType",
+          "networkType",
+          "search",
+          "thresholds",
+          "reset",
+        ],
+      ),
+    [visibleControls],
+  );
 
   const renderOptionList = <T extends string>(params: {
     options: Array<Option<T>>;
@@ -123,7 +144,8 @@ export function EC2InstancesTopBar({
     <section className="cost-explorer-control-surface ec2-explorer-controls" ref={rootRef} aria-label="EC2 instances controls">
       <div className="cost-explorer-toolbar-row ec2-explorer-toolbar-row--primary">
         <div className="ec2-instances-toolbar-main">
-          <div className="cost-explorer-toolbar-item">
+          {controlSet.has("filters") ? (
+            <div className="cost-explorer-toolbar-item">
             <button
               type="button"
               className="cost-explorer-toolbar-trigger"
@@ -137,9 +159,11 @@ export function EC2InstancesTopBar({
                 <Filter className="cost-explorer-toolbar-trigger__caret" size={14} aria-hidden="true" />
               </span>
             </button>
-          </div>
+            </div>
+          ) : null}
 
-          <div className="cost-explorer-toolbar-item">
+          {controlSet.has("condition") ? (
+            <div className="cost-explorer-toolbar-item">
             <button
               type="button"
               className={`cost-explorer-toolbar-trigger${activePopover === "condition" ? " is-active" : ""}`}
@@ -162,9 +186,11 @@ export function EC2InstancesTopBar({
                   onSelect: (nextCondition: EC2InstancesCondition) => update({ condition: nextCondition }),
                 })
               : null}
-          </div>
+            </div>
+          ) : null}
 
-          <div className="cost-explorer-toolbar-item">
+          {controlSet.has("state") ? (
+            <div className="cost-explorer-toolbar-item">
             <button
               type="button"
               className={`cost-explorer-toolbar-trigger${activePopover === "state" ? " is-active" : ""}`}
@@ -187,9 +213,11 @@ export function EC2InstancesTopBar({
                   onSelect: (nextState: EC2InstancesStateFilter) => update({ state: nextState }),
                 })
               : null}
-          </div>
+            </div>
+          ) : null}
 
-          <div className="cost-explorer-toolbar-item">
+          {controlSet.has("instanceType") ? (
+            <div className="cost-explorer-toolbar-item">
             <button
               type="button"
               className={`cost-explorer-toolbar-trigger${activePopover === "instanceType" ? " is-active" : ""}`}
@@ -212,9 +240,11 @@ export function EC2InstancesTopBar({
                   onSelect: (nextInstanceType: string) => update({ instanceType: nextInstanceType }),
                 })
               : null}
-          </div>
+            </div>
+          ) : null}
 
-          <div className="cost-explorer-toolbar-item">
+          {controlSet.has("reservationType") ? (
+            <div className="cost-explorer-toolbar-item">
             <button
               type="button"
               className={`cost-explorer-toolbar-trigger${activePopover === "reservationType" ? " is-active" : ""}`}
@@ -238,9 +268,11 @@ export function EC2InstancesTopBar({
                     update({ reservationType: nextReservationType }),
                 })
               : null}
-          </div>
+            </div>
+          ) : null}
 
-          <div className="cost-explorer-toolbar-item">
+          {controlSet.has("networkType") ? (
+            <div className="cost-explorer-toolbar-item">
             <button
               type="button"
               className={`cost-explorer-toolbar-trigger${activePopover === "networkType" ? " is-active" : ""}`}
@@ -263,9 +295,11 @@ export function EC2InstancesTopBar({
                   onSelect: (nextNetworkType: EC2InstancesNetworkType) => update({ networkType: nextNetworkType }),
                 })
               : null}
-          </div>
+            </div>
+          ) : null}
 
-          <div className="cost-explorer-toolbar-item">
+          {controlSet.has("search") ? (
+            <div className="cost-explorer-toolbar-item">
             <label className="cost-explorer-toolbar-trigger ec2-instances-search-trigger">
               <span className="ec2-instances-search-trigger__icon-wrap" aria-hidden="true">
                 <Search size={14} />
@@ -279,9 +313,11 @@ export function EC2InstancesTopBar({
                 className="ec2-instances-search-trigger__input"
               />
             </label>
-          </div>
+            </div>
+          ) : null}
 
-          <div className="cost-explorer-toolbar-item">
+          {controlSet.has("thresholds") ? (
+            <div className="cost-explorer-toolbar-item">
             <button
               type="button"
               className={`cost-explorer-toolbar-trigger ec2-instances-toolbar-icon-trigger${activePopover === "thresholds" ? " is-active" : ""}${hasActiveThresholds ? " is-active" : ""}`}
@@ -303,9 +339,11 @@ export function EC2InstancesTopBar({
                 />
               </div>
             ) : null}
-          </div>
+            </div>
+          ) : null}
 
-          <div className="cost-explorer-toolbar-item">
+          {controlSet.has("reset") ? (
+            <div className="cost-explorer-toolbar-item">
             <button
               type="button"
               className="cost-explorer-toolbar-trigger ec2-instances-toolbar-icon-trigger"
@@ -317,7 +355,8 @@ export function EC2InstancesTopBar({
                 <RotateCcw className="ec2-instances-toolbar-icon-trigger__icon" size={16} aria-hidden="true" />
               </span>
             </button>
-          </div>
+            </div>
+          ) : null}
         </div>
       </div>
       {children}

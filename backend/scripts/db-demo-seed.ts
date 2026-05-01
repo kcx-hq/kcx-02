@@ -37,6 +37,14 @@ type InstanceScenario = {
   region: (typeof REGIONS)[number];
 };
 
+type InstanceContext = {
+  accountId: string;
+  accountName: string;
+  team: string;
+  product: string;
+  environment: "dev" | "staging" | "prod";
+};
+
 const INSTANCES: InstanceScenario[] = [
   {
     instanceId: "i-demo-idle-001",
@@ -140,6 +148,58 @@ const VOLUMES = [
   { volumeId: "vol-demo-stopped-001", region: "us-east-1", attachedInstanceId: "i-demo-stopped-001", sizeGb: 300, dailyCost: 6.4 },
 ] as const;
 
+const INSTANCE_CONTEXT: Record<string, InstanceContext> = {
+  "i-demo-idle-001": {
+    accountId: "210987654321",
+    accountName: "Payments Prod",
+    team: "payments",
+    product: "checkout-api",
+    environment: "prod",
+  },
+  "i-demo-under-001": {
+    accountId: "210987654322",
+    accountName: "Platform Staging",
+    team: "platform",
+    product: "core-services",
+    environment: "staging",
+  },
+  "i-demo-over-001": {
+    accountId: "210987654323",
+    accountName: "Analytics Prod",
+    team: "analytics",
+    product: "reporting",
+    environment: "prod",
+  },
+  "i-demo-healthy-001": {
+    accountId: "210987654324",
+    accountName: "Security Dev",
+    team: "security",
+    product: "audit",
+    environment: "dev",
+  },
+  "i-demo-uncovered-001": {
+    accountId: "210987654321",
+    accountName: "Payments Prod",
+    team: "payments",
+    product: "checkout-api",
+    environment: "prod",
+  },
+  "i-demo-storage-heavy-001": {
+    accountId: "210987654322",
+    accountName: "Platform Staging",
+    team: "platform",
+    product: "core-services",
+    environment: "staging",
+  },
+  "i-demo-stopped-001": {
+    accountId: "210987654324",
+    accountName: "Security Dev",
+    team: "security",
+    product: "audit",
+    environment: "dev",
+  },
+};
+
 function toDateOnly(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
@@ -231,6 +291,7 @@ export async function runDemoSeed(): Promise<void> {
     FactEc2InstanceDaily,
     FactEc2InstanceCostDaily,
     FactEc2InstanceCoverageDaily,
+    Ec2EipInventorySnapshot,
     Ec2VolumeInventorySnapshot,
     FactEbsVolumeDaily,
     EbsVolumeUtilizationDaily,
@@ -348,21 +409,28 @@ export async function runDemoSeed(): Promise<void> {
     lastIngestedAt: new Date(),
   });
 
-  await ClientCloudAccount.findOrCreate({
-    where: { tenantId: tenant.id, providerId: provider.id, accountId: DEMO.awsAccountId },
-    defaults: {
-      tenantId: tenant.id,
-      providerId: provider.id,
-      cloudConnectionId: connection.id,
-      accountId: DEMO.awsAccountId,
-      accountName: "Demo AWS Account",
-      onboardingStatus: "connected",
-      computeOptimizerEnabled: true,
-      lastRecommendationSyncAt: new Date(),
-      lastSyncStatus: "success",
-      lastSyncMessage: "Seeded demo account",
-    },
-  });
+  const cloudAccounts = Array.from(
+    new Map(
+      Object.values(INSTANCE_CONTEXT).map((ctx) => [ctx.accountId, { accountId: ctx.accountId, accountName: ctx.accountName }]),
+    ).values(),
+  );
+  for (const account of cloudAccounts) {
+    await ClientCloudAccount.findOrCreate({
+      where: { tenantId: tenant.id, providerId: provider.id, accountId: account.accountId },
+      defaults: {
+        tenantId: tenant.id,
+        providerId: provider.id,
+        cloudConnectionId: connection.id,
+        accountId: account.accountId,
+        accountName: account.accountName,
+        onboardingStatus: "connected",
+        computeOptimizerEnabled: true,
+        lastRecommendationSyncAt: new Date(),
+        lastSyncStatus: "success",
+        lastSyncMessage: "Seeded demo account",
+      },
+    });
+  }
 
   const [billingAccount] = await DimBillingAccount.findOrCreate({
     where: { tenantId: tenant.id, providerId: provider.id, billingAccountId: DEMO.billingAccountId },
@@ -375,15 +443,24 @@ export async function runDemoSeed(): Promise<void> {
     },
   });
 
-  const [subAccount] = await DimSubAccount.findOrCreate({
-    where: { tenantId: tenant.id, providerId: provider.id, subAccountId: DEMO.subAccountId },
-    defaults: {
-      tenantId: tenant.id,
-      providerId: provider.id,
-      subAccountId: DEMO.subAccountId,
-      subAccountName: "Demo Sub Account",
-    },
-  });
+  const uniqueSubAccounts = Array.from(
+    new Map(
+      Object.values(INSTANCE_CONTEXT).map((ctx) => [ctx.accountId, { accountId: ctx.accountId, accountName: ctx.accountName }]),
+    ).values(),
+  );
+  const subAccountKeyById = new Map<string, number>();
+  for (const sub of uniqueSubAccounts) {
+    const [subAccount] = await DimSubAccount.findOrCreate({
+      where: { tenantId: tenant.id, providerId: provider.id, subAccountId: sub.accountId },
+      defaults: {
+        tenantId: tenant.id,
+        providerId: provider.id,
+        subAccountId: sub.accountId,
+        subAccountName: sub.accountName,
+      },
+    });
+    subAccountKeyById.set(sub.accountId, Number(subAccount.id));
+  }
 
   const [ec2Service] = await DimService.findOrCreate({
     where: {
@@ -420,9 +497,9 @@ export async function runDemoSeed(): Promise<void> {
   }
 
   const tagValues = [
-    ["Team", "Platform"], ["Team", "Payments"], ["Team", "Data"],
-    ["Product", "EC2 Demo"], ["Product", "Billing API"], ["Product", "Analytics"],
-    ["Environment", "Dev"], ["Environment", "Staging"], ["Environment", "Prod"],
+    ["Team", "payments"], ["Team", "platform"], ["Team", "analytics"], ["Team", "security"],
+    ["Product", "checkout-api"], ["Product", "core-services"], ["Product", "reporting"], ["Product", "audit"],
+    ["Environment", "dev"], ["Environment", "staging"], ["Environment", "prod"],
     ["Owner", "demo-owner"], ["Seed", SEED_MARKER],
   ] as const;
 
@@ -449,6 +526,11 @@ export async function runDemoSeed(): Promise<void> {
     ...INSTANCES.map((x) => x.instanceId),
     ...VOLUMES.map((x) => x.volumeId),
     "snap-demo-old-001",
+    "snap-demo-recent-001",
+    "snap-demo-orphaned-001",
+    "eipalloc-demo-unattached-001",
+    "eipalloc-demo-attached-001",
+    "eipalloc-demo-unattached-002",
   ];
 
   for (const resourceId of allResourceIds) {
@@ -512,11 +594,14 @@ export async function runDemoSeed(): Promise<void> {
   await FactEc2InstanceCostDaily.destroy({ where: { tenantId: tenant.id } });
   await FactEc2InstanceDaily.destroy({ where: { tenantId: tenant.id } });
   await Ec2InstanceInventorySnapshot.destroy({ where: { tenantId: tenant.id } });
+  await Ec2EipInventorySnapshot.destroy({ where: { tenantId: tenant.id } });
   await FactCostLineItems.destroy({ where: { tenantId: tenant.id } });
 
   const discoveryTime = new Date(`${dates[dates.length - 1]}T12:00:00.000Z`);
 
   for (const item of INSTANCES) {
+    const ctx = INSTANCE_CONTEXT[item.instanceId];
+    const subAccountKey = subAccountKeyById.get(ctx.accountId) ?? null;
     await Ec2InstanceInventorySnapshot.create({
       tenantId: tenant.id,
       cloudConnectionId: connection.id,
@@ -524,7 +609,7 @@ export async function runDemoSeed(): Promise<void> {
       instanceId: item.instanceId,
       resourceKey: resourceKeyMap.get(item.instanceId) ?? null,
       regionKey: regionMap.get(item.region) ?? null,
-      subAccountKey: subAccount.id,
+      subAccountKey,
       instanceType: "m6i.large",
       platform: "linux",
       platformDetails: "Linux/UNIX",
@@ -539,10 +624,75 @@ export async function runDemoSeed(): Promise<void> {
       imageId: "ami-demo-001",
       privateIpAddress: "10.0.0.10",
       publicIpAddress: "44.0.0.10",
-      tagsJson: { Name: item.name, Seed: SEED_MARKER },
-      metadataJson: { seed: SEED_MARKER, scenario: item.instanceId },
+      tagsJson: {
+        Name: item.name,
+        Team: ctx.team,
+        Product: ctx.product,
+        Environment: ctx.environment,
+        Owner: "demo-owner",
+        Seed: SEED_MARKER,
+      },
+      metadataJson: { seed: SEED_MARKER, scenario: item.instanceId, accountId: ctx.accountId },
       discoveredAt: discoveryTime,
       isCurrent: true,
+    });
+  }
+
+  const eipSnapshots = [
+    {
+      allocationId: "eipalloc-demo-unattached-001",
+      publicIp: "54.240.10.10",
+      region: "us-east-1" as const,
+      accountId: "210987654321",
+      associatedInstanceId: null,
+      associatedResourceId: null,
+      associationStatus: "unassociated",
+      isAttached: false,
+      scenario: "unattached_eip_use1",
+    },
+    {
+      allocationId: "eipalloc-demo-attached-001",
+      publicIp: "54.240.20.20",
+      region: "us-west-2" as const,
+      accountId: "210987654322",
+      associatedInstanceId: "i-demo-under-001",
+      associatedResourceId: "i-demo-under-001",
+      associationStatus: "associated",
+      isAttached: true,
+      scenario: "attached_eip_usw2",
+    },
+    {
+      allocationId: "eipalloc-demo-unattached-002",
+      publicIp: "13.232.30.30",
+      region: "ap-south-1" as const,
+      accountId: "210987654323",
+      associatedInstanceId: null,
+      associatedResourceId: null,
+      associationStatus: "available",
+      isAttached: false,
+      scenario: "unattached_eip_aps1",
+    },
+  ];
+  for (const eip of eipSnapshots) {
+    await Ec2EipInventorySnapshot.create({
+      tenantId: tenant.id,
+      cloudConnectionId: connection.id,
+      providerId: provider.id,
+      allocationId: eip.allocationId,
+      publicIp: eip.publicIp,
+      resourceKey: resourceKeyMap.get(eip.allocationId) ?? null,
+      regionKey: regionMap.get(eip.region) ?? null,
+      subAccountKey: subAccountKeyById.get(eip.accountId) ?? null,
+      associatedInstanceId: eip.associatedInstanceId,
+      associatedResourceId: eip.associatedResourceId,
+      associationStatus: eip.associationStatus,
+      isAttached: eip.isAttached,
+      allocatedAt: new Date(`${dates[0]}T08:00:00.000Z`),
+      tagsJson: { Name: eip.allocationId, Seed: SEED_MARKER },
+      metadataJson: { seed: SEED_MARKER, scenario: eip.scenario },
+      discoveredAt: discoveryTime,
+      isCurrent: true,
+      deletedAt: null,
     });
   }
 
@@ -550,6 +700,8 @@ export async function runDemoSeed(): Promise<void> {
     const dayIndex = dates.indexOf(usageDate);
     const usageDateKey = dimDateKeyMap.get(usageDate) ?? null;
     for (const item of INSTANCES) {
+      const ctx = INSTANCE_CONTEXT[item.instanceId];
+      const subAccountKey = subAccountKeyById.get(ctx.accountId) ?? null;
       const isRunning = item.state === "running";
       const cpuDelta = smoothVariation(`${item.instanceId}:cpu`, dayIndex, 0.02);
       const cpuBand = cpuBandForScenario(item);
@@ -584,7 +736,7 @@ export async function runDemoSeed(): Promise<void> {
         instanceId: item.instanceId,
         resourceKey: resourceKeyMap.get(item.instanceId) ?? null,
         regionKey: regionMap.get(item.region) ?? null,
-        subAccountKey: subAccount.id,
+        subAccountKey,
         instanceName: item.name,
         instanceType: "m6i.large",
         availabilityZone: `${item.region}a`,
@@ -641,7 +793,7 @@ export async function runDemoSeed(): Promise<void> {
         instanceId: item.instanceId,
         resourceKey: resourceKeyMap.get(item.instanceId) ?? null,
         regionKey: regionMap.get(item.region) ?? null,
-        subAccountKey: subAccount.id,
+        subAccountKey,
         instanceType: "m6i.large",
         currencyCode: "USD",
         computeCost,
@@ -665,7 +817,7 @@ export async function runDemoSeed(): Promise<void> {
         instanceId: item.instanceId,
         resourceKey: resourceKeyMap.get(item.instanceId) ?? null,
         regionKey: regionMap.get(item.region) ?? null,
-        subAccountKey: subAccount.id,
+        subAccountKey,
         instanceType: "m6i.large",
         reservationType: item.reservationType,
         coveredHours: item.instanceId === "i-demo-storage-heavy-001"
@@ -691,7 +843,7 @@ export async function runDemoSeed(): Promise<void> {
         usageDate,
         resourceKey: resourceKeyMap.get(item.instanceId) ?? null,
         regionKey: regionMap.get(item.region) ?? null,
-        subAccountKey: subAccount.id,
+        subAccountKey,
         cpuAvg,
         cpuMax,
         cpuMin,
@@ -733,7 +885,7 @@ export async function runDemoSeed(): Promise<void> {
         usageDate,
         resourceKey: resourceKeyMap.get(item.instanceId) ?? null,
         regionKey: regionMap.get(item.region) ?? null,
-        subAccountKey: subAccount.id,
+        subAccountKey,
         cpuAvg,
         cpuMax,
         cpuMin,
@@ -748,7 +900,7 @@ export async function runDemoSeed(): Promise<void> {
         billingSourceId: billingSource.id,
         providerId: provider.id,
         billingAccountKey: billingAccount.id,
-        subAccountKey: subAccount.id,
+        subAccountKey,
         regionKey: regionMap.get(item.region) ?? null,
         serviceKey: ec2Service.id,
         resourceKey: resourceKeyMap.get(item.instanceId) ?? null,
@@ -785,7 +937,7 @@ export async function runDemoSeed(): Promise<void> {
         billingSourceId: billingSource.id,
         providerId: provider.id,
         billingAccountKey: billingAccount.id,
-        subAccountKey: subAccount.id,
+        subAccountKey,
         regionKey: regionMap.get(item.region) ?? null,
         serviceKey: ec2Service.id,
         resourceKey: resourceKeyMap.get(item.instanceId) ?? null,
@@ -832,6 +984,7 @@ export async function runDemoSeed(): Promise<void> {
       const lbGb = round6(Math.max(0, networkTotalGb - internetGb - interRegionGb - interAzGb - natGb - eipGb));
       const crossRegion = otherRegion(item.region);
       const networkLineItems = [
+        // Internet Data Transfer: should trigger high internet transfer recommendation for at least one instance.
         {
           billedCost: internetCost,
           usageGb: internetGb,
@@ -848,8 +1001,8 @@ export async function runDemoSeed(): Promise<void> {
         {
           billedCost: interRegionCost,
           usageGb: interRegionGb,
-          usageType: "DataTransfer-Regional-Bytes",
-          productUsageType: "DataTransfer-InterRegion-Bytes",
+          usageType: "InterRegion-DataTransfer-Bytes",
+          productUsageType: "InterRegion-DataTransfer-Bytes",
           productFamily: "Data Transfer",
           fromRegionCode: item.region,
           toRegionCode: crossRegion,
@@ -861,8 +1014,8 @@ export async function runDemoSeed(): Promise<void> {
         {
           billedCost: interAzCost,
           usageGb: interAzGb,
-          usageType: "DataTransfer-Regional-Bytes",
-          productUsageType: "DataTransfer-Regional-Bytes",
+          usageType: "CrossAZ-DataTransfer-Bytes",
+          productUsageType: "CrossAZ-DataTransfer-Bytes",
           productFamily: "Data Transfer",
           fromRegionCode: item.region,
           toRegionCode: item.region,
@@ -871,10 +1024,11 @@ export async function runDemoSeed(): Promise<void> {
           lineItemDescription: `Demo inter-AZ data transfer for ${item.instanceId}`,
           operation: "DataTransfer-Regional",
         },
+        // NAT Gateway must be separated from Data Transfer classification.
         {
           billedCost: natCost,
           usageGb: natGb,
-          usageType: "NatGateway-Bytes",
+          usageType: "NATGateway-DataProcessing-Bytes",
           productUsageType: "NatGateway-Bytes",
           productFamily: "NAT Gateway",
           fromRegionCode: item.region,
@@ -884,18 +1038,19 @@ export async function runDemoSeed(): Promise<void> {
           lineItemDescription: `Demo NAT Gateway processing for ${item.instanceId}`,
           operation: "NatGateway",
         },
+        // Keep attached public IPv4 cost mapped to instance but non-idle.
         {
           billedCost: eipCost,
           usageGb: eipGb,
-          usageType: "ElasticIP:IdleAddress",
-          productUsageType: "ElasticIP:IdleAddress",
+          usageType: "PublicIPv4-InUseAddress",
+          productUsageType: "PublicIPv4-InUseAddress",
           productFamily: "IP Address",
           fromRegionCode: item.region,
           toRegionCode: item.region,
           fromLocation: item.region,
           toLocation: item.region,
           lineItemDescription: `Demo Elastic IP cost for ${item.instanceId}`,
-          operation: "AllocateAddress",
+          operation: "AssociateAddress",
         },
         {
           billedCost: lbCost,
@@ -918,7 +1073,7 @@ export async function runDemoSeed(): Promise<void> {
           billingSourceId: billingSource.id,
           providerId: provider.id,
           billingAccountKey: billingAccount.id,
-          subAccountKey: subAccount.id,
+          subAccountKey,
           regionKey: regionMap.get(item.region) ?? null,
           serviceKey: ec2Service.id,
           resourceKey: resourceKeyMap.get(item.instanceId) ?? null,
@@ -953,12 +1108,54 @@ export async function runDemoSeed(): Promise<void> {
         });
       }
 
+      // Unknown transfer line: transfer-related but not safely classifiable.
+      if (item.instanceId === "i-demo-storage-heavy-001" && dayIndex % 2 === 0) {
+        await FactCostLineItems.create({
+          tenantId: tenant.id,
+          billingSourceId: billingSource.id,
+          providerId: provider.id,
+          billingAccountKey: billingAccount.id,
+          subAccountKey,
+          regionKey: regionMap.get(item.region) ?? null,
+          serviceKey: ec2Service.id,
+          resourceKey: null,
+          usageDateKey,
+          billingPeriodStartDateKey: billingStartDateKey,
+          billingPeriodEndDateKey: billingEndDateKey,
+          billedCost: 0.85,
+          effectiveCost: 0.85,
+          listCost: 0.85,
+          consumedQuantity: 28,
+          pricingQuantity: 28,
+          usageStartTime: new Date(`${usageDate}T00:00:00.000Z`),
+          usageEndTime: new Date(`${usageDate}T23:59:59.999Z`),
+          usageType: "UnknownDataTransfer-Bytes",
+          productUsageType: "UnknownDataTransfer-Bytes",
+          productFamily: "Data Transfer",
+          fromLocation: "unknown",
+          toLocation: "unknown",
+          fromRegionCode: null,
+          toRegionCode: null,
+          billType: "Anniversary",
+          lineItemDescription: "Demo unclassified data transfer",
+          legalEntity: "Amazon Web Services, Inc.",
+          operation: "DataTransfer-Unknown",
+          lineItemType: "Usage",
+          pricingTerm: "OnDemand",
+          purchaseOption: "on_demand",
+          taxCost: 0,
+          creditAmount: 0,
+          refundAmount: 0,
+          ingestedAt: new Date(),
+        });
+      }
+
       await FactCostLineItems.create({
         tenantId: tenant.id,
         billingSourceId: billingSource.id,
         providerId: provider.id,
         billingAccountKey: billingAccount.id,
-        subAccountKey: subAccount.id,
+        subAccountKey,
         regionKey: regionMap.get(item.region) ?? null,
         serviceKey: ec2Service.id,
         resourceKey: resourceKeyMap.get(item.instanceId) ?? null,
@@ -992,7 +1189,101 @@ export async function runDemoSeed(): Promise<void> {
     }
   }
 
+  for (const usageDate of dates) {
+    const usageDateKey = dimDateKeyMap.get(usageDate) ?? null;
+
+    for (const eip of eipSnapshots) {
+      const subAccountKey = subAccountKeyById.get(eip.accountId) ?? null;
+      const isUnattached = !eip.isAttached;
+      const hourlyCost = isUnattached ? 0.12 : 0.06;
+      await FactCostLineItems.create({
+        tenantId: tenant.id,
+        billingSourceId: billingSource.id,
+        providerId: provider.id,
+        billingAccountKey: billingAccount.id,
+        subAccountKey,
+        regionKey: regionMap.get(eip.region) ?? null,
+        serviceKey: ec2Service.id,
+        resourceKey: resourceKeyMap.get(eip.allocationId) ?? null,
+        usageDateKey,
+        billingPeriodStartDateKey: billingStartDateKey,
+        billingPeriodEndDateKey: billingEndDateKey,
+        billedCost: round6(hourlyCost),
+        effectiveCost: round6(hourlyCost),
+        listCost: round6(hourlyCost),
+        consumedQuantity: 24,
+        pricingQuantity: 24,
+        usageStartTime: new Date(`${usageDate}T00:00:00.000Z`),
+        usageEndTime: new Date(`${usageDate}T23:59:59.999Z`),
+        usageType: isUnattached ? "ElasticIP:IdleAddress" : "PublicIPv4:InUseAddress",
+        productUsageType: isUnattached ? "ElasticIP:IdleAddress" : "PublicIPv4:InUseAddress",
+        productFamily: "IP Address",
+        fromRegionCode: eip.region,
+        toRegionCode: eip.region,
+        billType: "Anniversary",
+        lineItemDescription: isUnattached
+          ? `Demo unattached EIP ${eip.publicIp}`
+          : `Demo attached EIP ${eip.publicIp} associated to ${eip.associatedResourceId}`,
+        legalEntity: "Amazon Web Services, Inc.",
+        operation: isUnattached ? "IdleAddress" : "InUseAddress",
+        lineItemType: "Usage",
+        pricingTerm: "OnDemand",
+        purchaseOption: "on_demand",
+        taxCost: 0,
+        creditAmount: 0,
+        refundAmount: 0,
+        ingestedAt: new Date(),
+      });
+    }
+
+    for (const region of REGIONS) {
+      const natHoursCost = 0.36;
+      await FactCostLineItems.create({
+        tenantId: tenant.id,
+        billingSourceId: billingSource.id,
+        providerId: provider.id,
+        billingAccountKey: billingAccount.id,
+        subAccountKey: subAccountKeyById.get("210987654322") ?? null,
+        regionKey: regionMap.get(region) ?? null,
+        serviceKey: ec2Service.id,
+        resourceKey: null,
+        usageDateKey,
+        billingPeriodStartDateKey: billingStartDateKey,
+        billingPeriodEndDateKey: billingEndDateKey,
+        billedCost: natHoursCost,
+        effectiveCost: natHoursCost,
+        listCost: natHoursCost,
+        consumedQuantity: 24,
+        pricingQuantity: 24,
+        usageStartTime: new Date(`${usageDate}T00:00:00.000Z`),
+        usageEndTime: new Date(`${usageDate}T23:59:59.999Z`),
+        usageType: "NatGateway-Hours",
+        productUsageType: "NatGateway-Hours",
+        productFamily: "NAT Gateway",
+        fromRegionCode: region,
+        toRegionCode: region,
+        fromLocation: region,
+        toLocation: region,
+        billType: "Anniversary",
+        lineItemDescription: `Demo NAT Gateway hourly charge ${region}`,
+        legalEntity: "Amazon Web Services, Inc.",
+        operation: "NatGateway",
+        lineItemType: "Usage",
+        pricingTerm: "OnDemand",
+        purchaseOption: "on_demand",
+        taxCost: 0,
+        creditAmount: 0,
+        refundAmount: 0,
+        ingestedAt: new Date(),
+      });
+    }
+  }
+
   for (const volume of VOLUMES) {
+    const volumeAccountId = volume.attachedInstanceId
+      ? INSTANCE_CONTEXT[volume.attachedInstanceId]?.accountId
+      : "210987654321";
+    const volumeSubAccountKey = subAccountKeyById.get(volumeAccountId) ?? null;
     const volumeDiscoveredAt = volume.volumeId === "vol-demo-unattached-001"
       ? addDays(discoveryTime, -14)
       : discoveryTime;
@@ -1003,7 +1294,7 @@ export async function runDemoSeed(): Promise<void> {
       volumeId: volume.volumeId,
       resourceKey: resourceKeyMap.get(volume.volumeId) ?? null,
       regionKey: regionMap.get(volume.region) ?? null,
-      subAccountKey: subAccount.id,
+      subAccountKey: volumeSubAccountKey,
       volumeType: "gp3",
       sizeGb: volume.sizeGb,
       iops: 3000,
@@ -1036,7 +1327,7 @@ export async function runDemoSeed(): Promise<void> {
         volumeId: volume.volumeId,
         resourceKey: resourceKeyMap.get(volume.volumeId) ?? null,
         regionKey: regionMap.get(volume.region) ?? null,
-        subAccountKey: subAccount.id,
+        subAccountKey: volumeSubAccountKey,
         volumeType: "gp3",
         sizeGb: volume.sizeGb,
         iops,
@@ -1065,7 +1356,7 @@ export async function runDemoSeed(): Promise<void> {
         usageDate,
         resourceKey: resourceKeyMap.get(volume.volumeId) ?? null,
         regionKey: regionMap.get(volume.region) ?? null,
-        subAccountKey: subAccount.id,
+        subAccountKey: volumeSubAccountKey,
         readBytes: volume.attachedInstanceId ? 250000000 : 1000,
         writeBytes: volume.attachedInstanceId ? 180000000 : 1000,
         readOps: volume.attachedInstanceId ? Math.round(iops * 42) : 1,
@@ -1088,7 +1379,7 @@ export async function runDemoSeed(): Promise<void> {
         usageDate,
         resourceKey: resourceKeyMap.get(volume.volumeId) ?? null,
         regionKey: regionMap.get(volume.region) ?? null,
-        subAccountKey: subAccount.id,
+        subAccountKey: volumeSubAccountKey,
         readBytes: volume.attachedInstanceId ? 12000000 : 100,
         writeBytes: volume.attachedInstanceId ? 7000000 : 100,
         readOps: volume.attachedInstanceId ? Math.round(iops / 4.5) : 1,
@@ -1102,67 +1393,107 @@ export async function runDemoSeed(): Promise<void> {
     }
   }
 
-  await Ec2SnapshotInventorySnapshot.create({
-    tenantId: tenant.id,
-    cloudConnectionId: connection.id,
-    providerId: provider.id,
-    snapshotId: "snap-demo-old-001",
-    resourceKey: resourceKeyMap.get("snap-demo-old-001") ?? null,
-    regionKey: regionMap.get("us-east-1") ?? null,
-    subAccountKey: subAccount.id,
-    sourceVolumeId: "vol-demo-unattached-001",
-    sourceInstanceId: null,
-    sizeGb: 500,
-    startTime: addDays(new Date(), -120),
-    state: "completed",
-    storageTier: "standard",
-    encrypted: false,
-    progress: "100%",
-    tagsJson: { Seed: SEED_MARKER },
-    metadataJson: { seed: SEED_MARKER, ageDays: 120 },
-    discoveredAt: discoveryTime,
-    isCurrent: true,
-  });
-
-  // Seed snapshot cost line item so old_snapshot rule can evaluate snapshot_cost > $5.
+  const snapshots = [
+    {
+      snapshotId: "snap-demo-old-001",
+      region: "us-east-1" as const,
+      accountId: "210987654321",
+      sourceVolumeId: "vol-demo-unattached-001",
+      sourceInstanceId: null,
+      sizeGb: 500,
+      ageDays: 120,
+      storageTier: "standard",
+      cost: 9.5,
+      lineItemDescription: "Demo old snapshot storage cost",
+    },
+    {
+      snapshotId: "snap-demo-recent-001",
+      region: "us-west-2" as const,
+      accountId: "210987654322",
+      sourceVolumeId: "vol-demo-under-001",
+      sourceInstanceId: "i-demo-under-001",
+      sizeGb: 180,
+      ageDays: 20,
+      storageTier: "archive",
+      cost: 2.4,
+      lineItemDescription: "Demo recent snapshot storage cost",
+    },
+    {
+      snapshotId: "snap-demo-orphaned-001",
+      region: "ap-south-1" as const,
+      accountId: "210987654323",
+      sourceVolumeId: "vol-demo-missing-001",
+      sourceInstanceId: null,
+      sizeGb: 220,
+      ageDays: 40,
+      storageTier: "standard",
+      cost: 3.1,
+      lineItemDescription: "Demo orphaned snapshot storage cost",
+    },
+  ] as const;
   const snapshotUsageDate = dates[dates.length - 1];
   const snapshotUsageDateKey = dimDateKeyMap.get(snapshotUsageDate) ?? null;
-  await FactCostLineItems.create({
-    tenantId: tenant.id,
-    billingSourceId: billingSource.id,
-    providerId: provider.id,
-    billingAccountKey: billingAccount.id,
-    subAccountKey: subAccount.id,
-    regionKey: regionMap.get("us-east-1") ?? null,
-    serviceKey: ec2Service.id,
-    resourceKey: resourceKeyMap.get("snap-demo-old-001") ?? null,
-    usageDateKey: snapshotUsageDateKey,
-    billingPeriodStartDateKey: billingStartDateKey,
-    billingPeriodEndDateKey: billingEndDateKey,
-    billedCost: 9.5,
-    effectiveCost: 9.5,
-    listCost: 9.5,
-    consumedQuantity: 1,
-    pricingQuantity: 1,
-    usageStartTime: new Date(`${snapshotUsageDate}T00:00:00.000Z`),
-    usageEndTime: new Date(`${snapshotUsageDate}T23:59:59.999Z`),
-    usageType: "SnapshotUsage",
-    productUsageType: "SnapshotUsage",
-    productFamily: "Storage Snapshot",
-    fromRegionCode: "us-east-1",
-    toRegionCode: "us-east-1",
-    billType: "Anniversary",
-    lineItemDescription: "Demo snapshot storage cost",
-    legalEntity: "Amazon Web Services, Inc.",
-    operation: "CreateSnapshot",
-    lineItemType: "Usage",
-    pricingTerm: "OnDemand",
-    purchaseOption: "on_demand",
-    taxCost: 0,
-    creditAmount: 0,
-    refundAmount: 0,
-    ingestedAt: new Date(),
-  });
+  for (const snap of snapshots) {
+    // Old snapshot >= 90 days should trigger "Delete or review old snapshot".
+    await Ec2SnapshotInventorySnapshot.create({
+      tenantId: tenant.id,
+      cloudConnectionId: connection.id,
+      providerId: provider.id,
+      snapshotId: snap.snapshotId,
+      resourceKey: resourceKeyMap.get(snap.snapshotId) ?? null,
+      regionKey: regionMap.get(snap.region) ?? null,
+      subAccountKey: subAccountKeyById.get(snap.accountId) ?? null,
+      sourceVolumeId: snap.sourceVolumeId,
+      sourceInstanceId: snap.sourceInstanceId,
+      sizeGb: snap.sizeGb,
+      startTime: addDays(new Date(), -snap.ageDays),
+      state: "completed",
+      storageTier: snap.storageTier,
+      encrypted: false,
+      progress: "100%",
+      tagsJson: { Seed: SEED_MARKER },
+      metadataJson: { seed: SEED_MARKER, ageDays: snap.ageDays },
+      discoveredAt: discoveryTime,
+      isCurrent: true,
+    });
+
+    await FactCostLineItems.create({
+      tenantId: tenant.id,
+      billingSourceId: billingSource.id,
+      providerId: provider.id,
+      billingAccountKey: billingAccount.id,
+      subAccountKey: subAccountKeyById.get(snap.accountId) ?? null,
+      regionKey: regionMap.get(snap.region) ?? null,
+      serviceKey: ec2Service.id,
+      resourceKey: resourceKeyMap.get(snap.snapshotId) ?? null,
+      usageDateKey: snapshotUsageDateKey,
+      billingPeriodStartDateKey: billingStartDateKey,
+      billingPeriodEndDateKey: billingEndDateKey,
+      billedCost: snap.cost,
+      effectiveCost: snap.cost,
+      listCost: snap.cost,
+      consumedQuantity: 1,
+      pricingQuantity: 1,
+      usageStartTime: new Date(`${snapshotUsageDate}T00:00:00.000Z`),
+      usageEndTime: new Date(`${snapshotUsageDate}T23:59:59.999Z`),
+      usageType: "SnapshotUsage",
+      productUsageType: "SnapshotUsage",
+      productFamily: "Storage Snapshot",
+      fromRegionCode: snap.region,
+      toRegionCode: snap.region,
+      billType: "Anniversary",
+      lineItemDescription: snap.lineItemDescription,
+      legalEntity: "Amazon Web Services, Inc.",
+      operation: "CreateSnapshot",
+      lineItemType: "Usage",
+      pricingTerm: "OnDemand",
+      purchaseOption: "on_demand",
+      taxCost: 0,
+      creditAmount: 0,
+      refundAmount: 0,
+      ingestedAt: new Date(),
+    });
+  }
 
   console.info("Demo DB seeding completed", {
     login: {

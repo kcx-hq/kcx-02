@@ -79,15 +79,6 @@ const NETWORK_TYPES: EC2InstancesNetworkType[] = [
 const isValidNetworkType = (value: string | null): value is EC2InstancesNetworkType =>
   Boolean(value) && NETWORK_TYPES.includes(value as EC2InstancesNetworkType);
 
-const matchesCondition = (instance: InventoryEc2InstanceRow, condition: EC2InstancesCondition): boolean => {
-  if (condition === "all") return true;
-  if (condition === "idle") return instance.isIdleCandidate === true;
-  if (condition === "underutilized") return instance.isUnderutilizedCandidate === true;
-  if (condition === "overutilized") return instance.isOverutilizedCandidate === true;
-  if (condition === "uncovered") return (instance.uncoveredHours ?? 0) > 0;
-  return true;
-};
-
 const matchesState = (instance: InventoryEc2InstanceRow, state: EC2InstancesControlsState["state"]): boolean => {
   if (state === "all") return true;
   return (instance.state ?? "").toLowerCase() === state;
@@ -204,7 +195,7 @@ export default function EC2InstancesPage() {
   const filteredRows = useMemo(
     () =>
       allItems.filter((instance) => {
-        if (!matchesCondition(instance, controls.condition)) return false;
+        if (controls.condition !== "all" && instance.condition !== controls.condition) return false;
         if (!matchesState(instance, controls.state)) return false;
         if (!matchesRegion(instance, controls.scopeFilters.region)) return false;
         if (!matchesThresholds(instance, controls.thresholds)) return false;
@@ -362,3 +353,4 @@ export default function EC2InstancesPage() {
     </div>
   );
 }
+

@@ -34,7 +34,7 @@ const querySchema = z.object({
   dateTo: z.string().regex(DATE_ONLY_REGEX),
   cloudConnectionId: z.string().uuid().nullable(),
   billingSourceId: z.number().int().nullable(),
-  category: z.enum(["compute", "storage", "pricing"]).nullable(),
+  category: z.enum(["compute", "storage", "pricing", "network"]).nullable(),
   type: z.enum([
     "idle_instance",
     "underutilized_instance",
@@ -42,6 +42,12 @@ const querySchema = z.object({
     "unattached_volume",
     "old_snapshot",
     "uncovered_on_demand",
+    "high_internet_data_transfer",
+    "high_inter_region_data_transfer",
+    "high_inter_az_data_transfer",
+    "low_cpu_high_network",
+    "high_nat_gateway_cost",
+    "unattached_elastic_ip",
   ]).nullable(),
   status: z.enum(["open", "accepted", "ignored", "snoozed", "completed"]).nullable(),
   account: z.string().nullable(),
@@ -107,4 +113,3 @@ export function buildEc2RecommendationStatusPatch(req: Request): { id: number; s
   const parsed = parseWithSchema(statusSchema, req.body ?? {});
   return { id, status: parsed.status };
 }
-

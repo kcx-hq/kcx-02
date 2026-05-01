@@ -6965,6 +6965,22 @@
   gap: 2px;
 }
 
+.optimization-tab-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+}
+
+.optimization-high-savings-row .ag-cell {
+  background: color-mix(in srgb, #eef8f5 84%, white 16%);
+}
+
+.optimization-high-savings-cell {
+  font-weight: 700;
+  color: #1f6958;
+}
+
 .optimization-layout {
   display: flex;
   flex-direction: column;

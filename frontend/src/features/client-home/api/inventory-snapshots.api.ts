@@ -1,35 +1,28 @@
 import { apiGet } from "@/lib/api"
 
-export type InventoryEc2SnapshotSignal = "Orphaned" | "Old" | "Normal"
+export type InventoryEc2SnapshotSignal = "old" | "orphaned" | "normal" | null
 
 export type InventoryEc2SnapshotRow = {
   snapshotId: string
   sourceVolumeId: string | null
-  sourceVolumeName: string | null
   sourceInstanceId: string | null
-  sourceInstanceName: string | null
-  state: string | null
-  storageTier: string | null
-  encrypted: boolean | null
-  kmsKeyId: string | null
-  progress: string | null
-  startTime: string | null
+  accountId: string
+  accountName: string | null
+  region: string
+  state: string
+  storageTier: string
   ageDays: number | null
-  likelyOrphaned: boolean
   signal: InventoryEc2SnapshotSignal
   cost: number | null
-  currencyCode: string | null
-  regionKey: string | null
-  subAccountKey: string | null
-  tags: Record<string, unknown> | null
-  metadata: Record<string, unknown> | null
+  recommendation: string | null
+  estimatedSavings: number | null
 }
 
 export type InventoryEc2SnapshotsSummary = {
-  snapshotsInView: number
-  likelyOrphanedCount: number
-  oldSnapshotsCount: number
   totalSnapshotCost: number | null
+  totalSnapshots: number
+  oldSnapshots: number
+  potentialSavings: number | null
 }
 
 export type InventoryEc2SnapshotsPagination = {
@@ -40,7 +33,7 @@ export type InventoryEc2SnapshotsPagination = {
 }
 
 export type InventoryEc2SnapshotsListResponse = {
-  items: InventoryEc2SnapshotRow[]
+  rows: InventoryEc2SnapshotRow[]
   summary: InventoryEc2SnapshotsSummary
   pagination: InventoryEc2SnapshotsPagination
 }
@@ -76,21 +69,12 @@ const toNumberOrNull = (value: unknown): number | null => {
   return null
 }
 
-const toBooleanOrNull = (value: unknown): boolean | null => {
-  return typeof value === "boolean" ? value : null
-}
-
-const toObjectOrNull = (value: unknown): Record<string, unknown> | null => {
-  if (!isRecord(value)) return null
-  return value
-}
-
 const toSignal = (value: unknown): InventoryEc2SnapshotSignal => {
   const normalized = toStringOrNull(value)
-  if (normalized === "Orphaned" || normalized === "Old" || normalized === "Normal") {
+  if (normalized === "old" || normalized === "orphaned" || normalized === "normal") {
     return normalized
   }
-  return "Normal"
+  return null
 }
 
 const normalizeSnapshotRow = (value: unknown): InventoryEc2SnapshotRow | null => {
@@ -104,24 +88,17 @@ const normalizeSnapshotRow = (value: unknown): InventoryEc2SnapshotRow | null =>
   return {
     snapshotId,
     sourceVolumeId: toStringOrNull(value.sourceVolumeId),
-    sourceVolumeName: toStringOrNull(value.sourceVolumeName),
     sourceInstanceId: toStringOrNull(value.sourceInstanceId),
-    sourceInstanceName: toStringOrNull(value.sourceInstanceName),
-    state: toStringOrNull(value.state),
-    storageTier: toStringOrNull(value.storageTier),
-    encrypted: toBooleanOrNull(value.encrypted),
-    kmsKeyId: toStringOrNull(value.kmsKeyId),
-    progress: toStringOrNull(value.progress),
-    startTime: toStringOrNull(value.startTime),
+    accountId: toStringOrNull(value.accountId) ?? "",
+    accountName: toStringOrNull(value.accountName),
+    region: toStringOrNull(value.region) ?? "",
+    state: toStringOrNull(value.state) ?? "",
+    storageTier: toStringOrNull(value.storageTier) ?? "",
     ageDays: toNumberOrNull(value.ageDays),
-    likelyOrphaned: toBooleanOrNull(value.likelyOrphaned) ?? signal === "Orphaned",
     signal,
     cost: toNumberOrNull(value.cost),
-    currencyCode: toStringOrNull(value.currencyCode),
-    regionKey: toStringOrNull(value.regionKey),
-    subAccountKey: toStringOrNull(value.subAccountKey),
-    tags: toObjectOrNull(value.tags),
-    metadata: toObjectOrNull(value.metadata),
+    recommendation: toStringOrNull(value.recommendation),
+    estimatedSavings: toNumberOrNull(value.estimatedSavings),
   }
 }
 
@@ -155,18 +132,18 @@ const normalizePagination = (
 const normalizeSummary = (value: unknown): InventoryEc2SnapshotsSummary => {
   if (!isRecord(value)) {
     return {
-      snapshotsInView: 0,
-      likelyOrphanedCount: 0,
-      oldSnapshotsCount: 0,
       totalSnapshotCost: null,
+      totalSnapshots: 0,
+      oldSnapshots: 0,
+      potentialSavings: null,
     }
   }
 
   return {
-    snapshotsInView: toNumberOrNull(value.snapshotsInView) ?? 0,
-    likelyOrphanedCount: toNumberOrNull(value.likelyOrphanedCount) ?? 0,
-    oldSnapshotsCount: toNumberOrNull(value.oldSnapshotsCount) ?? 0,
     totalSnapshotCost: toNumberOrNull(value.totalSnapshotCost),
+    totalSnapshots: toNumberOrNull(value.totalSnapshots) ?? 0,
+    oldSnapshots: toNumberOrNull(value.oldSnapshots) ?? 0,
+    potentialSavings: toNumberOrNull(value.potentialSavings),
   }
 }
 
@@ -178,6 +155,7 @@ const extractItemsArray = (value: unknown): unknown[] => {
 
   // TODO(inventory-frontend): remove this fallback once backend response shape is fully frozen.
   if (isRecord(value.data) && Array.isArray(value.data.items)) return value.data.items
+  if (isRecord(value.data) && Array.isArray(value.data.rows)) return value.data.rows
   return []
 }
 
@@ -215,7 +193,7 @@ export async function getInventoryEc2Snapshots(
   const summarySource = responseRecord?.summary ?? responseDataRecord?.summary ?? null
 
   return {
-    items,
+    rows: items,
     pagination: normalizePagination(paginationSource, page, pageSize),
     summary: normalizeSummary(summarySource),
   }

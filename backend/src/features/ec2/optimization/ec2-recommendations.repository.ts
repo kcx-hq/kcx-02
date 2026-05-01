@@ -1,6 +1,7 @@
 import { QueryTypes } from "sequelize";
 
 import { FactRecommendations, sequelize } from "../../../models/index.js";
+import { classifyNetworkCostType } from "../explorer/network-cost-classifier.js";
 import type {
   Ec2RecommendationRecord,
   Ec2RecommendationStatus,
@@ -8,7 +9,7 @@ import type {
   Ec2RefreshRecommendationsInput,
 } from "./ec2-recommendations.types.js";
 
-const SOURCE_SYSTEM = "KCX_EC2_OPTIMIZATION_V1";
+const SOURCE_SYSTEMS = ["KCX_EC2_OPTIMIZATION_V1", "KCX_EC2_OPTIMIZATION"] as const;
 
 type InstanceCandidateRow = {
   cloudConnectionId: string | null;
@@ -63,6 +64,58 @@ type SnapshotCandidateRow = {
   startTime: Date | null;
   snapshotCost: number | null;
   tagsJson: Record<string, unknown> | null;
+};
+
+type InstanceNetworkCostLineItemRow = {
+  cloudConnectionId: string | null;
+  billingSourceId: number | null;
+  awsAccountId: string | null;
+  awsRegionCode: string | null;
+  regionKey: number | null;
+  subAccountKey: number | null;
+  instanceId: string;
+  instanceName: string | null;
+  usageType: string | null;
+  productUsageType: string | null;
+  productFamily: string | null;
+  operation: string | null;
+  lineItemDescription: string | null;
+  fromLocation: string | null;
+  toLocation: string | null;
+  fromRegionCode: string | null;
+  toRegionCode: string | null;
+  cost: number | null;
+  usageQuantity: number | null;
+};
+
+type InstanceUsageSummaryRow = {
+  cloudConnectionId: string | null;
+  billingSourceId: number | null;
+  awsAccountId: string | null;
+  awsRegionCode: string | null;
+  regionKey: number | null;
+  subAccountKey: number | null;
+  instanceId: string;
+  instanceName: string | null;
+  state: string | null;
+  avgCpu: number | null;
+  totalNetworkUsageGb: number | null;
+  totalEffectiveCost: number | null;
+  runningDays: number | null;
+};
+
+type EipCandidateRow = {
+  cloudConnectionId: string | null;
+  billingSourceId: number | null;
+  awsAccountId: string | null;
+  awsRegionCode: string | null;
+  regionKey: number | null;
+  subAccountKey: number | null;
+  allocationId: string;
+  publicIp: string | null;
+  associationStatus: string | null;
+  isAttached: boolean | null;
+  estimatedEipCost: number | null;
 };
 
 const toUpperStatus = (status: Ec2RecommendationStatus): string => status.toUpperCase();
@@ -251,6 +304,203 @@ export class Ec2RecommendationsRepository {
     );
   }
 
+  async getInstanceNetworkCostLineItems(input: Ec2RefreshRecommendationsInput): Promise<InstanceNetworkCostLineItemRow[]> {
+    const rows = await sequelize.query<InstanceNetworkCostLineItemRow>(
+      `
+      SELECT
+        eis.cloud_connection_id AS "cloudConnectionId",
+        f.billing_source_id AS "billingSourceId",
+        dsa.sub_account_id::text AS "awsAccountId",
+        COALESCE(dr.region_id, dr.region_name)::text AS "awsRegionCode",
+        f.region_key AS "regionKey",
+        f.sub_account_key AS "subAccountKey",
+        dres.resource_id::text AS "instanceId",
+        COALESCE(NULLIF(TRIM(dres.resource_name), ''), dres.resource_id)::text AS "instanceName",
+        f.usage_type AS "usageType",
+        f.product_usage_type AS "productUsageType",
+        f.product_family AS "productFamily",
+        f.operation AS operation,
+        f.line_item_description AS "lineItemDescription",
+        f.from_location AS "fromLocation",
+        f.to_location AS "toLocation",
+        f.from_region_code AS "fromRegionCode",
+        f.to_region_code AS "toRegionCode",
+        SUM(COALESCE(f.effective_cost, f.billed_cost, 0))::double precision AS cost,
+        SUM(COALESCE(f.consumed_quantity, f.pricing_quantity, 0))::double precision AS "usageQuantity"
+      FROM fact_cost_line_items f
+      INNER JOIN dim_resource dres
+        ON dres.id = f.resource_key
+       AND dres.tenant_id = f.tenant_id
+      LEFT JOIN ec2_instance_inventory_snapshots eis
+        ON eis.tenant_id = f.tenant_id
+       AND eis.instance_id = dres.resource_id
+       AND eis.is_current = TRUE
+      LEFT JOIN dim_sub_account dsa ON dsa.id = f.sub_account_key
+      LEFT JOIN dim_region dr ON dr.id = f.region_key
+      WHERE f.tenant_id = :tenantId::uuid
+        AND f.usage_start_time >= :dateFrom::date
+        AND f.usage_start_time < (:dateTo::date + INTERVAL '1 day')
+        AND (:cloudConnectionId::uuid IS NULL OR eis.cloud_connection_id = :cloudConnectionId::uuid)
+        AND (:billingSourceId::bigint IS NULL OR f.billing_source_id = :billingSourceId::bigint)
+        AND (
+          LOWER(COALESCE(dres.resource_type, '')) IN ('ec2_instance', 'aws_ec2_instance', 'instance')
+          OR dres.resource_id ILIKE 'i-%'
+        )
+      GROUP BY
+        eis.cloud_connection_id,
+        f.billing_source_id,
+        dsa.sub_account_id,
+        dr.region_id,
+        dr.region_name,
+        f.region_key,
+        f.sub_account_key,
+        dres.resource_id,
+        dres.resource_name,
+        f.usage_type,
+        f.product_usage_type,
+        f.product_family,
+        f.operation,
+        f.line_item_description,
+        f.from_location,
+        f.to_location,
+        f.from_region_code,
+        f.to_region_code;
+      `,
+      { replacements: input, type: QueryTypes.SELECT },
+    );
+    return rows
+      .map((row) => ({
+        ...row,
+        cost: row.cost ?? 0,
+        usageQuantity: row.usageQuantity ?? 0,
+      }))
+      .filter((row) => {
+        const networkType = classifyNetworkCostType({
+          usageType: row.usageType,
+          productUsageType: row.productUsageType,
+          productFamily: row.productFamily,
+          operation: row.operation,
+          lineItemDescription: row.lineItemDescription,
+          fromLocation: row.fromLocation,
+          toLocation: row.toLocation,
+          fromRegionCode: row.fromRegionCode,
+          toRegionCode: row.toRegionCode,
+        });
+        return networkType !== "Other Network";
+      });
+  }
+
+  async getInstanceUsageSummaries(input: Ec2RefreshRecommendationsInput): Promise<InstanceUsageSummaryRow[]> {
+    return sequelize.query<InstanceUsageSummaryRow>(
+      `
+      WITH grouped AS (
+        SELECT
+          d.cloud_connection_id AS "cloudConnectionId",
+          d.billing_source_id AS "billingSourceId",
+          d.instance_id AS "instanceId",
+          AVG(d.cpu_avg::double precision) FILTER (WHERE d.cpu_avg IS NOT NULL) AS "avgCpu",
+          SUM((COALESCE(d.network_in_bytes, 0) + COALESCE(d.network_out_bytes, 0))::double precision) / (1024 * 1024 * 1024) AS "totalNetworkUsageGb",
+          SUM(COALESCE(d.total_effective_cost, d.total_billed_cost, 0))::double precision AS "totalEffectiveCost",
+          SUM(CASE WHEN LOWER(COALESCE(d.state, '')) = 'running' THEN 1 ELSE 0 END)::double precision AS "runningDays"
+        FROM fact_ec2_instance_daily d
+        WHERE d.tenant_id = :tenantId
+          AND d.usage_date >= :dateFrom::date
+          AND d.usage_date < (:dateTo::date + INTERVAL '1 day')
+          AND (:cloudConnectionId::uuid IS NULL OR d.cloud_connection_id = :cloudConnectionId::uuid)
+          AND (:billingSourceId::bigint IS NULL OR d.billing_source_id = :billingSourceId::bigint)
+        GROUP BY d.cloud_connection_id, d.billing_source_id, d.instance_id
+      ),
+      latest AS (
+        SELECT DISTINCT ON (d.cloud_connection_id, d.billing_source_id, d.instance_id)
+          d.cloud_connection_id,
+          d.billing_source_id,
+          d.instance_id,
+          COALESCE(NULLIF(TRIM(d.instance_name), ''), d.instance_id) AS instance_name,
+          d.state,
+          d.region_key,
+          d.sub_account_key
+        FROM fact_ec2_instance_daily d
+        WHERE d.tenant_id = :tenantId
+          AND d.usage_date >= :dateFrom::date
+          AND d.usage_date < (:dateTo::date + INTERVAL '1 day')
+          AND (:cloudConnectionId::uuid IS NULL OR d.cloud_connection_id = :cloudConnectionId::uuid)
+          AND (:billingSourceId::bigint IS NULL OR d.billing_source_id = :billingSourceId::bigint)
+        ORDER BY d.cloud_connection_id, d.billing_source_id, d.instance_id, d.usage_date DESC
+      )
+      SELECT
+        g."cloudConnectionId",
+        g."billingSourceId",
+        dsa.sub_account_id::text AS "awsAccountId",
+        COALESCE(dr.region_id, dr.region_name)::text AS "awsRegionCode",
+        l.region_key AS "regionKey",
+        l.sub_account_key AS "subAccountKey",
+        l.instance_id::text AS "instanceId",
+        l.instance_name::text AS "instanceName",
+        l.state::text AS state,
+        g."avgCpu",
+        g."totalNetworkUsageGb",
+        g."totalEffectiveCost",
+        g."runningDays"
+      FROM grouped g
+      INNER JOIN latest l
+        ON l.cloud_connection_id IS NOT DISTINCT FROM g."cloudConnectionId"
+       AND l.billing_source_id IS NOT DISTINCT FROM g."billingSourceId"
+       AND l.instance_id = g."instanceId"
+      LEFT JOIN dim_sub_account dsa ON dsa.id = l.sub_account_key
+      LEFT JOIN dim_region dr ON dr.id = l.region_key;
+      `,
+      { replacements: input, type: QueryTypes.SELECT },
+    );
+  }
+
+  async getUnattachedEipCandidates(input: Ec2RefreshRecommendationsInput): Promise<EipCandidateRow[]> {
+    return sequelize.query<EipCandidateRow>(
+      `
+      WITH eip_cost AS (
+        SELECT
+          dres.resource_id::text AS resource_id,
+          SUM(COALESCE(f.effective_cost, f.billed_cost, 0))::double precision AS eip_cost
+        FROM fact_cost_line_items f
+        INNER JOIN dim_resource dres
+          ON dres.id = f.resource_key
+         AND dres.tenant_id = f.tenant_id
+        WHERE f.tenant_id = :tenantId::uuid
+          AND f.usage_start_time >= :dateFrom::date
+          AND f.usage_start_time < (:dateTo::date + INTERVAL '1 day')
+          AND (:billingSourceId::bigint IS NULL OR f.billing_source_id = :billingSourceId::bigint)
+        GROUP BY dres.resource_id
+      )
+      SELECT
+        inv.cloud_connection_id AS "cloudConnectionId",
+        :billingSourceId::bigint AS "billingSourceId",
+        dsa.sub_account_id::text AS "awsAccountId",
+        COALESCE(dr.region_id, dr.region_name)::text AS "awsRegionCode",
+        inv.region_key AS "regionKey",
+        inv.sub_account_key AS "subAccountKey",
+        inv.allocation_id::text AS "allocationId",
+        inv.public_ip::text AS "publicIp",
+        inv.association_status::text AS "associationStatus",
+        inv.is_attached AS "isAttached",
+        COALESCE(ec1.eip_cost, ec2.eip_cost, 0)::double precision AS "estimatedEipCost"
+      FROM ec2_eip_inventory_snapshots inv
+      LEFT JOIN dim_sub_account dsa ON dsa.id = inv.sub_account_key
+      LEFT JOIN dim_region dr ON dr.id = inv.region_key
+      LEFT JOIN eip_cost ec1
+        ON ec1.resource_id = inv.allocation_id
+      LEFT JOIN eip_cost ec2
+        ON ec2.resource_id = inv.public_ip
+      WHERE inv.tenant_id = :tenantId::uuid
+        AND inv.is_current = TRUE
+        AND (:cloudConnectionId::uuid IS NULL OR inv.cloud_connection_id = :cloudConnectionId::uuid)
+        AND (
+          COALESCE(inv.is_attached, FALSE) = FALSE
+          OR LOWER(COALESCE(inv.association_status, '')) IN ('unattached', 'unassociated', 'disassociated', 'available')
+        );
+      `,
+      { replacements: input, type: QueryTypes.SELECT },
+    );
+  }
+
   async getPersistedRecommendations(input: Ec2RecommendationsQuery): Promise<Ec2RecommendationRecord[]> {
     const rows = await sequelize.query<
       Omit<Ec2RecommendationRecord, "status"> & { status: string | null }
@@ -258,11 +508,28 @@ export class Ec2RecommendationsRepository {
       `
       SELECT
         fr.id::bigint AS id,
-        LOWER(fr.category)::text AS category,
-        fr.recommendation_type::text AS type,
+        CASE
+          WHEN LOWER(COALESCE(fr.category, '')) IN ('compute', 'storage', 'pricing', 'network')
+            THEN LOWER(fr.category)
+          WHEN LOWER(COALESCE(fr.recommendation_type, '')) IN ('idle_instance', 'underutilized_instance', 'overutilized_instance')
+            THEN 'compute'
+          WHEN LOWER(COALESCE(fr.recommendation_type, '')) IN ('unattached_volume', 'old_snapshot', 'unattached_ebs_volume', 'ebs_attached_to_stopped_instance')
+            THEN 'storage'
+          WHEN LOWER(COALESCE(fr.recommendation_type, '')) IN ('uncovered_on_demand')
+            THEN 'pricing'
+          WHEN LOWER(COALESCE(fr.recommendation_type, '')) IN ('high_internet_data_transfer', 'high_inter_region_data_transfer', 'high_inter_az_data_transfer', 'low_cpu_high_network', 'high_nat_gateway_cost', 'unattached_elastic_ip')
+            THEN 'network'
+          ELSE LOWER(COALESCE(fr.category, ''))
+        END::text AS category,
+        CASE
+          WHEN LOWER(COALESCE(fr.recommendation_type, '')) = 'unattached_ebs_volume' THEN 'unattached_volume'
+          WHEN LOWER(COALESCE(fr.recommendation_type, '')) = 'ebs_attached_to_stopped_instance' THEN 'unattached_volume'
+          ELSE LOWER(COALESCE(fr.recommendation_type, ''))
+        END::text AS type,
         CASE
           WHEN fr.resource_type = 'ec2_instance' THEN 'instance'
           WHEN fr.resource_type = 'ebs_volume' THEN 'volume'
+          WHEN fr.resource_type = 'elastic_ip' THEN 'elastic_ip'
           ELSE 'snapshot'
         END::text AS "resourceType",
         fr.resource_id::text AS "resourceId",
@@ -274,6 +541,7 @@ export class Ec2RecommendationsRepository {
         COALESCE(fr.idle_observation_value, '')::text AS action,
         fr.estimated_monthly_savings::double precision AS "estimatedMonthlySaving",
         LOWER(COALESCE(fr.risk_level, 'medium'))::text AS risk,
+        LOWER(COALESCE(fr.effort_level, 'low'))::text AS effort,
         fr.status::text AS status,
         CASE WHEN fr.detected_at IS NULL THEN NULL ELSE fr.detected_at::text END AS "detectedAt",
         CASE WHEN fr.last_seen_at IS NULL THEN NULL ELSE fr.last_seen_at::text END AS "lastSeenAt",
@@ -281,7 +549,7 @@ export class Ec2RecommendationsRepository {
       FROM fact_recommendations fr
       LEFT JOIN dim_region dr ON dr.id = fr.region_key
       WHERE fr.tenant_id = :tenantId::uuid
-        AND fr.source_system = :sourceSystem
+        AND fr.source_system IN (:sourceSystems)
         AND (:cloudConnectionId::uuid IS NULL OR fr.cloud_connection_id = :cloudConnectionId::uuid)
         AND (:billingSourceId::bigint IS NULL OR fr.billing_source_id = :billingSourceId::bigint)
         AND (:category::text IS NULL OR LOWER(fr.category) = :category::text)
@@ -306,7 +574,7 @@ export class Ec2RecommendationsRepository {
       {
         replacements: {
           ...input,
-          sourceSystem: SOURCE_SYSTEM,
+          sourceSystems: SOURCE_SYSTEMS,
         },
         type: QueryTypes.SELECT,
       },
@@ -327,7 +595,7 @@ export class Ec2RecommendationsRepository {
       const existing = await FactRecommendations.findAll({
         where: {
           tenantId,
-          sourceSystem: SOURCE_SYSTEM,
+          sourceSystem: SOURCE_SYSTEMS[0],
         },
         transaction,
       });
@@ -381,8 +649,9 @@ export class Ec2RecommendationsRepository {
           estimatedMonthlySavings: rec.estimatedMonthlySaving,
           projectedMonthlyCost: rec.projectedMonthlyCost,
           riskLevel: String(rec.risk).toUpperCase(),
+          effortLevel: rec.effort ? String(rec.effort).toUpperCase() : null,
           status: preserveStatus ? toUpperStatus(existingStatus) : "OPEN",
-          sourceSystem: SOURCE_SYSTEM,
+          sourceSystem: SOURCE_SYSTEMS[0],
           metadataJson: rec.metadata,
           detectedAt: existingRow?.detectedAt ?? now,
           lastSeenAt: now,
@@ -433,7 +702,7 @@ export class Ec2RecommendationsRepository {
         where: {
           id: input.id,
           tenantId: input.tenantId,
-          sourceSystem: SOURCE_SYSTEM,
+          sourceSystem: SOURCE_SYSTEMS[0],
         },
       },
     );

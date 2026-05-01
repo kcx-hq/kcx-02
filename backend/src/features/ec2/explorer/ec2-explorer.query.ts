@@ -241,20 +241,101 @@ export class Ec2ExplorerQuery {
   }
 
   async getAdditionalDailyCosts(input: Ec2ExplorerInput): Promise<Ec2ExplorerAdditionalDailyCosts[]> {
-    // Placeholder layer for snapshot/EIP cost sources.
-    // Keep isolated in query layer so service/UI remain fully data-driven.
-    const points: Ec2ExplorerAdditionalDailyCosts[] = [];
-    let current = new Date(`${input.startDate}T00:00:00.000Z`);
-    const end = new Date(`${input.endDate}T00:00:00.000Z`);
-    while (current.getTime() <= end.getTime()) {
-      points.push({
-        date: current.toISOString().slice(0, 10),
+    const scoped = toScopeWhereClauses(input);
+    const costExpression = input.costBasis === "billed_cost"
+      ? "COALESCE(fcli.billed_cost, 0)"
+      : input.costBasis === "amortized_cost"
+        ? "COALESCE(fcli.effective_cost, fcli.billed_cost, 0)"
+        : "COALESCE(fcli.effective_cost, fcli.billed_cost, 0)";
+    type RawRow = {
+      date: string;
+      instanceId: string | null;
+      usageType: string | null;
+      productUsageType: string | null;
+      productFamily: string | null;
+      operation: string | null;
+      lineItemDescription: string | null;
+      cost: number | string | null;
+    };
+    const rows = await sequelize.query<RawRow>(
+      `
+        SELECT
+          COALESCE(dd.full_date, DATE(COALESCE(fcli.usage_start_time, fcli.usage_end_time)))::text AS date,
+          dr.resource_id::text AS "instanceId",
+          fcli.usage_type AS "usageType",
+          fcli.product_usage_type AS "productUsageType",
+          fcli.product_family AS "productFamily",
+          fcli.operation AS operation,
+          fcli.line_item_description AS "lineItemDescription",
+          SUM(${costExpression})::double precision AS cost
+        FROM fact_cost_line_items fcli
+        LEFT JOIN dim_date dd
+          ON dd.id = fcli.usage_date_key
+        LEFT JOIN dim_resource dr
+          ON dr.id = fcli.resource_key
+         AND dr.tenant_id = fcli.tenant_id
+        WHERE fcli.tenant_id = :tenantId
+          AND COALESCE(dd.full_date, DATE(COALESCE(fcli.usage_start_time, fcli.usage_end_time)))
+              BETWEEN :startDate::date AND :endDate::date
+          ${input.scope.scopeType === "global" && typeof input.scope.providerId === "number" ? "AND fcli.provider_id = :scopeProviderId" : ""}
+          ${input.scope.scopeType === "global" && Array.isArray(input.scope.billingSourceIds) && input.scope.billingSourceIds.length > 0 ? "AND fcli.billing_source_id IN (:scopeBillingSourceIds)" : ""}
+          ${input.scope.scopeType === "global" && typeof input.scope.subAccountKey === "number" ? "AND fcli.sub_account_key = :scopeSubAccountKey" : ""}
+          ${input.scope.scopeType === "global" && typeof input.scope.regionKey === "number" ? "AND fcli.region_key = :scopeRegionKey" : ""}
+          ${input.scope.scopeType === "upload" && Array.isArray(input.scope.rawBillingFileIds) && input.scope.rawBillingFileIds.length > 0 ? "AND fcli.billing_source_id IN (:scopeRawBillingFileIds)" : ""}
+          ${input.filters.regions.length > 0 ? "AND LOWER(COALESCE(fcli.from_region_code, fcli.to_region_code, 'unknown')) IN (:regionsLower)" : ""}
+        GROUP BY
+          COALESCE(dd.full_date, DATE(COALESCE(fcli.usage_start_time, fcli.usage_end_time)))::text,
+          dr.resource_id,
+          fcli.usage_type,
+          fcli.product_usage_type,
+          fcli.product_family,
+          fcli.operation,
+          fcli.line_item_description;
+      `,
+      { replacements: scoped.replacements, type: QueryTypes.SELECT },
+    );
+
+    const bucket = new Map<string, Ec2ExplorerAdditionalDailyCosts>();
+    for (const row of rows) {
+      const instanceId = (row.instanceId ?? "").trim();
+      if (!instanceId) continue;
+      const key = `${row.date}::${instanceId}`;
+      const item = bucket.get(key) ?? {
+        date: row.date,
+        instanceId,
         snapshotCost: 0,
+        natGatewayCost: 0,
         eipCost: 0,
-      });
-      current = new Date(current.getTime() + 24 * 60 * 60 * 1000);
+        loadBalancerCost: 0,
+      };
+      const blob = [
+        (row.usageType ?? "").toLowerCase(),
+        (row.productUsageType ?? "").toLowerCase(),
+        (row.productFamily ?? "").toLowerCase(),
+        (row.operation ?? "").toLowerCase(),
+        (row.lineItemDescription ?? "").toLowerCase(),
+      ].join(" ");
+      const cost = Math.max(0, toNumber(row.cost));
+
+      if (blob.includes("snapshot")) {
+        item.snapshotCost += cost;
+      } else if (blob.includes("natgateway") || blob.includes("nat-gateway") || blob.includes("nat gateway") || blob.includes("dataprocessing-bytes")) {
+        item.natGatewayCost += cost;
+      } else if (blob.includes("elasticip") || blob.includes("elastic ip") || blob.includes("idleaddress") || blob.includes("inuseaddress")) {
+        item.eipCost += cost;
+      } else if (blob.includes("loadbalancer") || blob.includes("load balancer") || blob.includes("loadbalancing") || blob.includes("lcu")) {
+        item.loadBalancerCost += cost;
+      }
+      bucket.set(key, item);
     }
-    return points;
+
+    return [...bucket.values()].map((item) => ({
+      ...item,
+      snapshotCost: Number(item.snapshotCost.toFixed(2)),
+      natGatewayCost: Number(item.natGatewayCost.toFixed(2)),
+      eipCost: Number(item.eipCost.toFixed(2)),
+      loadBalancerCost: Number(item.loadBalancerCost.toFixed(2)),
+    }));
   }
 
   async getNetworkBreakdown(input: Ec2ExplorerInput): Promise<{

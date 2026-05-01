@@ -16,6 +16,7 @@ export type InventoryEc2InstanceRow = {
   isIdleCandidate: boolean | null
   isUnderutilizedCandidate: boolean | null
   isOverutilizedCandidate: boolean | null
+  condition: "idle" | "underutilized" | "overutilized" | "uncovered" | "healthy"
   pricingType: "on_demand" | "reserved" | "savings_plan" | "spot" | "other" | null
   totalHours: number
   computeCost: number
@@ -194,6 +195,7 @@ export type InventoryEc2InstanceDetailResponse = {
   }>
   recommendations: Array<{
     id: number
+    category: string
     type: string
     problem: string
     evidence: string
@@ -317,6 +319,18 @@ const normalizeInstanceRow = (value: unknown): InventoryEc2InstanceRow | null =>
     isIdleCandidate: toBooleanOrNull(value.isIdleCandidate),
     isUnderutilizedCandidate: toBooleanOrNull(value.isUnderutilizedCandidate),
     isOverutilizedCandidate: toBooleanOrNull(value.isOverutilizedCandidate),
+    condition: ((): InventoryEc2InstanceRow["condition"] => {
+      const condition = toStringOrNull(value.condition)
+      if (
+        condition === "idle" ||
+        condition === "underutilized" ||
+        condition === "overutilized" ||
+        condition === "uncovered" ||
+        condition === "healthy"
+      )
+        return condition
+      return "healthy"
+    })(),
     pricingType,
     totalHours: toNumberOrNull(value.totalHours) ?? 0,
     computeCost: toNumberOrNull(value.computeCost) ?? 0,
@@ -522,4 +536,5 @@ export async function getInventoryEc2InstanceDetail(
   const path = `/inventory/aws/ec2/instances/${encodeURIComponent(params.instanceId)}/details${qs ? `?${qs}` : ""}`
   return apiGet<InventoryEc2InstanceDetailResponse>(path)
 }
+
 

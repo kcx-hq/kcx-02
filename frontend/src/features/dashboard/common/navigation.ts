@@ -81,15 +81,21 @@ export const dashboardNav: DashboardNavNode[] = [
           },
           {
             kind: "link",
-            label: "Performance",
-            path: "/dashboard/ec2/performance",
-            icon: "line-chart",
-          },
-          {
-            kind: "link",
             label: "Optimization",
             path: "/dashboard/ec2/optimization",
             icon: "gauge",
+          },
+          {
+            kind: "link",
+            label: "Data Transfer",
+            path: "/dashboard/ec2/network/data-transfer",
+            icon: "activity",
+          },
+          {
+            kind: "link",
+            label: "Elastic IP",
+            path: "/dashboard/inventory/aws/ec2/elastic-ip",
+            icon: "activity",
           },
         ],
       },

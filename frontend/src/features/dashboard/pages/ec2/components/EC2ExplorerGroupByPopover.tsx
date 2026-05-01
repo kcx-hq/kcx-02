@@ -61,7 +61,9 @@ const GROUP_VALUE_OPTIONS: Record<EC2GroupBy, GroupByValueOption[]> = {
     { key: "ebs", label: "EBS", count: 4820 },
     { key: "snapshot", label: "Snapshot", count: 2110 },
     { key: "data_transfer", label: "Data Transfer", count: 1870 },
+    { key: "nat_gateway", label: "NAT Gateway", count: 520 },
     { key: "eip", label: "EIP", count: 530 },
+    { key: "load_balancer", label: "Load Balancer", count: 690 },
     { key: "other", label: "Other", count: 440 },
   ],
   "network-cost": [

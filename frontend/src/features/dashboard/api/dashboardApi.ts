@@ -29,6 +29,10 @@ import type {
   Ec2ExplorerFiltersQuery,
   Ec2ExplorerResponse,
   Ec2NetworkBreakdownResponse,
+  Ec2DataTransferFiltersQuery,
+  Ec2DataTransferResponse,
+  Ec2ElasticIpFiltersQuery,
+  Ec2ElasticIpResponse,
   DatabaseExplorerFilters,
   DatabaseExplorerResponse,
 
@@ -323,6 +327,14 @@ function withEc2RecommendationsFilters(
   filters?: Ec2RecommendationsFiltersQuery,
 ): string {
   const params = new URLSearchParams(buildDashboardQueryParams(scope));
+  // Prevent inherited dashboard keys (like subAccountKey/serviceKey) from being
+  // interpreted as EC2 recommendation filters and accidentally hiding all rows.
+  params.delete("providerId");
+  params.delete("billingAccountKey");
+  params.delete("subAccountKey");
+  params.delete("serviceKey");
+  params.delete("regionKey");
+
   if (filters?.cloudConnectionId) params.set("cloudConnectionId", filters.cloudConnectionId);
   if (typeof filters?.billingSourceId === "number") params.set("billingSourceId", String(filters.billingSourceId));
   if (filters?.category) params.set("category", filters.category);
@@ -336,6 +348,42 @@ function withEc2RecommendationsFilters(
   if (Array.isArray(filters?.tags) && filters.tags.length > 0) params.set("tags", filters.tags.join(","));
   if (filters?.dateFrom) params.set("dateFrom", filters.dateFrom);
   if (filters?.dateTo) params.set("dateTo", filters.dateTo);
+  const query = params.toString();
+  return query.length > 0 ? `${path}?${query}` : path;
+}
+
+function withEc2DataTransferFilters(
+  path: string,
+  scope: DashboardResolvedScope,
+  filters?: Ec2DataTransferFiltersQuery,
+): string {
+  const params = new URLSearchParams(buildDashboardQueryParams(scope));
+  if (filters?.accountId) params.set("accountId", filters.accountId);
+  if (filters?.region) params.set("region", filters.region);
+  if (filters?.team) params.set("team", filters.team);
+  if (filters?.product) params.set("product", filters.product);
+  if (filters?.environment) params.set("environment", filters.environment);
+  if (filters?.tagKey) params.set("tagKey", filters.tagKey);
+  if (filters?.tagValue) params.set("tagValue", filters.tagValue);
+  if (filters?.transferType) params.set("transferType", filters.transferType);
+  const query = params.toString();
+  return query.length > 0 ? `${path}?${query}` : path;
+}
+
+function withEc2ElasticIpFilters(
+  path: string,
+  scope: DashboardResolvedScope,
+  filters?: Ec2ElasticIpFiltersQuery,
+): string {
+  const params = new URLSearchParams(buildDashboardQueryParams(scope));
+  if (filters?.startDate) params.set("startDate", filters.startDate);
+  if (filters?.endDate) params.set("endDate", filters.endDate);
+  if (filters?.accountId) params.set("accountId", filters.accountId);
+  if (filters?.region) params.set("region", filters.region);
+  if (filters?.state) params.set("state", filters.state);
+  if (filters?.search) params.set("search", filters.search);
+  if (typeof filters?.page === "number") params.set("page", String(filters.page));
+  if (typeof filters?.pageSize === "number") params.set("pageSize", String(filters.pageSize));
   const query = params.toString();
   return query.length > 0 ? `${path}?${query}` : path;
 }
@@ -626,6 +674,12 @@ export const dashboardApi = {
   getEc2ExplorerNetworkBreakdown(scope: DashboardResolvedScope, filters: Ec2ExplorerFiltersQuery) {
     return apiGet<Ec2NetworkBreakdownResponse>(withEc2ExplorerFilters("/dashboard/ec2/explorer/network-breakdown", scope, filters));
   },
+  getEc2DataTransfer(scope: DashboardResolvedScope, filters?: Ec2DataTransferFiltersQuery) {
+    return apiGet<Ec2DataTransferResponse>(withEc2DataTransferFilters("/dashboard/ec2/data-transfer", scope, filters));
+  },
+  getEc2ElasticIps(scope: DashboardResolvedScope, filters?: Ec2ElasticIpFiltersQuery) {
+    return apiGet<Ec2ElasticIpResponse>(withEc2ElasticIpFilters("/ec2/elastic-ips", scope, filters));
+  },
   getS3CostInsights(scope: DashboardResolvedScope, filters?: S3CostInsightsFiltersQuery) {
     return apiGet<S3CostInsightsResponse>(withS3CostInsightsFilters("/dashboard/s3/cost-insights", scope, filters));
   },
@@ -703,6 +757,10 @@ export type {
   Ec2ExplorerFiltersQuery,
   Ec2ExplorerResponse,
   Ec2NetworkBreakdownResponse,
+  Ec2DataTransferFiltersQuery,
+  Ec2DataTransferResponse,
+  Ec2ElasticIpFiltersQuery,
+  Ec2ElasticIpResponse,
   S3CostInsightsFiltersQuery,
   S3CostInsightsResponse,
   S3BucketLifecycleInsightResponse,

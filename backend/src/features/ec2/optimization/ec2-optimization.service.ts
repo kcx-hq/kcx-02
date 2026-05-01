@@ -209,7 +209,7 @@ const toRecommendation = (
     evidence: buildEvidence(row.rawPayloadJson, row),
     recommendedAction: TYPE_META[recommendationType as keyof typeof TYPE_META].recommendedAction,
     actionLabel: TYPE_META[recommendationType as keyof typeof TYPE_META].actionLabel,
-    drilldownUrl: `/dashboard/ec2/performance?${drilldownParams.toString()}`,
+    drilldownUrl: `/dashboard/inventory/aws/ec2/instances?${drilldownParams.toString()}`,
   };
 };
 
