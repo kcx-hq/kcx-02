@@ -200,9 +200,10 @@ export class S3OptimizationService {
     }
 
     const lifecycleConfig: BucketLifecycleConfiguration = { Rules: [lifecycleRule] };
+    const billingSourceIds = scope.scopeType === "global" ? (scope.billingSourceIds ?? []) : [];
     logger.info("S3 lifecycle apply: prepared AWS request context", {
       tenantId: scope.tenantId,
-      billingSourceIds: scope.billingSourceIds ?? [],
+      billingSourceIds,
       bucketName: normalizedBucketName,
       assumedRoleArn: roleArn,
       expectedAwsAccountId: context.accountId,
