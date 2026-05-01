@@ -1,6 +1,7 @@
 import cors from "cors";
 import express from "express";
 import helmet from "helmet";
+import type { CorsOptions } from "cors";
 import { HTTP_STATUS } from "./src/constants/http-status.js";
 import { RESPONSE_MESSAGE } from "./src/constants/response-messages.js";
 import { NotFoundError } from "./src/errors/http-errors.js";
@@ -13,11 +14,52 @@ import { asyncHandler } from "./src/utils/async-handler.js";
 import routes from "./src/features/_app/app.routes.js";
 
 const app = express();
+const defaultAllowedOrigins = new Set(["http://localhost:5173", "http://127.0.0.1:5173"]);
+const normalizeOrigin = (origin: string): string =>
+  origin
+    .trim()
+    .replace(/^['"]|['"]$/g, "")
+    .replace(/\/+$/, "");
+
+const configuredAllowedOrigins = `${process.env.FRONTEND_BASE_URL ?? ""},${process.env.CLIENT_URL ?? ""},${process.env.CORS_ALLOWED_ORIGINS ?? ""}`
+  .split(",")
+  .map(normalizeOrigin)
+  .filter((origin) => origin.length > 0);
+const allowedOrigins = new Set([...defaultAllowedOrigins, ...configuredAllowedOrigins]);
+const localhostOriginPattern = /^http:\/\/(localhost|127\.0\.0\.1):\d+$/;
+
+const corsOptions: CorsOptions = {
+  origin(origin, callback) {
+    // Allow server-to-server and CLI requests without Origin header.
+    if (!origin) {
+      callback(null, true);
+      return;
+    }
+
+    const normalizedRequestOrigin = normalizeOrigin(origin);
+
+    if (allowedOrigins.has(normalizedRequestOrigin)) {
+      callback(null, true);
+      return;
+    }
+
+    if (localhostOriginPattern.test(normalizedRequestOrigin)) {
+      callback(null, true);
+      return;
+    }
+
+    callback(null, false);
+  },
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  optionsSuccessStatus: 204,
+};
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(helmet());
-app.use(cors());
+app.use(cors(corsOptions));
+app.options(/.*/, cors(corsOptions));
 app.use(requestIdMiddleware);
 app.use(requestLoggerMiddleware);
 app.use(apiSecurityMiddleware);

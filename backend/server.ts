@@ -7,6 +7,7 @@ import { startIdleRecommendationScheduler } from "./src/features/dashboard/optim
 import { startRightsizingActionProcessor } from "./src/features/dashboard/optimization/recommendation-sync/rightsizing-action-processor.service.js";
 import { startRightsizingRecommendationScheduler } from "./src/features/dashboard/optimization/recommendation-sync/rightsizing-scheduler.service.js";
 import { startEc2ScheduledJobsScheduler } from "./src/features/ec2/scheduled-jobs/scheduled-jobs.scheduler.service.js";
+import { startS3BucketConfigSnapshotScheduler } from "./src/features/billing/services/s3-bucket-config-snapshot-scheduler.service.js";
 import { sequelize } from "./src/models/index.js";
 import { logger } from "./src/utils/logger.js";
 
@@ -21,6 +22,7 @@ let stopRightsizingScheduler: (() => void) | null = null;
 let stopCommitmentScheduler: (() => void) | null = null;
 let stopRightsizingActionProcessor: (() => void) | null = null;
 let stopEc2ScheduledJobsScheduler: (() => void) | null = null;
+let stopS3BucketConfigScheduler: (() => void) | null = null;
 
 const shutdown = (signal: string): void => {
   if (isShuttingDown) {
@@ -46,6 +48,10 @@ const shutdown = (signal: string): void => {
     if (stopEc2ScheduledJobsScheduler) {
       stopEc2ScheduledJobsScheduler();
       stopEc2ScheduledJobsScheduler = null;
+    }
+    if (stopS3BucketConfigScheduler) {
+      stopS3BucketConfigScheduler();
+      stopS3BucketConfigScheduler = null;
     }
     if (stopIdleScheduler) {
       stopIdleScheduler();
@@ -82,6 +88,10 @@ const shutdown = (signal: string): void => {
     if (stopEc2ScheduledJobsScheduler) {
       stopEc2ScheduledJobsScheduler();
       stopEc2ScheduledJobsScheduler = null;
+    }
+    if (stopS3BucketConfigScheduler) {
+      stopS3BucketConfigScheduler();
+      stopS3BucketConfigScheduler = null;
     }
     clearTimeout(forceExitTimer);
     // if (stopIdleScheduler) {
@@ -124,6 +134,7 @@ const startServer = async (): Promise<void> => {
   // stopIdleScheduler = startIdleRecommendationScheduler();
   // stopRightsizingScheduler = startRightsizingRecommendationScheduler();
   stopEc2ScheduledJobsScheduler = startEc2ScheduledJobsScheduler();
+  stopS3BucketConfigScheduler = startS3BucketConfigSnapshotScheduler();
 
   server.listen(PORT, () => {
     logger.info("Server running", {

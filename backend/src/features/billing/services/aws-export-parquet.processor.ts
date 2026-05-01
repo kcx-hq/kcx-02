@@ -27,6 +27,7 @@ import {
   syncAwsRightsizingRecommendationsAfterIngestion,
 } from "../../dashboard/optimization/recommendation-sync/sync.service.js";
 import { syncEc2CostHistoryForIngestionRun } from "./ec2-cost-history.service.js";
+import { syncDbCostHistoryForIngestionRun } from "./db-cost-history.service.js";
 import { createTagDimensionCache, resolveFactPrimaryTagId, resolveFactTagIds } from "./dim-tag.service.js";
 import { assertTagDimensionSchemaReady } from "./ingestion-schema-guard.service.js";
 import { Ec2RecommendationsService } from "../../ec2/optimization/ec2-recommendations.service.js";
@@ -594,32 +595,6 @@ export async function processAwsExportParquetRun({ run }) {
       .map(([reason, count]) => `${reason} (${count})`)
       .join(", ");
 
-    const finalStatus = rowsFailed > 0 ? "completed_with_warnings" : "completed";
-
-    await setRunState(runId, {
-      status: finalStatus,
-      current_step: finalStatus,
-      progress_percent: PROGRESS_BY_STAGE[finalStatus],
-      status_message: STAGE_MESSAGE[finalStatus],
-      rows_read: rowsRead,
-      rows_loaded: rowsLoaded,
-      rows_failed: rowsFailed,
-      total_rows_estimated: rowsRead,
-      error_message: rowsFailed > 0 ? `Rows failed: ${rowsFailed}${topReasons ? `. Top reasons: ${topReasons}` : ""}` : null,
-      finished_at: now(),
-      last_heartbeat_at: now(),
-    });
-
-    await source.update({
-      lastIngestedAt: now(),
-      status: "active",
-    });
-    scheduleStorageLensSyncAfterIngestion({
-      tenantId: source.tenantId,
-      billingSourceId: source.id,
-      ingestionRunId: runId,
-    });
-
     if (rowsLoaded > 0) {
       await upsertCostAggregationsForRun({
         ingestionRunId: runId,
@@ -633,6 +608,38 @@ export async function processAwsExportParquetRun({ run }) {
         tenantId: source.tenantId,
         providerId: source.cloudProviderId,
         billingSourceId: source.id,
+      });
+      logger.info("AWS parquet processor: step=db_sync:start", {
+        runId,
+        tenantId: source.tenantId,
+        providerId: source.cloudProviderId,
+        billingSourceId: source.id,
+        rowsLoaded,
+      });
+      try {
+        await syncDbCostHistoryForIngestionRun({
+          ingestionRunId: runId,
+          tenantId: source.tenantId,
+          providerId: source.cloudProviderId,
+          billingSourceId: source.id,
+        });
+      } catch (dbSyncError) {
+        logger.error("AWS parquet processor: step=db_sync:failed", {
+          runId,
+          tenantId: source.tenantId,
+          providerId: source.cloudProviderId,
+          billingSourceId: source.id,
+          rowsLoaded,
+          reason: toErrorMessage(dbSyncError),
+        });
+        throw dbSyncError;
+      }
+      logger.info("AWS parquet processor: step=db_sync:done", {
+        runId,
+        tenantId: source.tenantId,
+        providerId: source.cloudProviderId,
+        billingSourceId: source.id,
+        rowsLoaded,
       });
 
       try {
@@ -682,6 +689,32 @@ export async function processAwsExportParquetRun({ run }) {
         });
       }
     }
+
+    const finalStatus = rowsFailed > 0 ? "completed_with_warnings" : "completed";
+
+    await setRunState(runId, {
+      status: finalStatus,
+      current_step: finalStatus,
+      progress_percent: PROGRESS_BY_STAGE[finalStatus],
+      status_message: STAGE_MESSAGE[finalStatus],
+      rows_read: rowsRead,
+      rows_loaded: rowsLoaded,
+      rows_failed: rowsFailed,
+      total_rows_estimated: rowsRead,
+      error_message: rowsFailed > 0 ? `Rows failed: ${rowsFailed}${topReasons ? `. Top reasons: ${topReasons}` : ""}` : null,
+      finished_at: now(),
+      last_heartbeat_at: now(),
+    });
+
+    await source.update({
+      lastIngestedAt: now(),
+      status: "active",
+    });
+    scheduleStorageLensSyncAfterIngestion({
+      tenantId: source.tenantId,
+      billingSourceId: source.id,
+      ingestionRunId: runId,
+    });
 
     logger.info("AWS parquet ingestion completed", {
       ingestionRunId: runId,

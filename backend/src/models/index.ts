@@ -53,6 +53,8 @@ import createAggCostDailyModel from "./billing/agg_cost_daily.js";
 import createAggCostMonthlyModel from "./billing/agg_cost_monthly.js";
 import createCostPeriodStatusModel from "./billing/cost_period_status.js";
 import createS3StorageLensDailyModel from "./billing/s3_storage_lens_daily.js";
+import createS3BucketConfigSnapshotModel from "./billing/s3_bucket_config_snapshot.js";
+import createS3BucketCostSummaryDailyModel from "./billing/s3_bucket_cost_summary_daily.js";
 import createEc2CostHistoryDailyModel from "./ec2/ec2_cost_history_daily.js";
 import createEc2CostHistoryMonthlyModel from "./ec2/ec2_cost_history_monthly.js";
 import createEc2InstanceInventorySnapshotModel from "./ec2/ec2_instance_inventory_snapshots.js";
@@ -145,6 +147,8 @@ const AggCostDaily = createAggCostDailyModel(sequelize);
 const AggCostMonthly = createAggCostMonthlyModel(sequelize);
 const CostPeriodStatus = createCostPeriodStatusModel(sequelize);
 const S3StorageLensDaily = createS3StorageLensDailyModel(sequelize);
+const S3BucketConfigSnapshot = createS3BucketConfigSnapshotModel(sequelize);
+const S3BucketCostSummaryDaily = createS3BucketCostSummaryDailyModel(sequelize);
 const Ec2CostHistoryDaily = createEc2CostHistoryDailyModel(sequelize);
 const Ec2CostHistoryMonthly = createEc2CostHistoryMonthlyModel(sequelize);
 const Ec2InstanceInventorySnapshot = createEc2InstanceInventorySnapshotModel(sequelize);
@@ -611,6 +615,24 @@ CostPeriodStatus.belongsTo(BillingSource, { foreignKey: "billingSourceId" });
 BillingIngestionRun.hasMany(CostPeriodStatus, { foreignKey: "sourceIngestionRunId" });
 CostPeriodStatus.belongsTo(BillingIngestionRun, { foreignKey: "sourceIngestionRunId" });
 
+Tenant.hasMany(S3BucketConfigSnapshot, { foreignKey: "tenantId" });
+S3BucketConfigSnapshot.belongsTo(Tenant, { foreignKey: "tenantId" });
+CloudConnectionV2.hasMany(S3BucketConfigSnapshot, { foreignKey: "cloudConnectionId" });
+S3BucketConfigSnapshot.belongsTo(CloudConnectionV2, { foreignKey: "cloudConnectionId" });
+BillingSource.hasMany(S3BucketConfigSnapshot, { foreignKey: "billingSourceId" });
+S3BucketConfigSnapshot.belongsTo(BillingSource, { foreignKey: "billingSourceId" });
+CloudProvider.hasMany(S3BucketConfigSnapshot, { foreignKey: "providerId" });
+S3BucketConfigSnapshot.belongsTo(CloudProvider, { foreignKey: "providerId" });
+
+Tenant.hasMany(S3BucketCostSummaryDaily, { foreignKey: "tenantId" });
+S3BucketCostSummaryDaily.belongsTo(Tenant, { foreignKey: "tenantId" });
+CloudConnectionV2.hasMany(S3BucketCostSummaryDaily, { foreignKey: "cloudConnectionId" });
+S3BucketCostSummaryDaily.belongsTo(CloudConnectionV2, { foreignKey: "cloudConnectionId" });
+BillingSource.hasMany(S3BucketCostSummaryDaily, { foreignKey: "billingSourceId" });
+S3BucketCostSummaryDaily.belongsTo(BillingSource, { foreignKey: "billingSourceId" });
+CloudProvider.hasMany(S3BucketCostSummaryDaily, { foreignKey: "providerId" });
+S3BucketCostSummaryDaily.belongsTo(CloudProvider, { foreignKey: "providerId" });
+
 Tenant.hasMany(Ec2CostHistoryDaily, { foreignKey: "tenantId" });
 Ec2CostHistoryDaily.belongsTo(Tenant, { foreignKey: "tenantId" });
 CloudProvider.hasMany(Ec2CostHistoryDaily, { foreignKey: "providerId" });
@@ -719,6 +741,8 @@ export {
   AggCostMonthly,
   CostPeriodStatus,
   S3StorageLensDaily,
+  S3BucketConfigSnapshot,
+  S3BucketCostSummaryDaily,
   Ec2CostHistoryDaily,
   Ec2CostHistoryMonthly,
   Ec2InstanceInventorySnapshot,

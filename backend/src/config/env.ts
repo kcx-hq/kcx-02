@@ -195,6 +195,12 @@ const env = {
     optionalPositiveInteger(process.env.EC2_SCHEDULED_JOBS_BATCH_SIZE) ?? 10,
   ec2ScheduledJobsMaxBatchesPerPoll:
     optionalPositiveInteger(process.env.EC2_SCHEDULED_JOBS_MAX_BATCHES_PER_POLL) ?? 5,
+  s3BucketConfigSchedulerEnabled:
+    optionalBoolean(process.env.S3_BUCKET_CONFIG_SCHEDULER_ENABLED) ?? true,
+  s3BucketConfigSchedulerIntervalMs:
+    optionalPositiveInteger(process.env.S3_BUCKET_CONFIG_SCHEDULER_INTERVAL_MS) ?? 24 * 60 * 60 * 1000,
+  s3BucketConfigSchedulerStartupDelayMs:
+    optionalPositiveInteger(process.env.S3_BUCKET_CONFIG_SCHEDULER_STARTUP_DELAY_MS) ?? 60_000,
 };
 
 export default env;

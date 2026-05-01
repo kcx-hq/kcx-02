@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   dashboardApi,
   type AnomaliesFiltersQuery,
@@ -23,6 +23,11 @@ import {
 
   type S3CostInsightsFiltersQuery,
   type S3CostInsightsResponse,
+  type S3BucketLifecycleInsightResponse,
+  type S3LifecyclePolicyApplyRequest,
+  type S3LifecyclePolicyApplyResponse,
+  type S3PolicyActionHistoryResponse,
+  type S3OptimizationResponse,
   type OptimizationIdleOverview,
   type OptimizationCommitmentOverview,
   type OptimizationIdleRecommendationDetail,
@@ -359,6 +364,45 @@ export function useS3CostInsightsQuery(filters?: S3CostInsightsFiltersQuery) {
   return useQuery<S3CostInsightsResponse, Error>({
     queryKey: ["dashboard", "s3", "cost-insights", scope, filters],
     queryFn: () => dashboardApi.getS3CostInsights(assertScope(scope), filters),
+    enabled: Boolean(scope),
+  });
+}
+
+export function useS3OptimizationQuery() {
+  const { scope } = useDashboardScope();
+  return useQuery<S3OptimizationResponse, Error>({
+    queryKey: ["dashboard", "s3", "optimization", scope],
+    queryFn: () => dashboardApi.getS3Optimization(assertScope(scope)),
+    enabled: Boolean(scope),
+  });
+}
+
+export function useS3BucketLifecycleInsightQuery(bucketName: string | null) {
+  const { scope } = useDashboardScope();
+  return useQuery<S3BucketLifecycleInsightResponse, Error>({
+    queryKey: ["dashboard", "s3", "lifecycle-insight", scope, bucketName],
+    queryFn: () => dashboardApi.getS3BucketLifecycleInsight(assertScope(scope), bucketName as string),
+    enabled: Boolean(scope) && Boolean(bucketName && bucketName.trim().length > 0),
+  });
+}
+
+export function useApplyS3LifecyclePolicyMutation() {
+  const { scope } = useDashboardScope();
+  return useMutation<S3LifecyclePolicyApplyResponse, Error, S3LifecyclePolicyApplyRequest>({
+    mutationFn: (payload) => {
+      if (!scope) {
+        throw new Error("Dashboard scope is not resolved yet");
+      }
+      return dashboardApi.applyS3LifecyclePolicy(scope, payload);
+    },
+  });
+}
+
+export function usePolicyActionHistoryQuery() {
+  const { scope } = useDashboardScope();
+  return useQuery<S3PolicyActionHistoryResponse, Error>({
+    queryKey: ["dashboard", "policy", "actions", scope],
+    queryFn: () => dashboardApi.getPolicyActionHistory(assertScope(scope)),
     enabled: Boolean(scope),
   });
 }

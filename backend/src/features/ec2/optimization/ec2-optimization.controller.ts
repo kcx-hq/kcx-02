@@ -63,7 +63,18 @@ export async function handleGetEc2OptimizationInstancesByType(
 
   const data = await ec2OptimizationService.getRecommendations({
     ...input,
-    recommendationType: normalizedType === null ? input.recommendationType : normalizedType,
+    recommendationType: normalizedType === null ? input.recommendationType : normalizedType as
+      | "overview"
+      | "rightsizing"
+      | "idle_waste"
+      | "coverage"
+      | "performance_risk"
+      | "all"
+      | "idle_instance"
+      | "underutilized_instance"
+      | "overutilized_instance"
+      | "uncovered_on_demand"
+      | "ebs_waste",
   });
 
   sendSuccess({

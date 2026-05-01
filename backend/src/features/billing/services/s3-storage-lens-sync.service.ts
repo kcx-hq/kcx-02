@@ -10,6 +10,8 @@ import {
   mergeStorageLensSnapshot,
   upsertStorageLensSnapshots,
 } from "./s3-storage-lens-ingestion.service.js";
+import { collectS3BucketConfigSnapshotsForBillingSource } from "./s3-bucket-config-snapshot.service.js";
+import { refreshS3BucketCostSummaryForBillingSource } from "./s3-bucket-cost-summary.service.js";
 
 const normalize = (value) => String(value ?? "").trim();
 
@@ -163,6 +165,14 @@ export async function syncStorageLensFromClientAccount({
 
   const snapshots = Array.from(snapshotMap.values());
   const upsertedCount = await upsertStorageLensSnapshots(snapshots);
+  const configCollectionResult = await collectS3BucketConfigSnapshotsForBillingSource({
+    tenantId: source.tenantId,
+    billingSourceId: String(source.id),
+  });
+  const costSummaryResult = await refreshS3BucketCostSummaryForBillingSource({
+    tenantId: source.tenantId,
+    billingSourceId: String(source.id),
+  });
 
   logger.info("Storage Lens sync completed", {
     tenantId: source.tenantId,
@@ -174,6 +184,9 @@ export async function syncStorageLensFromClientAccount({
     objectsProcessed: selectedObjects.length,
     rowsScanned,
     snapshotsUpserted: upsertedCount,
+    bucketConfigSnapshotsCreated: configCollectionResult.snapshotsCreated,
+    bucketConfigBucketsScanned: configCollectionResult.bucketsScanned,
+    costSummaryRowsInserted: costSummaryResult.rowsInserted,
   });
 
   return {
@@ -185,5 +198,8 @@ export async function syncStorageLensFromClientAccount({
     objectsProcessed: selectedObjects.length,
     rowsScanned,
     snapshotsUpserted: upsertedCount,
+    bucketConfigSnapshotsCreated: configCollectionResult.snapshotsCreated,
+    bucketConfigBucketsScanned: configCollectionResult.bucketsScanned,
+    costSummaryRowsInserted: costSummaryResult.rowsInserted,
   };
 }
