@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { AgGridReact } from "ag-grid-react";
-import { themeQuartz, type ColDef, type RowClickedEvent, type ValueFormatterParams } from "ag-grid-community";
+import { themeQuartz, type ColDef, type RowClassParams, type RowClickedEvent, type ValueFormatterParams } from "ag-grid-community";
 import { TableEmptyState } from "./TableEmptyState";
 
 type BaseDataTableProps<TData extends object> = {
@@ -12,6 +12,7 @@ type BaseDataTableProps<TData extends object> = {
   paginationPageSize?: number;
   autoHeight?: boolean;
   onRowClick?: (row: TData) => void;
+  getRowClassName?: (row: TData) => string | undefined;
 };
 
 export function currencyFormatter(params: ValueFormatterParams) {
@@ -28,6 +29,7 @@ export function BaseDataTable<TData extends object>({
   paginationPageSize = 10,
   autoHeight = false,
   onRowClick,
+  getRowClassName,
 }: BaseDataTableProps<TData>) {
   const defaultColDef = useMemo<ColDef<TData>>(
     () => ({
@@ -58,7 +60,15 @@ export function BaseDataTable<TData extends object>({
         domLayout={autoHeight ? "autoHeight" : "normal"}
         rowHeight={34}
         headerHeight={36}
-        rowClass={onRowClick ? "dashboard-data-table__row--clickable" : undefined}
+        getRowClass={(params: RowClassParams<TData>) => {
+          const classes: string[] = [];
+          if (onRowClick) classes.push("dashboard-data-table__row--clickable");
+          if (params.data && getRowClassName) {
+            const extraClass = getRowClassName(params.data);
+            if (extraClass) classes.push(extraClass);
+          }
+          return classes.join(" ");
+        }}
         onRowClicked={
           onRowClick
             ? (event: RowClickedEvent<TData>) => {

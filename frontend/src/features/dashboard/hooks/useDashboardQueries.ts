@@ -14,6 +14,10 @@ import {
   type Ec2ExplorerFiltersQuery,
   type Ec2ExplorerResponse,
   type Ec2NetworkBreakdownResponse,
+  type Ec2DataTransferFiltersQuery,
+  type Ec2DataTransferResponse,
+  type Ec2ElasticIpFiltersQuery,
+  type Ec2ElasticIpResponse,
   type DatabaseExplorerFilters,
   type DatabaseExplorerResponse,
 
@@ -327,6 +331,26 @@ export function useEc2ExplorerNetworkBreakdownQuery(
     queryKey: ["dashboard", "ec2", "explorer", "network-breakdown", scope, filters],
     queryFn: () => dashboardApi.getEc2ExplorerNetworkBreakdown(assertScope(scope), filters),
     enabled: Boolean(scope) && enabledOverride,
+  });
+}
+
+export function useEc2DataTransferQuery(filters?: Ec2DataTransferFiltersQuery, enabledOverride: boolean = true) {
+  const { scope } = useDashboardScope();
+  return useQuery<Ec2DataTransferResponse, Error>({
+    queryKey: ["dashboard", "ec2", "data-transfer", scope, filters],
+    queryFn: () => dashboardApi.getEc2DataTransfer(assertScope(scope), filters),
+    enabled: Boolean(scope) && enabledOverride,
+    placeholderData: (previous) => previous,
+  });
+}
+
+export function useEc2ElasticIpsQuery(filters?: Ec2ElasticIpFiltersQuery, enabledOverride: boolean = true) {
+  const { scope } = useDashboardScope();
+  return useQuery<Ec2ElasticIpResponse, Error>({
+    queryKey: ["dashboard", "ec2", "elastic-ips", scope, filters],
+    queryFn: () => dashboardApi.getEc2ElasticIps(assertScope(scope), filters),
+    enabled: Boolean(scope) && enabledOverride,
+    placeholderData: (previous) => previous,
   });
 }
 

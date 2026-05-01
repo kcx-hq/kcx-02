@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { EChartsOption } from "echarts";
-import type { ColDef, ValueFormatterParams } from "ag-grid-community";
+import type { ColDef, ICellRendererParams, ValueFormatterParams } from "ag-grid-community";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 
 import { useInventoryEc2InstanceDetail } from "@/features/client-home/hooks/useInventoryEc2Instances";
@@ -15,6 +15,7 @@ import {
 
 const VOLUMES_PAGE_PATH = "/dashboard/inventory/aws/ec2/volumes";
 const INSTANCES_PAGE_PATH = "/dashboard/inventory/aws/ec2/instances";
+const OPTIMIZATION_PAGE_PATH = "/dashboard/ec2/optimization";
 
 const CURRENCY_FORMATTER = new Intl.NumberFormat("en-US", {
   style: "currency",
@@ -81,6 +82,14 @@ const toPricingLabel = (value: "on_demand" | "reserved" | "savings_plan" | "spot
 const NETWORK_BREAKDOWN_COLORS = ["#188977", "#2A5CAA", "#E07A2A", "#8D5A97", "#68757D"];
 
 const normalizeNetworkTypeKey = (value: string): string => value.trim().toLowerCase().replaceAll(/\s+/g, " ");
+const recommendationTypeLabel = (value: string): string =>
+  value === "high_internet_data_transfer" ? "High Internet Data Transfer"
+    : value === "high_inter_region_data_transfer" ? "High Inter-Region Data Transfer"
+    : value === "high_inter_az_data_transfer" ? "High Inter-AZ Data Transfer"
+    : value === "low_cpu_high_network" ? "Low CPU / High Network"
+    : value === "high_nat_gateway_cost" ? "High NAT Gateway Cost"
+    : value === "unattached_elastic_ip" ? "Unattached Elastic IP"
+    : toTitle(value);
 
 const getTagValue = (tags: Record<string, unknown>, key: string): string => {
   const exact = tags[key];
@@ -171,6 +180,10 @@ export default function EC2InstanceDetailPage() {
   }), [networkBreakdownRows]);
 
   const dominantNetworkInsight = useMemo(() => {
+    const recTypes = new Set(detailQuery.data?.recommendations.map((item) => item.type) ?? []);
+    if (recTypes.has("high_internet_data_transfer")) return "High internet data transfer detected.";
+    if (recTypes.has("high_inter_region_data_transfer")) return "Cross-region network cost detected.";
+    if (recTypes.has("low_cpu_high_network")) return "Low CPU but high network activity detected.";
     const interRegion = networkBreakdownRows.find((item) => item.type === "Inter-Region Data Transfer");
     const internet = networkBreakdownRows.find((item) => item.type === "Internet Data Transfer");
     const nat = networkBreakdownRows.find((item) => item.type === "NAT Gateway");
@@ -259,10 +272,36 @@ export default function EC2InstanceDetailPage() {
   ];
 
   const recommendationColumns: ColDef<(typeof detail.recommendations)[number]>[] = [
-    { headerName: "Type", field: "type", minWidth: 140, valueFormatter: (p) => toTitle(String(p.value ?? "")) },
+    { headerName: "Category", field: "category", minWidth: 120, valueFormatter: (p) => toTitle(String(p.value ?? "")) },
+    { headerName: "Type", field: "type", minWidth: 190, valueFormatter: (p) => recommendationTypeLabel(String(p.value ?? "")) },
     { headerName: "Problem", field: "problem", minWidth: 180 },
     { headerName: "Evidence", field: "evidence", minWidth: 220 },
-    { headerName: "Action", field: "action", minWidth: 160 },
+    {
+      headerName: "Action",
+      field: "action",
+      minWidth: 180,
+      cellRenderer: (params: ICellRendererParams<(typeof detail.recommendations)[number]>) => {
+        const recommendation = params.data;
+        if (!recommendation || !instanceId) return params.value ?? "-";
+        return (
+          <button
+            type="button"
+            className="cost-explorer-state-btn"
+            data-stop-row-click="true"
+            onClick={() => {
+              const next = new URLSearchParams(location.search);
+              next.set("resourceId", instanceId);
+              next.set("category", recommendation.category);
+              next.set("issueType", recommendation.type);
+              navigate({ pathname: OPTIMIZATION_PAGE_PATH, search: next.toString() });
+            }}
+            title="Open in EC2 Optimization action center"
+          >
+            {params.value ?? "View in Optimization"}
+          </button>
+        );
+      },
+    },
     { headerName: "Saving", field: "saving", minWidth: 120, valueFormatter: (p) => formatCurrency(p.value as number | null | undefined) },
     { headerName: "Risk", field: "risk", minWidth: 90, valueFormatter: (p) => toTitle(String(p.value ?? "")) },
     { headerName: "Status", field: "status", minWidth: 90, valueFormatter: (p) => toTitle(String(p.value ?? "")) },

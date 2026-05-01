@@ -61,13 +61,6 @@ const toTitle = (value: string | null): string => {
     .join(" ");
 };
 
-const getRecommendation = (instance: InventoryEc2InstanceRow): string => {
-  if (instance.isIdleCandidate) return "Idle: Stop or downsize";
-  if (instance.isOverutilizedCandidate) return "Overutilized: Rightsize up";
-  if (instance.isUnderutilizedCandidate) return "Underutilized: Rightsize down";
-  return "Healthy";
-};
-
 const formatCount = (value: number | null | undefined): string => {
   if (value === null || typeof value === "undefined" || !Number.isFinite(value)) return "-";
   return Math.trunc(value).toLocaleString();
@@ -215,6 +208,13 @@ export function EC2InstancesTable({
           toTitle(params.value ?? null),
       },
       {
+        headerName: "Condition",
+        field: "condition",
+        minWidth: 140,
+        valueFormatter: (params: ValueFormatterParams<InventoryEc2InstanceRow, string | null | undefined>) =>
+          toTitle(params.value ?? null),
+      },
+      {
         headerName: "Instance Type",
         field: "instanceType",
         minWidth: 140,
@@ -240,11 +240,6 @@ export function EC2InstancesTable({
         minWidth: 178,
         valueFormatter: (params: ValueFormatterParams<InventoryEc2InstanceRow, string | null | undefined>) =>
           formatDateTime(params.value ?? null),
-      },
-      {
-        headerName: "Recommendation",
-        minWidth: 190,
-        valueGetter: (params) => (params.data ? getRecommendation(params.data) : "-"),
       },
     ],
     [onOpenVolumesForInstance, volumeCostByInstanceId],

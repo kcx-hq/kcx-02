@@ -10,7 +10,6 @@ const STATIC_ROUTES = [
   "/dashboard/cost/explorer",
   "/dashboard/cost/history",
   "/dashboard/cost-explorer",
-  "/dashboard/ec2/performance",
   "/dashboard/ec2/optimization",
   "/dashboard/resources",
   "/dashboard/allocation",

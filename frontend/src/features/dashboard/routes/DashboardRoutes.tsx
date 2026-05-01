@@ -9,12 +9,12 @@ import OptimizationPage from "../pages/optimization/OptimizationPage";
 import AnomaliesAlertsPage from "../pages/anomalies-alerts/AnomaliesAlertsPage";
 import BudgetPage from "../pages/budget/BudgetPage";
 import ReportPage from "../pages/report/ReportPage";
-import InventorySnapshotsPage from "../pages/inventory/InventorySnapshotsPage";
+import EC2SnapshotsPage from "../pages/ec2/EC2SnapshotsPage";
 import AwsInventoryPage from "../pages/inventory/AwsInventoryPage";
 import EC2ExplorerPage from "../pages/ec2/EC2ExplorerPage";
-import EC2PerformancePage from "../pages/ec2/EC2PerformancePage";
 import EC2VolumesPage from "../pages/ec2/EC2VolumesPage";
 import EC2OptimizationPage from "../pages/ec2/EC2OptimizationPage";
+import EC2DataTransferPage from "../pages/ec2/EC2DataTransferPage";
 import S3OverviewPage from "../pages/s3/S3OverviewPage";
 import S3BucketDetailPage from "../pages/s3/S3BucketDetailPage";
 import S3UsagePage from "../pages/s3/S3UsagePage";
@@ -23,6 +23,7 @@ import "../styles/dashboard.css";
 import EC2InstancesPage from "../pages/ec2/EC2InstancesPage";
 import EC2InstanceDetailPage from "../pages/ec2/EC2InstanceDetailPage";
 import EC2VolumeDetailPage from "../pages/ec2/EC2VolumeDetailPage";
+import EC2EipPage from "../pages/ec2/EC2EipPage";
 
 function DashboardOverviewRedirect() {
   const location = useLocation();
@@ -107,7 +108,9 @@ export default function DashboardRoutes() {
         <Route path="cost-explorer" element={<DashboardCostRedirect />} />
         <Route path="ec2/explorer" element={<EC2ExplorerPage />} />
         <Route path="ec2/volumes" element={<EC2VolumesPage />} />
-        <Route path="ec2/performance" element={<EC2PerformancePage />} />
+        <Route path="ec2/optimization" element={<EC2OptimizationPage />} />
+        <Route path="ec2/network/data-transfer" element={<EC2DataTransferPage />} />
+        <Route path="ec2/network/elastic-ip" element={<EC2EipPage />} />
         <Route path="s3" element={<DashboardS3Redirect />} />
         <Route path="s3/cost" element={<S3OverviewPage />} />
         <Route path="s3/cost/bucket/:bucketName" element={<S3BucketDetailPage />} />
@@ -122,8 +125,9 @@ export default function DashboardRoutes() {
         <Route path="inventory/aws" element={<DashboardInventoryRedirect />} />
         <Route path="inventory/aws/ec2" element={<DashboardInventoryEc2Redirect />} />
         <Route path="inventory/aws/ec2/instances" element={<EC2InstancesPage />} />
+        <Route path="inventory/aws/ec2/elastic-ip" element={<EC2EipPage />} />
         <Route path="inventory/aws/ec2/instances/:instanceId" element={<EC2InstanceDetailPage />} />
-        <Route path="inventory/aws/ec2/snapshots" element={<InventorySnapshotsPage />} />
+        <Route path="inventory/aws/ec2/snapshots" element={<EC2SnapshotsPage />} />
         <Route path="inventory/aws/ec2/volumes" element={<EC2VolumesPage />} />
         <Route path="inventory/aws/ec2/volumes/:volumeId" element={<EC2VolumeDetailPage />} />
         <Route path="*" element={<DashboardOverviewRedirect />} />

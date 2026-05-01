@@ -186,14 +186,20 @@ export type Ec2OverviewResponse = {
 };
 export type Ec2OptimizationInstancesFiltersQuery = Ec2OptimizationSummaryFiltersQuery;
 
-export type Ec2RecommendationCategory = "compute" | "storage" | "pricing";
+export type Ec2RecommendationCategory = "compute" | "storage" | "pricing" | "network";
 export type Ec2RecommendationType =
   | "idle_instance"
   | "underutilized_instance"
   | "overutilized_instance"
   | "unattached_volume"
   | "old_snapshot"
-  | "uncovered_on_demand";
+  | "uncovered_on_demand"
+  | "high_internet_data_transfer"
+  | "high_inter_region_data_transfer"
+  | "high_inter_az_data_transfer"
+  | "low_cpu_high_network"
+  | "high_nat_gateway_cost"
+  | "unattached_elastic_ip";
 export type Ec2RecommendationStatus = "open" | "accepted" | "ignored" | "snoozed" | "completed";
 
 export type Ec2RecommendationsFiltersQuery = {
@@ -216,7 +222,7 @@ export type Ec2RecommendationRecord = {
   id: number;
   category: Ec2RecommendationCategory;
   type: Ec2RecommendationType;
-  resourceType: "instance" | "volume" | "snapshot";
+  resourceType: "instance" | "volume" | "snapshot" | "elastic_ip";
   resourceId: string;
   resourceName: string;
   accountId: string | null;
@@ -226,6 +232,7 @@ export type Ec2RecommendationRecord = {
   action: string;
   estimatedMonthlySaving: number;
   risk: "low" | "medium" | "high";
+  effort: "low" | "medium" | "high";
   status: Ec2RecommendationStatus;
   detectedAt: string | null;
   lastSeenAt: string | null;
@@ -243,6 +250,7 @@ export type Ec2RecommendationsResponse = {
     compute: Ec2RecommendationRecord[];
     storage: Ec2RecommendationRecord[];
     pricing: Ec2RecommendationRecord[];
+    network: Ec2RecommendationRecord[];
   };
 };
 
@@ -334,6 +342,97 @@ export type Ec2NetworkBreakdownResponse = {
     resourceCount: number;
   }>;
   note: string | null;
+};
+
+export type Ec2DataTransferType = "internet" | "inter_region" | "inter_az" | "unknown";
+export type Ec2DataTransferSortBy =
+  | "cost"
+  | "usageGb"
+  | "region"
+  | "transferType"
+  | "estimatedSavings"
+  | "lastSeen";
+
+export type Ec2DataTransferFiltersQuery = {
+  accountId?: string | null;
+  region?: string | null;
+  team?: string | null;
+  product?: string | null;
+  environment?: string | null;
+  tagKey?: string | null;
+  tagValue?: string | null;
+  transferType?: Ec2DataTransferType | null;
+};
+
+export type Ec2DataTransferResponse = {
+  summary: {
+    totalCost: number;
+    totalUsageGb: number;
+    resourceCount: number;
+    internetCost: number;
+    interRegionCost: number;
+    interAzCost: number;
+    unknownCost: number;
+    potentialSavings: number;
+  };
+  breakdown: Array<{
+    transferType: Ec2DataTransferType;
+    label: string;
+    cost: number;
+    usageGb: number;
+    percentageOfDataTransferCost: number;
+    resourceCount: number;
+    recommendationCount: number;
+  }>;
+  trend: Array<{
+    date: string;
+    internetCost: number;
+    interRegionCost: number;
+    interAzCost: number;
+    unknownCost: number;
+    totalCost: number;
+    usageGb: number;
+  }>;
+};
+
+export type Ec2ElasticIpState = "all" | "attached" | "unattached";
+
+export type Ec2ElasticIpFiltersQuery = {
+  startDate?: string;
+  endDate?: string;
+  accountId?: string | null;
+  region?: string | null;
+  state?: Ec2ElasticIpState;
+  search?: string | null;
+  page?: number;
+  pageSize?: number;
+};
+
+export type Ec2ElasticIpResponse = {
+  summary: {
+    totalCost: number;
+    totalEips: number;
+    unattachedCount: number;
+    potentialSavings: number;
+  };
+  rows: Array<{
+    eipId: string;
+    publicIp: string;
+    accountName: string;
+    accountId: string;
+    region: string;
+    state: "attached" | "unattached";
+    associatedResourceId: string | null;
+    cost: number;
+    lastSeen: string | null;
+    recommendation: string | null;
+    estimatedSavings: number;
+  }>;
+  pagination: {
+    page: number;
+    pageSize: number;
+    total: number;
+  };
 };
 
 export type Ec2OptimizationSummaryResponse = {

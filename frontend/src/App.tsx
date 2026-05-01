@@ -75,8 +75,7 @@ const CLOUD_PROVIDER_ROUTE_REGEX = /^\/client\/billing\/(?:connect-cloud|connect
 const NON_AWS_PROVIDER_ROUTE_REGEX = /^\/client\/billing\/(?:connect-cloud|connections)\/(azure|gcp|oracle-cloud)$/
 const AWS_MANUAL_EXPLORER_ROUTE_REGEX = /^\/client\/billing\/(?:connect-cloud|connections)\/aws\/manual\/explorer(?:\/|$)/
 const AWS_MANUAL_SUCCESS_ROUTE_REGEX = /^\/client\/billing\/(?:connect-cloud|connections)\/aws\/manual\/success(?:\/|$)/
-const DASHBOARD_ROUTE_REGEX =
-  /^\/dashboard(?:\/(?:overview|cfo-dashboard|cost(?:\/(?:explorer|history))?|cost-explorer|ec2(?:\/(?:cost|usage|instance-hours|performance|anomaly-detection))?|s3(?:\/(?:cost|usage))?|services\/database|resources|allocation|optimization|anomalies-alerts|budget|report|inventory(?:\/aws(?:\/ec2(?:\/(?:instances|volumes|snapshots))?)?)?))?$/
+const DASHBOARD_ROUTE_REGEX = /^\/dashboard(?:\/.*)?$/
 const MANUAL_DASHBOARD_ROUTE_REGEX =
   /^\/uploads-dashboard(?:\/(?:overview|cost-explorer|anomalies-alerts))?$/
 const REPORT_STANDALONE_ROUTE_REGEX = /^\/reports\/cloud-cost-anomaly\/?$/
