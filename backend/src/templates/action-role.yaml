@@ -50,6 +50,13 @@ Resources:
                   - ec2:DescribeAddresses
                   - ec2:DescribeSnapshots
                 Resource: "*"
+              - Sid: AllowS3LifecyclePolicyActions
+                Effect: Allow
+                Action:
+                  - s3:GetLifecycleConfiguration
+                  - s3:PutLifecycleConfiguration
+                  - s3:GetBucketLocation
+                Resource: "*"
               - Sid: AllowEc2RuntimeActions
                 Effect: Allow
                 Action:

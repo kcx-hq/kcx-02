@@ -55,6 +55,8 @@ export type S3LifecyclePolicyTransitionInput = {
 
 export type S3LifecyclePolicyApplyRequest = {
   bucketName: string;
+  accountId?: string | null;
+  region?: string | null;
   ruleName: string;
   status: "Enabled" | "Disabled";
   scope: {
@@ -64,6 +66,7 @@ export type S3LifecyclePolicyApplyRequest = {
   transitions: S3LifecyclePolicyTransitionInput[];
   expirationDays?: number | null;
   abortIncompleteMultipartUploadDays?: number | null;
+  deleteWarningAccepted?: boolean | null;
 };
 
 export type S3LifecyclePolicyApplyResponse = {

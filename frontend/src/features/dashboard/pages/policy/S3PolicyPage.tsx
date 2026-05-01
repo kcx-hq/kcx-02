@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useApplyS3LifecyclePolicyMutation, useS3OptimizationQuery } from "../../hooks/useDashboardQueries";
 
@@ -17,12 +17,12 @@ export default function S3PolicyPage() {
   const s3BucketsQuery = useS3OptimizationQuery();
   const applyMutation = useApplyS3LifecyclePolicyMutation();
 
-  const initialBucket = useMemo(() => {
+  const requestedBucketFromQuery = useMemo(() => {
     const search = new URLSearchParams(location.search);
     return String(search.get("bucketName") ?? "").trim();
   }, [location.search]);
 
-  const [bucketName, setBucketName] = useState(initialBucket);
+  const [bucketName, setBucketName] = useState(requestedBucketFromQuery);
   const [ruleName, setRuleName] = useState("CustomRule1");
   const [status, setStatus] = useState<"Enabled" | "Disabled">("Enabled");
   const [scopeType, setScopeType] = useState<"entire_bucket" | "prefix">("entire_bucket");
@@ -44,6 +44,23 @@ export default function S3PolicyPage() {
       ),
     [s3BucketsQuery.data?.buckets],
   );
+
+  useEffect(() => {
+    if (!requestedBucketFromQuery) return;
+    setBucketName(requestedBucketFromQuery);
+  }, [requestedBucketFromQuery]);
+
+  useEffect(() => {
+    if (!bucketName.trim() && bucketOptions.length > 0) {
+      setBucketName(bucketOptions[0] ?? "");
+      return;
+    }
+    if (!bucketName.trim()) return;
+    const existsInOptions = bucketOptions.some((bucket) => bucket.toLowerCase() === bucketName.trim().toLowerCase());
+    if (!existsInOptions && requestedBucketFromQuery) {
+      setBucketName(requestedBucketFromQuery);
+    }
+  }, [bucketName, bucketOptions, requestedBucketFromQuery]);
 
   const enabledTransitions = useMemo(
     () => transitions.filter((item) => item.enabled).map((item) => ({ days: item.days, storageClass: item.storageClass })),
