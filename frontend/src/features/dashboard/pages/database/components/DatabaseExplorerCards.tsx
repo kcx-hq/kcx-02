@@ -29,7 +29,7 @@ export function DatabaseExplorerCards({ cards, isLoading = false }: DatabaseExpl
     safeCards.costTrendPct === null ? "neutral" : safeCards.costTrendPct > 0 ? "negative" : "positive";
 
   return (
-    <KpiGrid>
+    <KpiGrid className="db-explorer-kpi-grid">
       <KpiCard label="Total Cost" value={formatCompactCurrency(safeCards.totalCost)} />
       <KpiCard
         label="Cost Trend %"

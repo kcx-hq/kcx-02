@@ -28,45 +28,40 @@ COALESCE(
 `;
 
 const DB_RELATED_FILTER_SQL = `
-(
-  LOWER(COALESCE(ds.service_name, '')) LIKE '%amazonrds%'
-  OR LOWER(COALESCE(ds.service_name, '')) LIKE '%amazon rds%'
-  OR LOWER(COALESCE(ds.service_name, '')) LIKE '%rds%'
-  OR LOWER(COALESCE(ds.service_name, '')) LIKE '%aurora%'
-  OR LOWER(COALESCE(f.usage_type, '')) LIKE '%rds%'
-  OR LOWER(COALESCE(f.product_usage_type, '')) LIKE '%rds%'
-  OR LOWER(COALESCE(f.usage_type, '')) LIKE '%aurora%'
-  OR LOWER(COALESCE(f.product_usage_type, '')) LIKE '%aurora%'
-  OR LOWER(COALESCE(f.usage_type, '')) LIKE '%instanceusage:db.%'
-  OR LOWER(COALESCE(f.product_usage_type, '')) LIKE '%instanceusage:db.%'
-  OR LOWER(COALESCE(f.usage_type, '')) LIKE '%storage%'
-  OR LOWER(COALESCE(f.product_usage_type, '')) LIKE '%storage%'
-  OR LOWER(COALESCE(f.usage_type, '')) LIKE '%storageio%'
-  OR LOWER(COALESCE(f.product_usage_type, '')) LIKE '%storageio%'
-  OR LOWER(COALESCE(f.usage_type, '')) LIKE '%backup%'
-  OR LOWER(COALESCE(f.product_usage_type, '')) LIKE '%backup%'
-)
+COALESCE(ds.service_name, '') = 'AmazonRDS'
 `;
 
 const COST_CATEGORY_SQL = `
 CASE
-  WHEN LOWER(COALESCE(f.usage_type, '')) LIKE '%instanceusage%'
-    OR LOWER(COALESCE(f.product_usage_type, '')) LIKE '%instanceusage%'
+  WHEN LOWER(COALESCE(f.line_item_type, '')) = 'tax' THEN 'tax'
+  WHEN LOWER(COALESCE(f.line_item_type, '')) = 'credit' THEN 'credit'
+  WHEN LOWER(COALESCE(f.line_item_type, '')) = 'refund' THEN 'refund'
+  WHEN LOWER(COALESCE(f.usage_type, '')) LIKE '%instanceusage:db.%'
+    OR LOWER(COALESCE(f.product_usage_type, '')) LIKE '%instanceusage:db.%'
     OR LOWER(COALESCE(f.usage_type, '')) LIKE '%aurora:serverlessv2usage%'
     OR LOWER(COALESCE(f.product_usage_type, '')) LIKE '%aurora:serverlessv2usage%'
     THEN 'compute'
-  WHEN (
+  WHEN LOWER(COALESCE(f.usage_type, '')) LIKE '%rds:gp2-storage%'
+    OR LOWER(COALESCE(f.product_usage_type, '')) LIKE '%rds:gp2-storage%'
+    OR LOWER(COALESCE(f.usage_type, '')) LIKE '%aurora:storageusage%'
+    OR LOWER(COALESCE(f.product_usage_type, '')) LIKE '%aurora:storageusage%'
+    OR (
       LOWER(COALESCE(f.usage_type, '')) LIKE '%storage%'
       OR LOWER(COALESCE(f.product_usage_type, '')) LIKE '%storage%'
     )
     AND LOWER(COALESCE(f.usage_type, '')) NOT LIKE '%storageio%'
     AND LOWER(COALESCE(f.product_usage_type, '')) NOT LIKE '%storageio%'
     THEN 'storage'
-  WHEN LOWER(COALESCE(f.usage_type, '')) LIKE '%storageio%'
+  WHEN LOWER(COALESCE(f.usage_type, '')) LIKE '%aurora:storageiousage%'
+    OR LOWER(COALESCE(f.product_usage_type, '')) LIKE '%aurora:storageiousage%'
+    OR LOWER(COALESCE(f.usage_type, '')) LIKE '%storageio%'
     OR LOWER(COALESCE(f.product_usage_type, '')) LIKE '%storageio%'
-    OR LOWER(COALESCE(f.usage_type, '')) LIKE '%io%'
-    OR LOWER(COALESCE(f.product_usage_type, '')) LIKE '%io%'
     THEN 'io'
+  WHEN LOWER(COALESCE(f.usage_type, '')) LIKE '%datatransfer-in-bytes%'
+    OR LOWER(COALESCE(f.product_usage_type, '')) LIKE '%datatransfer-in-bytes%'
+    OR LOWER(COALESCE(f.usage_type, '')) LIKE '%datatransfer-out-bytes%'
+    OR LOWER(COALESCE(f.product_usage_type, '')) LIKE '%datatransfer-out-bytes%'
+    THEN 'data_transfer'
   WHEN LOWER(COALESCE(f.usage_type, '')) LIKE '%backup%'
     OR LOWER(COALESCE(f.product_usage_type, '')) LIKE '%backup%'
     OR LOWER(COALESCE(f.usage_type, '')) LIKE '%snapshot%'
@@ -80,41 +75,30 @@ const DB_ENGINE_SQL = `
 CASE
   WHEN LOWER(COALESCE(f.usage_type, '')) LIKE '%aurora%'
     OR LOWER(COALESCE(f.product_usage_type, '')) LIKE '%aurora%'
-    OR LOWER(COALESCE(ds.service_name, '')) LIKE '%aurora%'
-    OR LOWER(COALESCE(dres.resource_id, '')) LIKE '%aurora%'
-    OR LOWER(COALESCE(dres.resource_name, '')) LIKE '%aurora%'
+    OR LOWER(COALESCE(f.operation, '')) LIKE '%createdbinstance:0021%'
+      AND (
+        LOWER(COALESCE(f.usage_type, '')) LIKE '%aurora%'
+        OR LOWER(COALESCE(f.product_usage_type, '')) LIKE '%aurora%'
+      )
     THEN 'Aurora'
-  WHEN LOWER(COALESCE(ds.service_name, '')) LIKE '%amazonrds%'
-    OR LOWER(COALESCE(ds.service_name, '')) LIKE '%amazon rds%'
-    OR LOWER(COALESCE(ds.service_name, '')) LIKE '%rds%'
-    OR LOWER(COALESCE(f.usage_type, '')) LIKE '%rds%'
-    OR LOWER(COALESCE(f.product_usage_type, '')) LIKE '%rds%'
-    THEN 'RDS'
   ELSE 'Unknown'
 END
 `;
 
 const DB_SERVICE_SQL = `
-CASE
-  WHEN ${DB_ENGINE_SQL} = 'Aurora' THEN 'Aurora'
-  ELSE 'AmazonRDS'
-END
+'AmazonRDS'
 `;
 
 const RESOURCE_ID_SQL = `
 COALESCE(
   NULLIF(dres.resource_id, ''),
-  NULLIF(dres.resource_name, ''),
-  CONCAT(
-    'db-scope:',
-    COALESCE(NULLIF(ds.service_name, ''), 'unknown-service'),
-    '|',
-    COALESCE(NULLIF(dr.region_id, ''), NULLIF(f.from_region_code, ''), 'unknown-region'),
-    '|',
-    ${DB_ENGINE_SQL},
-    '|',
-    COALESCE(f.effective_usage_date, DATE(COALESCE(f.usage_start_time, f.usage_end_time)))::text
-  )
+  CASE
+    WHEN LOWER(COALESCE(f.line_item_type, '')) IN ('tax', 'credit', 'refund') THEN 'db-scope:AmazonRDS'
+    ELSE CONCAT(
+      'db-unattributed:AmazonRDS|',
+      COALESCE(f.effective_usage_date, DATE(COALESCE(f.usage_start_time, f.usage_end_time)))::text
+    )
+  END
 )
 `;
 
@@ -554,7 +538,12 @@ SELECT
   MAX(COALESCE(NULLIF(dr.resource_name, ''), d.resource_id)) AS resource_name,
   MAX(d.db_service) AS db_service,
   MAX(d.db_engine) AS db_engine,
-  MAX(dr.resource_type) AS resource_type,
+  CASE
+    WHEN d.resource_id = 'db-scope:AmazonRDS' THEN 'scoped'
+    WHEN LOWER(d.resource_id) LIKE 'arn:aws:rds:%:db:%' THEN 'instance'
+    WHEN LOWER(d.resource_id) LIKE 'arn:aws:rds:%:cluster:%' THEN 'cluster'
+    ELSE MAX(dr.resource_type)
+  END AS resource_type,
   MAX(d.resource_key) AS resource_key,
   MAX(d.region_key) AS region_key,
   MAX(d.sub_account_key) AS sub_account_key,
@@ -562,10 +551,10 @@ SELECT
   COALESCE(SUM(CASE WHEN d.cost_category = 'storage' THEN d.effective_cost ELSE 0 END), 0)::DECIMAL(18,6) AS storage_cost,
   COALESCE(SUM(CASE WHEN d.cost_category = 'io' THEN d.effective_cost ELSE 0 END), 0)::DECIMAL(18,6) AS io_cost,
   COALESCE(SUM(CASE WHEN d.cost_category = 'backup' THEN d.effective_cost ELSE 0 END), 0)::DECIMAL(18,6) AS backup_cost,
-  0::DECIMAL(18,6) AS data_transfer_cost,
-  0::DECIMAL(18,6) AS tax_cost,
-  0::DECIMAL(18,6) AS credit_amount,
-  0::DECIMAL(18,6) AS refund_amount,
+  COALESCE(SUM(CASE WHEN d.cost_category = 'data_transfer' THEN d.effective_cost ELSE 0 END), 0)::DECIMAL(18,6) AS data_transfer_cost,
+  COALESCE(SUM(CASE WHEN d.cost_category = 'tax' THEN d.effective_cost ELSE 0 END), 0)::DECIMAL(18,6) AS tax_cost,
+  COALESCE(SUM(CASE WHEN d.cost_category = 'credit' THEN d.effective_cost ELSE 0 END), 0)::DECIMAL(18,6) AS credit_amount,
+  COALESCE(SUM(CASE WHEN d.cost_category = 'refund' THEN d.effective_cost ELSE 0 END), 0)::DECIMAL(18,6) AS refund_amount,
   COALESCE(SUM(d.billed_cost), 0)::DECIMAL(18,6) AS total_billed_cost,
   COALESCE(SUM(d.effective_cost), 0)::DECIMAL(18,6) AS total_effective_cost,
   COALESCE(SUM(d.list_cost), 0)::DECIMAL(18,6) AS total_list_cost,
