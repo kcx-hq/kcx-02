@@ -1,7 +1,7 @@
 import { QueryTypes } from "sequelize";
 
 import { FactRecommendations, sequelize } from "../../../models/index.js";
-import { classifyNetworkCostType } from "../explorer/network-cost-classifier.js";
+import { classifyExplorerCostCategory } from "../classification/cost-category-classifier.js";
 import type {
   Ec2RecommendationRecord,
   Ec2RecommendationStatus,
@@ -375,7 +375,7 @@ export class Ec2RecommendationsRepository {
         usageQuantity: row.usageQuantity ?? 0,
       }))
       .filter((row) => {
-        const networkType = classifyNetworkCostType({
+        const networkType = classifyExplorerCostCategory({
           usageType: row.usageType,
           productUsageType: row.productUsageType,
           productFamily: row.productFamily,
@@ -386,7 +386,7 @@ export class Ec2RecommendationsRepository {
           fromRegionCode: row.fromRegionCode,
           toRegionCode: row.toRegionCode,
         });
-        return networkType !== "Other Network";
+        return networkType !== "other";
       });
   }
 

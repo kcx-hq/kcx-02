@@ -16,7 +16,10 @@ export type InventoryEc2InstanceRow = {
   isIdleCandidate: boolean | null
   isUnderutilizedCandidate: boolean | null
   isOverutilizedCandidate: boolean | null
-  condition: "idle" | "underutilized" | "overutilized" | "uncovered" | "healthy"
+  status: "idle" | "underutilized" | "overutilized" | "uncovered" | "healthy"
+  statusLabel: "Idle" | "Underutilized" | "Overutilized" | "Uncovered" | "Healthy"
+  primaryCondition: "idle" | "underutilized" | "overutilized" | "healthy"
+  signals: Array<"idle" | "underutilized" | "overutilized" | "uncovered_on_demand">
   pricingType: "on_demand" | "reserved" | "savings_plan" | "spot" | "other" | null
   totalHours: number
   computeCost: number
@@ -71,6 +74,7 @@ export type InventoryEc2InstancesListParams = {
     | "Load Balancer"
     | "Other Network"
     | null
+  status?: "all" | "idle" | "underutilized" | "overutilized" | "uncovered" | "healthy"
   search?: string | null
   startDate?: string | null
   endDate?: string | null
@@ -319,18 +323,50 @@ const normalizeInstanceRow = (value: unknown): InventoryEc2InstanceRow | null =>
     isIdleCandidate: toBooleanOrNull(value.isIdleCandidate),
     isUnderutilizedCandidate: toBooleanOrNull(value.isUnderutilizedCandidate),
     isOverutilizedCandidate: toBooleanOrNull(value.isOverutilizedCandidate),
-    condition: ((): InventoryEc2InstanceRow["condition"] => {
-      const condition = toStringOrNull(value.condition)
+    status: ((): InventoryEc2InstanceRow["status"] => {
+      const status = toStringOrNull(value.status)
       if (
-        condition === "idle" ||
-        condition === "underutilized" ||
-        condition === "overutilized" ||
-        condition === "uncovered" ||
-        condition === "healthy"
+        status === "idle" ||
+        status === "underutilized" ||
+        status === "overutilized" ||
+        status === "uncovered" ||
+        status === "healthy"
       )
-        return condition
+        return status
       return "healthy"
     })(),
+    statusLabel: ((): InventoryEc2InstanceRow["statusLabel"] => {
+      const statusLabel = toStringOrNull(value.statusLabel)
+      if (
+        statusLabel === "Idle" ||
+        statusLabel === "Underutilized" ||
+        statusLabel === "Overutilized" ||
+        statusLabel === "Uncovered" ||
+        statusLabel === "Healthy"
+      )
+        return statusLabel
+      return "Healthy"
+    })(),
+    primaryCondition: ((): InventoryEc2InstanceRow["primaryCondition"] => {
+      const primaryCondition = toStringOrNull(value.primaryCondition)
+      if (
+        primaryCondition === "idle" ||
+        primaryCondition === "underutilized" ||
+        primaryCondition === "overutilized" ||
+        primaryCondition === "healthy"
+      )
+        return primaryCondition
+      return "healthy"
+    })(),
+    signals: (Array.isArray(value.signals) ? value.signals : [])
+      .filter((signal): signal is string => typeof signal === "string")
+      .filter(
+        (signal): signal is InventoryEc2InstanceRow["signals"][number] =>
+          signal === "idle" ||
+          signal === "underutilized" ||
+          signal === "overutilized" ||
+          signal === "uncovered_on_demand",
+      ),
     pricingType,
     totalHours: toNumberOrNull(value.totalHours) ?? 0,
     computeCost: toNumberOrNull(value.computeCost) ?? 0,
@@ -416,6 +452,7 @@ export async function getInventoryEc2Instances(
   if (params.instanceType) searchParams.set("instanceType", params.instanceType)
   if (params.pricingType) searchParams.set("pricingType", params.pricingType)
   if (params.networkType) searchParams.set("networkType", params.networkType)
+  if (params.status && params.status !== "all") searchParams.set("status", params.status)
   if (params.search) searchParams.set("search", params.search)
   if (params.startDate) searchParams.set("startDate", params.startDate)
   if (params.endDate) searchParams.set("endDate", params.endDate)

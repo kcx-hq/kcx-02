@@ -24,6 +24,7 @@ const instancesInventoryQuerySchema = z.object({
     "Load Balancer",
     "Other Network",
   ]).nullable(),
+  status: z.enum(["all", "idle", "underutilized", "overutilized", "uncovered", "healthy"]).default("all"),
   search: z.string().trim().min(1).max(200).nullable(),
   startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(),
   endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(),
@@ -122,6 +123,7 @@ export function parseInstancesInventoryListQuery(req: Request): InventoryEc2Inst
     firstQueryValue(req.query.pricingType) ?? firstQueryValue(req.query.pricing_type),
   );
   const search = toNullableString(firstQueryValue(req.query.search));
+  const status = toNullableString(firstQueryValue(req.query.status)) ?? "all";
   const networkType = toNullableString(
     firstQueryValue(req.query.networkType) ?? firstQueryValue(req.query.network_type),
   );
@@ -145,6 +147,7 @@ export function parseInstancesInventoryListQuery(req: Request): InventoryEc2Inst
     instanceType,
     pricingType,
     networkType,
+    status,
     search,
     startDate,
     endDate,

@@ -7,7 +7,12 @@ import type {
   Ec2RecommendationsResponse,
   Ec2RefreshRecommendationsInput,
 } from "./ec2-recommendations.types.js";
-import { classifyNetworkCostType } from "../explorer/network-cost-classifier.js";
+import { classifyExplorerCostCategory } from "../classification/cost-category-classifier.js";
+import { classifyDataTransferSignals } from "../classification/data-transfer-classifier.js";
+import { classifyInstanceSignals } from "../classification/instance-classifier.js";
+import { classifyVolumeSignals } from "../classification/volume-classifier.js";
+import { classifySnapshotSignals } from "../classification/snapshot-classifier.js";
+import { classifyElasticIpSignals } from "../classification/elastic-ip-classifier.js";
 
 const DAY_MS = 86_400_000;
 
@@ -88,7 +93,6 @@ export class Ec2RecommendationsService {
       const totalCost = row.totalCost;
       const computeCost = row.computeCost;
       const pricingType = normalize(row.pricingType);
-      const coveredByRi = (row.coveredHours ?? 0) > 0;
       const activeDays = runningHours === null ? null : runningHours / 24;
 
       if (state !== "running" || runningHours === null || runningHours < 24 || totalCost === null || totalCost <= 5) {
@@ -119,40 +123,55 @@ export class Ec2RecommendationsService {
         },
       };
 
+      const instanceSignals = classifyInstanceSignals({
+        isIdleCandidate: null,
+        isUnderutilizedCandidate: null,
+        isOverutilizedCandidate: null,
+        uncoveredHours: null,
+        avgCpu,
+        avgDailyNetworkMb,
+        pricingType,
+        coveredHours: row.coveredHours,
+        totalHours: runningHours,
+        runningHours,
+        runningDays: activeDays,
+        computeCost,
+        totalCost,
+      });
       let classified = false;
-      if (avgCpu !== null && avgDailyNetworkMb !== null && avgCpu < 5 && avgDailyNetworkMb < 100) {
+      if (instanceSignals.primaryCondition === "idle") {
         generated.push({
           ...common,
           category: "compute",
           type: "idle_instance",
           problem: "Instance appears idle while running.",
-          evidence: `state=running, running_hours=${runningHours.toFixed(1)}, avg_cpu=${avgCpu.toFixed(2)}%, avg_daily_network_mb=${avgDailyNetworkMb.toFixed(2)}, total_cost=${totalCost.toFixed(2)}`,
+          evidence: `state=running, running_hours=${runningHours.toFixed(1)}, avg_cpu=${(avgCpu ?? 0).toFixed(2)}%, avg_daily_network_mb=${(avgDailyNetworkMb ?? 0).toFixed(2)}, total_cost=${totalCost.toFixed(2)}`,
           action: "Stop or terminate instance",
           estimatedMonthlySaving: totalCost,
           risk: "low",
           effort: "low",
         });
         classified = true;
-      } else if (avgCpu !== null && avgDailyNetworkMb !== null && avgCpu >= 5 && avgCpu < 20 && avgDailyNetworkMb < 1024) {
+      } else if (instanceSignals.primaryCondition === "underutilized") {
         generated.push({
           ...common,
           category: "compute",
           type: "underutilized_instance",
           problem: "Instance is underutilized for current sizing.",
-          evidence: `state=running, running_hours=${runningHours.toFixed(1)}, avg_cpu=${avgCpu.toFixed(2)}%, avg_daily_network_mb=${avgDailyNetworkMb.toFixed(2)}, total_cost=${totalCost.toFixed(2)}`,
+          evidence: `state=running, running_hours=${runningHours.toFixed(1)}, avg_cpu=${(avgCpu ?? 0).toFixed(2)}%, avg_daily_network_mb=${(avgDailyNetworkMb ?? 0).toFixed(2)}, total_cost=${totalCost.toFixed(2)}`,
           action: "Downsize instance",
           estimatedMonthlySaving: Math.max(0, totalCost * 0.35),
           risk: "medium",
           effort: "medium",
         });
         classified = true;
-      } else if (avgCpu !== null && avgCpu > 75) {
+      } else if (instanceSignals.primaryCondition === "overutilized") {
         generated.push({
           ...common,
           category: "compute",
           type: "overutilized_instance",
           problem: "Instance is overutilized and may be undersized.",
-          evidence: `state=running, running_hours=${runningHours.toFixed(1)}, avg_cpu=${avgCpu.toFixed(2)}%, total_cost=${totalCost.toFixed(2)}`,
+          evidence: `state=running, running_hours=${runningHours.toFixed(1)}, avg_cpu=${(avgCpu ?? 0).toFixed(2)}%, total_cost=${totalCost.toFixed(2)}`,
           action: "Upsize instance or investigate workload",
           estimatedMonthlySaving: 0,
           risk: "high",
@@ -172,14 +191,7 @@ export class Ec2RecommendationsService {
         });
       }
 
-      if (
-        pricingType === "on_demand" &&
-        computeCost !== null &&
-        computeCost > 5 &&
-        activeDays !== null &&
-        activeDays >= 3 &&
-        !coveredByRi
-      ) {
+      if (instanceSignals.signals.includes("uncovered_on_demand") && computeCost !== null && computeCost > 5 && activeDays !== null && activeDays >= 3) {
         generated.push({
           ...common,
           category: "pricing",
@@ -198,10 +210,15 @@ export class Ec2RecommendationsService {
       const attachmentId = normalizeOptionalId(row.attachedInstanceId);
       const age = ageDays(row.discoveredAt ?? row.createdAt ?? row.firstSeenAt, input.dateTo);
       const normalizedState = normalize(row.volumeState || row.factState);
-      const consideredUnattached = row.isUnattached === true || attachmentId === null;
+      const classifiedVolume = classifyVolumeSignals({
+        isAttached: !(row.isUnattached === true || attachmentId === null),
+        attachedInstanceState: null,
+        isIdleCandidate: false,
+        isUnderutilizedCandidate: false,
+      });
       if (
         normalizedState === "available" &&
-        consideredUnattached &&
+        classifiedVolume.signals.includes("unattached") &&
         (row.volumeCost ?? 0) > 5 &&
         age !== null
       ) {
@@ -245,7 +262,11 @@ export class Ec2RecommendationsService {
         });
         continue;
       }
-      if (age >= 90 && (row.snapshotCost ?? 0) > 5 && !protectedSnapshot) {
+      const snapshotSignals = classifySnapshotSignals({
+        likelyOrphaned: false,
+        ageDays: age,
+      });
+      if (snapshotSignals.signals.includes("old") && (row.snapshotCost ?? 0) > 5 && !protectedSnapshot) {
         generated.push({
           tenantId: input.tenantId,
           cloudConnectionId: row.cloudConnectionId,
@@ -292,7 +313,7 @@ export class Ec2RecommendationsService {
       }
     >();
     for (const row of networkLineItems) {
-      const networkType = classifyNetworkCostType({
+      const explorerCategory = classifyExplorerCostCategory({
         usageType: row.usageType,
         productUsageType: row.productUsageType,
         productFamily: row.productFamily,
@@ -303,6 +324,25 @@ export class Ec2RecommendationsService {
         fromRegionCode: row.fromRegionCode,
         toRegionCode: row.toRegionCode,
       });
+      let networkType: "Internet Data Transfer" | "Inter-Region Data Transfer" | "Inter-AZ Data Transfer" | "NAT Gateway" | "Other Network" = "Other Network";
+      if (explorerCategory === "nat_gateway") {
+        networkType = "NAT Gateway";
+      } else if (explorerCategory === "data_transfer") {
+        const transfer = classifyDataTransferSignals({
+          usageType: row.usageType,
+          productUsageType: row.productUsageType,
+          productFamily: row.productFamily,
+          operation: row.operation,
+          lineItemDescription: row.lineItemDescription,
+          fromLocation: row.fromLocation,
+          toLocation: row.toLocation,
+          fromRegionCode: row.fromRegionCode,
+          toRegionCode: row.toRegionCode,
+        }).transferType;
+        if (transfer === "internet") networkType = "Internet Data Transfer";
+        else if (transfer === "inter_region") networkType = "Inter-Region Data Transfer";
+        else if (transfer === "inter_az") networkType = "Inter-AZ Data Transfer";
+      }
       if (networkType === "Other Network") continue;
       const key = `${row.cloudConnectionId ?? ""}::${row.billingSourceId ?? ""}::${row.instanceId}`;
       const existing = perInstanceNetwork.get(key) ?? {
@@ -462,6 +502,9 @@ export class Ec2RecommendationsService {
     }
 
     for (const row of eipCandidates) {
+      const classificationBlob = [row.allocationId, row.publicIp, row.associationStatus, row.isAttached ? "attached" : "unattached"].filter(Boolean).join(" ");
+      const eipSignals = classifyElasticIpSignals(classificationBlob);
+      if (!eipSignals.signals.includes("unattached")) continue;
       const cost = (row.estimatedEipCost ?? 0) > 0 ? (row.estimatedEipCost ?? 0) : 3.6;
       generated.push({
         tenantId: input.tenantId,

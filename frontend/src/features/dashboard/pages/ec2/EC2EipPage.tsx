@@ -12,7 +12,7 @@ import {
 } from "./components/ec2Instances.types";
 
 const PAGE_SIZE = 25;
-type Ec2ElasticIpState = "all" | "attached" | "unattached";
+type Ec2ElasticIpState = "all" | "attached" | "unattached" | "unknown";
 const currency = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 });
 
 const toIsoDate = (value: Date): string => value.toISOString().slice(0, 10);
@@ -25,12 +25,14 @@ const getDefaultDateRange = (): { start: string; end: string } => {
 const getStateFromControls = (state: EC2InstancesControlsState["state"]): Ec2ElasticIpState => {
   if (state === "running") return "attached";
   if (state === "stopped") return "unattached";
+  if (state === "terminated") return "unknown";
   return state === "all" ? "all" : "all";
 };
 
 const getControlsStateFromParam = (state: string | null): EC2InstancesControlsState["state"] => {
   if (state === "attached") return "running";
   if (state === "unattached") return "stopped";
+  if (state === "unknown") return "terminated";
   return "all";
 };
 

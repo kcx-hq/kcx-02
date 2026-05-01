@@ -395,7 +395,7 @@ export type Ec2DataTransferResponse = {
   }>;
 };
 
-export type Ec2ElasticIpState = "all" | "attached" | "unattached";
+export type Ec2ElasticIpState = "all" | "attached" | "unattached" | "unknown";
 
 export type Ec2ElasticIpFiltersQuery = {
   startDate?: string;
@@ -421,7 +421,7 @@ export type Ec2ElasticIpResponse = {
     accountName: string;
     accountId: string;
     region: string;
-    state: "attached" | "unattached";
+    state: "attached" | "unattached" | "unknown";
     associatedResourceId: string | null;
     cost: number;
     lastSeen: string | null;

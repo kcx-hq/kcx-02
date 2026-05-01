@@ -1,4 +1,4 @@
-import type { Ec2TransferType } from "./types.js";
+import type { Ec2DataTransferClassification, Ec2TransferType } from "./types.js";
 
 const normalize = (value: string | null | undefined): string => (value ?? "").toLowerCase();
 const includesAny = (text: string, tokens: string[]): boolean => tokens.some((token) => text.includes(token));
@@ -8,13 +8,6 @@ export const TRANSFER_TYPE_LABELS: Record<Ec2TransferType, string> = {
   inter_region: "Inter-Region Data Transfer",
   inter_az: "Inter-AZ Data Transfer",
   unknown: "Unknown",
-};
-
-export const SAVINGS_RATE: Record<Ec2TransferType, number> = {
-  internet: 0.2,
-  inter_region: 0.3,
-  inter_az: 0.25,
-  unknown: 0.1,
 };
 
 export const isNatGatewayLine = (input: { usageType: string | null; productUsageType: string | null; productFamily: string | null; operation: string | null; lineItemDescription: string | null; }): boolean => {
@@ -41,13 +34,32 @@ export const classifyTransferType = (input: { usageType: string | null; productU
   return { transferType: "unknown", confidence: "low" };
 };
 
-export const toTransferRecommendation = (input: { transferType: Ec2TransferType; cost: number; usageGb: number; }): { recommendation: string | null; severity: "low" | "medium" | "high" | null } => {
-  if (input.transferType === "internet") {
-    if (input.cost >= 10 || input.usageGb >= 100) return { recommendation: "Review public traffic, use CDN/caching/compression where applicable.", severity: input.cost >= 50 || input.usageGb >= 500 ? "high" : "medium" };
-    return { recommendation: null, severity: null };
+export const classifyDataTransferSignals = (input: {
+  usageType: string | null;
+  productUsageType: string | null;
+  productFamily: string | null;
+  operation: string | null;
+  lineItemDescription: string | null;
+  fromLocation: string | null;
+  toLocation: string | null;
+  fromRegionCode: string | null;
+  toRegionCode: string | null;
+}): Ec2DataTransferClassification => {
+  const nat = isNatGatewayLine(input);
+  if (nat) {
+    return {
+      isNatGateway: true,
+      isDataTransferCandidate: false,
+      transferType: "unknown",
+      confidence: "low",
+    };
   }
-  if (input.transferType === "inter_region" && input.cost > 0) return { recommendation: "Co-locate dependent services in the same region where possible.", severity: input.cost >= 25 ? "high" : "medium" };
-  if (input.transferType === "inter_az" && input.cost > 0) return { recommendation: "Review cross-AZ communication and placement of chatty services.", severity: input.cost >= 20 ? "high" : "medium" };
-  if (input.transferType === "unknown" && input.cost >= 5) return { recommendation: "Review billing usage type and source resource mapping.", severity: input.cost >= 25 ? "medium" : "low" };
-  return { recommendation: null, severity: null };
+  const candidate = isDataTransferCandidate(input);
+  const { transferType, confidence } = classifyTransferType(input);
+  return {
+    isNatGateway: nat,
+    isDataTransferCandidate: candidate,
+    transferType,
+    confidence,
+  };
 };

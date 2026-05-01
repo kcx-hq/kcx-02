@@ -14,6 +14,7 @@ export type InventoryEc2InstancesListQuery = {
     | "Load Balancer"
     | "Other Network"
     | null;
+  status: "all" | "idle" | "underutilized" | "overutilized" | "uncovered" | "healthy";
   search: string | null;
   startDate: string | null;
   endDate: string | null;
@@ -41,7 +42,10 @@ export type InventoryEc2InstancesListItem = {
   isIdleCandidate: boolean | null;
   isUnderutilizedCandidate: boolean | null;
   isOverutilizedCandidate: boolean | null;
-  condition: "idle" | "underutilized" | "overutilized" | "uncovered" | "healthy";
+  status: "idle" | "underutilized" | "overutilized" | "uncovered" | "healthy";
+  statusLabel: "Idle" | "Underutilized" | "Overutilized" | "Uncovered" | "Healthy";
+  primaryCondition: "idle" | "underutilized" | "overutilized" | "healthy";
+  signals: Array<"idle" | "underutilized" | "overutilized" | "uncovered_on_demand">;
   pricingType: "on_demand" | "reserved" | "savings_plan" | "spot" | "other" | null;
   totalHours: number;
   computeCost: number;

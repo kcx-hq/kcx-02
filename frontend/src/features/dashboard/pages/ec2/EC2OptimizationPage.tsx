@@ -1,17 +1,14 @@
 import { Check, ChevronDown, Filter, RotateCcw, Search, X } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import type { ColDef } from "ag-grid-community";
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ApiError } from "@/lib/api";
+import type { Ec2RecommendationRecord, Ec2RecommendationType } from "../../api/dashboardApi";
 
 import { BaseDataTable } from "../../common/tables/BaseDataTable";
-import {
-  type Ec2RecommendationRecord,
-  type Ec2RecommendationType,
-  useEc2RecommendationsQuery,
-} from "../../hooks/useDashboardQueries";
+import { useEc2RecommendationsQuery } from "../../hooks/useDashboardQueries";
 import { useDashboardScope } from "../../hooks/useDashboardScope";
 import { EC2ExplorerScopeFilters } from "./components/EC2ExplorerScopeFilters";
 import type { EC2ScopeFilters } from "./ec2ExplorerControls.types";
@@ -149,6 +146,7 @@ export default function EC2OptimizationPage() {
   const [issueTypeFilter, setIssueTypeFilter] = useState("all");
   const [severityFilter, setSeverityFilter] = useState("all");
   const [searchFilter, setSearchFilter] = useState("");
+  const deferredSearchFilter = useDeferredValue(searchFilter);
   const queryResourceId = normalizeFilterValue(searchParams.get("resourceId") ?? searchParams.get("instanceId"));
   const queryCategory = normalizeFilterValue(searchParams.get("category"));
   const queryIssueType = normalizeFilterValue(searchParams.get("issueType"));
@@ -184,16 +182,20 @@ export default function EC2OptimizationPage() {
     };
   }, []);
 
-  const query = useEc2RecommendationsQuery({
-    dateFrom,
-    dateTo,
-    region: searchParams.get("region") ?? undefined,
-    account: searchParams.get("account") ?? undefined,
-    team: searchParams.get("team") ?? undefined,
-    product: searchParams.get("product") ?? undefined,
-    environment: searchParams.get("environment") ?? searchParams.get("env") ?? undefined,
-    tags: parseCsvParam(searchParams.get("tags")),
-  });
+  const recommendationsQueryFilters = useMemo(
+    () => ({
+      dateFrom,
+      dateTo,
+      region: searchParams.get("region") ?? undefined,
+      account: searchParams.get("account") ?? undefined,
+      team: searchParams.get("team") ?? undefined,
+      product: searchParams.get("product") ?? undefined,
+      environment: searchParams.get("environment") ?? searchParams.get("env") ?? undefined,
+      tags: parseCsvParam(searchParams.get("tags")),
+    }),
+    [dateFrom, dateTo, searchParams],
+  );
+  const query = useEc2RecommendationsQuery(recommendationsQueryFilters);
 
   const openResource = (item: Ec2RecommendationRecord) => {
     if (item.resourceType === "instance") {
@@ -257,7 +259,7 @@ export default function EC2OptimizationPage() {
         if (categoryFilter !== "all" && item.category !== categoryFilter) return false;
         if (issueTypeFilter !== "all" && item.type !== issueTypeFilter) return false;
         if (severityFilter !== "all" && item.risk !== severityFilter) return false;
-        const query = searchFilter.trim().toLowerCase();
+        const query = deferredSearchFilter.trim().toLowerCase();
         if (query.length > 0) {
           const haystack = [
             item.resourceName,
@@ -272,33 +274,37 @@ export default function EC2OptimizationPage() {
         }
         return true;
       }),
-    [scopedRows, categoryFilter, issueTypeFilter, severityFilter, searchFilter],
+    [scopedRows, categoryFilter, issueTypeFilter, severityFilter, deferredSearchFilter],
   );
 
   useEffect(() => {
-    const desiredCategory = categoryFilter === "all" ? "" : categoryFilter;
-    const desiredIssueType = issueTypeFilter === "all" ? "" : issueTypeFilter;
-    const desiredSearch = searchFilter.trim();
-    const currentCategory = normalizeFilterValue(searchParams.get("category"));
-    const currentIssueType = normalizeFilterValue(searchParams.get("issueType"));
-    const currentSearch = normalizeFilterValue(searchParams.get("search"));
+    const timeoutId = window.setTimeout(() => {
+      const desiredCategory = categoryFilter === "all" ? "" : categoryFilter;
+      const desiredIssueType = issueTypeFilter === "all" ? "" : issueTypeFilter;
+      const desiredSearch = searchFilter.trim();
+      const currentCategory = normalizeFilterValue(searchParams.get("category"));
+      const currentIssueType = normalizeFilterValue(searchParams.get("issueType"));
+      const currentSearch = normalizeFilterValue(searchParams.get("search"));
 
-    if (
-      desiredCategory === currentCategory &&
-      desiredIssueType === currentIssueType &&
-      desiredSearch === currentSearch
-    ) {
-      return;
-    }
+      if (
+        desiredCategory === currentCategory &&
+        desiredIssueType === currentIssueType &&
+        desiredSearch === currentSearch
+      ) {
+        return;
+      }
 
-    const next = new URLSearchParams(location.search);
-    if (desiredCategory) next.set("category", desiredCategory);
-    else next.delete("category");
-    if (desiredIssueType) next.set("issueType", desiredIssueType);
-    else next.delete("issueType");
-    if (desiredSearch) next.set("search", desiredSearch);
-    else next.delete("search");
-    navigate({ pathname: location.pathname, search: next.toString() }, { replace: true });
+      const next = new URLSearchParams(location.search);
+      if (desiredCategory) next.set("category", desiredCategory);
+      else next.delete("category");
+      if (desiredIssueType) next.set("issueType", desiredIssueType);
+      else next.delete("issueType");
+      if (desiredSearch) next.set("search", desiredSearch);
+      else next.delete("search");
+      navigate({ pathname: location.pathname, search: next.toString() }, { replace: true });
+    }, 250);
+
+    return () => window.clearTimeout(timeoutId);
   }, [categoryFilter, issueTypeFilter, location.pathname, location.search, navigate, searchFilter, searchParams]);
 
   const topTypeSummary = useMemo(() => {
@@ -370,7 +376,7 @@ export default function EC2OptimizationPage() {
       chips.push({ id: "search", label: "Search", value: searchFilter.trim(), onRemove: () => setSearchFilter("") });
     }
     return chips;
-  }, [categoryFilter, issueTypeFilter, searchFilter, searchParams]);
+  }, [categoryFilter, issueTypeFilter, searchFilter, queryResourceId]);
 
   const clearRecommendationFilters = () => {
     setCategoryFilter("all");

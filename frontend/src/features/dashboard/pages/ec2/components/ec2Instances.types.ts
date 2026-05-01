@@ -1,6 +1,6 @@
 import type { EC2ScopeFilters, EC2Thresholds } from "../ec2ExplorerControls.types";
 
-export type EC2InstancesCondition = "all" | "idle" | "underutilized" | "overutilized" | "uncovered";
+export type EC2InstancesStatus = "all" | "idle" | "underutilized" | "overutilized" | "uncovered" | "healthy";
 export type EC2InstancesStateFilter = "all" | "running" | "stopped" | "terminated";
 export type EC2InstancesReservationType = "all" | "on_demand" | "reserved" | "savings_plan" | "spot";
 export type EC2InstancesNetworkType =
@@ -14,7 +14,7 @@ export type EC2InstancesNetworkType =
   | "Other Network";
 
 export type EC2InstancesControlsState = {
-  condition: EC2InstancesCondition;
+  status: EC2InstancesStatus;
   state: EC2InstancesStateFilter;
   instanceType: string;
   reservationType: EC2InstancesReservationType;
@@ -24,12 +24,13 @@ export type EC2InstancesControlsState = {
   search: string;
 };
 
-export const EC2_INSTANCES_CONDITION_OPTIONS: Array<{ key: EC2InstancesCondition; label: string }> = [
+export const EC2_INSTANCES_STATUS_OPTIONS: Array<{ key: EC2InstancesStatus; label: string }> = [
   { key: "all", label: "All" },
   { key: "idle", label: "Idle" },
   { key: "underutilized", label: "Underutilized" },
   { key: "overutilized", label: "Overutilized" },
   { key: "uncovered", label: "Uncovered" },
+  { key: "healthy", label: "Healthy" },
 ];
 
 export const EC2_INSTANCES_STATE_OPTIONS: Array<{ key: EC2InstancesStateFilter; label: string }> = [
@@ -51,7 +52,7 @@ export const EC2_INSTANCES_RESERVATION_OPTIONS: Array<{
 ];
 
 export const EC2_INSTANCES_DEFAULT_CONTROLS: EC2InstancesControlsState = {
-  condition: "all",
+  status: "all",
   state: "all",
   instanceType: "all",
   reservationType: "all",

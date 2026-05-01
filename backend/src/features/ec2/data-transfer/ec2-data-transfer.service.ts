@@ -1,17 +1,29 @@
 import type { Ec2DataTransferInput, Ec2DataTransferRawRow, Ec2DataTransferResponse, Ec2DataTransferRow } from "./ec2-data-transfer.types.js";
 import { Ec2DataTransferQuery } from "./ec2-data-transfer.query.js";
 import {
-  classifyTransferType,
-  isDataTransferCandidate,
-  isNatGatewayLine,
-  SAVINGS_RATE,
-  toTransferRecommendation,
+  classifyDataTransferSignals,
   TRANSFER_TYPE_LABELS,
 } from "./ec2-data-transfer.classifier.js";
 
 type WorkingRow = Ec2DataTransferRow & { dateMap: Map<string, { cost: number; usageGb: number }> };
 
 const round2 = (value: number): number => Number((Number.isFinite(value) ? value : 0).toFixed(2));
+const SAVINGS_RATE = {
+  internet: 0.2,
+  inter_region: 0.3,
+  inter_az: 0.25,
+  unknown: 0.1,
+} as const;
+const toTransferRecommendation = (input: { transferType: "internet" | "inter_region" | "inter_az" | "unknown"; cost: number; usageGb: number }): { recommendation: string | null; severity: "low" | "medium" | "high" | null } => {
+  if (input.transferType === "internet") {
+    if (input.cost >= 10 || input.usageGb >= 100) return { recommendation: "Review public traffic, use CDN/caching/compression where applicable.", severity: input.cost >= 50 || input.usageGb >= 500 ? "high" : "medium" };
+    return { recommendation: null, severity: null };
+  }
+  if (input.transferType === "inter_region" && input.cost > 0) return { recommendation: "Co-locate dependent services in the same region where possible.", severity: input.cost >= 25 ? "high" : "medium" };
+  if (input.transferType === "inter_az" && input.cost > 0) return { recommendation: "Review cross-AZ communication and placement of chatty services.", severity: input.cost >= 20 ? "high" : "medium" };
+  if (input.transferType === "unknown" && input.cost >= 5) return { recommendation: "Review billing usage type and source resource mapping.", severity: input.cost >= 25 ? "medium" : "low" };
+  return { recommendation: null, severity: null };
+};
 
 const usageToGb = (row: Ec2DataTransferRawRow): number => {
   const billedUsage = Number(row.usageQuantity ?? 0);
@@ -49,8 +61,9 @@ export class Ec2DataTransferService {
     const previousCostByKey = new Map<string, number>();
 
     for (const row of previousRows) {
-      if (!isDataTransferCandidate(row) || isNatGatewayLine(row)) continue;
-      const { transferType } = classifyTransferType(row);
+      const classified = classifyDataTransferSignals(row);
+      if (!classified.isDataTransferCandidate || classified.isNatGateway) continue;
+      const { transferType } = classified;
       const normalized = {
         resourceId: row.resourceId ? row.resourceId.trim() : null,
         accountId: (row.accountId ?? "unknown").trim() || "unknown",
@@ -67,9 +80,9 @@ export class Ec2DataTransferService {
     const grouped = new Map<string, WorkingRow>();
 
     for (const lineItem of currentRows) {
-      if (!isDataTransferCandidate(lineItem) || isNatGatewayLine(lineItem)) continue;
-
-      const { transferType, confidence } = classifyTransferType(lineItem);
+      const classified = classifyDataTransferSignals(lineItem);
+      if (!classified.isDataTransferCandidate || classified.isNatGateway) continue;
+      const { transferType, confidence } = classified;
       const usageGb = usageToGb(lineItem);
       const cost = Math.max(0, Number(lineItem.cost ?? 0));
       if (cost <= 0 && usageGb <= 0) continue;

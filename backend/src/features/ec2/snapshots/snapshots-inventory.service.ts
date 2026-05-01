@@ -9,7 +9,7 @@ import type {
   InventoryEc2SnapshotsSummary,
 } from "./snapshots-inventory.types.js";
 
-import { OLD_SNAPSHOT_AGE_DAYS, classifySnapshotSignal } from "../../../../modules/ec2/classification/snapshot-classifier.js";
+import { OLD_SNAPSHOT_AGE_DAYS, classifySnapshotSignal } from "../classification/snapshot-classifier.js";
 const MILLIS_PER_DAY = 24 * 60 * 60 * 1000;
 
 type InventoryRow = {

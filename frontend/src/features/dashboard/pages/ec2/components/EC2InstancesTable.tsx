@@ -208,11 +208,10 @@ export function EC2InstancesTable({
           toTitle(params.value ?? null),
       },
       {
-        headerName: "Condition",
-        field: "condition",
+        headerName: "Status",
+        field: "statusLabel",
         minWidth: 140,
-        valueFormatter: (params: ValueFormatterParams<InventoryEc2InstanceRow, string | null | undefined>) =>
-          toTitle(params.value ?? null),
+        valueFormatter: (params: ValueFormatterParams<InventoryEc2InstanceRow, string | null | undefined>) => params.value ?? "-",
       },
       {
         headerName: "Instance Type",
@@ -227,7 +226,7 @@ export function EC2InstancesTable({
         minWidth: 162,
         valueFormatter: (
           params: ValueFormatterParams<InventoryEc2InstanceRow, InventoryEc2InstanceRow["pricingType"]>,
-        ) => getReservationType(params.value),
+        ) => getReservationType(params.value ?? null),
       },
       {
         headerName: "Region",
