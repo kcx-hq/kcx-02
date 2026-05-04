@@ -11,11 +11,25 @@ const toScopeClauses = (
     hasSubAccountKey?: boolean;
     hasRegionKey?: boolean;
     hasIngestionRunId?: boolean;
+    hasUsageDateKey?: boolean;
+    hasUsageStartTime?: boolean;
+    hasUsageEndTime?: boolean;
   },
 ): { whereSql: string; replacements: Record<string, unknown> } => {
+  const usageDateFallbackExpr = options?.hasUsageStartTime && options?.hasUsageEndTime
+    ? "DATE(COALESCE(fcli.usage_start_time, fcli.usage_end_time))"
+    : options?.hasUsageStartTime
+      ? "DATE(fcli.usage_start_time)"
+      : options?.hasUsageEndTime
+        ? "DATE(fcli.usage_end_time)"
+        : "NULL::date";
+  const dateScopeExpr = options?.hasUsageDateKey
+    ? `COALESCE(dd.full_date, ${usageDateFallbackExpr})`
+    : usageDateFallbackExpr;
+
   const where: string[] = [
     "fcli.tenant_id = :tenantId",
-    "COALESCE(dd.full_date, DATE(COALESCE(fcli.usage_start_time, fcli.usage_end_time))) BETWEEN :startDate::date AND :endDate::date",
+    `${dateScopeExpr} BETWEEN :startDate::date AND :endDate::date`,
   ];
   const replacements: Record<string, unknown> = {
     tenantId: input.scope.tenantId,
@@ -59,6 +73,8 @@ const toScopeClauses = (
 export class Ec2ElasticIpQuery {
   private hasCheckedColumns = false;
   private availableColumns = new Set<string>();
+  private hasCheckedDimColumns = false;
+  private dimColumns = new Map<string, Set<string>>();
 
   private async ensureFactColumnsLoaded(): Promise<void> {
     if (this.hasCheckedColumns) return;
@@ -78,8 +94,34 @@ export class Ec2ElasticIpQuery {
     return this.availableColumns.has(columnName);
   }
 
+  private async ensureDimColumnsLoaded(): Promise<void> {
+    if (this.hasCheckedDimColumns) return;
+    const rows = await sequelize.query<{ table_name: string; column_name: string }>(
+      `
+      SELECT table_name, column_name
+      FROM information_schema.columns
+      WHERE table_name IN ('dim_date', 'dim_resource', 'dim_sub_account', 'dim_region');
+      `,
+      { type: QueryTypes.SELECT },
+    );
+    const map = new Map<string, Set<string>>();
+    for (const row of rows) {
+      const key = row.table_name;
+      const current = map.get(key) ?? new Set<string>();
+      current.add(row.column_name);
+      map.set(key, current);
+    }
+    this.dimColumns = map;
+    this.hasCheckedDimColumns = true;
+  }
+
+  private hasDimColumn(tableName: string, columnName: string): boolean {
+    return this.dimColumns.get(tableName)?.has(columnName) ?? false;
+  }
+
   async getLineItems(input: Ec2ElasticIpInput): Promise<Ec2ElasticIpRawRow[]> {
     await this.ensureFactColumnsLoaded();
+    await this.ensureDimColumnsLoaded();
     const hasProviderId = this.hasFactColumn("provider_id");
     const hasBillingSourceId = this.hasFactColumn("billing_source_id");
     const hasSubAccountKey = this.hasFactColumn("sub_account_key");
@@ -93,6 +135,18 @@ export class Ec2ElasticIpQuery {
     const hasBilledCost = this.hasFactColumn("billed_cost");
     const hasOperation = this.hasFactColumn("operation");
     const hasUsageType = this.hasFactColumn("usage_type");
+    const hasDimDateId = this.hasDimColumn("dim_date", "id");
+    const hasDimDateFullDate = this.hasDimColumn("dim_date", "full_date");
+    const hasDimResourceId = this.hasDimColumn("dim_resource", "id");
+    const hasDimResourceTenantId = this.hasDimColumn("dim_resource", "tenant_id");
+    const hasDimResourceResourceId = this.hasDimColumn("dim_resource", "resource_id");
+    const hasDimResourceName = this.hasDimColumn("dim_resource", "resource_name");
+    const hasDimSubAccountId = this.hasDimColumn("dim_sub_account", "id");
+    const hasDimSubAccountSubAccountId = this.hasDimColumn("dim_sub_account", "sub_account_id");
+    const hasDimSubAccountSubAccountName = this.hasDimColumn("dim_sub_account", "sub_account_name");
+    const hasDimRegionId = this.hasDimColumn("dim_region", "id");
+    const hasDimRegionRegionId = this.hasDimColumn("dim_region", "region_id");
+    const hasDimRegionName = this.hasDimColumn("dim_region", "region_name");
 
     const scoped = toScopeClauses(input, {
       hasProviderId,
@@ -100,6 +154,9 @@ export class Ec2ElasticIpQuery {
       hasSubAccountKey,
       hasRegionKey,
       hasIngestionRunId,
+      hasUsageDateKey,
+      hasUsageStartTime,
+      hasUsageEndTime,
     });
     const hasProductUsageType = this.hasFactColumn("product_usage_type");
     const hasLineItemDescription = this.hasFactColumn("line_item_description");
@@ -112,40 +169,56 @@ export class Ec2ElasticIpQuery {
     const lineItemTypeExpr = hasLineItemType ? "fcli.line_item_type" : "NULL::text";
     const fromRegionExpr = hasFromRegionCode ? "fcli.from_region_code::text" : "NULL::text";
     const toRegionExpr = hasToRegionCode ? "fcli.to_region_code::text" : "NULL::text";
+    const dimDateExpr = hasDimDateFullDate ? "dd.full_date" : "NULL::date";
+    const dimResourceIdExpr = hasDimResourceResourceId ? "dr.resource_id::text" : "NULL::text";
+    const dimResourceNameExpr = hasDimResourceName ? "dr.resource_name" : "NULL::text";
+    const dimSubAccountIdExpr = hasDimSubAccountSubAccountId ? "dsa.sub_account_id::text" : "NULL::text";
+    const dimSubAccountNameExpr = hasDimSubAccountSubAccountName ? "dsa.sub_account_name::text" : "NULL::text";
+    const dimRegionIdExpr = hasDimRegionRegionId ? "dreg.region_id::text" : "NULL::text";
+    const dimRegionNameExpr = hasDimRegionName ? "dreg.region_name::text" : "NULL::text";
+    const usageDateFallbackExpr = hasUsageStartTime && hasUsageEndTime
+      ? "DATE(COALESCE(fcli.usage_start_time, fcli.usage_end_time))"
+      : hasUsageStartTime
+        ? "DATE(fcli.usage_start_time)"
+        : hasUsageEndTime
+          ? "DATE(fcli.usage_end_time)"
+          : "NULL::date";
     const usageDateExpr = hasUsageDateKey
-      ? "COALESCE(dd.full_date, DATE(COALESCE(fcli.usage_start_time, fcli.usage_end_time)))"
-      : hasUsageStartTime && hasUsageEndTime
-        ? "DATE(COALESCE(fcli.usage_start_time, fcli.usage_end_time))"
-        : hasUsageStartTime
-          ? "DATE(fcli.usage_start_time)"
-          : hasUsageEndTime
-            ? "DATE(fcli.usage_end_time)"
-            : "NULL::date";
+      ? `COALESCE(${dimDateExpr}, ${usageDateFallbackExpr})`
+      : usageDateFallbackExpr;
     const effectiveCostExpr = hasEffectiveCost ? "fcli.effective_cost" : "NULL::numeric";
     const billedCostExpr = hasBilledCost ? "fcli.billed_cost" : "NULL::numeric";
     const operationExpr = hasOperation ? "fcli.operation" : "NULL::text";
     const usageTypeExpr = hasUsageType ? "fcli.usage_type" : "NULL::text";
-    const joinDateSql = hasUsageDateKey ? "LEFT JOIN dim_date dd ON dd.id = fcli.usage_date_key" : "LEFT JOIN dim_date dd ON FALSE";
+    const joinDateSql = hasUsageDateKey && hasDimDateId ? "LEFT JOIN dim_date dd ON dd.id = fcli.usage_date_key" : "LEFT JOIN dim_date dd ON FALSE";
     const joinResourceSql = hasResourceKey
-      ? "LEFT JOIN dim_resource dr ON dr.id = fcli.resource_key AND dr.tenant_id = fcli.tenant_id"
+      ? hasDimResourceId && hasDimResourceTenantId
+        ? "LEFT JOIN dim_resource dr ON dr.id = fcli.resource_key AND dr.tenant_id = fcli.tenant_id"
+        : hasDimResourceId
+          ? "LEFT JOIN dim_resource dr ON dr.id = fcli.resource_key"
+          : "LEFT JOIN dim_resource dr ON FALSE"
       : "LEFT JOIN dim_resource dr ON FALSE";
     const joinSubAccountSql = hasSubAccountKey
-      ? "LEFT JOIN dim_sub_account dsa ON dsa.id = fcli.sub_account_key"
+      ? hasDimSubAccountId
+        ? "LEFT JOIN dim_sub_account dsa ON dsa.id = fcli.sub_account_key"
+        : "LEFT JOIN dim_sub_account dsa ON FALSE"
       : "LEFT JOIN dim_sub_account dsa ON FALSE";
     const joinRegionSql = hasRegionKey
-      ? "LEFT JOIN dim_region dreg ON dreg.id = fcli.region_key"
+      ? hasDimRegionId
+        ? "LEFT JOIN dim_region dreg ON dreg.id = fcli.region_key"
+        : "LEFT JOIN dim_region dreg ON FALSE"
       : "LEFT JOIN dim_region dreg ON FALSE";
 
     const rows = await sequelize.query<Ec2ElasticIpRawRow>(
       `
       SELECT
-        dr.resource_id::text AS "eipId",
-        NULLIF(TRIM(COALESCE(dr.resource_name, '')), '')::text AS "publicIp",
-        dsa.sub_account_id::text AS "accountId",
-        dsa.sub_account_name::text AS "accountName",
+        ${dimResourceIdExpr} AS "eipId",
+        NULLIF(TRIM(COALESCE(${dimResourceNameExpr}, '')), '')::text AS "publicIp",
+        ${dimSubAccountIdExpr} AS "accountId",
+        ${dimSubAccountNameExpr} AS "accountName",
         COALESCE(
-          dreg.region_id::text,
-          dreg.region_name::text,
+          ${dimRegionIdExpr},
+          ${dimRegionNameExpr},
           ${fromRegionExpr},
           ${toRegionExpr},
           'unknown'
@@ -190,12 +263,13 @@ export class Ec2ElasticIpQuery {
         AND LOWER(COALESCE(${usageTypeExpr}, '') || ' ' || COALESCE(${productUsageTypeExpr}, '') || ' ' || COALESCE(${operationExpr}, '') || ' ' || COALESCE(${lineItemDescriptionExpr}, '')) NOT LIKE '%snapshot%'
         AND LOWER(COALESCE(${usageTypeExpr}, '') || ' ' || COALESCE(${productUsageTypeExpr}, '') || ' ' || COALESCE(${operationExpr}, '') || ' ' || COALESCE(${lineItemDescriptionExpr}, '')) NOT LIKE '%boxusage%'
       GROUP BY
-        dr.resource_id,
-        dsa.sub_account_id,
-        dsa.sub_account_name,
+        ${dimResourceIdExpr},
+        ${dimResourceNameExpr},
+        ${dimSubAccountIdExpr},
+        ${dimSubAccountNameExpr},
         COALESCE(
-          dreg.region_id::text,
-          dreg.region_name::text,
+          ${dimRegionIdExpr},
+          ${dimRegionNameExpr},
           ${fromRegionExpr},
           ${toRegionExpr},
           'unknown'
