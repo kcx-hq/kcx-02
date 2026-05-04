@@ -138,7 +138,7 @@ export class S3OptimizationRepository {
       { bind: binds, type: QueryTypes.SELECT },
     );
 
-    const mappedRows = rows.map((row) => {
+    const mappedRows: S3OptimizationBucketRow[] = rows.map((row) => {
       const lifecycleRulesCount = toNumber(row.lifecycle_rules_count);
       const lifecycleStatus = row.lifecycle_status ? String(row.lifecycle_status) : null;
       return {
@@ -168,7 +168,7 @@ export class S3OptimizationRepository {
       };
     });
 
-    const withActionStatus = await Promise.all(
+    const withActionStatus: S3OptimizationBucketRow[] = await Promise.all(
       mappedRows.map(async (item) => {
         try {
           const action = await this.getLatestPolicyAction(scope.tenantId, item.bucketName, item.accountId);
@@ -186,9 +186,10 @@ export class S3OptimizationRepository {
             accountId: item.accountId,
             error: error instanceof Error ? error.message : String(error),
           });
+          const policyAppliedStatus: S3PolicyAppliedStatus = item.hasLifecyclePolicy ? "EXTERNAL" : "NOT_APPLIED";
           return {
             ...item,
-            policyAppliedStatus: item.hasLifecyclePolicy ? "EXTERNAL" : "NOT_APPLIED",
+            policyAppliedStatus,
             policyAppliedAt: null,
             lifecycleSavings: {
               status: "not_available" as const,
