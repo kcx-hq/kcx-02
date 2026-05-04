@@ -7,7 +7,8 @@ export class DatabaseExplorerService {
   ) {}
 
   async getExplorerData(params: ExplorerQueryParams): Promise<ExplorerResponse> {
-    const [cards, trend, table] = await Promise.all([
+    const [filterOptions, cards, trend, table] = await Promise.all([
+      this.explorerRepository.getFilterOptions(params),
       this.explorerRepository.getCards(params),
       this.explorerRepository.getTrend(params),
       this.explorerRepository.getTable(params),
@@ -15,6 +16,7 @@ export class DatabaseExplorerService {
 
     return {
       filters: params,
+      filterOptions,
       cards,
       trend,
       table,

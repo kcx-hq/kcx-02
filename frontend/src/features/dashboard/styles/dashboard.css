@@ -1898,6 +1898,10 @@
   gap: 10px;
 }
 
+.dashboard-kpi-grid.db-explorer-kpi-grid {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+
 .dashboard-kpi-card {
   border: 1px solid color-mix(in srgb, var(--dashboard-border-light) 78%, var(--dashboard-white-strong) 22%);
   border-radius: var(--dashboard-radius-md);
@@ -4244,6 +4248,20 @@
   gap: var(--ce-space-2) var(--ce-space-4);
   position: relative;
   z-index: 8;
+}
+
+.database-explorer-page .cost-explorer-toolbar-row + .cost-explorer-toolbar-row {
+  margin-top: 8px;
+}
+
+.database-explorer-page__metric-switch {
+  min-width: 220px;
+}
+
+.database-explorer-page__metric-title {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
 .cost-explorer-toolbar-item {

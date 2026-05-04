@@ -53,28 +53,6 @@ export function DatabaseExplorerFilters({
   return (
     <section className="cost-explorer-control-surface" aria-label="Database explorer controls">
       <div className="cost-explorer-toolbar-row">
-        <div className="cost-explorer-toolbar-item">
-          <span className="cost-explorer-field__label">Metric</span>
-          <div
-            className="cost-explorer-segmented cost-explorer-segmented--tray"
-            role="group"
-            aria-label="Database explorer metric"
-            style={{ gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }}
-          >
-            {metricOptions.map((option) => (
-              <button
-                key={option.value}
-                type="button"
-                className={`cost-explorer-segmented__item${metric === option.value ? " is-active" : ""}`}
-                onClick={() => onMetricChange(option.value)}
-                aria-pressed={metric === option.value}
-              >
-                {option.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
         <label className="cost-explorer-toolbar-item cost-explorer-field">
           <span className="cost-explorer-field__label">Group By</span>
           <select
