@@ -120,6 +120,23 @@ const GROUP_VALUE_OPTIONS: Record<EC2GroupBy, GroupByValueOption[]> = {
     { key: "available", label: "Available", count: 200 },
     { key: "unknown", label: "Unknown", count: 20 },
   ],
+  "transfer-type": [
+    { key: "internet", label: "Internet", count: 640 },
+    { key: "inter_region", label: "Inter-Region", count: 310 },
+    { key: "inter_az", label: "Inter-AZ", count: 220 },
+    { key: "regional", label: "Regional", count: 170 },
+    { key: "unknown", label: "Unknown", count: 90 },
+  ],
+  "source-region": [
+    { key: "us-east-1", label: "us-east-1", count: 420 },
+    { key: "ap-south-1", label: "ap-south-1", count: 190 },
+    { key: "eu-west-1", label: "eu-west-1", count: 110 },
+  ],
+  "destination-region": [
+    { key: "us-east-1", label: "us-east-1", count: 400 },
+    { key: "ap-south-1", label: "ap-south-1", count: 170 },
+    { key: "eu-west-1", label: "eu-west-1", count: 120 },
+  ],
   tag: [
     { key: "production", label: "production", count: 98 },
     { key: "critical", label: "critical", count: 76 },
@@ -165,6 +182,9 @@ export function EC2ExplorerGroupByPopover({
     iops_tier: [],
     size_bucket: [],
     lifecycle_state: [],
+    "transfer-type": [],
+    "source-region": [],
+    "destination-region": [],
     tag: [],
   });
   const [groupSearch, setGroupSearch] = useState("");

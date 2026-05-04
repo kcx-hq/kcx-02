@@ -118,20 +118,6 @@ const getMetadataString = (volume: InventoryEc2VolumeRow, keys: string[]): strin
   return null;
 };
 
-const getMetadataNumber = (volume: InventoryEc2VolumeRow, keys: string[]): number | null => {
-  const metadata = volume.metadata;
-  if (!metadata || typeof metadata !== "object") return null;
-  for (const key of keys) {
-    const value = metadata[key];
-    if (typeof value === "number" && Number.isFinite(value)) return value;
-    if (typeof value === "string") {
-      const parsed = Number(value);
-      if (Number.isFinite(parsed)) return parsed;
-    }
-  }
-  return null;
-};
-
 const buildLineOption = (
   params: {
     labels: string[];
@@ -434,16 +420,16 @@ export default function EC2VolumeDetailPage() {
   );
 
   const snapshotRows = volumeSnapshots.map((snapshot) => {
-    const createdAtMs = snapshot.startTime ? Date.parse(snapshot.startTime) : Number.NaN;
+    const createdAtMs = typeof snapshot.ageDays === "number" ? Date.now() - snapshot.ageDays * 24 * 60 * 60 * 1000 : Number.NaN;
     const nowMs = Date.now();
     const ageDays = Number.isNaN(createdAtMs) ? null : Math.max(0, Math.floor((nowMs - createdAtMs) / (1000 * 60 * 60 * 24)));
     return {
       snapshotId: snapshot.snapshotId,
-      createdTime: formatDateTime(snapshot.startTime),
+      createdTime: "-",
       size: "Needs backend source",
       cost: formatCurrency(snapshot.cost),
       age: ageDays === null ? "-" : `${ageDays} days`,
-      recommendation: snapshot.likelyOrphaned ? "Review retention policy" : "Healthy",
+      recommendation: snapshot.recommendation ?? snapshot.statusLabel ?? "Healthy",
     };
   });
 
@@ -456,7 +442,16 @@ export default function EC2VolumeDetailPage() {
     { headerName: "Recommendation", field: "recommendation", minWidth: 200 },
   ];
 
-  const recommendationsRows = [
+  type RecommendationRow = {
+    type: string;
+    problem: string;
+    evidence: string;
+    action: string;
+    saving: string;
+    risk: string;
+    status: string;
+  };
+  const recommendationsRows: RecommendationRow[] = [
     selectedVolume.isUnattached
       ? {
           type: "Unattached",
@@ -490,9 +485,9 @@ export default function EC2VolumeDetailPage() {
           status: "Open",
         }
       : null,
-  ].filter((row): row is NonNullable<(typeof recommendationsRows)[number]> => Boolean(row));
+  ].filter((row): row is RecommendationRow => Boolean(row));
 
-  const recommendationColumns: ColDef<(typeof recommendationsRows)[number]>[] = [
+  const recommendationColumns: ColDef<RecommendationRow>[] = [
     { headerName: "Type", field: "type", minWidth: 120 },
     { headerName: "Problem", field: "problem", minWidth: 180 },
     { headerName: "Evidence", field: "evidence", minWidth: 230 },

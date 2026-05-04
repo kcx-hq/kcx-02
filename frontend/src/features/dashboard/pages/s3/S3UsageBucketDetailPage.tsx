@@ -94,10 +94,10 @@ export default function S3UsageBucketDetailPage() {
 
   const usageMetrics = useMemo(() => {
     const sumSeriesValues = (querySeries: { chart?: { breakdown?: { series?: Array<{ name?: string; values: Array<number | null> }> } } } | undefined) =>
-      (querySeries?.chart.breakdown.series ?? [])
+      (querySeries?.chart?.breakdown?.series ?? [])
         .filter((item) => String(item.name ?? "").trim().toLowerCase() === bucketNameParam.toLowerCase())
         .flatMap((item) => item.values)
-        .reduce((sum, value) => sum + Number(value ?? 0), 0);
+        .reduce<number>((sum, value) => sum + Number(value ?? 0), 0);
 
     return {
       storageGb: sumSeriesValues(storageUsageQuery.data),
@@ -232,7 +232,7 @@ export default function S3UsageBucketDetailPage() {
                     <article key={`${rule.id ?? "rule"}-${idx}`} className="s3-lifecycle-insight-card__rule">
                       <p className="s3-lifecycle-insight-card__rule-name">{rule.id || `Rule ${idx + 1}`}</p>
                       <p className="s3-lifecycle-insight-card__rule-meta">
-                        {rule.status} • Transition: {rule.hasTransition ? "Yes" : "No"} • Expiration: {rule.hasExpiration ? "Yes" : "No"}
+                        {rule.status} | Transition: {rule.hasTransition ? "Yes" : "No"} | Expiration: {rule.hasExpiration ? "Yes" : "No"}
                       </p>
                     </article>
                   ))}
