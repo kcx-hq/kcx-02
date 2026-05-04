@@ -107,14 +107,8 @@ export const dashboardNav: DashboardNavNode[] = [
         items: [
           {
             kind: "link",
-            label: "Cost",
-            path: "/dashboard/s3/cost",
-            icon: "line-chart",
-          },
-          {
-            kind: "link",
-            label: "Usage",
-            path: "/dashboard/s3/usage",
+            label: "Bucket",
+            path: "/dashboard/s3/bucket",
             icon: "activity",
           },
           {

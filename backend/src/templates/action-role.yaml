@@ -55,6 +55,7 @@ Resources:
                 Action:
                   - s3:GetLifecycleConfiguration
                   - s3:PutLifecycleConfiguration
+                  - s3:DeleteLifecycleConfiguration
                   - s3:GetBucketLocation
                 Resource: "*"
               - Sid: AllowEc2RuntimeActions

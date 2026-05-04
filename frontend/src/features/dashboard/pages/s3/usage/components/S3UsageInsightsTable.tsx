@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import type { ColDef } from "ag-grid-community";
 
 import { BaseDataTable } from "../../../../common/tables/BaseDataTable";
@@ -54,6 +54,9 @@ export function S3UsageInsightsTable({
   showAllCategoryBreakdown = false,
   onBucketClick,
 }: Props) {
+  const [search, setSearch] = useState("");
+  const normalizedSearch = search.trim().toLowerCase();
+
   const usageColumnDefs = useMemo<ColDef<any>[]>(
     () => [
       { headerName: "Usage Type", field: "usageType", minWidth: 260 },
@@ -79,7 +82,14 @@ export function S3UsageInsightsTable({
       {
         headerName: "Bucket",
         field: "bucketName",
-        minWidth: 280,
+        minWidth: 320,
+        width: 360,
+        maxWidth: 420,
+        pinned: "left",
+        lockPinned: true,
+        lockPosition: "left",
+        suppressMovable: true,
+        flex: 0,
         cellRenderer: (params: { value: string }) => {
           const bucketName = String(params.value ?? "");
           if (!bucketName) return <span>-</span>;
@@ -132,15 +142,54 @@ export function S3UsageInsightsTable({
   );
 
   const showingBucketTable = Array.isArray(bucketRows) && bucketRows.length > 0;
+  const filteredBucketRows = useMemo(() => {
+    if (!showingBucketTable || normalizedSearch.length === 0) return bucketRows ?? [];
+    return (bucketRows ?? []).filter((row) => {
+      const bucketName = String(row.bucketName ?? "").toLowerCase();
+      const region = String(row.region ?? "").toLowerCase();
+      const usageInfo = String(row.usageInfo ?? "").toLowerCase();
+      return (
+        bucketName.includes(normalizedSearch) ||
+        region.includes(normalizedSearch) ||
+        usageInfo.includes(normalizedSearch)
+      );
+    });
+  }, [bucketRows, normalizedSearch, showingBucketTable]);
+
+  const filteredUsageRows = useMemo(() => {
+    if (showingBucketTable || normalizedSearch.length === 0) return rows;
+    return rows.filter((row) => {
+      const usageType = String(row.usageType ?? "").toLowerCase();
+      const operation = String(row.operation ?? "").toLowerCase();
+      const unit = String(row.unit ?? "").toLowerCase();
+      return (
+        usageType.includes(normalizedSearch) ||
+        operation.includes(normalizedSearch) ||
+        unit.includes(normalizedSearch)
+      );
+    });
+  }, [rows, normalizedSearch, showingBucketTable]);
 
   return (
-    <BaseDataTable
-      columnDefs={showingBucketTable ? bucketColumnDefs : usageColumnDefs}
-      rowData={showingBucketTable ? ((bucketRows ?? []) as any[]) : (rows as any[])}
-      emptyMessage="No usage rows available for the selected filters."
-      pagination
-      paginationPageSize={10}
-      autoHeight
-    />
+    <div className="s3-usage-table-shell">
+      <div className="s3-usage-table-shell__toolbar">
+        <input
+          type="search"
+          className="s3-usage-table-shell__search"
+          placeholder={showingBucketTable ? "Search bucket, region, usage info..." : "Search usage type, operation..."}
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          aria-label="Search S3 usage table"
+        />
+      </div>
+      <BaseDataTable
+        columnDefs={showingBucketTable ? bucketColumnDefs : usageColumnDefs}
+        rowData={showingBucketTable ? (filteredBucketRows as any[]) : (filteredUsageRows as any[])}
+        emptyMessage="No usage rows available for the selected filters."
+        pagination
+        paginationPageSize={10}
+        autoHeight
+      />
+    </div>
   );
 }

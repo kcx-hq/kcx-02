@@ -1,3 +1,5 @@
+export type S3PolicyAppliedStatus = "APPLIED" | "NOT_APPLIED" | "FAILED" | "EXTERNAL";
+
 export type S3OptimizationBucketRow = {
   bucketName: string;
   accountId: string;
@@ -6,6 +8,22 @@ export type S3OptimizationBucketRow = {
   lifecycleRulesCount: number | null;
   hasLifecyclePolicy: boolean;
   scanTime: string;
+  policyAppliedStatus: S3PolicyAppliedStatus;
+  policyAppliedAt: string | null;
+  lifecycleSavings: {
+    status: "estimated" | "tracking" | "realized" | "not_available";
+    policyAppliedAt: string | null;
+    calculationPeriod: string | null;
+    beforeCost: number | null;
+    afterCost: number | null;
+    estimatedMonthlySavingsMin: number | null;
+    estimatedMonthlySavingsMax: number | null;
+    realizedMonthlySavings: number | null;
+    savingsPercent: number | null;
+    beforeStorageGb: number | null;
+    afterStorageGb: number | null;
+    note: string;
+  };
 };
 
 export type S3OptimizationResponse = {
@@ -20,6 +38,25 @@ export type S3BucketLifecycleRuleSummary = {
   status: string;
   hasTransition: boolean;
   hasExpiration: boolean;
+};
+
+export type S3LifecycleSuggestedTemplateKey = "safe" | "logs" | "temp" | "version" | "backup";
+
+export type S3LifecycleBucketProfile = {
+  bucketPattern: "general" | "logs" | "temp" | "backup" | "versioned";
+  hasExplicitPrefixRules: boolean;
+  primaryPrefix: string | null;
+  noncurrentRuleSignals: boolean;
+  transitionRuleCount: number;
+  expirationRuleCount: number;
+  objectSizeFilteredRuleCount: number;
+};
+
+export type S3LifecycleTemplateRecommendation = {
+  templateKey: S3LifecycleSuggestedTemplateKey;
+  confidence: "low" | "medium" | "high";
+  reason: string;
+  suggestedPrefix: string | null;
 };
 
 export type S3BucketLifecycleInsight = {
@@ -37,6 +74,8 @@ export type S3BucketLifecycleInsight = {
   headline: string;
   recommendation: string;
   topRules: S3BucketLifecycleRuleSummary[];
+  profile: S3LifecycleBucketProfile;
+  templateRecommendation: S3LifecycleTemplateRecommendation;
 };
 
 export type S3BucketLifecycleInsightResponse = {
@@ -46,7 +85,7 @@ export type S3BucketLifecycleInsightResponse = {
   insight: S3BucketLifecycleInsight | null;
 };
 
-export type S3LifecycleTransitionStorageClass = "STANDARD_IA" | "GLACIER" | "DEEP_ARCHIVE";
+export type S3LifecycleTransitionStorageClass = "STANDARD_IA" | "GLACIER" | "DEEP_ARCHIVE" | "INTELLIGENT_TIERING";
 
 export type S3LifecyclePolicyTransitionInput = {
   days: number;
@@ -62,10 +101,15 @@ export type S3LifecyclePolicyApplyRequest = {
   scope: {
     type: "entire_bucket" | "prefix";
     prefix?: string;
+    minObjectSizeBytes?: number | null;
+    maxObjectSizeBytes?: number | null;
   };
   transitions: S3LifecyclePolicyTransitionInput[];
   expirationDays?: number | null;
   abortIncompleteMultipartUploadDays?: number | null;
+  noncurrentVersionTransitions?: S3LifecyclePolicyTransitionInput[];
+  noncurrentVersionExpirationDays?: number | null;
+  expiredObjectDeleteMarker?: boolean | null;
   deleteWarningAccepted?: boolean | null;
 };
 
@@ -82,6 +126,23 @@ export type S3LifecyclePolicyApplyResponse = {
   };
 };
 
+export type S3LifecyclePolicyDeleteRequest = {
+  bucketName: string;
+  ruleName: string;
+  accountId?: string | null;
+  region?: string | null;
+};
+
+export type S3LifecyclePolicyDeleteResponse = {
+  section: "s3-lifecycle-policy-delete";
+  title: "S3 Lifecycle Policy Delete";
+  message: string;
+  bucketName: string;
+  accountId: string;
+  region: string;
+  ruleName: string;
+};
+
 export type S3PolicyActionStatus = "SUCCEEDED" | "FAILED";
 
 export type S3PolicyActionHistoryItem = {
@@ -96,6 +157,8 @@ export type S3PolicyActionHistoryItem = {
   scopePrefix: string | null;
   status: S3PolicyActionStatus;
   errorMessage: string | null;
+  requestPayloadJson: Record<string, unknown> | null;
+  responsePayloadJson: Record<string, unknown> | null;
   createdAt: string;
   createdByUserId: string | null;
 };

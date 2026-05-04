@@ -5,6 +5,8 @@ import type {
   S3PolicyActionHistoryResponse,
   S3LifecyclePolicyApplyRequest,
   S3LifecyclePolicyApplyResponse,
+  S3LifecyclePolicyDeleteRequest,
+  S3LifecyclePolicyDeleteResponse,
   S3OptimizationResponse,
 } from "./s3-optimization.types.js";
 import { BadRequestError, ForbiddenError, NotFoundError } from "../../../errors/http-errors.js";
@@ -12,7 +14,9 @@ import { CloudConnectionV2, S3BucketConfigSnapshot } from "../../../models/index
 import { logger } from "../../../utils/logger.js";
 import { assumeRole } from "../../cloud-connections/aws/infrastructure/aws-sts.service.js";
 import {
+  DeleteBucketLifecycleCommand,
   GetBucketLifecycleConfigurationCommand,
+  GetBucketVersioningCommand,
   PutBucketLifecycleConfigurationCommand,
   S3Client,
   type BucketLifecycleConfiguration,
@@ -115,6 +119,7 @@ export class S3OptimizationService {
     }
 
     const transitions = Array.isArray(payload.transitions) ? payload.transitions : [];
+    const noncurrentTransitions = Array.isArray(payload.noncurrentVersionTransitions) ? payload.noncurrentVersionTransitions : [];
     const seenStorageClasses = new Set<string>();
     const normalizedTransitions: Array<{ Days: number; StorageClass: TransitionStorageClass }> = transitions
       .filter((item) => item && Number.isFinite(item.days))
@@ -122,7 +127,7 @@ export class S3OptimizationService {
         Days: Math.trunc(item.days),
         StorageClass: item.storageClass as TransitionStorageClass,
       }))
-      .filter((item) => item.Days > 0 && ["STANDARD_IA", "GLACIER", "DEEP_ARCHIVE"].includes(String(item.StorageClass)))
+      .filter((item) => item.Days > 0 && ["STANDARD_IA", "GLACIER", "DEEP_ARCHIVE", "INTELLIGENT_TIERING"].includes(String(item.StorageClass)))
       .sort((a, b) => a.Days - b.Days);
     if (normalizedTransitions.length !== transitions.length) {
       throw new BadRequestError("Invalid transitions. Use supported storage classes and positive days.");
@@ -141,6 +146,42 @@ export class S3OptimizationService {
       const previous = normalizedTransitions[idx - 1];
       if (current && previous && current.Days <= previous.Days) {
         throw new BadRequestError("Transition days must be strictly increasing");
+      }
+    }
+
+    for (const transition of normalizedTransitions) {
+      if (transition.StorageClass === "STANDARD_IA" && transition.Days < 30) {
+        throw new BadRequestError("STANDARD_IA transition requires at least 30 days");
+      }
+    }
+
+    const seenNoncurrentStorageClasses = new Set<string>();
+    const normalizedNoncurrentTransitions: Array<{ NoncurrentDays: number; StorageClass: TransitionStorageClass }> = noncurrentTransitions
+      .filter((item) => item && Number.isFinite(item.days))
+      .map((item) => ({
+        NoncurrentDays: Math.trunc(item.days),
+        StorageClass: item.storageClass as TransitionStorageClass,
+      }))
+      .filter((item) => item.NoncurrentDays > 0 && ["STANDARD_IA", "GLACIER", "DEEP_ARCHIVE", "INTELLIGENT_TIERING"].includes(String(item.StorageClass)))
+      .sort((a, b) => a.NoncurrentDays - b.NoncurrentDays);
+    if (normalizedNoncurrentTransitions.length !== noncurrentTransitions.length) {
+      throw new BadRequestError("Invalid noncurrentVersionTransitions. Use supported storage classes and positive days.");
+    }
+    for (const transition of normalizedNoncurrentTransitions) {
+      const storageClass = String(transition.StorageClass);
+      if (seenNoncurrentStorageClasses.has(storageClass)) {
+        throw new BadRequestError(`Duplicate noncurrent transition storage class: ${storageClass}`);
+      }
+      seenNoncurrentStorageClasses.add(storageClass);
+      if (transition.StorageClass === "STANDARD_IA" && transition.NoncurrentDays < 30) {
+        throw new BadRequestError("STANDARD_IA noncurrent transition requires at least 30 days");
+      }
+    }
+    for (let idx = 1; idx < normalizedNoncurrentTransitions.length; idx += 1) {
+      const current = normalizedNoncurrentTransitions[idx];
+      const previous = normalizedNoncurrentTransitions[idx - 1];
+      if (current && previous && current.NoncurrentDays <= previous.NoncurrentDays) {
+        throw new BadRequestError("Noncurrent transition days must be strictly increasing");
       }
     }
 
@@ -163,6 +204,22 @@ export class S3OptimizationService {
       throw new BadRequestError("abortIncompleteMultipartUploadDays must be greater than 0");
     }
 
+    const noncurrentVersionExpirationDays = payload.noncurrentVersionExpirationDays == null
+      ? null
+      : Math.trunc(Number(payload.noncurrentVersionExpirationDays));
+    if (noncurrentVersionExpirationDays != null && noncurrentVersionExpirationDays <= 0) {
+      throw new BadRequestError("noncurrentVersionExpirationDays must be greater than 0");
+    }
+    if (
+      noncurrentVersionExpirationDays != null &&
+      normalizedNoncurrentTransitions.length > 0 &&
+      noncurrentVersionExpirationDays <= (normalizedNoncurrentTransitions[normalizedNoncurrentTransitions.length - 1]?.NoncurrentDays ?? 0)
+    ) {
+      throw new BadRequestError("noncurrentVersionExpirationDays must be greater than noncurrent transition days");
+    }
+
+    const expiredObjectDeleteMarker = payload.expiredObjectDeleteMarker === true;
+
     const scopeType = payload.scope?.type;
     const rawPrefix = String(payload.scope?.prefix ?? "").trim();
     if (scopeType !== "entire_bucket" && scopeType !== "prefix") {
@@ -183,11 +240,30 @@ export class S3OptimizationService {
     if (expirationDays != null && payload.deleteWarningAccepted !== true) {
       throw new BadRequestError("deleteWarningAccepted must be true when expirationDays is enabled");
     }
+    if (expirationDays != null && expiredObjectDeleteMarker) {
+      throw new BadRequestError("expiredObjectDeleteMarker cannot be combined with expirationDays in same rule");
+    }
+
+    const minObjectSizeBytes = payload.scope?.minObjectSizeBytes == null ? null : Math.trunc(Number(payload.scope.minObjectSizeBytes));
+    const maxObjectSizeBytes = payload.scope?.maxObjectSizeBytes == null ? null : Math.trunc(Number(payload.scope.maxObjectSizeBytes));
+    if (minObjectSizeBytes != null && minObjectSizeBytes < 0) {
+      throw new BadRequestError("scope.minObjectSizeBytes must be >= 0");
+    }
+    if (maxObjectSizeBytes != null && maxObjectSizeBytes < 0) {
+      throw new BadRequestError("scope.maxObjectSizeBytes must be >= 0");
+    }
+    if (minObjectSizeBytes != null && maxObjectSizeBytes != null && minObjectSizeBytes >= maxObjectSizeBytes) {
+      throw new BadRequestError("scope.minObjectSizeBytes must be less than scope.maxObjectSizeBytes");
+    }
 
     const lifecycleRule: LifecycleRule = {
       ID: normalizedRuleName,
       Status: payload.status,
-      Filter: scopeType === "prefix" ? { Prefix: normalizedPrefix } : { Prefix: "" },
+      Filter: {
+        ...(scopeType === "prefix" ? { Prefix: normalizedPrefix } : { Prefix: "" }),
+        ...(minObjectSizeBytes != null ? { ObjectSizeGreaterThan: minObjectSizeBytes } : {}),
+        ...(maxObjectSizeBytes != null ? { ObjectSizeLessThan: maxObjectSizeBytes } : {}),
+      },
     };
     if (normalizedTransitions.length > 0) {
       lifecycleRule.Transitions = normalizedTransitions as Transition[];
@@ -197,6 +273,18 @@ export class S3OptimizationService {
     }
     if (abortDays != null) {
       lifecycleRule.AbortIncompleteMultipartUpload = { DaysAfterInitiation: abortDays };
+    }
+    if (normalizedNoncurrentTransitions.length > 0) {
+      lifecycleRule.NoncurrentVersionTransitions = normalizedNoncurrentTransitions;
+    }
+    if (noncurrentVersionExpirationDays != null) {
+      lifecycleRule.NoncurrentVersionExpiration = { NoncurrentDays: noncurrentVersionExpirationDays };
+    }
+    if (expiredObjectDeleteMarker) {
+      lifecycleRule.Expiration = {
+        ...(lifecycleRule.Expiration ?? {}),
+        ExpiredObjectDeleteMarker: true,
+      };
     }
 
     const lifecycleConfig: BucketLifecycleConfiguration = { Rules: [lifecycleRule] };
@@ -295,6 +383,19 @@ export class S3OptimizationService {
         assumedRoleArn: roleArn,
         identityErrorMessage: identityError instanceof Error ? identityError.message : "Unknown identity error",
       });
+    }
+
+    if (normalizedNoncurrentTransitions.length > 0 || noncurrentVersionExpirationDays != null || expiredObjectDeleteMarker) {
+      const versioningState = await s3Client.send(
+        new GetBucketVersioningCommand({
+          Bucket: normalizedBucketName,
+        }),
+      );
+      if (versioningState.Status !== "Enabled") {
+        throw new BadRequestError(
+          "Versioning-only lifecycle options require bucket versioning to be Enabled",
+        );
+      }
     }
 
     let mergedRulesForWrite: LifecycleRule[] = [lifecycleRule];
@@ -427,5 +528,147 @@ export class S3OptimizationService {
       message: "Policy action history loaded",
       items,
     };
+  }
+
+  async deleteBucketLifecyclePolicy(
+    scope: DashboardScope,
+    payload: S3LifecyclePolicyDeleteRequest,
+    createdByUserId: string | null = null,
+  ): Promise<S3LifecyclePolicyDeleteResponse> {
+    const normalizedBucketName = String(payload.bucketName ?? "").trim();
+    const normalizedRuleName = String(payload.ruleName ?? "").trim();
+    const normalizedAccountId = String(payload.accountId ?? "").trim();
+    const requestedRegion = String(payload.region ?? "").trim();
+    if (!normalizedBucketName) throw new BadRequestError("bucketName is required");
+    if (!normalizedRuleName) throw new BadRequestError("ruleName is required");
+
+    const context = await this.repository.getBucketLifecycleExecutionContext(scope, normalizedBucketName);
+    if (normalizedAccountId && normalizedAccountId !== context.accountId) {
+      throw new BadRequestError(
+        `Bucket/account mismatch. Bucket ${normalizedBucketName} is mapped to account ${context.accountId}.`,
+      );
+    }
+
+    const connection = await CloudConnectionV2.findOne({
+      where: {
+        id: context.cloudConnectionId,
+        tenantId: scope.tenantId,
+      },
+    });
+    if (!connection) throw new NotFoundError("Cloud connection not found for selected bucket");
+
+    const roleArn = String(connection.actionRoleArn ?? "").trim();
+    const externalId = String(connection.externalId ?? "").trim() || null;
+    const region = String(context.region ?? connection.region ?? "us-east-1").trim();
+    if (requestedRegion && requestedRegion !== region) {
+      throw new BadRequestError(`Region mismatch. Bucket ${normalizedBucketName} is mapped to region ${region}.`);
+    }
+    if (!roleArn) {
+      throw new BadRequestError("Cloud connection missing ActionRoleArn required for lifecycle policy update");
+    }
+
+    const writePolicyActionLogSafely = async (input: {
+      status: "SUCCEEDED" | "FAILED";
+      errorMessage: string | null;
+      responsePayloadJson: Record<string, unknown> | null;
+    }): Promise<void> => {
+      try {
+        await this.repository.createPolicyActionLog({
+          tenantId: scope.tenantId,
+          cloudConnectionId: connection.id,
+          billingSourceId: null,
+          providerId: connection.providerId ? Number(connection.providerId) : null,
+          accountId: context.accountId || null,
+          region: region || null,
+          bucketName: normalizedBucketName,
+          ruleName: normalizedRuleName,
+          scopeType: "entire_bucket",
+          scopePrefix: null,
+          status: input.status,
+          errorMessage: input.errorMessage,
+          requestPayloadJson: { action: "delete", bucketName: normalizedBucketName, ruleName: normalizedRuleName },
+          responsePayloadJson: input.responsePayloadJson,
+          createdByUserId,
+        });
+      } catch (logError) {
+        logger.warn("S3 lifecycle delete: failed to persist policy action log", {
+          tenantId: scope.tenantId,
+          bucketName: normalizedBucketName,
+          accountId: context.accountId,
+          region,
+          cloudConnectionId: connection.id,
+          roleArn,
+          logErrorMessage: logError instanceof Error ? logError.message : "Unknown log persistence error",
+        });
+      }
+    };
+
+    let credentials: Awaited<ReturnType<typeof assumeRole>>;
+    try {
+      credentials = await assumeRole(roleArn, externalId);
+    } catch {
+      throw new ForbiddenError("Unable to assume client AWS role for lifecycle policy update");
+    }
+
+    const s3Client = new S3Client({
+      region,
+      credentials: {
+        accessKeyId: credentials.accessKeyId,
+        secretAccessKey: credentials.secretAccessKey,
+        sessionToken: credentials.sessionToken,
+      },
+    });
+
+    try {
+      const existing = await s3Client.send(
+        new GetBucketLifecycleConfigurationCommand({
+          Bucket: normalizedBucketName,
+        }),
+      );
+      const existingRules = Array.isArray(existing.Rules) ? existing.Rules : [];
+      const hasRule = existingRules.some((rule) => String(rule.ID ?? "").trim() === normalizedRuleName);
+      if (!hasRule) {
+        throw new NotFoundError(`Lifecycle rule ${normalizedRuleName} not found in bucket ${normalizedBucketName}`);
+      }
+      const filteredRules = existingRules.filter((rule) => String(rule.ID ?? "").trim() !== normalizedRuleName);
+
+      if (filteredRules.length === 0) {
+        await s3Client.send(
+          new DeleteBucketLifecycleCommand({
+            Bucket: normalizedBucketName,
+          }),
+        );
+      } else {
+        await s3Client.send(
+          new PutBucketLifecycleConfigurationCommand({
+            Bucket: normalizedBucketName,
+            LifecycleConfiguration: { Rules: filteredRules },
+          }),
+        );
+      }
+
+      await writePolicyActionLogSafely({
+        status: "SUCCEEDED",
+        errorMessage: null,
+        responsePayloadJson: { action: "delete", deletedRule: normalizedRuleName, remainingRules: filteredRules.length },
+      });
+
+      return {
+        section: "s3-lifecycle-policy-delete",
+        title: "S3 Lifecycle Policy Delete",
+        message: "S3 lifecycle policy rule removed successfully",
+        bucketName: normalizedBucketName,
+        accountId: context.accountId,
+        region,
+        ruleName: normalizedRuleName,
+      };
+    } catch (error) {
+      await writePolicyActionLogSafely({
+        status: "FAILED",
+        errorMessage: error instanceof Error ? error.message : "Unknown error",
+        responsePayloadJson: null,
+      });
+      throw error;
+    }
   }
 }

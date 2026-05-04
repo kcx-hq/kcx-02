@@ -41,6 +41,8 @@ import type {
   S3BucketLifecycleInsightResponse,
   S3LifecyclePolicyApplyRequest,
   S3LifecyclePolicyApplyResponse,
+  S3LifecyclePolicyDeleteRequest,
+  S3LifecyclePolicyDeleteResponse,
   S3PolicyActionHistoryResponse,
   S3OptimizationResponse,
   OptimizationIdleOverview,
@@ -696,6 +698,9 @@ export const dashboardApi = {
   applyS3LifecyclePolicy(scope: DashboardResolvedScope, payload: S3LifecyclePolicyApplyRequest) {
     return apiPost<S3LifecyclePolicyApplyResponse>(withDashboardQuery("/dashboard/s3/lifecycle-policy", scope), payload);
   },
+  deleteS3LifecyclePolicy(scope: DashboardResolvedScope, payload: S3LifecyclePolicyDeleteRequest) {
+    return apiPost<S3LifecyclePolicyDeleteResponse>(withDashboardQuery("/dashboard/s3/lifecycle-policy/delete", scope), payload);
+  },
   getPolicyActionHistory(scope: DashboardResolvedScope) {
     return apiGet<S3PolicyActionHistoryResponse>(withDashboardQuery("/dashboard/policy/actions", scope));
   },
@@ -767,6 +772,8 @@ export type {
   S3OptimizationResponse,
   S3LifecyclePolicyApplyRequest,
   S3LifecyclePolicyApplyResponse,
+  S3LifecyclePolicyDeleteRequest,
+  S3LifecyclePolicyDeleteResponse,
   S3PolicyActionHistoryResponse,
   OptimizationIdleOverview,
   OptimizationCommitmentOverview,

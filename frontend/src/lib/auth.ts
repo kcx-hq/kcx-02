@@ -1,7 +1,7 @@
 export const KCX_AUTH_TOKEN_KEY = "kcx_auth_token"
 export const KCX_AUTH_USER_KEY = "kcx_auth_user"
 export const KCX_AUTH_EXPIRES_AT_KEY = "kcx_auth_expires_at"
-const LEGACY_AUTH_TOKEN_KEYS = ["auth_token", "token", "access_token"] as const
+const LEGACY_AUTH_TOKEN_KEYS = ["auth_token", "token", "access_token", "accessToken", "authToken"] as const
 
 export type AuthUser = {
   id: number | string

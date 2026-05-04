@@ -5,11 +5,15 @@ import type { DashboardScope } from "../dashboard.types.js";
 import { NotFoundError } from "../../../errors/http-errors.js";
 import type {
   S3BucketLifecycleInsight,
+  S3LifecycleBucketProfile,
+  S3LifecycleTemplateRecommendation,
   S3BucketLifecycleRuleSummary,
+  S3PolicyAppliedStatus,
   S3OptimizationBucketRow,
   S3PolicyActionHistoryItem,
   S3PolicyActionStatus,
 } from "./s3-optimization.types.js";
+import { logger } from "../../../utils/logger.js";
 
 type S3OptimizationDbRow = {
   bucket_name: string | null;
@@ -18,6 +22,23 @@ type S3OptimizationDbRow = {
   lifecycle_status: string | null;
   lifecycle_rules_count: number | string | null;
   scan_time: string | null;
+};
+
+type S3LatestAppliedPolicyRow = {
+  created_at: string | null;
+};
+
+type S3LatestPolicyActionRow = {
+  status: string | null;
+  created_at: string | null;
+};
+
+type S3WindowCostRow = {
+  total_cost: number | string | null;
+};
+
+type S3WindowStorageRow = {
+  avg_storage_gb: number | string | null;
 };
 
 type S3BucketLifecycleInsightDbRow = {
@@ -49,6 +70,8 @@ type S3PolicyActionHistoryDbRow = {
   scope_prefix: string | null;
   status: string | null;
   error_message: string | null;
+  request_payload_json: unknown;
+  response_payload_json: unknown;
   created_at: string | null;
   created_by_user_id: string | null;
 };
@@ -85,7 +108,7 @@ export class S3OptimizationRepository {
       }
       if (Array.isArray(scope.billingSourceIds) && scope.billingSourceIds.length > 0) {
         binds.push(scope.billingSourceIds);
-        where.push(`billing_source_id = ANY($${binds.length}::bigint[])`);
+        where.push(`(billing_source_id IS NULL OR billing_source_id = ANY($${binds.length}::bigint[]))`);
       }
     }
 
@@ -115,7 +138,7 @@ export class S3OptimizationRepository {
       { bind: binds, type: QueryTypes.SELECT },
     );
 
-    return rows.map((row) => {
+    const mappedRows = rows.map((row) => {
       const lifecycleRulesCount = toNumber(row.lifecycle_rules_count);
       const lifecycleStatus = row.lifecycle_status ? String(row.lifecycle_status) : null;
       return {
@@ -126,8 +149,67 @@ export class S3OptimizationRepository {
         lifecycleRulesCount,
         hasLifecyclePolicy: hasLifecyclePolicy(lifecycleStatus, lifecycleRulesCount),
         scanTime: String(row.scan_time ?? ""),
+        policyAppliedStatus: "NOT_APPLIED",
+        policyAppliedAt: null,
+        lifecycleSavings: {
+          status: "not_available",
+          policyAppliedAt: null,
+          calculationPeriod: null,
+          beforeCost: null,
+          afterCost: null,
+          estimatedMonthlySavingsMin: null,
+          estimatedMonthlySavingsMax: null,
+          realizedMonthlySavings: null,
+          savingsPercent: null,
+          beforeStorageGb: null,
+          afterStorageGb: null,
+          note: "Savings model unavailable.",
+        },
       };
     });
+
+    const withActionStatus = await Promise.all(
+      mappedRows.map(async (item) => {
+        try {
+          const action = await this.getLatestPolicyAction(scope.tenantId, item.bucketName, item.accountId);
+          const policyAppliedStatus = this.resolvePolicyAppliedStatus(item.hasLifecyclePolicy, action?.status ?? null);
+          return {
+            ...item,
+            policyAppliedStatus,
+            policyAppliedAt: action?.created_at ? String(action.created_at) : null,
+            lifecycleSavings: await this.getLifecycleSavings(scope, item),
+          };
+        } catch (error) {
+          logger.warn("S3 lifecycle savings: failed to compute, returning fallback", {
+            tenantId: scope.tenantId,
+            bucketName: item.bucketName,
+            accountId: item.accountId,
+            error: error instanceof Error ? error.message : String(error),
+          });
+          return {
+            ...item,
+            policyAppliedStatus: item.hasLifecyclePolicy ? "EXTERNAL" : "NOT_APPLIED",
+            policyAppliedAt: null,
+            lifecycleSavings: {
+              status: "not_available" as const,
+              policyAppliedAt: null,
+              calculationPeriod: null,
+              beforeCost: null,
+              afterCost: null,
+              estimatedMonthlySavingsMin: null,
+              estimatedMonthlySavingsMax: null,
+              realizedMonthlySavings: null,
+              savingsPercent: null,
+              beforeStorageGb: null,
+              afterStorageGb: null,
+              note: "Savings data is temporarily unavailable for this bucket.",
+            },
+          };
+        }
+      }),
+    );
+
+    return withActionStatus;
   }
 
   async getBucketLifecycleInsight(scope: DashboardScope, bucketName: string): Promise<S3BucketLifecycleInsight> {
@@ -206,7 +288,15 @@ export class S3OptimizationRepository {
           ? "Add transition actions (for example IA/Glacier tiers) to reduce long-term storage cost."
           : expirationRules.length === 0
             ? "Add expiration actions for stale or aged objects to avoid indefinite retention cost."
-            : "Review transition and expiration thresholds to align with workload retention and compliance targets.";
+          : "Review transition and expiration thresholds to align with workload retention and compliance targets.";
+
+    const profile = this.buildBucketProfile({
+      bucketName: String(row.bucket_name).trim(),
+      lifecycleRulesPayload: row.lifecycle_rules_json,
+      transitionRulesCount: transitionRules.length,
+      expirationRulesCount: expirationRules.length,
+    });
+    const templateRecommendation = this.recommendTemplate(profile);
 
     return {
       bucketName: String(row.bucket_name).trim(),
@@ -223,6 +313,8 @@ export class S3OptimizationRepository {
       headline,
       recommendation,
       topRules: rules.slice(0, 3),
+      profile,
+      templateRecommendation,
     };
   }
 
@@ -354,17 +446,6 @@ export class S3OptimizationRepository {
     const binds: unknown[] = [scope.tenantId];
     const where: string[] = ["tenant_id = $1::uuid"];
 
-    if (scope.scopeType === "global") {
-      if (typeof scope.providerId === "number") {
-        binds.push(scope.providerId);
-        where.push(`provider_id = $${binds.length}`);
-      }
-      if (Array.isArray(scope.billingSourceIds) && scope.billingSourceIds.length > 0) {
-        binds.push(scope.billingSourceIds);
-        where.push(`billing_source_id = ANY($${binds.length}::bigint[])`);
-      }
-    }
-
     const rows = await sequelize.query<S3PolicyActionHistoryDbRow>(
       `
       SELECT
@@ -379,6 +460,8 @@ export class S3OptimizationRepository {
         scope_prefix,
         status,
         error_message,
+        request_payload_json,
+        response_payload_json,
         created_at::text AS created_at,
         created_by_user_id::text AS created_by_user_id
       FROM s3_policy_action_logs
@@ -401,6 +484,14 @@ export class S3OptimizationRepository {
       scopePrefix: row.scope_prefix ? String(row.scope_prefix) : null,
       status: row.status === "FAILED" ? "FAILED" : "SUCCEEDED",
       errorMessage: row.error_message ? String(row.error_message) : null,
+      requestPayloadJson:
+        row.request_payload_json && typeof row.request_payload_json === "object"
+          ? (row.request_payload_json as Record<string, unknown>)
+          : null,
+      responsePayloadJson:
+        row.response_payload_json && typeof row.response_payload_json === "object"
+          ? (row.response_payload_json as Record<string, unknown>)
+          : null,
       createdAt: String(row.created_at ?? ""),
       createdByUserId: row.created_by_user_id ? String(row.created_by_user_id) : null,
     }));
@@ -433,5 +524,329 @@ export class S3OptimizationRepository {
         } satisfies S3BucketLifecycleRuleSummary;
       })
       .filter((rule): rule is S3BucketLifecycleRuleSummary => Boolean(rule));
+  }
+
+  private async getLifecycleSavings(
+    scope: DashboardScope,
+    row: Pick<S3OptimizationBucketRow, "bucketName" | "accountId" | "hasLifecyclePolicy">,
+  ): Promise<S3OptimizationBucketRow["lifecycleSavings"]> {
+    const policyAppliedAt = await this.getLatestPolicyAppliedAt(scope.tenantId, row.bucketName, row.accountId);
+    const currentStorageCost = await this.getBucketStorageCostForDays(scope.tenantId, row.bucketName, row.accountId, 30);
+    const optimizationFactor = row.hasLifecyclePolicy ? 0.12 : 0.28;
+    const estimatedCenter = Math.max(0, currentStorageCost * optimizationFactor);
+    const estimatedMonthlySavingsMin = Number((estimatedCenter * 0.8).toFixed(2));
+    const estimatedMonthlySavingsMax = Number((estimatedCenter * 1.2).toFixed(2));
+
+    if (!policyAppliedAt) {
+      return {
+        status: "estimated",
+        policyAppliedAt: null,
+        calculationPeriod: null,
+        beforeCost: null,
+        afterCost: null,
+        estimatedMonthlySavingsMin,
+        estimatedMonthlySavingsMax,
+        realizedMonthlySavings: null,
+        savingsPercent: null,
+        beforeStorageGb: null,
+        afterStorageGb: null,
+        note: "Estimated only. Apply lifecycle policy to start realized savings tracking.",
+      };
+    }
+
+    const appliedAtDate = new Date(policyAppliedAt);
+    const beforeStart = new Date(appliedAtDate);
+    beforeStart.setUTCDate(beforeStart.getUTCDate() - 30);
+    const afterEnd = new Date(appliedAtDate);
+    afterEnd.setUTCDate(afterEnd.getUTCDate() + 30);
+    const now = new Date();
+
+    const beforeCost = await this.getBucketStorageCostBetween(scope.tenantId, row.bucketName, row.accountId, beforeStart, appliedAtDate);
+    const afterCost = await this.getBucketStorageCostBetween(scope.tenantId, row.bucketName, row.accountId, appliedAtDate, afterEnd);
+    const beforeStorageGb = await this.getBucketStorageGbBetween(scope.tenantId, row.bucketName, row.accountId, beforeStart, appliedAtDate);
+    const afterStorageGb = await this.getBucketStorageGbBetween(scope.tenantId, row.bucketName, row.accountId, appliedAtDate, afterEnd);
+
+    const calculationPeriod = `${beforeStart.toISOString().slice(0, 10)} to ${afterEnd.toISOString().slice(0, 10)}`;
+    const realizedMonthlySavings = Number((beforeCost - afterCost).toFixed(2));
+    const savingsPercent = beforeCost > 0 ? Number((((beforeCost - afterCost) / beforeCost) * 100).toFixed(2)) : null;
+
+    if (afterEnd > now) {
+      return {
+        status: "tracking",
+        policyAppliedAt: appliedAtDate.toISOString(),
+        calculationPeriod,
+        beforeCost,
+        afterCost: null,
+        estimatedMonthlySavingsMin,
+        estimatedMonthlySavingsMax,
+        realizedMonthlySavings: null,
+        savingsPercent: null,
+        beforeStorageGb,
+        afterStorageGb: null,
+        note: "Actual savings calculation will be available after 30 days from policy apply date.",
+      };
+    }
+
+    return {
+      status: "realized",
+      policyAppliedAt: appliedAtDate.toISOString(),
+      calculationPeriod,
+      beforeCost,
+      afterCost,
+      estimatedMonthlySavingsMin,
+      estimatedMonthlySavingsMax,
+      realizedMonthlySavings,
+      savingsPercent,
+      beforeStorageGb,
+      afterStorageGb,
+      note: "Realized savings calculated from CUR before/after 30-day storage cost windows.",
+    };
+  }
+
+  private async getLatestPolicyAppliedAt(tenantId: string, bucketName: string, accountId: string): Promise<string | null> {
+    const row = await sequelize.query<S3LatestAppliedPolicyRow>(
+      `
+      SELECT created_at::text AS created_at
+      FROM s3_policy_action_logs
+      WHERE tenant_id = $1::uuid
+        AND LOWER(bucket_name) = LOWER($2::text)
+        AND status = 'SUCCEEDED'
+      ORDER BY
+        CASE WHEN COALESCE(account_id, '') = COALESCE($3::text, '') THEN 0 ELSE 1 END,
+        created_at DESC
+      LIMIT 1;
+      `,
+      { bind: [tenantId, bucketName, accountId], type: QueryTypes.SELECT, plain: true },
+    );
+    return row?.created_at ? String(row.created_at) : null;
+  }
+
+  private async getLatestPolicyAction(tenantId: string, bucketName: string, accountId: string): Promise<S3LatestPolicyActionRow | null> {
+    const row = await sequelize.query<S3LatestPolicyActionRow>(
+      `
+      SELECT status, created_at::text AS created_at
+      FROM s3_policy_action_logs
+      WHERE tenant_id = $1::uuid
+        AND LOWER(bucket_name) = LOWER($2::text)
+      ORDER BY
+        CASE WHEN COALESCE(account_id, '') = COALESCE($3::text, '') THEN 0 ELSE 1 END,
+        created_at DESC
+      LIMIT 1;
+      `,
+      { bind: [tenantId, bucketName, accountId], type: QueryTypes.SELECT, plain: true },
+    );
+    return row ?? null;
+  }
+
+  private resolvePolicyAppliedStatus(
+    hasLifecyclePolicyFlag: boolean,
+    latestActionStatusRaw: string | null,
+  ): S3PolicyAppliedStatus {
+    const latestActionStatus = String(latestActionStatusRaw ?? "").trim().toUpperCase();
+    if (latestActionStatus === "SUCCEEDED") return "APPLIED";
+    if (latestActionStatus === "FAILED") return "FAILED";
+    if (hasLifecyclePolicyFlag) return "APPLIED";
+    return "NOT_APPLIED";
+  }
+
+  private async getBucketStorageCostForDays(tenantId: string, bucketName: string, accountId: string, days: number): Promise<number> {
+    const end = new Date();
+    const start = new Date();
+    start.setUTCDate(start.getUTCDate() - days);
+    return this.getBucketStorageCostBetween(tenantId, bucketName, accountId, start, end);
+  }
+
+  private async getBucketStorageCostBetween(
+    tenantId: string,
+    bucketName: string,
+    accountId: string,
+    start: Date,
+    end: Date,
+  ): Promise<number> {
+    const row = await sequelize.query<S3WindowCostRow>(
+      `
+      SELECT COALESCE(SUM(COALESCE(fcli.billed_cost, 0)), 0)::double precision AS total_cost
+      FROM fact_cloud_line_items fcli
+      LEFT JOIN dim_services ds ON ds.id = fcli.service_id
+      LEFT JOIN dim_resources dres ON dres.id = fcli.resource_id
+      LEFT JOIN dim_sub_accounts dsa ON dsa.id = fcli.sub_account_id
+      WHERE fcli.tenant_id = $1::uuid
+        AND fcli.usage_start_time >= $2::timestamptz
+        AND fcli.usage_start_time < $3::timestamptz
+        AND (
+          LOWER(COALESCE(ds.service_name, '')) LIKE '%s3%'
+          OR LOWER(COALESCE(ds.service_name, '')) LIKE '%simple storage service%'
+        )
+        AND LOWER(
+          CASE
+            WHEN COALESCE(dres.resource_id, '') = '' THEN 'unattributed'
+            WHEN LOWER(dres.resource_id) LIKE 'arn:aws:s3:::%' THEN NULLIF(SPLIT_PART(dres.resource_id, ':::', 2), '')
+            WHEN LOWER(dres.resource_id) LIKE 's3://%' THEN NULLIF(SPLIT_PART(SUBSTRING(dres.resource_id FROM 6), '/', 1), '')
+            ELSE dres.resource_id
+          END
+        ) = LOWER($4::text)
+        AND COALESCE(dsa.sub_account_id, '') = COALESCE($5::text, '')
+        AND (
+          LOWER(COALESCE(fcli.usage_type, '')) LIKE '%timedstorage%'
+          OR LOWER(COALESCE(fcli.usage_type, '')) LIKE '%storage%'
+          OR LOWER(COALESCE(fcli.usage_type, '')) LIKE '%bytehrs%'
+          OR LOWER(COALESCE(fcli.product_usage_type, '')) LIKE '%timedstorage%'
+          OR LOWER(COALESCE(fcli.product_usage_type, '')) LIKE '%storage%'
+        );
+      `,
+      {
+        bind: [tenantId, start.toISOString(), end.toISOString(), bucketName, accountId],
+        type: QueryTypes.SELECT,
+        plain: true,
+      },
+    );
+    return Math.max(0, toNumber(row?.total_cost) ?? 0);
+  }
+
+  private async getBucketStorageGbBetween(
+    tenantId: string,
+    bucketName: string,
+    accountId: string,
+    start: Date,
+    end: Date,
+  ): Promise<number | null> {
+    const row = await sequelize.query<S3WindowStorageRow>(
+      `
+      SELECT
+        AVG(COALESCE(current_version_bytes, 0) / 1073741824.0)::double precision AS avg_storage_gb
+      FROM s3_storage_lens_daily
+      WHERE tenant_id = $1::uuid
+        AND LOWER(bucket_name) = LOWER($2::text)
+        AND usage_date >= $4::date
+        AND usage_date < $5::date;
+      `,
+      {
+        bind: [tenantId, bucketName, accountId, start.toISOString().slice(0, 10), end.toISOString().slice(0, 10)],
+        type: QueryTypes.SELECT,
+        plain: true,
+      },
+    );
+    const value = toNumber(row?.avg_storage_gb);
+    return value == null ? null : Number(Math.max(0, value).toFixed(2));
+  }
+
+  private buildBucketProfile(input: {
+    bucketName: string;
+    lifecycleRulesPayload: unknown;
+    transitionRulesCount: number;
+    expirationRulesCount: number;
+  }): S3LifecycleBucketProfile {
+    const bucketNameLc = input.bucketName.toLowerCase();
+    const root = input.lifecycleRulesPayload && typeof input.lifecycleRulesPayload === "object"
+      ? (input.lifecycleRulesPayload as { Rules?: unknown })
+      : null;
+    const rules = Array.isArray(root?.Rules) ? root?.Rules : [];
+
+    const prefixes: string[] = [];
+    let noncurrentRuleSignals = false;
+    let objectSizeFilteredRuleCount = 0;
+
+    for (const rawRule of rules) {
+      if (!rawRule || typeof rawRule !== "object") continue;
+      const rule = rawRule as Record<string, unknown>;
+      const filter = rule.Filter && typeof rule.Filter === "object" ? (rule.Filter as Record<string, unknown>) : null;
+      const filterPrefix = typeof filter?.Prefix === "string" ? filter.Prefix.trim() : "";
+      const topLevelPrefix = typeof rule.Prefix === "string" ? String(rule.Prefix).trim() : "";
+      const prefix = filterPrefix || topLevelPrefix;
+      if (prefix) prefixes.push(prefix);
+
+      const hasNoncurrentTransitions = Array.isArray(rule.NoncurrentVersionTransitions) && rule.NoncurrentVersionTransitions.length > 0;
+      const hasNoncurrentExpiration = Boolean(rule.NoncurrentVersionExpiration);
+      const hasExpiredDeleteMarker =
+        Boolean(rule.Expiration && typeof rule.Expiration === "object" && "ExpiredObjectDeleteMarker" in (rule.Expiration as Record<string, unknown>));
+
+      if (hasNoncurrentTransitions || hasNoncurrentExpiration || hasExpiredDeleteMarker) {
+        noncurrentRuleSignals = true;
+      }
+
+      const hasObjectSizeFilter = Boolean(
+        filter &&
+          (typeof filter.ObjectSizeGreaterThan === "number" ||
+            typeof filter.ObjectSizeLessThan === "number"),
+      );
+      if (hasObjectSizeFilter) objectSizeFilteredRuleCount += 1;
+    }
+
+    const normalizedPrefixes = prefixes.map((value) => value.toLowerCase()).filter(Boolean);
+    const primaryPrefix = normalizedPrefixes[0] ?? null;
+    const joinedSignals = [bucketNameLc, ...normalizedPrefixes].join(" ");
+
+    const hasLogsPattern = /\blogs?\b|\/logs?\b/.test(joinedSignals);
+    const hasTempPattern = /\btmp\b|\btemp\b|\/tmp\b|\/temp\b|\/cache\b/.test(joinedSignals);
+    const hasBackupPattern = /\bbackup\b|\barchive\b|\/backup\b|\/archive\b|snapshot/.test(joinedSignals);
+
+    const bucketPattern: S3LifecycleBucketProfile["bucketPattern"] = noncurrentRuleSignals
+      ? "versioned"
+      : hasLogsPattern
+        ? "logs"
+        : hasTempPattern
+          ? "temp"
+          : hasBackupPattern
+            ? "backup"
+            : "general";
+
+    return {
+      bucketPattern,
+      hasExplicitPrefixRules: normalizedPrefixes.length > 0,
+      primaryPrefix,
+      noncurrentRuleSignals,
+      transitionRuleCount: input.transitionRulesCount,
+      expirationRuleCount: input.expirationRulesCount,
+      objectSizeFilteredRuleCount,
+    };
+  }
+
+  private recommendTemplate(profile: S3LifecycleBucketProfile): S3LifecycleTemplateRecommendation {
+    if (profile.noncurrentRuleSignals || profile.bucketPattern === "versioned") {
+      return {
+        templateKey: "version",
+        confidence: "high",
+        reason: "Bucket rules include versioned-object cleanup signals (noncurrent transitions/expiration or delete markers).",
+        suggestedPrefix: null,
+      };
+    }
+    if (profile.bucketPattern === "logs") {
+      return {
+        templateKey: "logs",
+        confidence: "high",
+        reason: "Bucket/prefix naming suggests log retention workflow.",
+        suggestedPrefix: profile.primaryPrefix ?? "logs/",
+      };
+    }
+    if (profile.bucketPattern === "temp") {
+      return {
+        templateKey: "temp",
+        confidence: "high",
+        reason: "Bucket/prefix naming suggests temporary object cleanup pattern.",
+        suggestedPrefix: profile.primaryPrefix ?? "tmp/",
+      };
+    }
+    if (profile.bucketPattern === "backup") {
+      return {
+        templateKey: "backup",
+        confidence: "high",
+        reason: "Bucket/prefix naming suggests backup/archive retention pattern.",
+        suggestedPrefix: profile.primaryPrefix ?? "backups/",
+      };
+    }
+    if (profile.hasExplicitPrefixRules) {
+      return {
+        templateKey: "logs",
+        confidence: "medium",
+        reason: "Existing lifecycle rules already use prefix-scoped filters.",
+        suggestedPrefix: profile.primaryPrefix,
+      };
+    }
+    return {
+      templateKey: "safe",
+      confidence: "medium",
+      reason: "No strong prefix/version signals found. Safe cost optimization is the default baseline.",
+      suggestedPrefix: null,
+    };
   }
 }
