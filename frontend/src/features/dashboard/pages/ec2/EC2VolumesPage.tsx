@@ -51,9 +51,6 @@ const formatSize = (value: number | null | undefined): string => {
   return `${value.toLocaleString()} GB`;
 };
 
-const getAttachmentLabel = (volume: InventoryEc2VolumeRow): "Attached" | "Unattached" =>
-  volume.isAttached ? "Attached" : "Unattached";
-
 const formatVolumeStatus = (volume: InventoryEc2VolumeRow): string => {
   const raw = volume.statusLabel ?? volume.status;
   if (!raw) return "-";
@@ -166,7 +163,7 @@ export default function EC2VolumesPage() {
   const columnDefs = useMemo<ColDef<InventoryEc2VolumeRow>[]>(
     () => [
       {
-        headerName: "Volume",
+        headerName: "Identity: Volume ID / Name",
         field: "volumeId",
         minWidth: 220,
         cellRenderer: (params: ICellRendererParams<InventoryEc2VolumeRow>) => {
@@ -181,37 +178,77 @@ export default function EC2VolumesPage() {
         },
       },
       {
-        headerName: "Cost",
-        field: "mtdCost",
-        minWidth: 130,
-        valueFormatter: (params: ValueFormatterParams<InventoryEc2VolumeRow, number | null | undefined>) =>
-          formatCurrency(params.value),
+        headerName: "Association: Active / Attached",
+        minWidth: 170,
+        valueGetter: (params) => (params.data?.isAttached ? "Active / Attached" : "Inactive / Unattached"),
       },
       {
-        headerName: "Size",
+        headerName: "Usage: Size GB",
+        minWidth: 130,
         field: "sizeGb",
-        minWidth: 120,
         valueFormatter: (params: ValueFormatterParams<InventoryEc2VolumeRow, number | null | undefined>) =>
           formatSize(params.value),
       },
       {
-        headerName: "Type",
+        headerName: "Usage: Hours",
+        minWidth: 110,
+        field: "hours",
+      },
+      {
+        headerName: "Identity: Status",
+        field: "state",
+        minWidth: 130,
+        valueFormatter: (params: ValueFormatterParams<InventoryEc2VolumeRow, string | null | undefined>) =>
+          toTitle(params.value),
+      },
+      {
+        headerName: "Identity: Type",
         field: "volumeType",
         minWidth: 110,
         valueFormatter: (params: ValueFormatterParams<InventoryEc2VolumeRow, string | null | undefined>) =>
           params.value ?? "-",
       },
       {
-        headerName: "State",
-        field: "state",
-        minWidth: 120,
+        headerName: "Association: Instance Name",
+        field: "attachedInstanceName",
+        minWidth: 170,
         valueFormatter: (params: ValueFormatterParams<InventoryEc2VolumeRow, string | null | undefined>) =>
-          toTitle(params.value),
+          params.value ?? "-",
       },
       {
-        headerName: "Attachment",
+        headerName: "Cost: Total",
+        field: "mtdCost",
         minWidth: 130,
-        valueGetter: (params) => (params.data ? getAttachmentLabel(params.data) : "-"),
+        valueFormatter: (params: ValueFormatterParams<InventoryEc2VolumeRow, number | null | undefined>) =>
+          formatCurrency(params.value),
+      },
+      {
+        headerName: "Cost: Storage",
+        field: "storageCost",
+        minWidth: 130,
+        valueFormatter: (params: ValueFormatterParams<InventoryEc2VolumeRow, number | null | undefined>) =>
+          formatCurrency(params.value),
+      },
+      {
+        headerName: "Cost: IO",
+        field: "ioCost",
+        minWidth: 120,
+        valueFormatter: (params: ValueFormatterParams<InventoryEc2VolumeRow, number | null | undefined>) =>
+          formatCurrency(params.value),
+      },
+      {
+        headerName: "Cost: PIOPS",
+        field: "pioPSCost",
+        minWidth: 120,
+        valueFormatter: (params: ValueFormatterParams<InventoryEc2VolumeRow, number | null | undefined>) =>
+          formatCurrency(params.value),
+      },
+      {
+        headerName: "Insights: SSD Savings",
+        field: "ssdSavings",
+        minWidth: 140,
+        valueFormatter: (params: ValueFormatterParams<InventoryEc2VolumeRow, number | null | undefined>) =>
+          formatCurrency(params.value),
       },
       {
         headerName: "Status",

@@ -12,15 +12,17 @@ const SAVINGS_RATE = {
   internet: 0.2,
   inter_region: 0.3,
   inter_az: 0.25,
+  regional: 0.15,
   unknown: 0.1,
 } as const;
-const toTransferRecommendation = (input: { transferType: "internet" | "inter_region" | "inter_az" | "unknown"; cost: number; usageGb: number }): { recommendation: string | null; severity: "low" | "medium" | "high" | null } => {
+const toTransferRecommendation = (input: { transferType: "internet" | "inter_region" | "inter_az" | "regional" | "unknown"; cost: number; usageGb: number }): { recommendation: string | null; severity: "low" | "medium" | "high" | null } => {
   if (input.transferType === "internet") {
     if (input.cost >= 10 || input.usageGb >= 100) return { recommendation: "Review public traffic, use CDN/caching/compression where applicable.", severity: input.cost >= 50 || input.usageGb >= 500 ? "high" : "medium" };
     return { recommendation: null, severity: null };
   }
   if (input.transferType === "inter_region" && input.cost > 0) return { recommendation: "Co-locate dependent services in the same region where possible.", severity: input.cost >= 25 ? "high" : "medium" };
   if (input.transferType === "inter_az" && input.cost > 0) return { recommendation: "Review cross-AZ communication and placement of chatty services.", severity: input.cost >= 20 ? "high" : "medium" };
+  if (input.transferType === "regional" && input.cost > 0) return { recommendation: "Validate whether regional transfer can be reduced with locality-aware design.", severity: input.cost >= 20 ? "medium" : "low" };
   if (input.transferType === "unknown" && input.cost >= 5) return { recommendation: "Review billing usage type and source resource mapping.", severity: input.cost >= 25 ? "medium" : "low" };
   return { recommendation: null, severity: null };
 };
@@ -169,6 +171,7 @@ export class Ec2DataTransferService {
       internet: rows.filter((row) => row.transferType === "internet").reduce((sum, row) => sum + row.cost, 0),
       inter_region: rows.filter((row) => row.transferType === "inter_region").reduce((sum, row) => sum + row.cost, 0),
       inter_az: rows.filter((row) => row.transferType === "inter_az").reduce((sum, row) => sum + row.cost, 0),
+      regional: rows.filter((row) => row.transferType === "regional").reduce((sum, row) => sum + row.cost, 0),
       unknown: rows.filter((row) => row.transferType === "unknown").reduce((sum, row) => sum + row.cost, 0),
     };
 
@@ -176,10 +179,11 @@ export class Ec2DataTransferService {
       internet: rows.filter((row) => row.transferType === "internet").reduce((sum, row) => sum + row.usageGb, 0),
       inter_region: rows.filter((row) => row.transferType === "inter_region").reduce((sum, row) => sum + row.usageGb, 0),
       inter_az: rows.filter((row) => row.transferType === "inter_az").reduce((sum, row) => sum + row.usageGb, 0),
+      regional: rows.filter((row) => row.transferType === "regional").reduce((sum, row) => sum + row.usageGb, 0),
       unknown: rows.filter((row) => row.transferType === "unknown").reduce((sum, row) => sum + row.usageGb, 0),
     };
 
-    const breakdown = (["internet", "inter_region", "inter_az", "unknown"] as const).map((transferType) => {
+    const breakdown = (["internet", "inter_region", "inter_az", "regional", "unknown"] as const).map((transferType) => {
       const scopedRows = rows.filter((row) => row.transferType === transferType);
       return {
         transferType,
@@ -192,15 +196,16 @@ export class Ec2DataTransferService {
       };
     });
 
-    const trendMap = new Map<string, { internetCost: number; interRegionCost: number; interAzCost: number; unknownCost: number; usageGb: number }>();
+    const trendMap = new Map<string, { internetCost: number; interRegionCost: number; interAzCost: number; regionalCost: number; unknownCost: number; usageGb: number }>();
     for (const raw of rows) {
       const working = grouped.get(rowKey(raw));
       if (!working) continue;
       for (const [date, value] of working.dateMap.entries()) {
-        const existing = trendMap.get(date) ?? { internetCost: 0, interRegionCost: 0, interAzCost: 0, unknownCost: 0, usageGb: 0 };
+        const existing = trendMap.get(date) ?? { internetCost: 0, interRegionCost: 0, interAzCost: 0, regionalCost: 0, unknownCost: 0, usageGb: 0 };
         if (raw.transferType === "internet") existing.internetCost += value.cost;
         if (raw.transferType === "inter_region") existing.interRegionCost += value.cost;
         if (raw.transferType === "inter_az") existing.interAzCost += value.cost;
+        if (raw.transferType === "regional") existing.regionalCost += value.cost;
         if (raw.transferType === "unknown") existing.unknownCost += value.cost;
         existing.usageGb += value.usageGb;
         trendMap.set(date, existing);
@@ -214,8 +219,9 @@ export class Ec2DataTransferService {
         internetCost: round2(value.internetCost),
         interRegionCost: round2(value.interRegionCost),
         interAzCost: round2(value.interAzCost),
+        regionalCost: round2(value.regionalCost),
         unknownCost: round2(value.unknownCost),
-        totalCost: round2(value.internetCost + value.interRegionCost + value.interAzCost + value.unknownCost),
+        totalCost: round2(value.internetCost + value.interRegionCost + value.interAzCost + value.regionalCost + value.unknownCost),
         usageGb: round2(value.usageGb),
       }));
 
@@ -227,11 +233,13 @@ export class Ec2DataTransferService {
         internetCost: round2(costByType.internet),
         interRegionCost: round2(costByType.inter_region),
         interAzCost: round2(costByType.inter_az),
+        regionalCost: round2(costByType.regional),
         unknownCost: round2(costByType.unknown),
         potentialSavings: round2(
           costByType.internet * SAVINGS_RATE.internet +
             costByType.inter_region * SAVINGS_RATE.inter_region +
             costByType.inter_az * SAVINGS_RATE.inter_az +
+            costByType.regional * SAVINGS_RATE.regional +
             costByType.unknown * SAVINGS_RATE.unknown,
         ),
       },

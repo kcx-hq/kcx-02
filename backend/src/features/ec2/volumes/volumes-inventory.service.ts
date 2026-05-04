@@ -68,6 +68,11 @@ type VolumeRow = {
   mtdCost: number | string | null;
   snapshotCount: number | string | null;
   snapshotCost: number | string | null;
+  storageCost: number | string | null;
+  ioCost: number | string | null;
+  pioPSCost: number | string | null;
+  hours: number | string | null;
+  ssdSavings: number | string | null;
   isUnattached: boolean | null;
   isAttachedToStoppedInstance: boolean | null;
   isIdleCandidate: boolean | null;
@@ -500,6 +505,11 @@ export class VolumesInventoryService {
         base.mtd_cost AS "mtdCost",
         base.snapshot_count AS "snapshotCount",
         base.snapshot_cost AS "snapshotCost",
+        base.storage_cost AS "storageCost",
+        base.io_cost AS "ioCost",
+        base.piops_cost AS "pioPSCost",
+        base.hours AS "hours",
+        base.ssd_savings AS "ssdSavings",
         base.is_unattached AS "isUnattached",
         base.is_attached_to_stopped_instance AS "isAttachedToStoppedInstance",
         base.is_idle_candidate AS "isIdleCandidate",
@@ -547,6 +557,11 @@ export class VolumesInventoryService {
       mtdCost: toNumberOrZero(row.mtdCost),
       snapshotCount: toNumberOrZero(row.snapshotCount),
       snapshotCost: toNumberOrZero(row.snapshotCost),
+      storageCost: toNumberOrZero(row.storageCost),
+      ioCost: toNumberOrZero(row.ioCost),
+      pioPSCost: toNumberOrZero(row.pioPSCost),
+      hours: toNumberOrZero(row.hours),
+      ssdSavings: toNumberOrZero(row.ssdSavings),
       isUnattached: row.isUnattached,
       isAttachedToStoppedInstance: row.isAttachedToStoppedInstance,
       isIdleCandidate: row.isIdleCandidate,
@@ -878,6 +893,9 @@ export class VolumesInventoryService {
           f.cloud_connection_id::text AS cloud_connection_id,
           f.usage_date,
           f.total_cost::double precision AS total_cost,
+          COALESCE(f.storage_cost, 0)::double precision AS storage_cost,
+          COALESCE(f.io_cost, 0)::double precision AS io_cost,
+          COALESCE(f.throughput_cost, 0)::double precision AS throughput_cost,
           f.currency_code,
           ROW_NUMBER() OVER (
             PARTITION BY f.volume_id, f.cloud_connection_id
@@ -894,6 +912,10 @@ export class VolumesInventoryService {
           cost_scoped.volume_id,
           cost_scoped.cloud_connection_id,
           COALESCE(SUM(cost_scoped.total_cost), 0)::double precision AS mtd_cost,
+          COALESCE(SUM(cost_scoped.storage_cost), 0)::double precision AS storage_cost,
+          COALESCE(SUM(cost_scoped.io_cost), 0)::double precision AS io_cost,
+          COALESCE(SUM(cost_scoped.throughput_cost), 0)::double precision AS piops_cost,
+          (($3::date - $2::date + 1) * 24)::double precision AS hours,
           COALESCE(
             SUM(
               CASE WHEN cost_scoped.usage_date = cost_scoped.latest_usage_date THEN cost_scoped.total_cost ELSE 0 END
@@ -991,6 +1013,11 @@ export class VolumesInventoryService {
           cost_latest.currency_code,
           COALESCE(cost_agg.daily_cost, 0)::double precision AS daily_cost,
           COALESCE(cost_agg.mtd_cost, 0)::double precision AS mtd_cost,
+          COALESCE(cost_agg.storage_cost, 0)::double precision AS storage_cost,
+          COALESCE(cost_agg.io_cost, 0)::double precision AS io_cost,
+          COALESCE(cost_agg.piops_cost, 0)::double precision AS piops_cost,
+          COALESCE(cost_agg.hours, 0)::double precision AS hours,
+          0::double precision AS ssd_savings,
           COALESCE(snapshot.snapshot_count, 0)::double precision AS snapshot_count,
           COALESCE(snapshot.snapshot_cost, 0)::double precision AS snapshot_cost,
           COALESCE(NOT COALESCE(current.is_attached, FALSE), FALSE) AS is_unattached,
@@ -1046,7 +1073,11 @@ export class VolumesInventoryService {
         LEFT JOIN LATERAL (
           SELECT
             agg.daily_cost,
-            agg.mtd_cost
+            agg.mtd_cost,
+            agg.storage_cost,
+            agg.io_cost,
+            agg.piops_cost,
+            agg.hours
           FROM cost_agg agg
           WHERE agg.volume_id = current.volume_id
             AND (

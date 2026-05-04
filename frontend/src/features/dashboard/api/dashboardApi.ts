@@ -293,6 +293,8 @@ function withEc2ExplorerFilters(
 
   params.set("metric", filters.metric);
   params.set("groupBy", filters.groupBy);
+  if (filters.granularity) params.set("granularity", filters.granularity);
+  if (filters.volumeView) params.set("volumeView", filters.volumeView);
   if (filters.startDate) params.set("startDate", filters.startDate);
   if (filters.endDate) params.set("endDate", filters.endDate);
   if (typeof filters.tagKey === "string" && filters.tagKey.trim().length > 0) {
@@ -318,6 +320,16 @@ function withEc2ExplorerFilters(
 
   appendArray("states", filters.states);
   appendArray("instanceTypes", filters.instanceTypes);
+  appendArray("teams", filters.teams);
+  appendArray("products", filters.products);
+  appendArray("environments", filters.environments);
+  appendArray("accounts", filters.accounts);
+  appendArray("volumeTypes", filters.volumeTypes);
+  appendArray("volumeStatuses", filters.volumeStatuses);
+  if (filters.volumeAttachment) params.set("volumeAttachment", filters.volumeAttachment);
+  if (typeof filters.debugDataTransfer === "boolean") {
+    params.set("debugDataTransfer", String(filters.debugDataTransfer));
+  }
 
   const query = params.toString();
   return query.length > 0 ? `${path}?${query}` : path;

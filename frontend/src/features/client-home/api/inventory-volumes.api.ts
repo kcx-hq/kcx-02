@@ -28,6 +28,11 @@ export type InventoryEc2VolumeRow = {
   mtdCost: number
   snapshotCount: number
   snapshotCost: number
+  storageCost: number
+  ioCost: number
+  pioPSCost: number
+  hours: number
+  ssdSavings: number
   isUnattached: boolean | null
   isAttachedToStoppedInstance: boolean | null
   isIdleCandidate: boolean | null
@@ -249,6 +254,11 @@ const normalizeVolumeRow = (value: unknown): InventoryEc2VolumeRow | null => {
     mtdCost: toNumberOrNull(value.mtdCost) ?? 0,
     snapshotCount: toNumberOrNull(value.snapshotCount) ?? 0,
     snapshotCost: toNumberOrNull(value.snapshotCost) ?? 0,
+    storageCost: toNumberOrNull(value.storageCost) ?? 0,
+    ioCost: toNumberOrNull(value.ioCost) ?? 0,
+    pioPSCost: toNumberOrNull(value.pioPSCost) ?? 0,
+    hours: toNumberOrNull(value.hours) ?? 0,
+    ssdSavings: toNumberOrNull(value.ssdSavings) ?? 0,
     isUnattached: toBooleanOrNull(value.isUnattached),
     isAttachedToStoppedInstance: toBooleanOrNull(value.isAttachedToStoppedInstance),
     isIdleCandidate: toBooleanOrNull(value.isIdleCandidate),

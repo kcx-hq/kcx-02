@@ -6,6 +6,7 @@ import type { DashboardScope } from "../../dashboard/dashboard.types.js";
 import {
   EC2_COST_BASIS,
   EC2_EXPLORER_GROUP_BY,
+  EC2_EXPLORER_GRANULARITIES,
   EC2_EXPLORER_METRICS,
   EC2_INSTANCE_CONDITIONS,
   EC2_USAGE_AGGREGATIONS,
@@ -63,6 +64,8 @@ const querySchema = z
     startDate: z.string().regex(DATE_ONLY_REGEX),
     endDate: z.string().regex(DATE_ONLY_REGEX),
     metric: z.enum(EC2_EXPLORER_METRICS),
+    granularity: z.enum(EC2_EXPLORER_GRANULARITIES),
+    volumeView: z.enum(["storage", "storage_hours", "cost", "count"]),
     groupBy: z.enum(EC2_EXPLORER_GROUP_BY),
     tagKey: z.string().trim().min(1).max(200).nullable(),
     regions: z.array(z.string().trim().min(1)).max(200),
@@ -80,6 +83,14 @@ const querySchema = z
     maxNetwork: z.number().nullable(),
     states: z.array(z.string().trim().min(1)).max(200),
     instanceTypes: z.array(z.string().trim().min(1)).max(200),
+    teams: z.array(z.string().trim().min(1)).max(200),
+    products: z.array(z.string().trim().min(1)).max(200),
+    environments: z.array(z.string().trim().min(1)).max(200),
+    accounts: z.array(z.string().trim().min(1)).max(200),
+    volumeTypes: z.array(z.string().trim().min(1)).max(200),
+    volumeAttachment: z.enum(["all", "attached", "unattached"]),
+    volumeStatuses: z.array(z.string().trim().min(1)).max(200),
+    debugDataTransfer: z.boolean(),
   })
   .superRefine((value, ctx) => {
     if (value.startDate > value.endDate) {
@@ -97,14 +108,77 @@ const querySchema = z
       });
     }
     if (value.metric === "usage") {
-      const allowedForCpu = new Set(["team", "product", "environment", "region", "account", "instance_type", "tag"]);
-      const allowedForNetwork = new Set(["network_type", "region", "account", "instance_type", "tag"]);
-      const allowed = value.usageType === "network" ? allowedForNetwork : allowedForCpu;
+      const allowed = new Set(["none", "region", "account", "availability_zone", "instance", "instance_type", "usage_type", "tag"]);
       if (!allowed.has(value.groupBy)) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           path: ["groupBy"],
           message: `groupBy=${value.groupBy} is not allowed for usageType=${value.usageType}`,
+        });
+      }
+    }
+    if (value.metric === "cost") {
+      const allowed = new Set(["none", "cost_category", "region", "account", "availability_zone", "instance", "instance_type", "reservation_type", "usage_type", "operation", "tag"]);
+      if (!allowed.has(value.groupBy)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["groupBy"],
+          message: `groupBy=${value.groupBy} is not allowed for metric=cost`,
+        });
+      }
+    }
+    if (value.metric === "instances") {
+      const allowed = new Set(["none", "region", "account", "availability_zone", "instance", "instance_type", "instance_state", "reservation_type", "recommendation", "tag"]);
+      if (!allowed.has(value.groupBy)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["groupBy"],
+          message: `groupBy=${value.groupBy} is not allowed for metric=instances`,
+        });
+      }
+    }
+    if (value.metric === "volumes") {
+      const allowed = new Set([
+        "none",
+        "volume",
+        "volume_type",
+        "attachment_state",
+        "instance",
+        "region",
+        "account",
+        "availability_zone",
+        "tag",
+        "storage_tier",
+        "iops_tier",
+        "size_bucket",
+        "lifecycle_state",
+      ]);
+      if (!allowed.has(value.groupBy)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["groupBy"],
+          message: `groupBy=${value.groupBy} is not allowed for metric=volumes`,
+        });
+      }
+    }
+    if (value.metric === "data_transfer") {
+      const allowed = new Set([
+        "none",
+        "transfer_type",
+        "region",
+        "account",
+        "availability_zone",
+        "instance",
+        "instance_type",
+        "source_region",
+        "destination_region",
+        "tag",
+      ]);
+      if (!allowed.has(value.groupBy)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["groupBy"],
+          message: `groupBy=${value.groupBy} is not allowed for metric=data_transfer`,
         });
       }
     }
@@ -122,15 +196,41 @@ export function buildEc2ExplorerInput(req: Request, scope: DashboardScope): Ec2E
     firstQueryValue(req.query.to) ??
     scope.to;
   const metric = firstQueryValue(req.query.metric) ?? "cost";
+  const granularity = firstQueryValue(req.query.granularity) ?? "daily";
+  const volumeViewRaw = firstQueryValue(req.query.volumeView) ?? firstQueryValue(req.query.view) ?? "storage";
+  const volumeView =
+    volumeViewRaw === "storage-hours" ? "storage_hours" : volumeViewRaw;
   const groupByRaw = firstQueryValue(req.query.groupBy) ?? "none";
   const groupBy = groupByRaw === "instance-type"
     ? "instance_type"
-    : groupByRaw === "reservation-type"
-      ? "reservation_type"
+      : groupByRaw === "reservation-type"
+        ? "reservation_type"
       : groupByRaw === "network-cost"
-        ? "network_cost"
+        ? "cost_category"
         : groupByRaw === "network-type"
-          ? "network_type"
+          ? "usage_type"
+      : groupByRaw === "availability-zone"
+        ? "availability_zone"
+      : groupByRaw === "usage-type"
+        ? "usage_type"
+      : groupByRaw === "instance-state"
+        ? "instance_state"
+      : groupByRaw === "attachment-state"
+        ? "attachment_state"
+      : groupByRaw === "storage-tier"
+        ? "storage_tier"
+      : groupByRaw === "iops-tier"
+        ? "iops_tier"
+      : groupByRaw === "size-bucket"
+        ? "size_bucket"
+      : groupByRaw === "lifecycle-state"
+        ? "lifecycle_state"
+      : groupByRaw === "transfer-type"
+        ? "transfer_type"
+      : groupByRaw === "source-region"
+        ? "source_region"
+      : groupByRaw === "destination-region"
+        ? "destination_region"
       : groupByRaw;
   const tagKeyRaw = firstQueryValue(req.query.tagKey);
   const tagKey = tagKeyRaw && tagKeyRaw.trim().length > 0 ? tagKeyRaw.trim() : null;
@@ -157,6 +257,8 @@ export function buildEc2ExplorerInput(req: Request, scope: DashboardScope): Ec2E
     startDate,
     endDate,
     metric,
+    granularity,
+    volumeView,
     groupBy,
     tagKey,
     regions: parseStringArray(req.query.regions),
@@ -174,6 +276,20 @@ export function buildEc2ExplorerInput(req: Request, scope: DashboardScope): Ec2E
     maxNetwork: parseOptionalNumber(req.query.maxNetwork),
     states: parseStringArray(req.query.states),
     instanceTypes: parseStringArray(req.query.instanceTypes),
+    teams: parseStringArray(req.query.teams),
+    products: parseStringArray(req.query.products),
+    environments: parseStringArray(req.query.environments),
+    accounts: parseStringArray(req.query.accounts),
+    volumeTypes: parseStringArray(req.query.volumeTypes),
+    volumeAttachment: (firstQueryValue(req.query.volumeAttachment) ?? "all") as "all" | "attached" | "unattached",
+    volumeStatuses: parseStringArray(req.query.volumeStatuses),
+    debugDataTransfer: ["1", "true", "yes", "on"].includes(
+      (
+        firstQueryValue(req.query.debugDataTransfer)
+        ?? firstQueryValue(req.query.debug)
+        ?? ""
+      ).trim().toLowerCase(),
+    ),
   });
 
   return {
@@ -181,6 +297,8 @@ export function buildEc2ExplorerInput(req: Request, scope: DashboardScope): Ec2E
     startDate: parsed.startDate,
     endDate: parsed.endDate,
     metric: parsed.metric,
+    granularity: parsed.granularity,
+    volumeView: parsed.volumeView,
     groupBy: parsed.groupBy,
     tagKey: parsed.tagKey,
     filters: {
@@ -200,5 +318,13 @@ export function buildEc2ExplorerInput(req: Request, scope: DashboardScope): Ec2E
     maxNetwork: parsed.maxNetwork,
     states: parsed.states,
     instanceTypes: parsed.instanceTypes,
+    teams: parsed.teams,
+    products: parsed.products,
+    environments: parsed.environments,
+    accounts: parsed.accounts,
+    volumeTypes: parsed.volumeTypes,
+    volumeAttachment: parsed.volumeAttachment,
+    volumeStatuses: parsed.volumeStatuses,
+    debugDataTransfer: parsed.debugDataTransfer,
   };
 }

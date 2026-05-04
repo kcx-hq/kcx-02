@@ -26,11 +26,19 @@ export type Ec2SnapshotClassification = {
   signals: Exclude<Ec2SnapshotSignal, "normal">[];
 };
 
-export type Ec2TransferType = "internet" | "inter_region" | "inter_az" | "unknown";
+export type Ec2TransferType = "internet" | "inter_region" | "inter_az" | "regional" | "unknown";
+export type Ec2TransferDirection =
+  | "internet_in"
+  | "internet_out"
+  | "inter_region"
+  | "inter_az"
+  | "regional"
+  | "unknown";
 export type Ec2DataTransferClassification = {
   isNatGateway: boolean;
   isDataTransferCandidate: boolean;
   transferType: Ec2TransferType;
+  transferDirection: Ec2TransferDirection;
   confidence: "low" | "medium" | "high";
 };
 

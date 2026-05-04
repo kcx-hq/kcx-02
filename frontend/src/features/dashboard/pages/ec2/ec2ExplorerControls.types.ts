@@ -1,6 +1,13 @@
-export type EC2Metric = "cost" | "usage" | "instances";
+export type EC2Metric = "cost" | "usage" | "instances" | "volumes" | "data-transfer";
+export type EC2Granularity = "hourly" | "daily" | "monthly";
+export type EC2VolumeView = "storage" | "storage_hours" | "cost" | "count";
 
-export type EC2CostBasis = "billed_cost" | "effective_cost" | "amortized_cost";
+export type EC2CostBasis =
+  | "billed_cost"
+  | "effective_cost"
+  | "amortized_cost"
+  | "net_amortized_cost"
+  | "net_unblended_cost";
 
 export type EC2UsageType = "cpu" | "network" | "disk";
 export type EC2Aggregation = "avg" | "max" | "p95";
@@ -11,14 +18,25 @@ export type EC2GroupBy =
   | "none"
   | "region"
   | "account"
+  | "availability-zone"
   | "instance-type"
-  | "team"
-  | "product"
-  | "environment"
   | "reservation-type"
   | "cost-category"
-  | "network-cost"
-  | "network-type"
+  | "usage-type"
+  | "operation"
+  | "instance-state"
+  | "recommendation"
+  | "volume"
+  | "volume_type"
+  | "attachment_state"
+  | "instance"
+  | "storage_tier"
+  | "iops_tier"
+  | "size_bucket"
+  | "lifecycle_state"
+  | "transfer-type"
+  | "source-region"
+  | "destination-region"
   | "tag";
 
 export type EC2ScopeFilters = {
@@ -45,6 +63,8 @@ export type EC2ExplorerControlsState = {
   instancesState: EC2State;
   instanceType: string;
   groupBy: EC2GroupBy;
+  granularity: EC2Granularity;
+  volumeView: EC2VolumeView;
   groupByValues: string[];
   scopeFilters: EC2ScopeFilters;
   thresholds: EC2Thresholds;
@@ -53,13 +73,30 @@ export type EC2ExplorerControlsState = {
 export const METRIC_OPTIONS: Array<{ key: EC2Metric; label: string }> = [
   { key: "cost", label: "Cost" },
   { key: "usage", label: "Usage" },
+  { key: "data-transfer", label: "Data Transfer" },
   { key: "instances", label: "Instances" },
+  { key: "volumes", label: "Volumes" },
+];
+
+export const GRANULARITY_OPTIONS: Array<{ key: EC2Granularity; label: string }> = [
+  { key: "hourly", label: "Hourly" },
+  { key: "daily", label: "Daily" },
+  { key: "monthly", label: "Monthly" },
+];
+
+export const VOLUME_VIEW_OPTIONS: Array<{ key: EC2VolumeView; label: string }> = [
+  { key: "storage", label: "Storage" },
+  { key: "storage_hours", label: "Storage Hours" },
+  { key: "cost", label: "Cost" },
+  { key: "count", label: "Count" },
 ];
 
 export const COST_BASIS_OPTIONS: Array<{ key: EC2CostBasis; label: string }> = [
   { key: "billed_cost", label: "Billed Cost" },
   { key: "effective_cost", label: "Effective Cost" },
   { key: "amortized_cost", label: "Amortized Cost" },
+  { key: "net_amortized_cost", label: "Net Amortized Cost" },
+  { key: "net_unblended_cost", label: "Net Unblended Cost" },
 ];
 
 export const USAGE_TYPE_OPTIONS: Array<{ key: EC2UsageType; label: string }> = [
@@ -95,16 +132,27 @@ export const STATE_OPTIONS: Array<{ key: EC2State; label: string }> = [
 
 export const GROUP_BY_OPTIONS: Array<{ key: EC2GroupBy; label: string }> = [
   { key: "none", label: "None" },
+  { key: "cost-category", label: "Cost Category" },
   { key: "region", label: "Region" },
   { key: "account", label: "Account" },
+  { key: "availability-zone", label: "Availability Zone" },
+  { key: "instance", label: "Instance" },
   { key: "instance-type", label: "Instance Type" },
-  { key: "team", label: "Team" },
-  { key: "product", label: "Product" },
-  { key: "environment", label: "Environment" },
+  { key: "instance-state", label: "Instance State" },
   { key: "reservation-type", label: "Reservation Type" },
-  { key: "cost-category", label: "Cost Category" },
-  { key: "network-cost", label: "Network Cost" },
-  { key: "network-type", label: "Network Type" },
+  { key: "usage-type", label: "Usage Type" },
+  { key: "operation", label: "Operation" },
+  { key: "recommendation", label: "Recommendation / Insight" },
+  { key: "volume", label: "Volume" },
+  { key: "volume_type", label: "Volume Type" },
+  { key: "attachment_state", label: "Attachment State" },
+  { key: "storage_tier", label: "Storage Tier" },
+  { key: "iops_tier", label: "IOPS Tier" },
+  { key: "size_bucket", label: "Size Bucket" },
+  { key: "lifecycle_state", label: "Lifecycle State" },
+  { key: "transfer-type", label: "Transfer Type" },
+  { key: "source-region", label: "Source Region" },
+  { key: "destination-region", label: "Destination Region" },
   { key: "tag", label: "Tag" },
 ];
 
@@ -139,7 +187,9 @@ export const DEFAULT_EC2_EXPLORER_CONTROLS: EC2ExplorerControlsState = {
   instancesCondition: "all",
   instancesState: "running",
   instanceType: "all",
-  groupBy: "reservation-type",
+  groupBy: "cost-category",
+  granularity: "daily",
+  volumeView: "storage",
   groupByValues: [],
   scopeFilters: DEFAULT_SCOPE_FILTERS,
   thresholds: DEFAULT_THRESHOLDS,

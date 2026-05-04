@@ -65,6 +65,30 @@ type CliArgs = {
   fileKey: string | null;
 };
 
+const originalSetImmediate = global.setImmediate;
+
+function enableScriptLevelStorageLensSkip(): void {
+  global.setImmediate = ((callback: (...args: unknown[]) => unknown, ...args: unknown[]) => {
+    const callbackSource =
+      typeof callback === "function" ? Function.prototype.toString.call(callback) : "";
+
+    if (callbackSource.includes("syncStorageLensFromClientAccount")) {
+      console.info("Skipping Storage Lens auto-sync (script-level override)");
+      return {
+        hasRef: () => false,
+        ref: () => undefined,
+        unref: () => undefined,
+      } as unknown as NodeJS.Immediate;
+    }
+
+    return originalSetImmediate(callback as (...args: any[]) => void, ...(args as any[]));
+  }) as typeof setImmediate;
+}
+
+function restoreSetImmediate(): void {
+  global.setImmediate = originalSetImmediate;
+}
+
 const parseArgs = (argv: string[]): CliArgs => {
   const args = argv.slice(2);
   const connectionId = String(args[0] ?? "").trim();
@@ -222,6 +246,8 @@ async function main(): Promise<void> {
     return;
   }
 
+  enableScriptLevelStorageLensSkip();
+
   await cleanupIngestionDataForConnection(connectionId);
 
   if (isManifestKey(fileKey)) {
@@ -283,5 +309,7 @@ main()
     process.exitCode = 1;
   })
   .finally(async () => {
+    await ingestionOrchestrator.waitForPendingPostIngestionTasks();
+    restoreSetImmediate();
     await sequelize.close();
   });

@@ -969,25 +969,53 @@ export async function runDemoSeed(): Promise<void> {
         ingestedAt: new Date(),
       });
 
-      const networkTotalGb = round6((networkInBytes + networkOutBytes) / (1024 * 1024 * 1024));
-      const internetCost = round6(dataTransferCost * 0.4);
-      const interRegionCost = round6(dataTransferCost * 0.3);
-      const interAzCost = round6(dataTransferCost * 0.2);
-      const natCost = round6(dataTransferCost * 0.04);
-      const eipCost = round6(dataTransferCost * 0.03);
-      const lbCost = round6(Math.max(0, dataTransferCost - internetCost - interRegionCost - interAzCost - natCost - eipCost));
-      const internetGb = round6(networkTotalGb * 0.4);
-      const interRegionGb = round6(networkTotalGb * 0.3);
-      const interAzGb = round6(networkTotalGb * 0.2);
-      const natGb = round6(networkTotalGb * 0.04);
-      const eipGb = round6(networkTotalGb * 0.03);
-      const lbGb = round6(Math.max(0, networkTotalGb - internetGb - interRegionGb - interAzGb - natGb - eipGb));
+      const usageDateObj = new Date(`${usageDate}T00:00:00.000Z`);
+      const isWeekend = usageDateObj.getUTCDay() === 0 || usageDateObj.getUTCDay() === 6;
+      const weekdayMultiplier = isWeekend ? 1.2 : 1;
+      const baseTransferGb = isRunning
+        ? (10 + seededUnit(`${item.instanceId}:${usageDate}:transfer:base`) * 40)
+        : (0.5 + seededUnit(`${item.instanceId}:${usageDate}:transfer:base`) * 2.5);
+      const spikeChance = seededUnit(`${item.instanceId}:${usageDate}:transfer:spike`);
+      const spikeMultiplier = spikeChance > 0.86 ? (1.35 + seededUnit(`${item.instanceId}:${usageDate}:transfer:spike-amt`) * 0.5) : 1;
+      const networkTotalGb = round6(clamp(baseTransferGb * weekdayMultiplier * spikeMultiplier, isRunning ? 10 : 0.5, isRunning ? 50 : 5));
+
+      const internetShareRaw = 0.4 + seededUnit(`${item.instanceId}:${usageDate}:transfer:internet-share`) * 0.2;
+      const interRegionShareRaw = 0.1 + seededUnit(`${item.instanceId}:${usageDate}:transfer:inter-region-share`) * 0.1;
+      const interAzShareRaw = 0.1 + seededUnit(`${item.instanceId}:${usageDate}:transfer:inter-az-share`) * 0.1;
+      const regionalShareRaw = 0.05 + seededUnit(`${item.instanceId}:${usageDate}:transfer:regional-share`) * 0.05;
+      const unknownShareRaw = 0.01 + seededUnit(`${item.instanceId}:${usageDate}:transfer:unknown-share`) * 0.03;
+      const totalShareRaw = internetShareRaw + interRegionShareRaw + interAzShareRaw + regionalShareRaw + unknownShareRaw;
+      const internetShare = internetShareRaw / totalShareRaw;
+      const interRegionShare = interRegionShareRaw / totalShareRaw;
+      const interAzShare = interAzShareRaw / totalShareRaw;
+      const regionalShare = regionalShareRaw / totalShareRaw;
+      const internetGb = round6(networkTotalGb * internetShare);
+      const interRegionGb = round6(networkTotalGb * interRegionShare);
+      const interAzGb = round6(networkTotalGb * interAzShare);
+      const regionalGb = round6(networkTotalGb * regionalShare);
+      const unknownGb = round6(Math.max(0, networkTotalGb - internetGb - interRegionGb - interAzGb - regionalGb));
+
+      const internetOutGb = round6(internetGb * 0.8);
+      const internetInGb = round6(Math.max(0, internetGb - internetOutGb));
+
+      const internetOutRate = 0.09;
+      const internetInRate = 0;
+      const interRegionRate = 0.035;
+      const interAzRate = 0.01;
+      const regionalRate = 0.008;
+      const unknownRate = 0.02;
+
+      const internetOutCost = round6(internetOutGb * internetOutRate);
+      const internetInCost = round6(internetInGb * internetInRate);
+      const interRegionCost = round6(interRegionGb * interRegionRate);
+      const interAzCost = round6(interAzGb * interAzRate);
+      const regionalCost = round6(regionalGb * regionalRate);
+      const unknownCost = round6(unknownGb * unknownRate);
       const crossRegion = otherRegion(item.region);
       const networkLineItems = [
-        // Internet Data Transfer: should trigger high internet transfer recommendation for at least one instance.
         {
-          billedCost: internetCost,
-          usageGb: internetGb,
+          billedCost: internetOutCost,
+          usageGb: internetOutGb,
           usageType: "DataTransfer-Out-Bytes",
           productUsageType: "DataTransfer-Out-Bytes",
           productFamily: "Data Transfer",
@@ -999,10 +1027,23 @@ export async function runDemoSeed(): Promise<void> {
           operation: "DataTransfer",
         },
         {
+          billedCost: internetInCost,
+          usageGb: internetInGb,
+          usageType: "DataTransfer-In-Bytes",
+          productUsageType: "DataTransfer-In-Bytes",
+          productFamily: "Data Transfer",
+          fromRegionCode: "",
+          toRegionCode: item.region,
+          fromLocation: "internet",
+          toLocation: item.region,
+          lineItemDescription: `Demo internet ingress data transfer for ${item.instanceId}`,
+          operation: "DataTransfer",
+        },
+        {
           billedCost: interRegionCost,
           usageGb: interRegionGb,
-          usageType: "InterRegion-DataTransfer-Bytes",
-          productUsageType: "InterRegion-DataTransfer-Bytes",
+          usageType: `${item.region}-${crossRegion}-AWS-Out-Bytes`,
+          productUsageType: `${item.region}-${crossRegion}-AWS-Out-Bytes`,
           productFamily: "Data Transfer",
           fromRegionCode: item.region,
           toRegionCode: crossRegion,
@@ -1014,8 +1055,8 @@ export async function runDemoSeed(): Promise<void> {
         {
           billedCost: interAzCost,
           usageGb: interAzGb,
-          usageType: "CrossAZ-DataTransfer-Bytes",
-          productUsageType: "CrossAZ-DataTransfer-Bytes",
+          usageType: dayIndex % 2 === 0 ? "DataTransfer-Regional-Bytes" : "DataTransfer-InterAZ",
+          productUsageType: dayIndex % 2 === 0 ? "DataTransfer-Regional-Bytes" : "DataTransfer-InterAZ",
           productFamily: "Data Transfer",
           fromRegionCode: item.region,
           toRegionCode: item.region,
@@ -1024,46 +1065,31 @@ export async function runDemoSeed(): Promise<void> {
           lineItemDescription: `Demo inter-AZ data transfer for ${item.instanceId}`,
           operation: "DataTransfer-Regional",
         },
-        // NAT Gateway must be separated from Data Transfer classification.
         {
-          billedCost: natCost,
-          usageGb: natGb,
-          usageType: "NATGateway-DataProcessing-Bytes",
-          productUsageType: "NatGateway-Bytes",
-          productFamily: "NAT Gateway",
+          billedCost: regionalCost,
+          usageGb: regionalGb,
+          usageType: "Regional-DataTransfer-Bytes",
+          productUsageType: "Regional-DataTransfer-Bytes",
+          productFamily: "Data Transfer",
           fromRegionCode: item.region,
           toRegionCode: item.region,
           fromLocation: item.region,
           toLocation: item.region,
-          lineItemDescription: `Demo NAT Gateway processing for ${item.instanceId}`,
-          operation: "NatGateway",
-        },
-        // Keep attached public IPv4 cost mapped to instance but non-idle.
-        {
-          billedCost: eipCost,
-          usageGb: eipGb,
-          usageType: "PublicIPv4-InUseAddress",
-          productUsageType: "PublicIPv4-InUseAddress",
-          productFamily: "IP Address",
-          fromRegionCode: item.region,
-          toRegionCode: item.region,
-          fromLocation: item.region,
-          toLocation: item.region,
-          lineItemDescription: `Demo Elastic IP cost for ${item.instanceId}`,
-          operation: "AssociateAddress",
+          lineItemDescription: `Demo regional data transfer for ${item.instanceId}`,
+          operation: "DataTransfer-Regional",
         },
         {
-          billedCost: lbCost,
-          usageGb: lbGb,
-          usageType: "LoadBalancerUsage",
-          productUsageType: "LCUUsage",
-          productFamily: "Load Balancer",
+          billedCost: unknownCost,
+          usageGb: unknownGb,
+          usageType: `MiscNet-${Math.floor(seededUnit(`${item.instanceId}:${usageDate}:transfer:unknown-pattern`) * 900 + 100)}-Bytes`,
+          productUsageType: "MiscNetworkUsage",
+          productFamily: "Data Transfer",
           fromRegionCode: item.region,
-          toRegionCode: item.region,
+          toRegionCode: null,
           fromLocation: item.region,
-          toLocation: item.region,
-          lineItemDescription: `Demo load balancer network charge for ${item.instanceId}`,
-          operation: "LoadBalancing",
+          toLocation: "unknown",
+          lineItemDescription: `Demo unclassified data transfer for ${item.instanceId}`,
+          operation: "DataTransfer-Unknown",
         },
       ];
 
@@ -1098,48 +1124,6 @@ export async function runDemoSeed(): Promise<void> {
           lineItemDescription: networkItem.lineItemDescription,
           legalEntity: "Amazon Web Services, Inc.",
           operation: networkItem.operation,
-          lineItemType: "Usage",
-          pricingTerm: "OnDemand",
-          purchaseOption: "on_demand",
-          taxCost: 0,
-          creditAmount: 0,
-          refundAmount: 0,
-          ingestedAt: new Date(),
-        });
-      }
-
-      // Unknown transfer line: transfer-related but not safely classifiable.
-      if (item.instanceId === "i-demo-storage-heavy-001" && dayIndex % 2 === 0) {
-        await FactCostLineItems.create({
-          tenantId: tenant.id,
-          billingSourceId: billingSource.id,
-          providerId: provider.id,
-          billingAccountKey: billingAccount.id,
-          subAccountKey,
-          regionKey: regionMap.get(item.region) ?? null,
-          serviceKey: ec2Service.id,
-          resourceKey: null,
-          usageDateKey,
-          billingPeriodStartDateKey: billingStartDateKey,
-          billingPeriodEndDateKey: billingEndDateKey,
-          billedCost: 0.85,
-          effectiveCost: 0.85,
-          listCost: 0.85,
-          consumedQuantity: 28,
-          pricingQuantity: 28,
-          usageStartTime: new Date(`${usageDate}T00:00:00.000Z`),
-          usageEndTime: new Date(`${usageDate}T23:59:59.999Z`),
-          usageType: "UnknownDataTransfer-Bytes",
-          productUsageType: "UnknownDataTransfer-Bytes",
-          productFamily: "Data Transfer",
-          fromLocation: "unknown",
-          toLocation: "unknown",
-          fromRegionCode: null,
-          toRegionCode: null,
-          billType: "Anniversary",
-          lineItemDescription: "Demo unclassified data transfer",
-          legalEntity: "Amazon Web Services, Inc.",
-          operation: "DataTransfer-Unknown",
           lineItemType: "Usage",
           pricingTerm: "OnDemand",
           purchaseOption: "on_demand",

@@ -69,6 +69,30 @@ type CliArgs = {
   localFilePath: string;
 };
 
+const originalSetImmediate = global.setImmediate;
+
+function enableScriptLevelStorageLensSkip(): void {
+  global.setImmediate = ((callback: (...args: unknown[]) => unknown, ...args: unknown[]) => {
+    const callbackSource =
+      typeof callback === "function" ? Function.prototype.toString.call(callback) : "";
+
+    if (callbackSource.includes("syncStorageLensFromClientAccount")) {
+      console.info("Skipping Storage Lens auto-sync (script-level override)");
+      return {
+        hasRef: () => false,
+        ref: () => undefined,
+        unref: () => undefined,
+      } as unknown as NodeJS.Immediate;
+    }
+
+    return originalSetImmediate(callback as (...args: any[]) => void, ...(args as any[]));
+  }) as typeof setImmediate;
+}
+
+function restoreSetImmediate(): void {
+  global.setImmediate = originalSetImmediate;
+}
+
 const parseArgs = (argv: string[]): CliArgs => {
   const args = argv.slice(2);
   return {
@@ -212,6 +236,8 @@ async function main(): Promise<void> {
     throw new Error("RAW_BILLING_FILES_BUCKET is not configured");
   }
 
+  enableScriptLevelStorageLensSkip();
+
   const connection = await CloudConnectionV2.findByPk(connectionId);
   if (!connection) throw new Error("Cloud connection not found");
 
@@ -282,5 +308,7 @@ main()
     process.exitCode = 1;
   })
   .finally(async () => {
+    await ingestionOrchestrator.waitForPendingPostIngestionTasks();
+    restoreSetImmediate();
     await sequelize.close();
   });

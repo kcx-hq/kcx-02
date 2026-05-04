@@ -281,6 +281,13 @@ final_rows AS (
    AND coverage.usage_date = a.usage_date
 ),
 upserted AS (
+  DELETE FROM fact_ec2_instance_daily t
+  USING final_rows f
+  WHERE t.tenant_id = f.tenant_id
+    AND t.instance_id = f.instance_id
+    AND t.usage_date = f.usage_date
+),
+inserted AS (
   INSERT INTO fact_ec2_instance_daily (
     tenant_id,
     cloud_connection_id,
@@ -411,73 +418,10 @@ upserted AS (
     NOW(),
     NOW()
   FROM final_rows f
-  ON CONFLICT (tenant_id, instance_id, usage_date)
-  DO UPDATE SET
-    cloud_connection_id     = EXCLUDED.cloud_connection_id,
-    billing_source_id       = EXCLUDED.billing_source_id,
-    provider_id             = EXCLUDED.provider_id,
-    resource_key            = EXCLUDED.resource_key,
-    region_key              = EXCLUDED.region_key,
-    sub_account_key         = EXCLUDED.sub_account_key,
-    instance_name           = EXCLUDED.instance_name,
-    instance_type           = EXCLUDED.instance_type,
-    availability_zone       = EXCLUDED.availability_zone,
-    state                   = EXCLUDED.state,
-    is_running              = EXCLUDED.is_running,
-    is_spot                 = EXCLUDED.is_spot,
-    platform                = EXCLUDED.platform,
-    platform_details        = EXCLUDED.platform_details,
-    architecture            = EXCLUDED.architecture,
-    tenancy                 = EXCLUDED.tenancy,
-    asg_name                = EXCLUDED.asg_name,
-    vpc_id                  = EXCLUDED.vpc_id,
-    subnet_id               = EXCLUDED.subnet_id,
-    image_id                = EXCLUDED.image_id,
-    launch_time             = EXCLUDED.launch_time,
-    deleted_at              = EXCLUDED.deleted_at,
-    total_hours             = EXCLUDED.total_hours,
-    cpu_avg                 = EXCLUDED.cpu_avg,
-    cpu_max                 = EXCLUDED.cpu_max,
-    cpu_min                 = EXCLUDED.cpu_min,
-    memory_avg              = EXCLUDED.memory_avg,
-    memory_max              = EXCLUDED.memory_max,
-    disk_used_percent_avg   = EXCLUDED.disk_used_percent_avg,
-    disk_used_percent_max   = EXCLUDED.disk_used_percent_max,
-    network_in_bytes        = EXCLUDED.network_in_bytes,
-    network_out_bytes       = EXCLUDED.network_out_bytes,
-    compute_cost            = EXCLUDED.compute_cost,
-    ebs_cost                = EXCLUDED.ebs_cost,
-    data_transfer_cost      = EXCLUDED.data_transfer_cost,
-    tax_cost                = EXCLUDED.tax_cost,
-    credit_amount           = EXCLUDED.credit_amount,
-    refund_amount           = EXCLUDED.refund_amount,
-    total_billed_cost       = EXCLUDED.total_billed_cost,
-    total_effective_cost    = EXCLUDED.total_effective_cost,
-    total_list_cost         = EXCLUDED.total_list_cost,
-    currency_code           = EXCLUDED.currency_code,
-    billed_cost             = EXCLUDED.billed_cost,
-    effective_cost          = EXCLUDED.effective_cost,
-    list_cost               = EXCLUDED.list_cost,
-    pricing_model           = EXCLUDED.pricing_model,
-    reservation_type        = EXCLUDED.reservation_type,
-    reservation_arn         = EXCLUDED.reservation_arn,
-    savings_plan_arn        = EXCLUDED.savings_plan_arn,
-    savings_plan_type       = EXCLUDED.savings_plan_type,
-    covered_hours           = EXCLUDED.covered_hours,
-    uncovered_hours         = EXCLUDED.uncovered_hours,
-    covered_cost            = EXCLUDED.covered_cost,
-    uncovered_cost          = EXCLUDED.uncovered_cost,
-    is_idle_candidate       = EXCLUDED.is_idle_candidate,
-    is_underutilized_candidate = EXCLUDED.is_underutilized_candidate,
-    is_overutilized_candidate  = EXCLUDED.is_overutilized_candidate,
-    idle_score              = COALESCE(EXCLUDED.idle_score, fact_ec2_instance_daily.idle_score),
-    rightsizing_score       = COALESCE(EXCLUDED.rightsizing_score, fact_ec2_instance_daily.rightsizing_score),
-    source                  = EXCLUDED.source,
-    updated_at              = NOW()
   RETURNING 1
 )
 SELECT COUNT(*)::int AS upserted_rows
-FROM upserted;
+FROM inserted;
 `,
       {
         replacements: {

@@ -54,6 +54,11 @@ export type InventoryEc2VolumesListItem = {
   mtdCost: number;
   snapshotCount: number;
   snapshotCost: number;
+  storageCost: number;
+  ioCost: number;
+  pioPSCost: number;
+  hours: number;
+  ssdSavings: number;
   isUnattached: boolean | null;
   isAttachedToStoppedInstance: boolean | null;
   isIdleCandidate: boolean | null;
