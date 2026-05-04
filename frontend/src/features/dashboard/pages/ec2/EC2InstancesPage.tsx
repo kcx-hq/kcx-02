@@ -13,7 +13,6 @@ import {
   EC2_INSTANCES_DEFAULT_CONTROLS,
   EC2_INSTANCES_STATUS_OPTIONS,
   EC2_INSTANCES_STATE_OPTIONS,
-  type EC2InstancesNetworkType,
   type EC2InstancesStatus,
   type EC2InstancesControlsState,
 } from "./components/ec2Instances.types";
@@ -66,19 +65,6 @@ const isValidState = (value: string | null): value is EC2InstancesControlsState[
 const isValidReservationType = (value: string | null): value is EC2InstancesControlsState["reservationType"] =>
   Boolean(value) && EC2_INSTANCES_RESERVATION_OPTIONS.some((option) => option.key === value);
 
-const NETWORK_TYPES: EC2InstancesNetworkType[] = [
-  "Internet Data Transfer",
-  "Inter-Region Data Transfer",
-  "Inter-AZ Data Transfer",
-  "NAT Gateway",
-  "Elastic IP",
-  "Load Balancer",
-  "Other Network",
-];
-
-const isValidNetworkType = (value: string | null): value is EC2InstancesNetworkType =>
-  Boolean(value) && NETWORK_TYPES.includes(value as EC2InstancesNetworkType);
-
 const matchesState = (instance: InventoryEc2InstanceRow, state: EC2InstancesControlsState["state"]): boolean => {
   if (state === "all") return true;
   return (instance.state ?? "").toLowerCase() === state;
@@ -127,7 +113,7 @@ export default function EC2InstancesPage() {
   const queryState = isExplorerNavigation ? queryParams.get("state") : null;
   const queryInstanceType = isExplorerNavigation ? queryParams.get("instanceType") : null;
   const queryReservationType = isExplorerNavigation ? queryParams.get("reservationType") : null;
-  const queryNetworkType = isExplorerNavigation ? queryParams.get("networkType") : null;
+  const queryTransferType = queryParams.get("transferType");
 
   const initialControls = useMemo<EC2InstancesControlsState>(() => ({
     ...EC2_INSTANCES_DEFAULT_CONTROLS,
@@ -137,13 +123,12 @@ export default function EC2InstancesPage() {
     reservationType: isValidReservationType(queryReservationType)
       ? queryReservationType
       : EC2_INSTANCES_DEFAULT_CONTROLS.reservationType,
-    networkType: isValidNetworkType(queryNetworkType) ? queryNetworkType : EC2_INSTANCES_DEFAULT_CONTROLS.networkType,
     search: querySearch,
     scopeFilters: {
       region: [...explorerRegions],
       tags: [...explorerTags],
     },
-  }), [explorerRegions, explorerTags, queryStatus, queryInstanceType, queryNetworkType, queryReservationType, querySearch, queryState]);
+  }), [explorerRegions, explorerTags, queryStatus, queryInstanceType, queryReservationType, querySearch, queryState]);
 
   const [controls, setControls] = useState<EC2InstancesControlsState>(initialControls);
   const [page, setPage] = useState(1);
@@ -153,9 +138,15 @@ export default function EC2InstancesPage() {
     state: controls.state === "all" ? null : controls.state,
     instanceType: controls.instanceType === "all" ? null : controls.instanceType,
     pricingType: controls.reservationType === "all" ? null : controls.reservationType,
-    networkType: controls.networkType === "all" ? null : controls.networkType,
     status: controls.status,
     search: deferredSearch.length > 0 ? deferredSearch : null,
+    transferType:
+      queryTransferType === "internet" ||
+      queryTransferType === "inter_region" ||
+      queryTransferType === "inter_az" ||
+      queryTransferType === "unknown"
+        ? queryTransferType
+        : null,
     startDate: startDateFromParams,
     endDate: endDateFromParams,
     page,
@@ -277,16 +268,31 @@ export default function EC2InstancesPage() {
       });
     }
 
-    if (controls.networkType !== "all") {
+    if (
+      queryTransferType === "internet" ||
+      queryTransferType === "inter_region" ||
+      queryTransferType === "inter_az" ||
+      queryTransferType === "unknown"
+    ) {
+      const transferLabel =
+        queryTransferType === "inter_region"
+          ? "Inter-Region"
+          : queryTransferType === "inter_az"
+            ? "Inter-AZ"
+            : queryTransferType.charAt(0).toUpperCase() + queryTransferType.slice(1);
       chips.push({
-        id: "network-type",
-        label: `Network Type: ${controls.networkType}`,
-        onRemove: () => setControls((current) => ({ ...current, networkType: "all" })),
+        id: "transfer-type",
+        label: `Transfer Type: ${transferLabel}`,
+        onRemove: () => {
+          const next = new URLSearchParams(location.search);
+          next.delete("transferType");
+          navigate({ pathname: location.pathname, search: next.toString() }, { replace: true });
+        },
       });
     }
 
     return chips;
-  }, [controls.instanceType, controls.networkType, controls.scopeFilters.region, controls.scopeFilters.tags, controls.state]);
+  }, [controls.instanceType, controls.scopeFilters.region, controls.scopeFilters.tags, controls.state, location.pathname, location.search, navigate, queryTransferType]);
 
   const openInstanceDetail = (instanceId: string) => {
     const next = new URLSearchParams(location.search);
@@ -301,6 +307,16 @@ export default function EC2InstancesPage() {
         <EC2InstancesTopBar
           value={controls}
           instanceTypeOptions={instanceTypeOptions}
+          visibleControls={[
+            "filters",
+            "status",
+            "state",
+            "instanceType",
+            "reservationType",
+            "search",
+            "thresholds",
+            "reset",
+          ]}
           onChange={(next) => {
             setControls(next);
             setPage(1);
@@ -313,13 +329,15 @@ export default function EC2InstancesPage() {
           <EC2InstancesContextChips
             chips={activeChips}
             onClearAll={() => {
+              const next = new URLSearchParams(location.search);
+              next.delete("transferType");
+              navigate({ pathname: location.pathname, search: next.toString() }, { replace: true });
               setControls((current) => ({
                 ...current,
                 status: "all",
                 state: "all",
                 instanceType: "all",
                 reservationType: "all",
-                networkType: "all",
                 scopeFilters: { region: [], tags: [] },
                 thresholds: {
                   cpuMin: "",

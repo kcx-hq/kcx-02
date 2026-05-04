@@ -1427,7 +1427,7 @@ export async function runDemoSeed(): Promise<void> {
       sizeGb: 220,
       ageDays: 40,
       storageTier: "standard",
-      cost: 3.1,
+      cost: 7.1,
       lineItemDescription: "Demo orphaned snapshot storage cost",
     },
   ] as const;

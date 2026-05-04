@@ -280,6 +280,7 @@ export class InstancesInventoryService {
       instanceType: null,
       pricingType: null,
       networkType: null,
+      transferType: null,
       status: "all",
       region: null,
       search: null,
@@ -1139,6 +1140,107 @@ export class InstancesInventoryService {
         )
       `);
       bind.push(normalizedNetworkType);
+      nextIndex += 1;
+    }
+
+    const normalizedTransferType = normalizeLower(input.query.transferType);
+    if (normalizedTransferType) {
+      whereParts.push(`
+        EXISTS (
+          SELECT 1
+          FROM fact_cost_line_items fcli
+          LEFT JOIN dim_date dd
+            ON dd.id = fcli.usage_date_key
+          LEFT JOIN dim_resource dres
+            ON dres.id = fcli.resource_key
+          WHERE fcli.tenant_id = inv.tenant_id
+            AND COALESCE(dd.full_date, DATE(COALESCE(fcli.usage_start_time, fcli.usage_end_time)))
+              >= $${dateStartIndex}::date
+            AND COALESCE(dd.full_date, DATE(COALESCE(fcli.usage_start_time, fcli.usage_end_time)))
+              <= $${dateEndIndex}::date
+            AND (
+              dres.resource_id = inv.instance_id
+              OR dres.resource_id ILIKE ('%' || inv.instance_id || '%')
+            )
+            AND (
+              CASE
+                WHEN (
+                  LOWER(COALESCE(fcli.usage_type, '') || ' ' || COALESCE(fcli.product_usage_type, '') || ' ' || COALESCE(fcli.product_family, '') || ' ' || COALESCE(fcli.operation, '') || ' ' || COALESCE(fcli.line_item_description, ''))
+                    LIKE '%natgateway%'
+                  OR LOWER(COALESCE(fcli.usage_type, '') || ' ' || COALESCE(fcli.product_usage_type, '') || ' ' || COALESCE(fcli.product_family, '') || ' ' || COALESCE(fcli.operation, '') || ' ' || COALESCE(fcli.line_item_description, ''))
+                    LIKE '%nat-gateway%'
+                  OR LOWER(COALESCE(fcli.usage_type, '') || ' ' || COALESCE(fcli.product_usage_type, '') || ' ' || COALESCE(fcli.product_family, '') || ' ' || COALESCE(fcli.operation, '') || ' ' || COALESCE(fcli.line_item_description, ''))
+                    LIKE '%nat gateway%'
+                ) THEN false
+                WHEN (
+                  LOWER(COALESCE(fcli.usage_type, '') || ' ' || COALESCE(fcli.product_usage_type, '') || ' ' || COALESCE(fcli.product_family, '') || ' ' || COALESCE(fcli.operation, '') || ' ' || COALESCE(fcli.line_item_description, '') || ' ' || COALESCE(fcli.from_location, '') || ' ' || COALESCE(fcli.to_location, ''))
+                    LIKE '%elasticip%'
+                  OR LOWER(COALESCE(fcli.usage_type, '') || ' ' || COALESCE(fcli.product_usage_type, '') || ' ' || COALESCE(fcli.product_family, '') || ' ' || COALESCE(fcli.operation, '') || ' ' || COALESCE(fcli.line_item_description, '') || ' ' || COALESCE(fcli.from_location, '') || ' ' || COALESCE(fcli.to_location, ''))
+                    LIKE '%elastic ip%'
+                  OR LOWER(COALESCE(fcli.usage_type, '') || ' ' || COALESCE(fcli.product_usage_type, '') || ' ' || COALESCE(fcli.product_family, '') || ' ' || COALESCE(fcli.operation, '') || ' ' || COALESCE(fcli.line_item_description, '') || ' ' || COALESCE(fcli.from_location, '') || ' ' || COALESCE(fcli.to_location, ''))
+                    LIKE '%idleaddress%'
+                  OR LOWER(COALESCE(fcli.usage_type, '') || ' ' || COALESCE(fcli.product_usage_type, '') || ' ' || COALESCE(fcli.product_family, '') || ' ' || COALESCE(fcli.operation, '') || ' ' || COALESCE(fcli.line_item_description, '') || ' ' || COALESCE(fcli.from_location, '') || ' ' || COALESCE(fcli.to_location, ''))
+                    LIKE '%inuseaddress%'
+                  OR LOWER(COALESCE(fcli.usage_type, '') || ' ' || COALESCE(fcli.product_usage_type, '') || ' ' || COALESCE(fcli.product_family, '') || ' ' || COALESCE(fcli.operation, '') || ' ' || COALESCE(fcli.line_item_description, '') || ' ' || COALESCE(fcli.from_location, '') || ' ' || COALESCE(fcli.to_location, ''))
+                    LIKE '%loadbalancer%'
+                  OR LOWER(COALESCE(fcli.usage_type, '') || ' ' || COALESCE(fcli.product_usage_type, '') || ' ' || COALESCE(fcli.product_family, '') || ' ' || COALESCE(fcli.operation, '') || ' ' || COALESCE(fcli.line_item_description, '') || ' ' || COALESCE(fcli.from_location, '') || ' ' || COALESCE(fcli.to_location, ''))
+                    LIKE '%load balancer%'
+                  OR LOWER(COALESCE(fcli.usage_type, '') || ' ' || COALESCE(fcli.product_usage_type, '') || ' ' || COALESCE(fcli.product_family, '') || ' ' || COALESCE(fcli.operation, '') || ' ' || COALESCE(fcli.line_item_description, '') || ' ' || COALESCE(fcli.from_location, '') || ' ' || COALESCE(fcli.to_location, ''))
+                    LIKE '%lcu%'
+                ) THEN false
+                WHEN (
+                  LOWER(COALESCE(fcli.usage_type, '')) LIKE '%datatransfer%'
+                  OR LOWER(COALESCE(fcli.product_usage_type, '')) LIKE '%datatransfer%'
+                  OR LOWER(COALESCE(fcli.product_family, '')) LIKE '%data transfer%'
+                  OR LOWER(COALESCE(fcli.line_item_description, '')) LIKE '%data transfer%'
+                  OR LOWER(COALESCE(fcli.usage_type, '')) LIKE '%aws-out-bytes%'
+                  OR LOWER(COALESCE(fcli.product_usage_type, '')) LIKE '%aws-out-bytes%'
+                  OR LOWER(COALESCE(fcli.usage_type, '')) LIKE '%aws-in-bytes%'
+                  OR LOWER(COALESCE(fcli.product_usage_type, '')) LIKE '%aws-in-bytes%'
+                  OR LOWER(COALESCE(fcli.usage_type, '')) LIKE '%interregion%'
+                  OR LOWER(COALESCE(fcli.product_usage_type, '')) LIKE '%interregion%'
+                  OR LOWER(COALESCE(fcli.usage_type, '')) LIKE '%inter-zone%'
+                  OR LOWER(COALESCE(fcli.product_usage_type, '')) LIKE '%inter-zone%'
+                  OR LOWER(COALESCE(fcli.usage_type, '')) LIKE '%interzone%'
+                  OR LOWER(COALESCE(fcli.product_usage_type, '')) LIKE '%interzone%'
+                  OR LOWER(COALESCE(fcli.usage_type, '')) LIKE '%cross-az%'
+                  OR LOWER(COALESCE(fcli.product_usage_type, '')) LIKE '%cross-az%'
+                  OR LOWER(COALESCE(fcli.usage_type, '')) LIKE '%region-to-region%'
+                  OR LOWER(COALESCE(fcli.product_usage_type, '')) LIKE '%region-to-region%'
+                ) THEN true
+                ELSE false
+              END
+            )
+            AND (
+              CASE
+                WHEN (
+                  LOWER(COALESCE(fcli.to_location, '')) LIKE '%internet%'
+                  OR LOWER(COALESCE(fcli.to_location, '')) LIKE '%external%'
+                  OR LOWER(COALESCE(fcli.from_location, '')) LIKE '%internet%'
+                  OR LOWER(COALESCE(fcli.from_location, '')) LIKE '%external%'
+                ) THEN 'internet'
+                WHEN (
+                  LENGTH(COALESCE(fcli.from_region_code, '')) > 0
+                  AND LENGTH(COALESCE(fcli.to_region_code, '')) > 0
+                  AND LOWER(COALESCE(fcli.from_region_code, '')) <> LOWER(COALESCE(fcli.to_region_code, ''))
+                ) THEN 'inter_region'
+                WHEN (
+                  LENGTH(COALESCE(fcli.from_region_code, '')) > 0
+                  AND LENGTH(COALESCE(fcli.to_region_code, '')) > 0
+                  AND LOWER(COALESCE(fcli.from_region_code, '')) = LOWER(COALESCE(fcli.to_region_code, ''))
+                ) THEN 'inter_az'
+                WHEN (
+                  LOWER(COALESCE(fcli.usage_type, '') || ' ' || COALESCE(fcli.product_usage_type, '') || ' ' || COALESCE(fcli.product_family, '') || ' ' || COALESCE(fcli.operation, '') || ' ' || COALESCE(fcli.line_item_description, '') || ' ' || COALESCE(fcli.from_location, '') || ' ' || COALESCE(fcli.to_location, ''))
+                    LIKE '%datatransfer-out%'
+                  OR LOWER(COALESCE(fcli.usage_type, '') || ' ' || COALESCE(fcli.product_usage_type, '') || ' ' || COALESCE(fcli.product_family, '') || ' ' || COALESCE(fcli.operation, '') || ' ' || COALESCE(fcli.line_item_description, '') || ' ' || COALESCE(fcli.from_location, '') || ' ' || COALESCE(fcli.to_location, ''))
+                    LIKE '%aws-out-bytes%'
+                ) THEN 'internet'
+                ELSE 'unknown'
+              END
+            ) = $${nextIndex}
+        )
+      `);
+      bind.push(normalizedTransferType);
       nextIndex += 1;
     }
 

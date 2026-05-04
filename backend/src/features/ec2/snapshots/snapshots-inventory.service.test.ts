@@ -38,7 +38,9 @@ const installQueryMock = (
 const makeDefaultQuery = () => ({
   cloudConnectionId: null,
   regionKey: null,
+  volumeId: null,
   state: null,
+  status: null,
   storageTier: null,
   encrypted: null,
   search: null,
@@ -106,6 +108,10 @@ test("listSnapshots prevents cross-connection enrichment fallback and keeps orph
 
     assert.equal(response.rows.length, 1);
     assert.equal(response.rows[0]?.signal, "orphaned");
+    assert.equal(response.rows[0]?.status, "orphaned");
+    assert.equal(response.rows[0]?.statusLabel, "Orphaned");
+    assert.deepEqual(response.rows[0]?.signals, ["orphaned"]);
+    assert.equal(response.rows[0]?.volumeStatus, "missing");
     assert.equal(response.rows[0]?.recommendation, null);
     assert.equal(response.rows[0]?.estimatedSavings, 0);
   } finally {
@@ -179,6 +185,10 @@ test("listSnapshots uses scoped enrichment, preserves fixed ordering, and return
 
     assert.equal(response.rows.length, 1);
     assert.equal(response.rows[0]?.signal, "old");
+    assert.equal(response.rows[0]?.status, "old");
+    assert.equal(response.rows[0]?.statusLabel, "Old");
+    assert.deepEqual(response.rows[0]?.signals, ["old"]);
+    assert.equal(response.rows[0]?.volumeStatus, "available");
     assert.equal(response.rows[0]?.cost, 7.25);
     assert.equal(response.rows[0]?.recommendation, "Delete or review old snapshot");
     assert.equal(response.rows[0]?.estimatedSavings, 7.25);

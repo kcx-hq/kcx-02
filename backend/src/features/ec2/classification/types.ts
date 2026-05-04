@@ -8,7 +8,13 @@ export type Ec2InstanceClassification = {
   pricingCondition: Ec2InstancePricingCondition;
 };
 
-export type Ec2VolumeSignal = "unattached" | "attached_stopped" | "idle" | "underutilized" | "normal";
+export type Ec2VolumeSignal =
+  | "unattached"
+  | "attached_stopped"
+  | "idle"
+  | "underutilized"
+  | "low_utilization"
+  | "normal";
 export type Ec2VolumeClassification = {
   primaryCondition: Ec2VolumeSignal;
   signals: Exclude<Ec2VolumeSignal, "normal">[];

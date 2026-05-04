@@ -51,7 +51,7 @@ const hasAllTags = (tags: Record<string, unknown> | null, required: string[]): b
 };
 
 const mapTypeToCategory = (type: Ec2RecommendationType): "compute" | "storage" | "pricing" | "network" => {
-  if (type === "unattached_volume" || type === "old_snapshot") return "storage";
+  if (type === "unattached_volume" || type === "old_snapshot" || type === "orphaned_snapshot") return "storage";
   if (type === "uncovered_on_demand") return "pricing";
   if (
     type === "high_internet_data_transfer" ||
@@ -212,9 +212,14 @@ export class Ec2RecommendationsService {
       const normalizedState = normalize(row.volumeState || row.factState);
       const classifiedVolume = classifyVolumeSignals({
         isAttached: !(row.isUnattached === true || attachmentId === null),
-        attachedInstanceState: null,
+        attachedInstanceState: row.attachedInstanceState,
         isIdleCandidate: false,
         isUnderutilizedCandidate: false,
+        volumeReadOps: row.avgReadOps,
+        volumeWriteOps: row.avgWriteOps,
+        volumeReadBytes: row.avgReadBytes,
+        volumeWriteBytes: row.avgWriteBytes,
+        volumeCost: row.volumeCost,
       });
       if (
         normalizedState === "available" &&
@@ -263,10 +268,70 @@ export class Ec2RecommendationsService {
         continue;
       }
       const snapshotSignals = classifySnapshotSignals({
-        likelyOrphaned: false,
+        likelyOrphaned:
+          row.sourceVolumeId === null ||
+          row.hasActiveSourceVolume === false ||
+          row.sourceVolumeDeletedAt !== null ||
+          normalize(row.sourceVolumeState) === "deleted" ||
+          normalize(row.sourceVolumeState) === "deleting" ||
+          normalize(row.sourceVolumeState) === "unavailable" ||
+          normalize(row.sourceVolumeState) === "error" ||
+          normalize(row.sourceVolumeState) === "failed",
         ageDays: age,
       });
-      if (snapshotSignals.signals.includes("old") && (row.snapshotCost ?? 0) > 5 && !protectedSnapshot) {
+
+      if ((row.snapshotCost ?? 0) <= 5 || protectedSnapshot) {
+        continue;
+      }
+
+      const isOrphaned = snapshotSignals.signals.includes("orphaned");
+      const isOld = snapshotSignals.signals.includes("old");
+      if (!isOrphaned && !isOld) {
+        continue;
+      }
+
+      const recommendationType: Ec2RecommendationType = isOrphaned
+        ? "orphaned_snapshot"
+        : "old_snapshot";
+
+      if (recommendationType === "orphaned_snapshot") {
+        generated.push({
+          tenantId: input.tenantId,
+          cloudConnectionId: row.cloudConnectionId,
+          billingSourceId: row.billingSourceId ?? input.billingSourceId,
+          category: "storage",
+          type: "orphaned_snapshot",
+          resourceType: "snapshot",
+          resourceId: row.snapshotId,
+          resourceName: "Orphaned Snapshot",
+          accountId: row.awsAccountId,
+          region: row.awsRegionCode,
+          problem: "Snapshot source volume is missing or no longer active",
+          evidence: `snapshot_age_days=${age}, snapshot_cost=${(row.snapshotCost ?? 0).toFixed(2)}, source_volume_id=${row.sourceVolumeId ?? "null"}, source_volume_state=${row.sourceVolumeState ?? "null"}, has_active_source_volume=${row.hasActiveSourceVolume === true ? "true" : "false"}, protected=false`,
+          action: "Delete snapshot after retention review",
+          currentMonthlyCost: row.snapshotCost ?? 0,
+          estimatedMonthlySaving: row.snapshotCost ?? 0,
+          projectedMonthlyCost: 0,
+          risk: "low",
+          effort: "low",
+          observationStart,
+          observationEnd,
+          metadata: {
+            state: row.snapshotState,
+            snapshot_age_days: age,
+            source_volume_id: row.sourceVolumeId,
+            source_volume_state: row.sourceVolumeState,
+            has_active_source_volume: row.hasActiveSourceVolume,
+            source_volume_deleted_at: row.sourceVolumeDeletedAt?.toISOString?.() ?? null,
+            classifier_primary_condition: snapshotSignals.primaryCondition,
+            classifier_signals: snapshotSignals.signals,
+            tags: row.tagsJson,
+          },
+        });
+        continue;
+      }
+
+      if (recommendationType === "old_snapshot") {
         generated.push({
           tenantId: input.tenantId,
           cloudConnectionId: row.cloudConnectionId,
@@ -291,6 +356,12 @@ export class Ec2RecommendationsService {
           metadata: {
             state: row.snapshotState,
             snapshot_age_days: age,
+            source_volume_id: row.sourceVolumeId,
+            source_volume_state: row.sourceVolumeState,
+            has_active_source_volume: row.hasActiveSourceVolume,
+            source_volume_deleted_at: row.sourceVolumeDeletedAt?.toISOString?.() ?? null,
+            classifier_primary_condition: snapshotSignals.primaryCondition,
+            classifier_signals: snapshotSignals.signals,
             tags: row.tagsJson,
           },
         });
@@ -568,6 +639,7 @@ export class Ec2RecommendationsService {
         overutilized_instance: 0,
         unattached_volume: 0,
         old_snapshot: 0,
+        orphaned_snapshot: 0,
         uncovered_on_demand: 0,
         high_internet_data_transfer: 0,
         high_inter_region_data_transfer: 0,

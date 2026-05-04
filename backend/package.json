@@ -9,6 +9,8 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/server.js",
     "ingest:aws:manual": "node dist/scripts/manual-aws-export-ingestion.js",
+    "ingest:aws:like:clean": "node dist/scripts/aws-like-ingest-with-cleanup.js",
+    "ingest:local:like:clean": "node dist/scripts/local-file-ingest-with-cleanup.js",
     "ingest:cloudtrail:files": "node dist/scripts/process-cloudtrail-files.js",
     "anomalies:run": "node dist/scripts/run-anomaly-detectors.js",
     "anomalies:test:backfill": "npm run build && node dist/scripts/test-billing-anomaly-detection-from-parquet.js",

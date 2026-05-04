@@ -22,6 +22,7 @@ import {
 
 const VOLUMES_PAGE_PATH = "/dashboard/inventory/aws/ec2/volumes";
 const INSTANCES_PAGE_PATH = "/dashboard/inventory/aws/ec2/instances";
+const SNAPSHOTS_PAGE_PATH = "/dashboard/inventory/aws/ec2/snapshots";
 
 const CURRENCY_FORMATTER = new Intl.NumberFormat("en-US", {
   style: "currency",
@@ -303,6 +304,8 @@ export default function EC2VolumeDetailPage() {
 
   const detailData = volumeDetailQuery.data;
   const totalVolumeCost = detailData?.costBreakdown.totalVolumeCost ?? selectedVolume.mtdCost ?? 0;
+  const volumeSnapshotCount = detailData?.snapshot.snapshotCount ?? selectedVolume.snapshotCount ?? 0;
+  const volumeSnapshotCost = detailData?.snapshot.snapshotCost ?? selectedVolume.snapshotCost ?? 0;
   const hasSeparateCostFields = Boolean(
     detailData &&
       (
@@ -426,8 +429,8 @@ export default function EC2VolumeDetailPage() {
 
   const performanceReady = performanceSeries.some((series) => series.points.length > 0);
 
-  const volumeSnapshots = (snapshotsQuery.data?.items ?? []).filter(
-    (snapshot) => snapshot.sourceVolumeId === selectedVolume.volumeId || snapshot.sourceVolumeName === selectedVolume.volumeName,
+  const volumeSnapshots = (snapshotsQuery.data?.rows ?? []).filter(
+    (snapshot) => snapshot.sourceVolumeId === selectedVolume.volumeId,
   );
 
   const snapshotRows = volumeSnapshots.map((snapshot) => {
@@ -564,6 +567,38 @@ export default function EC2VolumeDetailPage() {
             <div className={`ec2-instance-detail__insight ec2-instance-detail__insight--${insight.tone}`}>
               <strong>{insight.label}</strong>
               <span>{insight.message}</span>
+            </div>
+
+            <div>
+              <h4>Snapshot</h4>
+              <table className="ec2-instance-detail__simple-table">
+                <tbody>
+                  <tr>
+                    <th>Snapshot Count</th>
+                    <td>{volumeSnapshotCount}</td>
+                  </tr>
+                  <tr>
+                    <th>Snapshot Cost</th>
+                    <td>{formatCurrency(volumeSnapshotCost)}</td>
+                  </tr>
+                  <tr>
+                    <th>Link</th>
+                    <td>
+                      <button
+                        type="button"
+                        className="ec2-linked-cell-btn"
+                        onClick={() => {
+                          const next = new URLSearchParams(location.search);
+                          next.set("volumeId", selectedVolume.volumeId);
+                          navigate({ pathname: SNAPSHOTS_PAGE_PATH, search: next.toString() });
+                        }}
+                      >
+                        View Snapshots
+                      </button>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
 
             <div className="ec2-instance-detail__charts2">

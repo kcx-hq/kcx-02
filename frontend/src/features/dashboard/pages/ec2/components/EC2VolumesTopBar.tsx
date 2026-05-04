@@ -7,15 +7,17 @@ import { EC2ExplorerScopeFilters } from "./EC2ExplorerScopeFilters";
 import { EC2VolumesThresholdsPopover } from "./EC2VolumesThresholdsPopover";
 import {
   EC2_VOLUMES_ATTACHMENT_OPTIONS,
+  EC2_VOLUMES_STATUS_OPTIONS,
   EC2_VOLUMES_STATE_OPTIONS,
   EC2_VOLUMES_TYPE_OPTIONS,
   type EC2VolumesAttachmentFilter,
   type EC2VolumesControlsState,
+  type EC2VolumesStatusFilter,
   type EC2VolumesStateFilter,
   type EC2VolumesTypeFilter,
 } from "./ec2Volumes.types";
 
-type PopoverKey = "state" | "volumeType" | "attachment" | "thresholds";
+type PopoverKey = "state" | "volumeType" | "attachment" | "status" | "thresholds";
 
 type Option<T extends string> = {
   key: T;
@@ -192,6 +194,31 @@ export function EC2VolumesTopBar({ value, onChange, onReset, children }: EC2Volu
                   options: EC2_VOLUMES_ATTACHMENT_OPTIONS,
                   selected: value.attachment,
                   onSelect: (nextAttachment: EC2VolumesAttachmentFilter) => update({ attachment: nextAttachment }),
+                })
+              : null}
+          </div>
+
+          <div className="cost-explorer-toolbar-item">
+            <button
+              type="button"
+              className={`cost-explorer-toolbar-trigger${activePopover === "status" ? " is-active" : ""}`}
+              onClick={() => togglePopover("status")}
+              aria-expanded={activePopover === "status"}
+              aria-haspopup="dialog"
+            >
+              <span className="cost-explorer-toolbar-trigger__label">Status</span>
+              <span className="cost-explorer-toolbar-trigger__row">
+                <span className="cost-explorer-toolbar-trigger__value">
+                  {EC2_VOLUMES_STATUS_OPTIONS.find((item) => item.key === value.status)?.label ?? "All"}
+                </span>
+                <ChevronDown className="cost-explorer-toolbar-trigger__caret" size={14} aria-hidden="true" />
+              </span>
+            </button>
+            {activePopover === "status"
+              ? renderOptionList({
+                  options: EC2_VOLUMES_STATUS_OPTIONS,
+                  selected: value.status,
+                  onSelect: (nextStatus: EC2VolumesStatusFilter) => update({ status: nextStatus }),
                 })
               : null}
           </div>

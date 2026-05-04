@@ -15,6 +15,7 @@ export type InventoryEc2InstancesListQuery = {
     | "Other Network"
     | null;
   status: "all" | "idle" | "underutilized" | "overutilized" | "uncovered" | "healthy";
+  transferType: "internet" | "inter_region" | "inter_az" | "unknown" | null;
   search: string | null;
   startDate: string | null;
   endDate: string | null;

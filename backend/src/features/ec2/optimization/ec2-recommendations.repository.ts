@@ -42,11 +42,16 @@ type VolumeCandidateRow = {
   volumeName: string | null;
   volumeState: string | null;
   attachedInstanceId: string | null;
+  attachedInstanceState: string | null;
   sizeGb: number | null;
   discoveredAt: Date | null;
   createdAt: Date | null;
   firstSeenAt: Date | null;
   volumeCost: number | null;
+  avgReadOps: number | null;
+  avgWriteOps: number | null;
+  avgReadBytes: number | null;
+  avgWriteBytes: number | null;
   isUnattached: boolean | null;
   factState: string | null;
   tagsJson: Record<string, unknown> | null;
@@ -61,6 +66,10 @@ type SnapshotCandidateRow = {
   subAccountKey: number | null;
   snapshotId: string;
   snapshotState: string | null;
+  sourceVolumeId: string | null;
+  sourceVolumeState: string | null;
+  sourceVolumeDeletedAt: Date | null;
+  hasActiveSourceVolume: boolean | null;
   startTime: Date | null;
   snapshotCost: number | null;
   tagsJson: Record<string, unknown> | null;
@@ -225,6 +234,21 @@ export class Ec2RecommendationsRepository {
           AND (:cloudConnectionId::uuid IS NULL OR d.cloud_connection_id = :cloudConnectionId::uuid)
           AND (:billingSourceId::bigint IS NULL OR d.billing_source_id = :billingSourceId::bigint)
         GROUP BY d.cloud_connection_id, d.billing_source_id, d.volume_id
+      ),
+      utilization AS (
+        SELECT
+          u.cloud_connection_id,
+          u.volume_id,
+          AVG(COALESCE(u.read_ops, 0))::double precision AS avg_read_ops,
+          AVG(COALESCE(u.write_ops, 0))::double precision AS avg_write_ops,
+          AVG(COALESCE(u.read_bytes, 0))::double precision AS avg_read_bytes,
+          AVG(COALESCE(u.write_bytes, 0))::double precision AS avg_write_bytes
+        FROM ebs_volume_utilization_daily u
+        WHERE u.tenant_id = :tenantId
+          AND u.usage_date >= :dateFrom::date
+          AND u.usage_date < (:dateTo::date + INTERVAL '1 day')
+          AND (:cloudConnectionId::uuid IS NULL OR u.cloud_connection_id = :cloudConnectionId::uuid)
+        GROUP BY u.cloud_connection_id, u.volume_id
       )
       SELECT
         inv.cloud_connection_id AS "cloudConnectionId",
@@ -237,17 +261,30 @@ export class Ec2RecommendationsRepository {
         COALESCE(NULLIF(TRIM(COALESCE(inv.metadata_json ->> 'volumeName', '')), ''), inv.volume_id)::text AS "volumeName",
         inv.state::text AS "volumeState",
         inv.attached_instance_id::text AS "attachedInstanceId",
+        inst.state::text AS "attachedInstanceState",
         inv.size_gb AS "sizeGb",
         inv.discovered_at AS "discoveredAt",
         inv.created_at AS "createdAt",
         c.first_seen_at AS "firstSeenAt",
         COALESCE(c.volume_cost, 0)::double precision AS "volumeCost",
+        u.avg_read_ops AS "avgReadOps",
+        u.avg_write_ops AS "avgWriteOps",
+        u.avg_read_bytes AS "avgReadBytes",
+        u.avg_write_bytes AS "avgWriteBytes",
         c.is_unattached AS "isUnattached",
         c.fact_state::text AS "factState",
         inv.tags_json AS "tagsJson"
       FROM ec2_volume_inventory_snapshots inv
       LEFT JOIN costs c
         ON c.volume_id = inv.volume_id
+      LEFT JOIN utilization u
+        ON u.volume_id = inv.volume_id
+       AND u.cloud_connection_id IS NOT DISTINCT FROM inv.cloud_connection_id
+      LEFT JOIN ec2_instance_inventory_snapshots inst
+        ON inst.tenant_id = inv.tenant_id
+       AND inst.instance_id = inv.attached_instance_id
+       AND inst.cloud_connection_id IS NOT DISTINCT FROM inv.cloud_connection_id
+       AND inst.is_current = TRUE
       LEFT JOIN dim_sub_account dsa ON dsa.id = inv.sub_account_key
       LEFT JOIN dim_region dr ON dr.id = inv.region_key
       WHERE inv.tenant_id = :tenantId::uuid
@@ -286,11 +323,27 @@ export class Ec2RecommendationsRepository {
         inv.sub_account_key AS "subAccountKey",
         inv.snapshot_id::text AS "snapshotId",
         inv.state::text AS "snapshotState",
+        inv.source_volume_id::text AS "sourceVolumeId",
+        vol.state::text AS "sourceVolumeState",
+        vol.deleted_at AS "sourceVolumeDeletedAt",
+        CASE
+          WHEN inv.source_volume_id IS NULL THEN FALSE
+          WHEN vol.volume_id IS NULL THEN FALSE
+          WHEN vol.deleted_at IS NOT NULL THEN FALSE
+          WHEN LOWER(COALESCE(vol.state, '')) IN ('deleted', 'deleting', 'unavailable', 'error', 'failed') THEN FALSE
+          ELSE TRUE
+        END AS "hasActiveSourceVolume",
         inv.start_time AS "startTime",
         COALESCE(sc.snapshot_cost, 0)::double precision AS "snapshotCost",
         inv.tags_json AS "tagsJson"
       FROM ec2_snapshot_inventory_snapshots inv
       LEFT JOIN snapshot_cost sc ON sc.snapshot_id = inv.snapshot_id
+      LEFT JOIN ec2_volume_inventory_snapshots vol
+        ON vol.tenant_id = inv.tenant_id
+       AND vol.cloud_connection_id IS NOT DISTINCT FROM inv.cloud_connection_id
+       AND vol.region_key IS NOT DISTINCT FROM inv.region_key
+       AND vol.volume_id = inv.source_volume_id
+       AND vol.is_current = TRUE
       LEFT JOIN dim_sub_account dsa ON dsa.id = inv.sub_account_key
       LEFT JOIN dim_region dr ON dr.id = inv.region_key
       WHERE inv.tenant_id = :tenantId::uuid
@@ -513,7 +566,7 @@ export class Ec2RecommendationsRepository {
             THEN LOWER(fr.category)
           WHEN LOWER(COALESCE(fr.recommendation_type, '')) IN ('idle_instance', 'underutilized_instance', 'overutilized_instance')
             THEN 'compute'
-          WHEN LOWER(COALESCE(fr.recommendation_type, '')) IN ('unattached_volume', 'old_snapshot', 'unattached_ebs_volume', 'ebs_attached_to_stopped_instance')
+          WHEN LOWER(COALESCE(fr.recommendation_type, '')) IN ('unattached_volume', 'old_snapshot', 'orphaned_snapshot', 'unattached_ebs_volume', 'ebs_attached_to_stopped_instance')
             THEN 'storage'
           WHEN LOWER(COALESCE(fr.recommendation_type, '')) IN ('uncovered_on_demand')
             THEN 'pricing'

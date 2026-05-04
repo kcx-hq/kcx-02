@@ -5,11 +5,11 @@ import type {
   InventoryEc2SnapshotsListItem,
   InventoryEc2SnapshotsListQuery,
   InventoryEc2SnapshotsListResponse,
-  InventoryEc2SnapshotsSignal,
   InventoryEc2SnapshotsSummary,
+  InventoryEc2SnapshotsVolumeStatus,
 } from "./snapshots-inventory.types.js";
 
-import { OLD_SNAPSHOT_AGE_DAYS, classifySnapshotSignal } from "../classification/snapshot-classifier.js";
+import { OLD_SNAPSHOT_AGE_DAYS, classifySnapshotSignals } from "../classification/snapshot-classifier.js";
 const MILLIS_PER_DAY = 24 * 60 * 60 * 1000;
 
 type InventoryRow = {
@@ -44,6 +44,8 @@ type SourceVolumeRow = {
   regionKey: string | null;
   sourceVolumeId: string;
   sourceVolumeName: string;
+  state: string | null;
+  deletedAt: Date | string | null;
 };
 
 type SnapshotCostRow = {
@@ -100,6 +102,41 @@ const computeAgeDays = (startTime: Date | string | null, nowMs: number): number 
   if (Number.isNaN(parsed)) return null;
   if (parsed > nowMs) return 0;
   return Math.floor((nowMs - parsed) / MILLIS_PER_DAY);
+};
+
+const toTitleCase = (value: string): string =>
+  value
+    .replaceAll("_", " ")
+    .replaceAll("-", " ")
+    .split(" ")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(" ");
+
+const normalizeVolumeState = (value: string | null | undefined): string | null => {
+  if (!value) return null;
+  const normalized = value.trim().toLowerCase();
+  return normalized.length > 0 ? normalized : null;
+};
+
+const resolveVolumeStatus = (input: {
+  sourceVolumeId: string | null;
+  sourceVolume: SourceVolumeRow | null;
+}): InventoryEc2SnapshotsVolumeStatus => {
+  if (!input.sourceVolumeId) return "missing";
+  if (!input.sourceVolume) return "missing";
+
+  const normalizedState = normalizeVolumeState(input.sourceVolume.state);
+  if (input.sourceVolume.deletedAt) return "deleted";
+  if (normalizedState === "deleted" || normalizedState === "deleting") return "deleted";
+  if (
+    normalizedState === "unavailable" ||
+    normalizedState === "error" ||
+    normalizedState === "failed"
+  ) {
+    return "unavailable";
+  }
+  return "available";
 };
 
 export class SnapshotsInventoryService {
@@ -175,18 +212,24 @@ export class SnapshotsInventoryService {
             )
         : null;
 
-      const normalizedSourceVolume = sourceVolume ?? null;
-
       const ageDays = computeAgeDays(row.startTime, nowMs);
-      const likelyOrphaned = row.sourceVolumeId === null || normalizedSourceVolume === null;
-      const signal = classifySnapshotSignal({ likelyOrphaned, ageDays });
+      const volumeStatus = resolveVolumeStatus({
+        sourceVolumeId: row.sourceVolumeId,
+        sourceVolume: sourceVolume ?? null,
+      });
+      const likelyOrphaned =
+        volumeStatus === "missing" || volumeStatus === "deleted" || volumeStatus === "unavailable";
+      const classification = classifySnapshotSignals({ likelyOrphaned, ageDays });
+      const status = classification.primaryCondition;
+      const statusLabel = toTitleCase(status);
+      const signals = classification.signals;
       const cost = snapshotCostLookup.get(row.snapshotId) ?? {
         cost: null,
         currencyCode: null,
       };
       const normalizedCost = toNullableNumber(cost.cost) ?? 0;
-      const recommendation = signal === "old" ? "Delete or review old snapshot" : null;
-      const estimatedSavings = signal === "old" ? normalizedCost : 0;
+      const recommendation = status === "old" ? "Delete or review old snapshot" : null;
+      const estimatedSavings = status === "old" ? normalizedCost : 0;
 
       return {
         snapshotId: row.snapshotId,
@@ -198,7 +241,11 @@ export class SnapshotsInventoryService {
         state: row.state ?? "",
         storageTier: row.storageTier ?? "",
         ageDays,
-        signal,
+        status,
+        statusLabel,
+        signals,
+        volumeStatus,
+        signal: status,
         cost: normalizedCost,
         recommendation,
         estimatedSavings,
@@ -241,6 +288,13 @@ export class SnapshotsInventoryService {
       nextIndex += 1;
     }
 
+    const normalizedVolumeId = normalizeLower(input.query.volumeId);
+    if (normalizedVolumeId) {
+      whereParts.push(`LOWER(COALESCE(inv.source_volume_id, '')) = $${nextIndex}`);
+      bind.push(normalizedVolumeId);
+      nextIndex += 1;
+    }
+
     const normalizedState = normalizeLower(input.query.state);
     if (normalizedState) {
       whereParts.push(`LOWER(COALESCE(inv.state, '')) = $${nextIndex}`);
@@ -258,6 +312,60 @@ export class SnapshotsInventoryService {
     if (input.query.encrypted !== null) {
       whereParts.push(`inv.encrypted = $${nextIndex}`);
       bind.push(input.query.encrypted);
+      nextIndex += 1;
+    }
+
+    const normalizedStatus = normalizeLower(input.query.status);
+    if (normalizedStatus === "old") {
+      whereParts.push(`
+        inv.start_time IS NOT NULL
+        AND (NOW() - inv.start_time) >= ($${nextIndex}::int * INTERVAL '1 day')
+      `);
+      bind.push(OLD_SNAPSHOT_AGE_DAYS);
+      nextIndex += 1;
+    } else if (normalizedStatus === "orphaned") {
+      whereParts.push(`
+        (
+          inv.source_volume_id IS NULL
+          OR NOT EXISTS (
+            SELECT 1
+            FROM ec2_volume_inventory_snapshots v
+            WHERE v.tenant_id = inv.tenant_id
+              AND v.volume_id = inv.source_volume_id
+              AND COALESCE(v.cloud_connection_id::text, '') = COALESCE(inv.cloud_connection_id::text, '')
+              AND (
+                inv.region_key IS NULL
+                OR v.region_key::text = inv.region_key::text
+              )
+              AND v.is_current = true
+              AND v.deleted_at IS NULL
+              AND LOWER(COALESCE(v.state, '')) NOT IN ('deleted', 'deleting', 'unavailable', 'error', 'failed')
+          )
+        )
+      `);
+    } else if (normalizedStatus === "normal") {
+      whereParts.push(`
+        NOT (
+          inv.start_time IS NOT NULL
+          AND (NOW() - inv.start_time) >= ($${nextIndex}::int * INTERVAL '1 day')
+        )
+        AND inv.source_volume_id IS NOT NULL
+        AND EXISTS (
+          SELECT 1
+          FROM ec2_volume_inventory_snapshots v
+          WHERE v.tenant_id = inv.tenant_id
+            AND v.volume_id = inv.source_volume_id
+            AND COALESCE(v.cloud_connection_id::text, '') = COALESCE(inv.cloud_connection_id::text, '')
+            AND (
+              inv.region_key IS NULL
+              OR v.region_key::text = inv.region_key::text
+            )
+            AND v.is_current = true
+            AND v.deleted_at IS NULL
+            AND LOWER(COALESCE(v.state, '')) NOT IN ('deleted', 'deleting', 'unavailable', 'error', 'failed')
+        )
+      `);
+      bind.push(OLD_SNAPSHOT_AGE_DAYS);
       nextIndex += 1;
     }
 
@@ -350,17 +458,28 @@ export class SnapshotsInventoryService {
     );
     const rows = await sequelize.query<SourceVolumeRow>(
       `
-        SELECT
+        SELECT DISTINCT ON (
+          COALESCE(inv.cloud_connection_id::text, ''),
+          COALESCE(inv.region_key::text, ''),
+          inv.volume_id
+        )
           inv.cloud_connection_id::text AS "cloudConnectionId",
           inv.region_key::text AS "regionKey",
           inv.volume_id AS "sourceVolumeId",
-          COALESCE(NULLIF(TRIM(COALESCE(inv.tags_json ->> 'Name', '')), ''), inv.volume_id) AS "sourceVolumeName"
+          COALESCE(NULLIF(TRIM(COALESCE(inv.tags_json ->> 'Name', '')), ''), inv.volume_id) AS "sourceVolumeName",
+          inv.state AS "state",
+          inv.deleted_at AS "deletedAt"
         FROM ec2_volume_inventory_snapshots inv
         WHERE inv.tenant_id = $1
-          AND inv.is_current = true
-          AND inv.deleted_at IS NULL
           AND inv.volume_id = ANY($2::text[])
-          AND ($3::text[] IS NULL OR inv.cloud_connection_id::text = ANY($3::text[]));
+          AND ($3::text[] IS NULL OR inv.cloud_connection_id::text = ANY($3::text[]))
+        ORDER BY
+          COALESCE(inv.cloud_connection_id::text, ''),
+          COALESCE(inv.region_key::text, ''),
+          inv.volume_id,
+          inv.is_current DESC,
+          inv.discovered_at DESC,
+          inv.updated_at DESC;
       `,
       {
         bind: [

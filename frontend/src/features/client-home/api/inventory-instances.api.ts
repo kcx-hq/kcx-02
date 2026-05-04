@@ -75,6 +75,7 @@ export type InventoryEc2InstancesListParams = {
     | "Other Network"
     | null
   status?: "all" | "idle" | "underutilized" | "overutilized" | "uncovered" | "healthy"
+  transferType?: "internet" | "inter_region" | "inter_az" | "unknown" | null
   search?: string | null
   startDate?: string | null
   endDate?: string | null
@@ -453,6 +454,7 @@ export async function getInventoryEc2Instances(
   if (params.pricingType) searchParams.set("pricingType", params.pricingType)
   if (params.networkType) searchParams.set("networkType", params.networkType)
   if (params.status && params.status !== "all") searchParams.set("status", params.status)
+  if (params.transferType) searchParams.set("transferType", params.transferType)
   if (params.search) searchParams.set("search", params.search)
   if (params.startDate) searchParams.set("startDate", params.startDate)
   if (params.endDate) searchParams.set("endDate", params.endDate)

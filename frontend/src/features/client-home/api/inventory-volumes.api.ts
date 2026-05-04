@@ -26,11 +26,15 @@ export type InventoryEc2VolumeRow = {
   currencyCode: string | null
   dailyCost: number
   mtdCost: number
+  snapshotCount: number
+  snapshotCost: number
   isUnattached: boolean | null
   isAttachedToStoppedInstance: boolean | null
   isIdleCandidate: boolean | null
   isUnderutilizedCandidate: boolean | null
   optimizationStatus: "idle" | "underutilized" | "optimal" | "warning" | null
+  status: string | null
+  statusLabel: string | null
   tags: Record<string, unknown> | null
   metadata: Record<string, unknown> | null
 }
@@ -63,13 +67,14 @@ export type InventoryEc2VolumesListResponse = {
 export type InventoryEc2VolumesListParams = {
   cloudConnectionId?: string | null
   subAccountKey?: string | null
+  volumeId?: string | null
   attachedInstanceId?: string | null
   state?: string | null
   volumeType?: string | null
   isAttached?: boolean | null
   attachmentState?: "attached" | "unattached" | "attached_stopped" | null
   optimizationStatus?: "idle" | "underutilized" | "optimal" | "warning" | null
-  signal?: "unattached" | "attached_stopped" | "idle" | "underutilized" | null
+  signal?: "unattached" | "attached_stopped" | "idle" | "underutilized" | "low_utilization" | "healthy" | null
   region?: string | null
   search?: string | null
   startDate?: string | null
@@ -170,6 +175,10 @@ export type InventoryEc2VolumeDetailResponse = {
     throughputCost: number
     snapshotCost: number
   }
+  snapshot: {
+    snapshotCount: number
+    snapshotCost: number
+  }
   trends: {
     costTrend: Array<{ date: string; totalCost: number }>
     sizeTrend: Array<{ date: string; sizeGb: number }>
@@ -238,6 +247,8 @@ const normalizeVolumeRow = (value: unknown): InventoryEc2VolumeRow | null => {
     currencyCode: toStringOrNull(value.currencyCode),
     dailyCost: toNumberOrNull(value.dailyCost) ?? 0,
     mtdCost: toNumberOrNull(value.mtdCost) ?? 0,
+    snapshotCount: toNumberOrNull(value.snapshotCount) ?? 0,
+    snapshotCost: toNumberOrNull(value.snapshotCost) ?? 0,
     isUnattached: toBooleanOrNull(value.isUnattached),
     isAttachedToStoppedInstance: toBooleanOrNull(value.isAttachedToStoppedInstance),
     isIdleCandidate: toBooleanOrNull(value.isIdleCandidate),
@@ -249,6 +260,8 @@ const normalizeVolumeRow = (value: unknown): InventoryEc2VolumeRow | null => {
       optimizationStatus === "warning"
         ? (optimizationStatus as InventoryEc2VolumeRow["optimizationStatus"])
         : null,
+    status: toStringOrNull(value.status),
+    statusLabel: toStringOrNull(value.statusLabel),
     tags: toObjectOrNull(value.tags),
     metadata: toObjectOrNull(value.metadata),
   }
@@ -323,6 +336,7 @@ export async function getInventoryEc2Volumes(
 
   if (params.cloudConnectionId) searchParams.set("cloudConnectionId", params.cloudConnectionId)
   if (params.subAccountKey) searchParams.set("subAccountKey", params.subAccountKey)
+  if (params.volumeId) searchParams.set("volumeId", params.volumeId)
   if (params.attachedInstanceId) searchParams.set("attachedInstanceId", params.attachedInstanceId)
   if (params.state) searchParams.set("state", params.state)
   if (params.volumeType) searchParams.set("volumeType", params.volumeType)

@@ -193,6 +193,7 @@ export type Ec2RecommendationType =
   | "overutilized_instance"
   | "unattached_volume"
   | "old_snapshot"
+  | "orphaned_snapshot"
   | "uncovered_on_demand"
   | "high_internet_data_transfer"
   | "high_inter_region_data_transfer"
