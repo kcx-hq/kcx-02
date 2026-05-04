@@ -89,6 +89,22 @@ const toErrorMessage = (error) => {
 const normalizeFormat = (value) => String(value ?? "").trim().toLowerCase();
 
 const now = () => new Date();
+const pendingPostIngestionTasks = new Set<Promise<void>>();
+
+function trackPostIngestionTask(task: Promise<void>): void {
+  pendingPostIngestionTasks.add(task);
+  task.finally(() => {
+    pendingPostIngestionTasks.delete(task);
+  });
+}
+
+async function waitForPendingPostIngestionTasks(): Promise<void> {
+  if (pendingPostIngestionTasks.size === 0) {
+    return;
+  }
+
+  await Promise.allSettled(Array.from(pendingPostIngestionTasks));
+}
 
 function scheduleStorageLensSyncAfterIngestion({ tenantId, billingSourceId, ingestionRunId }) {
   const normalizedTenantId = String(tenantId ?? "").trim();
@@ -98,7 +114,7 @@ function scheduleStorageLensSyncAfterIngestion({ tenantId, billingSourceId, inge
   }
 
   setImmediate(() => {
-    void syncStorageLensFromClientAccount({
+    const task = syncStorageLensFromClientAccount({
       tenantId: normalizedTenantId,
       billingSourceId: normalizedBillingSourceId,
     })
@@ -119,6 +135,8 @@ function scheduleStorageLensSyncAfterIngestion({ tenantId, billingSourceId, inge
           reason: error instanceof Error ? error.message : String(error),
         });
       });
+
+    trackPostIngestionTask(task);
   });
 }
 
@@ -979,6 +997,7 @@ export const ingestionOrchestrator = {
   markRunRunning,
   markRunCompleted,
   markRunFailed,
+  waitForPendingPostIngestionTasks,
 };
 
 export {
@@ -989,5 +1008,6 @@ export {
   markRunRunning,
   markRunCompleted,
   markRunFailed,
+  waitForPendingPostIngestionTasks,
 };
 

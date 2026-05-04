@@ -17,7 +17,7 @@ const volumesInventoryQuerySchema = z.object({
   isAttached: z.boolean().nullable(),
   attachmentState: z.enum(["attached", "unattached", "attached_stopped"]).nullable(),
   optimizationStatus: z.enum(["idle", "underutilized", "optimal", "warning"]).nullable(),
-  signal: z.enum(["unattached", "attached_stopped", "idle", "underutilized"]).nullable(),
+  signal: z.enum(["unattached", "attached_stopped", "idle", "underutilized", "low_utilization", "healthy"]).nullable(),
   region: z.string().trim().min(1).max(100).nullable(),
   search: z.string().trim().min(1).max(200).nullable(),
   startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(),

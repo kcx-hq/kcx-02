@@ -14,12 +14,11 @@ import AwsInventoryPage from "../pages/inventory/AwsInventoryPage";
 import EC2ExplorerPage from "../pages/ec2/EC2ExplorerPage";
 import EC2VolumesPage from "../pages/ec2/EC2VolumesPage";
 import EC2OptimizationPage from "../pages/ec2/EC2OptimizationPage";
-import EC2DataTransferPage from "../pages/ec2/EC2DataTransferPage";
-import S3OverviewPage from "../pages/s3/S3OverviewPage";
 import S3BucketDetailPage from "../pages/s3/S3BucketDetailPage";
-import S3UsagePage from "../pages/s3/S3UsagePage";
 import S3UsageBucketDetailPage from "../pages/s3/S3UsageBucketDetailPage";
 import S3OptimizationPage from "../pages/s3/S3OptimizationPage";
+import S3BucketPage from "../pages/s3/S3BucketPage";
+import S3BucketInfoPage from "../pages/s3/S3BucketInfoPage";
 import PolicyPage from "../pages/policy/PolicyPage";
 import S3PolicyPage from "../pages/policy/S3PolicyPage";
 import "../styles/tokens.css";
@@ -86,14 +85,17 @@ function DashboardInventoryEc2Redirect() {
   );
 }
 
-function DashboardS3Redirect() {
+function DashboardEc2DataTransferRedirect() {
   const location = useLocation();
-
+  const params = new URLSearchParams(location.search);
+  params.set("metric", "data-transfer");
+  params.set("groupBy", "transfer-type");
+  params.set("usageType", "network");
   return (
     <Navigate
       to={{
-        pathname: "/dashboard/s3/cost",
-        search: location.search,
+        pathname: "/dashboard/ec2/explorer",
+        search: params.toString(),
       }}
       replace
     />
@@ -114,12 +116,13 @@ export default function DashboardRoutes() {
         <Route path="ec2/explorer" element={<EC2ExplorerPage />} />
         <Route path="ec2/volumes" element={<EC2VolumesPage />} />
         <Route path="ec2/optimization" element={<EC2OptimizationPage />} />
-        <Route path="ec2/network/data-transfer" element={<EC2DataTransferPage />} />
+        <Route path="ec2/network/data-transfer" element={<DashboardEc2DataTransferRedirect />} />
         <Route path="ec2/network/elastic-ip" element={<EC2EipPage />} />
-        <Route path="s3" element={<DashboardS3Redirect />} />
-        <Route path="s3/cost" element={<S3OverviewPage />} />
+        <Route path="s3" element={<S3BucketPage />} />
+        <Route path="s3/bucket" element={<S3BucketInfoPage />} />
+        <Route path="s3/cost" element={<S3BucketPage />} />
         <Route path="s3/cost/bucket/:bucketName" element={<S3BucketDetailPage />} />
-        <Route path="s3/usage" element={<S3UsagePage />} />
+        <Route path="s3/usage" element={<S3BucketPage />} />
         <Route path="s3/usage/bucket/:bucketName" element={<S3UsageBucketDetailPage />} />
         <Route path="s3/optimization" element={<S3OptimizationPage />} />
         <Route path="policy" element={<PolicyPage />} />

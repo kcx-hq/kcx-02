@@ -234,13 +234,16 @@ export default function S3OverviewPage() {
           }
         >
           {isInitialLoading ? (
-            <p className="dashboard-note">
-              {showCostCategoryUsageInsightTable || showUsageOperationTable
-                ? "Loading S3 usage type operation insights..."
-                : showCostCategoryTable
-                ? "Loading S3 cost category insights..."
-                : "Loading S3 bucket insights..."}
-            </p>
+            <div className="s3-usage-table-skeleton" aria-hidden="true">
+              <div className="s3-usage-table-skeleton__toolbar" />
+              <div className="s3-usage-table-skeleton__row" />
+              <div className="s3-usage-table-skeleton__row" />
+              <div className="s3-usage-table-skeleton__row" />
+              <div className="s3-usage-table-skeleton__row" />
+              <div className="s3-usage-table-skeleton__row" />
+              <div className="s3-usage-table-skeleton__row" />
+              <div className="s3-usage-table-skeleton__row" />
+            </div>
           ) : showCostCategoryUsageInsightTable ? (
             <S3UsageOperationTable rows={usageOperationRows} />
           ) : showCostCategoryTable ? (

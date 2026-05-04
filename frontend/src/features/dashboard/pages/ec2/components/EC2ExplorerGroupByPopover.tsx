@@ -26,6 +26,11 @@ const GROUP_VALUE_OPTIONS: Record<EC2GroupBy, GroupByValueOption[]> = {
     { key: "Asia Pacific (Tokyo)", label: "Asia Pacific (Tokyo)", count: 4276 },
     { key: "Asia Pacific (Seoul)", label: "Asia Pacific (Seoul)", count: 4276 },
   ],
+  "availability-zone": [
+    { key: "us-east-1a", label: "us-east-1a", count: 9280 },
+    { key: "us-east-1b", label: "us-east-1b", count: 7330 },
+    { key: "ap-south-1a", label: "ap-south-1a", count: 3120 },
+  ],
   account: [
     { key: "Prod Account", label: "Prod Account", count: 9430 },
     { key: "Shared Services", label: "Shared Services", count: 3210 },
@@ -43,19 +48,6 @@ const GROUP_VALUE_OPTIONS: Record<EC2GroupBy, GroupByValueOption[]> = {
     { key: "reserved", label: "Reserved", count: 2271 },
     { key: "savings_plan", label: "Savings Plan", count: 1492 },
   ],
-  team: [
-    { key: "platform", label: "platform", count: 420 },
-    { key: "data", label: "data", count: 310 },
-  ],
-  product: [
-    { key: "core-app", label: "core-app", count: 360 },
-    { key: "analytics", label: "analytics", count: 280 },
-  ],
-  environment: [
-    { key: "production", label: "production", count: 620 },
-    { key: "staging", label: "staging", count: 220 },
-    { key: "dev", label: "dev", count: 180 },
-  ],
   "cost-category": [
     { key: "compute", label: "Compute", count: 7540 },
     { key: "ebs", label: "EBS", count: 4820 },
@@ -66,23 +58,67 @@ const GROUP_VALUE_OPTIONS: Record<EC2GroupBy, GroupByValueOption[]> = {
     { key: "load_balancer", label: "Load Balancer", count: 690 },
     { key: "other", label: "Other", count: 440 },
   ],
-  "network-cost": [
-    { key: "internet_data_transfer", label: "Internet Data Transfer", count: 1870 },
-    { key: "inter_region_data_transfer", label: "Inter-Region Data Transfer", count: 1020 },
-    { key: "inter_az_data_transfer", label: "Inter-AZ Data Transfer", count: 760 },
-    { key: "nat_gateway", label: "NAT Gateway", count: 520 },
-    { key: "elastic_ip", label: "Elastic IP", count: 410 },
-    { key: "load_balancer", label: "Load Balancer", count: 690 },
-    { key: "other_network", label: "Other Network", count: 370 },
+  "usage-type": [
+    { key: "boxusage:m5.large", label: "BoxUsage:m5.large", count: 2110 },
+    { key: "spotusage:c5.xlarge", label: "SpotUsage:c5.xlarge", count: 940 },
+    { key: "ebs:volumeusage.gp3", label: "EBS:VolumeUsage.gp3", count: 1310 },
   ],
-  "network-type": [
-    { key: "internet_data_transfer", label: "Internet Data Transfer", count: 1870 },
-    { key: "inter_region_data_transfer", label: "Inter-Region Data Transfer", count: 1020 },
-    { key: "inter_az_data_transfer", label: "Inter-AZ Data Transfer", count: 760 },
-    { key: "nat_gateway", label: "NAT Gateway", count: 520 },
-    { key: "elastic_ip", label: "Elastic IP", count: 410 },
-    { key: "load_balancer", label: "Load Balancer", count: 690 },
-    { key: "other_network", label: "Other Network", count: 370 },
+  operation: [
+    { key: "runinstances", label: "RunInstances", count: 2440 },
+    { key: "createnatgateway", label: "CreateNatGateway", count: 510 },
+    { key: "loadbalancerusage", label: "LoadBalancerUsage", count: 760 },
+  ],
+  "instance-state": [
+    { key: "running", label: "Running", count: 5020 },
+    { key: "stopped", label: "Stopped", count: 810 },
+    { key: "terminated", label: "Terminated", count: 210 },
+  ],
+  recommendation: [
+    { key: "idle", label: "Idle", count: 420 },
+    { key: "underutilized", label: "Underutilized", count: 710 },
+    { key: "overutilized", label: "Overutilized", count: 190 },
+    { key: "uncovered", label: "Uncovered", count: 330 },
+  ],
+  volume: [
+    { key: "vol-001", label: "vol-001", count: 44 },
+    { key: "vol-002", label: "vol-002", count: 31 },
+    { key: "vol-003", label: "vol-003", count: 27 },
+  ],
+  volume_type: [
+    { key: "gp2", label: "gp2", count: 940 },
+    { key: "gp3", label: "gp3", count: 1760 },
+    { key: "io1", label: "io1", count: 210 },
+    { key: "io2", label: "io2", count: 180 },
+  ],
+  attachment_state: [
+    { key: "attached", label: "Attached", count: 1760 },
+    { key: "unattached", label: "Unattached", count: 220 },
+  ],
+  instance: [
+    { key: "i-0a12", label: "i-0a12", count: 143 },
+    { key: "i-0b34", label: "i-0b34", count: 120 },
+    { key: "i-0c56", label: "i-0c56", count: 97 },
+  ],
+  storage_tier: [
+    { key: "SSD", label: "SSD", count: 1710 },
+    { key: "HDD", label: "HDD", count: 240 },
+    { key: "Unknown", label: "Unknown", count: 30 },
+  ],
+  iops_tier: [
+    { key: "provisioned", label: "Provisioned", count: 310 },
+    { key: "standard", label: "Standard", count: 1630 },
+    { key: "unknown", label: "Unknown", count: 40 },
+  ],
+  size_bucket: [
+    { key: "0-100 GB", label: "0-100 GB", count: 980 },
+    { key: "101-500 GB", label: "101-500 GB", count: 660 },
+    { key: "501 GB-1 TB", label: "501 GB-1 TB", count: 210 },
+    { key: "1 TB+", label: "1 TB+", count: 90 },
+  ],
+  lifecycle_state: [
+    { key: "in-use", label: "In Use", count: 1760 },
+    { key: "available", label: "Available", count: 200 },
+    { key: "unknown", label: "Unknown", count: 20 },
   ],
   tag: [
     { key: "production", label: "production", count: 98 },
@@ -112,15 +148,23 @@ export function EC2ExplorerGroupByPopover({
   const [draftValuesByGroup, setDraftValuesByGroup] = useState<Record<EC2GroupBy, string[]>>({
     none: [],
     region: [],
+    "availability-zone": [],
     account: [],
     "instance-type": [],
-    team: [],
-    product: [],
-    environment: [],
     "reservation-type": [],
     "cost-category": [],
-    "network-cost": [],
-    "network-type": [],
+    "usage-type": [],
+    operation: [],
+    "instance-state": [],
+    recommendation: [],
+    volume: [],
+    volume_type: [],
+    attachment_state: [],
+    instance: [],
+    storage_tier: [],
+    iops_tier: [],
+    size_bucket: [],
+    lifecycle_state: [],
     tag: [],
   });
   const [groupSearch, setGroupSearch] = useState("");
@@ -152,6 +196,7 @@ export function EC2ExplorerGroupByPopover({
   }, [activeGroupBy]);
 
   const activeValues = useMemo(() => GROUP_VALUE_OPTIONS[activeGroupBy] ?? [], [activeGroupBy]);
+  const showValuePanel = activeGroupBy !== "none";
   const filteredValues = useMemo(() => {
     const query = valueSearch.trim().toLowerCase();
     if (!query) return activeValues;
@@ -169,7 +214,8 @@ export function EC2ExplorerGroupByPopover({
 
   return (
     <div className="ec2-explorer-groupby" role="dialog" aria-label="Group by options">
-      <div className="cost-explorer-filter-popover__split ec2-explorer-groupby__split">
+      <div className="ec2-explorer-groupby__body">
+      <div className={`cost-explorer-filter-popover__split ec2-explorer-groupby__split${showValuePanel ? " ec2-explorer-groupby__split--with-values" : ""}`}>
         <div className="cost-explorer-filter-popover__split-pane">
           <p className="cost-explorer-filter-popover__title">Group By</p>
           <label className="cost-explorer-filter-popover__search-wrap">
@@ -206,56 +252,59 @@ export function EC2ExplorerGroupByPopover({
           </div>
         </div>
 
-        <div className="cost-explorer-filter-popover__split-pane cost-explorer-filter-popover__split-pane--right">
-          <p className="cost-explorer-filter-popover__title">Values</p>
-          <label className="cost-explorer-filter-popover__search-wrap">
-            <Search className="cost-explorer-filter-popover__search-icon" size={14} aria-hidden="true" />
-            <input
-              type="search"
-              className="cost-explorer-filter-popover__search-input"
-              value={valueSearch}
-              onChange={(event) => setValueSearch(event.target.value)}
-              placeholder="Search values..."
-            />
-          </label>
-          <div className="cost-explorer-filter-popover__list cost-explorer-filter-popover__list--value-boxes" role="listbox" aria-label="Group values">
-            <button
-              type="button"
-              className={`cost-explorer-filter-option cost-explorer-filter-option--tile${selectedValues.length === 0 ? " is-active" : ""}`}
-              onClick={() => setDraftValuesByGroup((current) => ({ ...current, [activeGroupBy]: [] }))}
-              role="option"
-              aria-selected={selectedValues.length === 0}
-            >
-              <span className="cost-explorer-filter-option__content">
-                <span className="cost-explorer-filter-option__label">All values</span>
-              </span>
-              {selectedValues.length === 0 ? (
-                <Check className="cost-explorer-filter-option__check" size={15} aria-hidden="true" />
-              ) : null}
-            </button>
-            {filteredValues.map((option) => {
-              const selected = selectedValues.includes(option.key);
-              return (
-                <button
-                  key={option.key}
-                  type="button"
-                  className={`cost-explorer-filter-option cost-explorer-filter-option--tile${selected ? " is-active" : ""}`}
-                  onClick={() => toggleValue(option.key)}
-                  role="option"
-                  aria-selected={selected}
-                >
-                  <span className="cost-explorer-filter-option__content">
-                    <span className="cost-explorer-filter-option__label">{option.label}</span>
-                  </span>
-                  <span className="cost-explorer-filter-option__meta">
-                    <span className="cost-explorer-filter-option__label">{option.count}</span>
-                    {selected ? <Check className="cost-explorer-filter-option__check" size={15} aria-hidden="true" /> : null}
-                  </span>
-                </button>
-              );
-            })}
+        {showValuePanel ? (
+          <div className="cost-explorer-filter-popover__split-pane cost-explorer-filter-popover__split-pane--right">
+            <p className="cost-explorer-filter-popover__title">Values</p>
+            <label className="cost-explorer-filter-popover__search-wrap">
+              <Search className="cost-explorer-filter-popover__search-icon" size={14} aria-hidden="true" />
+              <input
+                type="search"
+                className="cost-explorer-filter-popover__search-input"
+                value={valueSearch}
+                onChange={(event) => setValueSearch(event.target.value)}
+                placeholder="Search tag keys..."
+              />
+            </label>
+            <div className="cost-explorer-filter-popover__list cost-explorer-filter-popover__list--value-boxes" role="listbox" aria-label="Group values">
+              <button
+                type="button"
+                className={`cost-explorer-filter-option cost-explorer-filter-option--tile${selectedValues.length === 0 ? " is-active" : ""}`}
+                onClick={() => setDraftValuesByGroup((current) => ({ ...current, [activeGroupBy]: [] }))}
+                role="option"
+                aria-selected={selectedValues.length === 0}
+              >
+                <span className="cost-explorer-filter-option__content">
+                  <span className="cost-explorer-filter-option__label">All values</span>
+                </span>
+                {selectedValues.length === 0 ? (
+                  <Check className="cost-explorer-filter-option__check" size={15} aria-hidden="true" />
+                ) : null}
+              </button>
+              {filteredValues.map((option) => {
+                const selected = selectedValues.includes(option.key);
+                return (
+                  <button
+                    key={option.key}
+                    type="button"
+                    className={`cost-explorer-filter-option cost-explorer-filter-option--tile${selected ? " is-active" : ""}`}
+                    onClick={() => toggleValue(option.key)}
+                    role="option"
+                    aria-selected={selected}
+                  >
+                    <span className="cost-explorer-filter-option__content">
+                      <span className="cost-explorer-filter-option__label">{option.label}</span>
+                    </span>
+                    <span className="cost-explorer-filter-option__meta">
+                      <span className="cost-explorer-filter-option__label">{option.count}</span>
+                      {selected ? <Check className="cost-explorer-filter-option__check" size={15} aria-hidden="true" /> : null}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
-        </div>
+        ) : null}
+      </div>
       </div>
 
       <div className="cost-explorer-filter-popover__actions">

@@ -9,13 +9,24 @@ import { CHART_TYPE_OPTIONS, type EC2ChartType } from "../ec2ExplorerControls.ty
 type EC2ExplorerGraphSeries = {
   key: string;
   label: string;
-  data: Array<{ date: string; value: number }>;
+  data: Array<{
+    date: string;
+    value: number;
+    cost?: number;
+    total_cost?: number;
+    data_transfer_cost?: number;
+    usage_gb?: number;
+    billed_usage_gb?: number;
+    total_usage_gb?: number;
+    percent_share?: number;
+  }>;
 };
 
 type EC2ExplorerChartProps = {
   title: string;
   chartType: EC2ChartType;
   canUseStackedBar: boolean;
+  valueMode?: "default" | "data-transfer-cost" | "data-transfer-usage" | "data-transfer-distribution";
   onChartTypeChange: (nextChartType: EC2ChartType) => void;
   graph: {
     type: "bar" | "stacked_bar" | "line" | "area" | "stacked_area";
@@ -34,6 +45,7 @@ export function EC2ExplorerChart({
   title,
   chartType,
   canUseStackedBar,
+  valueMode = "default",
   onChartTypeChange,
   graph,
   loading,
@@ -46,12 +58,56 @@ export function EC2ExplorerChart({
 
   const option = useMemo<EChartsOption>(() => {
     const xAxis = graph.series[0]?.data.map((item) => item.date) ?? [];
-    const visibleSeries = graph.series;
+    const rawSeries = graph.series;
+    const visibleSeries = rawSeries.map((series) => ({ ...series, data: [...series.data] }));
+    if (valueMode === "data-transfer-distribution") {
+      const perBucketTotals = new Map<string, number>();
+      for (const series of rawSeries) {
+        for (const point of series.data) {
+          perBucketTotals.set(point.date, (perBucketTotals.get(point.date) ?? 0) + (Number(point.cost ?? point.value) || 0));
+        }
+      }
+      for (const series of visibleSeries) {
+        series.data = series.data.map((point) => {
+          const explicitPercent = Number(point.percent_share);
+          const total = perBucketTotals.get(point.date) ?? 0;
+          const value = Number.isFinite(explicitPercent)
+            ? explicitPercent
+            : total > 0
+              ? ((Number(point.cost ?? point.value) || 0) / total) * 100
+              : 0;
+          return { ...point, value };
+        });
+      }
+    }
     const shouldShowLegend = graph.series.length > 1;
+    const axisName =
+      valueMode === "data-transfer-cost"
+        ? "Cost ($)"
+        : valueMode === "data-transfer-usage"
+          ? "Data Transfer (GB)"
+          : valueMode === "data-transfer-distribution"
+            ? "Share (%)"
+            : "";
+    const numberFormatter = new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 });
+    const currencyFormatter = new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: "USD",
+      maximumFractionDigits: 2,
+    });
 
     return {
       color: visibleSeries.map((_, index) => SERIES_COLORS[index % SERIES_COLORS.length]),
-      tooltip: { trigger: "axis" },
+      tooltip: {
+        trigger: "axis",
+        valueFormatter: (value) => {
+          const numeric = Number(value ?? 0);
+          if (valueMode === "data-transfer-cost") return currencyFormatter.format(numeric);
+          if (valueMode === "data-transfer-usage") return `${numberFormatter.format(numeric)} GB`;
+          if (valueMode === "data-transfer-distribution") return `${numberFormatter.format(numeric)}%`;
+          return numberFormatter.format(numeric);
+        },
+      },
       legend: shouldShowLegend
         ? {
             show: true,
@@ -83,6 +139,9 @@ export function EC2ExplorerChart({
       },
       yAxis: {
         type: "value",
+        name: axisName,
+        min: valueMode === "data-transfer-distribution" ? 0 : undefined,
+        max: valueMode === "data-transfer-distribution" ? 100 : undefined,
         axisLabel: { fontSize: 11, margin: 10 },
       },
       series: visibleSeries.map((series) => ({
@@ -93,10 +152,21 @@ export function EC2ExplorerChart({
         smooth: graph.type !== "stacked_bar" && graph.type !== "bar",
         showSymbol: false,
         barMaxWidth: graph.type === "stacked_bar" || graph.type === "bar" ? 46 : undefined,
-        data: series.data.map((point) => point.value),
+        data: series.data.map((point) => {
+          if (valueMode === "data-transfer-cost") {
+            return Number(point.cost ?? point.total_cost ?? point.data_transfer_cost ?? point.value ?? 0);
+          }
+          if (valueMode === "data-transfer-usage") {
+            return Number(point.usage_gb ?? point.billed_usage_gb ?? point.total_usage_gb ?? point.value ?? 0);
+          }
+          if (valueMode === "data-transfer-distribution") {
+            return Number(point.percent_share ?? point.value ?? 0);
+          }
+          return Number(point.value ?? 0);
+        }),
       })),
     };
-  }, [graph]);
+  }, [graph, valueMode]);
 
   if (loading) {
     return <div className="ec2-explorer-chart__skeleton" aria-hidden="true" />;

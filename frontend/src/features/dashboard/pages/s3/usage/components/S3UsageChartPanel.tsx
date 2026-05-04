@@ -28,18 +28,16 @@ const xAxisFormatter = new Intl.DateTimeFormat("en-US", {
 });
 
 const CHART_COLORS = [
-  "#2f8f78",
-  "#2f72b7",
-  "#b48a2f",
-  "#7b5f67",
-  "#a64f59",
-  "#486a91",
-  "#d97a2b",
-  "#4a9d3c",
-  "#8c6dd1",
-  "#c94f7c",
-  "#5e7f95",
-  "#9a8f4d",
+  "#1f77b4",
+  "#2ca02c",
+  "#ff7f0e",
+  "#d62728",
+  "#9467bd",
+  "#17becf",
+  "#8c564b",
+  "#e377c2",
+  "#7f7f7f",
+  "#bcbd22",
 ];
 type Props = {
   breakdown: S3CostInsightsResponse["chart"]["breakdown"] | undefined;

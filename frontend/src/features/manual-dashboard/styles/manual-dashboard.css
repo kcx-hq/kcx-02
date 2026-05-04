@@ -4983,6 +4983,15 @@
   gap: 2px;
 }
 
+.optimization-overview-nav-link {
+  color: var(--dashboard-accent);
+  cursor: pointer;
+}
+
+.optimization-overview-nav-link:hover {
+  color: var(--dashboard-accent-hover);
+}
+
 .optimization-layout {
   display: flex;
   flex-direction: column;

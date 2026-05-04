@@ -1,6 +1,6 @@
 import type { Ec2ElasticIpInput, Ec2ElasticIpResponse, Ec2ElasticIpRow } from "./ec2-eip.types.js";
 import { Ec2ElasticIpQuery } from "./ec2-eip.query.js";
-import { classifyElasticIp } from "../../../../modules/ec2/classification/elastic-ip-classifier.js";
+import { classifyElasticIp } from "../classification/elastic-ip-classifier.js";
 
 const round2 = (value: number): number => Number((Number.isFinite(value) ? value : 0).toFixed(2));
 
@@ -19,7 +19,7 @@ export class Ec2ElasticIpService {
       const textBlob = [row.usageType, row.operation, row.lineItemType, row.lineItemDescription].filter(Boolean).join(" ");
       const classified = classifyElasticIp(textBlob);
       const associatedResourceId = classified.associatedResourceId;
-      const normalizedState: "attached" | "unattached" = classified.state;
+      const normalizedState: "attached" | "unattached" | "unknown" = classified.state;
       const cost = round2(Math.max(0, Number(row.cost ?? 0)));
       const recommendation = normalizedState === "unattached" ? "Release unused Elastic IP" : null;
       const estimatedSavings = normalizedState === "unattached" ? cost : 0;

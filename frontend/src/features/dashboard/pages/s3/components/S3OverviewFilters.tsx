@@ -191,7 +191,6 @@ export function S3OverviewFilters({
 
   return (
     <section className="cost-explorer-control-surface s3-overview-filter-panel" aria-label="S3 overview filters" ref={rootRef}>
-      {isLoading ? <span className="cost-explorer-chart-panel__status">Loading S3 filters...</span> : null}
       {isError ? (
         <div className="s3-overview-filter-panel__notice s3-overview-filter-panel__notice--error" role="status">
           <span>Failed to load S3 filter options{errorMessage ? `: ${errorMessage}` : ""}</span>

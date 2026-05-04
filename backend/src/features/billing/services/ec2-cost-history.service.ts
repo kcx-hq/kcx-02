@@ -385,15 +385,16 @@ FROM (
     f.region_key,
     f.resource_key,
     COALESCE(
-      NULLIF(inv.instance_id, ''),
+      NULLIF(TRIM(inv.instance_id), ''),
       CASE
         WHEN dres.resource_id ~ '^i-[a-z0-9]+' THEN dres.resource_id
         WHEN dres.resource_name ~ '^i-[a-z0-9]+' THEN dres.resource_name
         ELSE NULL
-      END
+      END,
+      'unknown'
     ) AS instance_id,
-    COALESCE(inv.instance_type, NULL) AS instance_type,
-    COALESCE(inv.state, NULL) AS state,
+    COALESCE(NULLIF(TRIM(inv.instance_type), ''), 'unknown') AS instance_type,
+    COALESCE(NULLIF(TRIM(inv.state), ''), 'unknown') AS state,
     ${PRICING_MODEL_SQL} AS pricing_model,
     ${CHARGE_CATEGORY_SQL} AS charge_category,
     COALESCE(f.line_item_type, 'Unknown') AS line_item_type,

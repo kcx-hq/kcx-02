@@ -1,4 +1,4 @@
-import { useDeferredValue, useMemo, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import type { InventoryEc2InstanceRow } from "@/features/client-home/api/inventory-instances.api";
@@ -11,10 +11,9 @@ import { EC2InstancesTopBar } from "./components/EC2InstancesTopBar";
 import {
   EC2_INSTANCES_RESERVATION_OPTIONS,
   EC2_INSTANCES_DEFAULT_CONTROLS,
-  EC2_INSTANCES_CONDITION_OPTIONS,
+  EC2_INSTANCES_STATUS_OPTIONS,
   EC2_INSTANCES_STATE_OPTIONS,
-  type EC2InstancesNetworkType,
-  type EC2InstancesCondition,
+  type EC2InstancesStatus,
   type EC2InstancesControlsState,
 } from "./components/ec2Instances.types";
 
@@ -57,27 +56,14 @@ const parseCsvParam = (value: string | null): string[] => {
     .filter((entry) => entry.length > 0);
 };
 
-const isValidCondition = (value: string | null): value is EC2InstancesCondition =>
-  Boolean(value) && EC2_INSTANCES_CONDITION_OPTIONS.some((option) => option.key === value);
+const isValidStatus = (value: string | null): value is EC2InstancesStatus =>
+  Boolean(value) && EC2_INSTANCES_STATUS_OPTIONS.some((option) => option.key === value);
 
 const isValidState = (value: string | null): value is EC2InstancesControlsState["state"] =>
   Boolean(value) && EC2_INSTANCES_STATE_OPTIONS.some((option) => option.key === value);
 
 const isValidReservationType = (value: string | null): value is EC2InstancesControlsState["reservationType"] =>
   Boolean(value) && EC2_INSTANCES_RESERVATION_OPTIONS.some((option) => option.key === value);
-
-const NETWORK_TYPES: EC2InstancesNetworkType[] = [
-  "Internet Data Transfer",
-  "Inter-Region Data Transfer",
-  "Inter-AZ Data Transfer",
-  "NAT Gateway",
-  "Elastic IP",
-  "Load Balancer",
-  "Other Network",
-];
-
-const isValidNetworkType = (value: string | null): value is EC2InstancesNetworkType =>
-  Boolean(value) && NETWORK_TYPES.includes(value as EC2InstancesNetworkType);
 
 const matchesState = (instance: InventoryEc2InstanceRow, state: EC2InstancesControlsState["state"]): boolean => {
   if (state === "all") return true;
@@ -109,18 +95,6 @@ const matchesThresholds = (instance: InventoryEc2InstanceRow, thresholds: EC2Ins
   return true;
 };
 
-const buildFlatTrend = (endDate: string, value: number) => {
-  const end = new Date(`${endDate}T00:00:00Z`);
-  if (Number.isNaN(end.getTime())) return [] as Array<{ label: string; value: number }>;
-  const output: Array<{ label: string; value: number }> = [];
-  for (let i = 6; i >= 0; i -= 1) {
-    const date = new Date(end);
-    date.setUTCDate(end.getUTCDate() - i);
-    output.push({ label: date.toISOString().slice(5, 10), value });
-  }
-  return output;
-};
-
 export default function EC2InstancesPage() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -135,27 +109,26 @@ export default function EC2InstancesPage() {
 
   const explorerRegions = isExplorerNavigation ? parseCsvParam(queryParams.get("region")) : [];
   const explorerTags = isExplorerNavigation ? parseCsvParam(queryParams.get("tags")) : [];
-  const queryCondition = isExplorerNavigation ? queryParams.get("condition") : null;
+  const queryStatus = isExplorerNavigation ? queryParams.get("status") ?? queryParams.get("condition") : null;
   const queryState = isExplorerNavigation ? queryParams.get("state") : null;
   const queryInstanceType = isExplorerNavigation ? queryParams.get("instanceType") : null;
   const queryReservationType = isExplorerNavigation ? queryParams.get("reservationType") : null;
-  const queryNetworkType = isExplorerNavigation ? queryParams.get("networkType") : null;
+  const queryTransferType = queryParams.get("transferType");
 
   const initialControls = useMemo<EC2InstancesControlsState>(() => ({
     ...EC2_INSTANCES_DEFAULT_CONTROLS,
-    condition: isValidCondition(queryCondition) ? queryCondition : EC2_INSTANCES_DEFAULT_CONTROLS.condition,
+    status: isValidStatus(queryStatus) ? queryStatus : EC2_INSTANCES_DEFAULT_CONTROLS.status,
     state: isValidState(queryState) ? queryState : EC2_INSTANCES_DEFAULT_CONTROLS.state,
     instanceType: queryInstanceType && queryInstanceType.trim().length > 0 ? queryInstanceType : EC2_INSTANCES_DEFAULT_CONTROLS.instanceType,
     reservationType: isValidReservationType(queryReservationType)
       ? queryReservationType
       : EC2_INSTANCES_DEFAULT_CONTROLS.reservationType,
-    networkType: isValidNetworkType(queryNetworkType) ? queryNetworkType : EC2_INSTANCES_DEFAULT_CONTROLS.networkType,
     search: querySearch,
     scopeFilters: {
       region: [...explorerRegions],
       tags: [...explorerTags],
     },
-  }), [explorerRegions, explorerTags, queryCondition, queryInstanceType, queryNetworkType, queryReservationType, querySearch, queryState]);
+  }), [explorerRegions, explorerTags, queryStatus, queryInstanceType, queryReservationType, querySearch, queryState]);
 
   const [controls, setControls] = useState<EC2InstancesControlsState>(initialControls);
   const [page, setPage] = useState(1);
@@ -165,8 +138,15 @@ export default function EC2InstancesPage() {
     state: controls.state === "all" ? null : controls.state,
     instanceType: controls.instanceType === "all" ? null : controls.instanceType,
     pricingType: controls.reservationType === "all" ? null : controls.reservationType,
-    networkType: controls.networkType === "all" ? null : controls.networkType,
+    status: controls.status,
     search: deferredSearch.length > 0 ? deferredSearch : null,
+    transferType:
+      queryTransferType === "internet" ||
+      queryTransferType === "inter_region" ||
+      queryTransferType === "inter_az" ||
+      queryTransferType === "unknown"
+        ? queryTransferType
+        : null,
     startDate: startDateFromParams,
     endDate: endDateFromParams,
     page,
@@ -195,14 +175,28 @@ export default function EC2InstancesPage() {
   const filteredRows = useMemo(
     () =>
       allItems.filter((instance) => {
-        if (controls.condition !== "all" && instance.condition !== controls.condition) return false;
         if (!matchesState(instance, controls.state)) return false;
         if (!matchesRegion(instance, controls.scopeFilters.region)) return false;
         if (!matchesThresholds(instance, controls.thresholds)) return false;
         return true;
       }),
-    [allItems, controls.condition, controls.scopeFilters.region, controls.state, controls.thresholds],
+    [allItems, controls.scopeFilters.region, controls.state, controls.thresholds],
   );
+
+  useEffect(() => {
+    const next = new URLSearchParams(location.search);
+    if (controls.status === "all") {
+      next.delete("status");
+    } else {
+      next.set("status", controls.status);
+    }
+    if (next.has("condition")) {
+      next.delete("condition");
+    }
+    if (next.toString() !== queryParams.toString()) {
+      navigate({ pathname: location.pathname, search: next.toString() }, { replace: true });
+    }
+  }, [controls.status, location.pathname, location.search, navigate, queryParams]);
 
   const instanceTypeOptions = useMemo(() => {
     const unique = Array.from(
@@ -274,16 +268,31 @@ export default function EC2InstancesPage() {
       });
     }
 
-    if (controls.networkType !== "all") {
+    if (
+      queryTransferType === "internet" ||
+      queryTransferType === "inter_region" ||
+      queryTransferType === "inter_az" ||
+      queryTransferType === "unknown"
+    ) {
+      const transferLabel =
+        queryTransferType === "inter_region"
+          ? "Inter-Region"
+          : queryTransferType === "inter_az"
+            ? "Inter-AZ"
+            : queryTransferType.charAt(0).toUpperCase() + queryTransferType.slice(1);
       chips.push({
-        id: "network-type",
-        label: `Network Type: ${controls.networkType}`,
-        onRemove: () => setControls((current) => ({ ...current, networkType: "all" })),
+        id: "transfer-type",
+        label: `Transfer Type: ${transferLabel}`,
+        onRemove: () => {
+          const next = new URLSearchParams(location.search);
+          next.delete("transferType");
+          navigate({ pathname: location.pathname, search: next.toString() }, { replace: true });
+        },
       });
     }
 
     return chips;
-  }, [controls.instanceType, controls.networkType, controls.scopeFilters.region, controls.scopeFilters.tags, controls.state]);
+  }, [controls.instanceType, controls.scopeFilters.region, controls.scopeFilters.tags, controls.state, location.pathname, location.search, navigate, queryTransferType]);
 
   const openInstanceDetail = (instanceId: string) => {
     const next = new URLSearchParams(location.search);
@@ -298,6 +307,16 @@ export default function EC2InstancesPage() {
         <EC2InstancesTopBar
           value={controls}
           instanceTypeOptions={instanceTypeOptions}
+          visibleControls={[
+            "filters",
+            "status",
+            "state",
+            "instanceType",
+            "reservationType",
+            "search",
+            "thresholds",
+            "reset",
+          ]}
           onChange={(next) => {
             setControls(next);
             setPage(1);
@@ -310,13 +329,15 @@ export default function EC2InstancesPage() {
           <EC2InstancesContextChips
             chips={activeChips}
             onClearAll={() => {
+              const next = new URLSearchParams(location.search);
+              next.delete("transferType");
+              navigate({ pathname: location.pathname, search: next.toString() }, { replace: true });
               setControls((current) => ({
                 ...current,
-                condition: "all",
+                status: "all",
                 state: "all",
                 instanceType: "all",
                 reservationType: "all",
-                networkType: "all",
                 scopeFilters: { region: [], tags: [] },
                 thresholds: {
                   cpuMin: "",

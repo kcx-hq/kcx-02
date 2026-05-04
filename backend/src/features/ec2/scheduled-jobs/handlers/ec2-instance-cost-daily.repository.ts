@@ -107,6 +107,13 @@ agg AS (
   GROUP BY b.tenant_id, b.usage_date, b.instance_id
 ),
 upserted AS (
+  DELETE FROM fact_ec2_instance_cost_daily t
+  USING agg a
+  WHERE t.tenant_id = a.tenant_id
+    AND t.instance_id = a.instance_id
+    AND t.usage_date = a.usage_date
+),
+inserted AS (
   INSERT INTO fact_ec2_instance_cost_daily (
     tenant_id,
     cloud_connection_id,
@@ -157,31 +164,10 @@ upserted AS (
     NOW(),
     NOW()
   FROM agg a
-  ON CONFLICT (tenant_id, instance_id, usage_date)
-  DO UPDATE SET
-    cloud_connection_id  = EXCLUDED.cloud_connection_id,
-    billing_source_id    = EXCLUDED.billing_source_id,
-    provider_id          = EXCLUDED.provider_id,
-    resource_key         = EXCLUDED.resource_key,
-    region_key           = EXCLUDED.region_key,
-    sub_account_key      = EXCLUDED.sub_account_key,
-    instance_type        = EXCLUDED.instance_type,
-    currency_code        = EXCLUDED.currency_code,
-    compute_cost         = EXCLUDED.compute_cost,
-    ebs_cost             = EXCLUDED.ebs_cost,
-    data_transfer_cost   = EXCLUDED.data_transfer_cost,
-    tax_cost             = EXCLUDED.tax_cost,
-    credit_amount        = EXCLUDED.credit_amount,
-    refund_amount        = EXCLUDED.refund_amount,
-    total_billed_cost    = EXCLUDED.total_billed_cost,
-    total_effective_cost = EXCLUDED.total_effective_cost,
-    total_list_cost      = EXCLUDED.total_list_cost,
-    usage_hours          = EXCLUDED.usage_hours,
-    updated_at           = NOW()
   RETURNING 1
 )
 SELECT COUNT(*)::int AS upserted_rows
-FROM upserted;
+FROM inserted;
 `,
       {
         replacements: {

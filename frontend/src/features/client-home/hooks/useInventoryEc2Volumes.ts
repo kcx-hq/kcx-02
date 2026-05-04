@@ -18,6 +18,7 @@ export function useInventoryEc2Volumes(params: InventoryEc2VolumesListParams) {
       ...INVENTORY_EC2_VOLUMES_QUERY_KEY,
       params.cloudConnectionId ?? "all",
       params.subAccountKey ?? "all",
+      params.volumeId ?? "all",
       params.attachedInstanceId ?? "all",
       params.state ?? "all",
       params.volumeType ?? "all",

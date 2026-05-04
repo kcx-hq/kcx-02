@@ -4,7 +4,7 @@ import { BadRequestError, NotFoundError } from "../../../errors/http-errors.js";
 import { sequelize } from "../../../models/index.js";
 import { logger } from "../../../utils/logger.js";
 import { classifyNetworkCostType } from "../explorer/network-cost-classifier.js";
-import { classifyInstanceCondition } from "../../../../modules/ec2/classification/instance-classifier.js";
+import { classifyInstanceSignals } from "../classification/instance-classifier.js";
 import type {
   InventoryEc2InstanceDetailQuery,
   InventoryEc2InstanceDetailResponse,
@@ -152,6 +152,14 @@ const toIsoOrNull = (value: Date | string | null): string | null => {
 };
 const toIsoDate = (value: Date): string => value.toISOString().slice(0, 10);
 
+const STATUS_LABEL_BY_KEY = {
+  idle: "Idle",
+  underutilized: "Underutilized",
+  overutilized: "Overutilized",
+  uncovered: "Uncovered",
+  healthy: "Healthy",
+} as const;
+
 const resolveDateRange = (query: InventoryEc2InstancesListQuery): DateRange => {
   const today = new Date();
   const startOfMonth = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1));
@@ -272,6 +280,8 @@ export class InstancesInventoryService {
       instanceType: null,
       pricingType: null,
       networkType: null,
+      transferType: null,
+      status: "all",
       region: null,
       search: null,
       subAccountKey: null,
@@ -689,6 +699,30 @@ export class InstancesInventoryService {
         attachedVolumesLookup.byConnectionInstance.get(
           toConnectionInstanceKey(row.cloudConnectionId, row.instanceId),
         ) ?? attachedVolumesLookup.byInstance.get(row.instanceId);
+      const classified = classifyInstanceSignals({
+        isIdleCandidate: metrics?.isIdleCandidate === true ? true : null,
+        isUnderutilizedCandidate: metrics?.isUnderutilizedCandidate === true ? true : null,
+        isOverutilizedCandidate: metrics?.isOverutilizedCandidate === true ? true : null,
+        uncoveredHours: toNumberOrZero(metrics?.uncoveredHours),
+        avgCpu: toNullableNumber(metrics?.cpuAvg),
+        avgDailyNetworkMb:
+          toNumberOrZero(metrics?.totalHours) > 0
+            ? (toNumberOrZero(metrics?.networkUsageBytes) / (1024 * 1024)) / Math.max(1, toNumberOrZero(metrics?.totalHours) / 24)
+            : null,
+        runningHours: toNumberOrZero(metrics?.totalHours),
+        totalHours: toNumberOrZero(metrics?.totalHours),
+        computeCost: toNumberOrZero(metrics?.computeCost),
+        totalCost: toNumberOrZero(metrics?.monthToDateCost),
+        coveredHours: toNumberOrZero(metrics?.coveredHours),
+        pricingType: metrics?.pricingType ?? null,
+        reservationType: metrics?.pricingType ?? null,
+      });
+      const status: InventoryEc2InstancesListItem["status"] =
+        classified.primaryCondition !== "healthy"
+          ? classified.primaryCondition
+          : classified.pricingCondition === "uncovered_on_demand"
+            ? "uncovered"
+            : "healthy";
 
       return {
         instanceId: row.instanceId,
@@ -710,12 +744,10 @@ export class InstancesInventoryService {
         isIdleCandidate: metrics?.isIdleCandidate ?? null,
         isUnderutilizedCandidate: metrics?.isUnderutilizedCandidate ?? null,
         isOverutilizedCandidate: metrics?.isOverutilizedCandidate ?? null,
-        condition: classifyInstanceCondition({
-          isIdleCandidate: metrics?.isIdleCandidate ?? null,
-          isUnderutilizedCandidate: metrics?.isUnderutilizedCandidate ?? null,
-          isOverutilizedCandidate: metrics?.isOverutilizedCandidate ?? null,
-          uncoveredHours: toNumberOrZero(metrics?.uncoveredHours),
-        }),
+        status,
+        statusLabel: STATUS_LABEL_BY_KEY[status],
+        primaryCondition: classified.primaryCondition,
+        signals: classified.signals,
         pricingType:
           metrics?.pricingType === "on_demand" ||
           metrics?.pricingType === "reserved" ||
@@ -1111,6 +1143,107 @@ export class InstancesInventoryService {
       nextIndex += 1;
     }
 
+    const normalizedTransferType = normalizeLower(input.query.transferType);
+    if (normalizedTransferType) {
+      whereParts.push(`
+        EXISTS (
+          SELECT 1
+          FROM fact_cost_line_items fcli
+          LEFT JOIN dim_date dd
+            ON dd.id = fcli.usage_date_key
+          LEFT JOIN dim_resource dres
+            ON dres.id = fcli.resource_key
+          WHERE fcli.tenant_id = inv.tenant_id
+            AND COALESCE(dd.full_date, DATE(COALESCE(fcli.usage_start_time, fcli.usage_end_time)))
+              >= $${dateStartIndex}::date
+            AND COALESCE(dd.full_date, DATE(COALESCE(fcli.usage_start_time, fcli.usage_end_time)))
+              <= $${dateEndIndex}::date
+            AND (
+              dres.resource_id = inv.instance_id
+              OR dres.resource_id ILIKE ('%' || inv.instance_id || '%')
+            )
+            AND (
+              CASE
+                WHEN (
+                  LOWER(COALESCE(fcli.usage_type, '') || ' ' || COALESCE(fcli.product_usage_type, '') || ' ' || COALESCE(fcli.product_family, '') || ' ' || COALESCE(fcli.operation, '') || ' ' || COALESCE(fcli.line_item_description, ''))
+                    LIKE '%natgateway%'
+                  OR LOWER(COALESCE(fcli.usage_type, '') || ' ' || COALESCE(fcli.product_usage_type, '') || ' ' || COALESCE(fcli.product_family, '') || ' ' || COALESCE(fcli.operation, '') || ' ' || COALESCE(fcli.line_item_description, ''))
+                    LIKE '%nat-gateway%'
+                  OR LOWER(COALESCE(fcli.usage_type, '') || ' ' || COALESCE(fcli.product_usage_type, '') || ' ' || COALESCE(fcli.product_family, '') || ' ' || COALESCE(fcli.operation, '') || ' ' || COALESCE(fcli.line_item_description, ''))
+                    LIKE '%nat gateway%'
+                ) THEN false
+                WHEN (
+                  LOWER(COALESCE(fcli.usage_type, '') || ' ' || COALESCE(fcli.product_usage_type, '') || ' ' || COALESCE(fcli.product_family, '') || ' ' || COALESCE(fcli.operation, '') || ' ' || COALESCE(fcli.line_item_description, '') || ' ' || COALESCE(fcli.from_location, '') || ' ' || COALESCE(fcli.to_location, ''))
+                    LIKE '%elasticip%'
+                  OR LOWER(COALESCE(fcli.usage_type, '') || ' ' || COALESCE(fcli.product_usage_type, '') || ' ' || COALESCE(fcli.product_family, '') || ' ' || COALESCE(fcli.operation, '') || ' ' || COALESCE(fcli.line_item_description, '') || ' ' || COALESCE(fcli.from_location, '') || ' ' || COALESCE(fcli.to_location, ''))
+                    LIKE '%elastic ip%'
+                  OR LOWER(COALESCE(fcli.usage_type, '') || ' ' || COALESCE(fcli.product_usage_type, '') || ' ' || COALESCE(fcli.product_family, '') || ' ' || COALESCE(fcli.operation, '') || ' ' || COALESCE(fcli.line_item_description, '') || ' ' || COALESCE(fcli.from_location, '') || ' ' || COALESCE(fcli.to_location, ''))
+                    LIKE '%idleaddress%'
+                  OR LOWER(COALESCE(fcli.usage_type, '') || ' ' || COALESCE(fcli.product_usage_type, '') || ' ' || COALESCE(fcli.product_family, '') || ' ' || COALESCE(fcli.operation, '') || ' ' || COALESCE(fcli.line_item_description, '') || ' ' || COALESCE(fcli.from_location, '') || ' ' || COALESCE(fcli.to_location, ''))
+                    LIKE '%inuseaddress%'
+                  OR LOWER(COALESCE(fcli.usage_type, '') || ' ' || COALESCE(fcli.product_usage_type, '') || ' ' || COALESCE(fcli.product_family, '') || ' ' || COALESCE(fcli.operation, '') || ' ' || COALESCE(fcli.line_item_description, '') || ' ' || COALESCE(fcli.from_location, '') || ' ' || COALESCE(fcli.to_location, ''))
+                    LIKE '%loadbalancer%'
+                  OR LOWER(COALESCE(fcli.usage_type, '') || ' ' || COALESCE(fcli.product_usage_type, '') || ' ' || COALESCE(fcli.product_family, '') || ' ' || COALESCE(fcli.operation, '') || ' ' || COALESCE(fcli.line_item_description, '') || ' ' || COALESCE(fcli.from_location, '') || ' ' || COALESCE(fcli.to_location, ''))
+                    LIKE '%load balancer%'
+                  OR LOWER(COALESCE(fcli.usage_type, '') || ' ' || COALESCE(fcli.product_usage_type, '') || ' ' || COALESCE(fcli.product_family, '') || ' ' || COALESCE(fcli.operation, '') || ' ' || COALESCE(fcli.line_item_description, '') || ' ' || COALESCE(fcli.from_location, '') || ' ' || COALESCE(fcli.to_location, ''))
+                    LIKE '%lcu%'
+                ) THEN false
+                WHEN (
+                  LOWER(COALESCE(fcli.usage_type, '')) LIKE '%datatransfer%'
+                  OR LOWER(COALESCE(fcli.product_usage_type, '')) LIKE '%datatransfer%'
+                  OR LOWER(COALESCE(fcli.product_family, '')) LIKE '%data transfer%'
+                  OR LOWER(COALESCE(fcli.line_item_description, '')) LIKE '%data transfer%'
+                  OR LOWER(COALESCE(fcli.usage_type, '')) LIKE '%aws-out-bytes%'
+                  OR LOWER(COALESCE(fcli.product_usage_type, '')) LIKE '%aws-out-bytes%'
+                  OR LOWER(COALESCE(fcli.usage_type, '')) LIKE '%aws-in-bytes%'
+                  OR LOWER(COALESCE(fcli.product_usage_type, '')) LIKE '%aws-in-bytes%'
+                  OR LOWER(COALESCE(fcli.usage_type, '')) LIKE '%interregion%'
+                  OR LOWER(COALESCE(fcli.product_usage_type, '')) LIKE '%interregion%'
+                  OR LOWER(COALESCE(fcli.usage_type, '')) LIKE '%inter-zone%'
+                  OR LOWER(COALESCE(fcli.product_usage_type, '')) LIKE '%inter-zone%'
+                  OR LOWER(COALESCE(fcli.usage_type, '')) LIKE '%interzone%'
+                  OR LOWER(COALESCE(fcli.product_usage_type, '')) LIKE '%interzone%'
+                  OR LOWER(COALESCE(fcli.usage_type, '')) LIKE '%cross-az%'
+                  OR LOWER(COALESCE(fcli.product_usage_type, '')) LIKE '%cross-az%'
+                  OR LOWER(COALESCE(fcli.usage_type, '')) LIKE '%region-to-region%'
+                  OR LOWER(COALESCE(fcli.product_usage_type, '')) LIKE '%region-to-region%'
+                ) THEN true
+                ELSE false
+              END
+            )
+            AND (
+              CASE
+                WHEN (
+                  LOWER(COALESCE(fcli.to_location, '')) LIKE '%internet%'
+                  OR LOWER(COALESCE(fcli.to_location, '')) LIKE '%external%'
+                  OR LOWER(COALESCE(fcli.from_location, '')) LIKE '%internet%'
+                  OR LOWER(COALESCE(fcli.from_location, '')) LIKE '%external%'
+                ) THEN 'internet'
+                WHEN (
+                  LENGTH(COALESCE(fcli.from_region_code, '')) > 0
+                  AND LENGTH(COALESCE(fcli.to_region_code, '')) > 0
+                  AND LOWER(COALESCE(fcli.from_region_code, '')) <> LOWER(COALESCE(fcli.to_region_code, ''))
+                ) THEN 'inter_region'
+                WHEN (
+                  LENGTH(COALESCE(fcli.from_region_code, '')) > 0
+                  AND LENGTH(COALESCE(fcli.to_region_code, '')) > 0
+                  AND LOWER(COALESCE(fcli.from_region_code, '')) = LOWER(COALESCE(fcli.to_region_code, ''))
+                ) THEN 'inter_az'
+                WHEN (
+                  LOWER(COALESCE(fcli.usage_type, '') || ' ' || COALESCE(fcli.product_usage_type, '') || ' ' || COALESCE(fcli.product_family, '') || ' ' || COALESCE(fcli.operation, '') || ' ' || COALESCE(fcli.line_item_description, '') || ' ' || COALESCE(fcli.from_location, '') || ' ' || COALESCE(fcli.to_location, ''))
+                    LIKE '%datatransfer-out%'
+                  OR LOWER(COALESCE(fcli.usage_type, '') || ' ' || COALESCE(fcli.product_usage_type, '') || ' ' || COALESCE(fcli.product_family, '') || ' ' || COALESCE(fcli.operation, '') || ' ' || COALESCE(fcli.line_item_description, '') || ' ' || COALESCE(fcli.from_location, '') || ' ' || COALESCE(fcli.to_location, ''))
+                    LIKE '%aws-out-bytes%'
+                ) THEN 'internet'
+                ELSE 'unknown'
+              END
+            ) = $${nextIndex}
+        )
+      `);
+      bind.push(normalizedTransferType);
+      nextIndex += 1;
+    }
+
     const normalizedPricingType = normalizeLower(input.query.pricingType);
     if (normalizedPricingType) {
       whereParts.push(`
@@ -1136,6 +1269,74 @@ export class InstancesInventoryService {
         )
       `);
       bind.push(normalizedPricingType);
+      nextIndex += 1;
+    }
+
+    if (input.query.status !== "all") {
+      whereParts.push(`
+        EXISTS (
+          WITH scoped_status AS (
+            SELECT
+              BOOL_OR(fedc.is_idle_candidate IS TRUE) AS is_idle_candidate,
+              BOOL_OR(fedc.is_underutilized_candidate IS TRUE) AS is_underutilized_candidate,
+              BOOL_OR(fedc.is_overutilized_candidate IS TRUE) AS is_overutilized_candidate,
+              AVG(fedc.cpu_avg)::double precision AS avg_cpu,
+              SUM((COALESCE(fedc.network_in_bytes, 0) + COALESCE(fedc.network_out_bytes, 0)))::double precision AS network_usage_bytes,
+              SUM(COALESCE(fedc.total_hours, 0))::double precision AS total_hours,
+              SUM(COALESCE(fedc.total_effective_cost, fedc.total_billed_cost, 0))::double precision AS total_cost,
+              SUM(COALESCE(fedc.uncovered_hours, 0))::double precision AS uncovered_hours
+            FROM fact_ec2_instance_daily fedc
+            WHERE fedc.tenant_id = inv.tenant_id
+              AND fedc.instance_id = inv.instance_id
+              AND (
+                inv.cloud_connection_id IS NULL
+                OR fedc.cloud_connection_id IS NULL
+                OR fedc.cloud_connection_id = inv.cloud_connection_id
+              )
+              AND fedc.usage_date >= $${dateStartIndex}::date
+              AND fedc.usage_date <= $${dateEndIndex}::date
+          )
+          SELECT 1
+          FROM scoped_status s
+          WHERE (
+            CASE
+              WHEN (
+                s.is_idle_candidate
+                OR (
+                  s.total_hours >= 24
+                  AND s.total_cost > 5
+                  AND s.avg_cpu IS NOT NULL
+                  AND ((s.network_usage_bytes / (1024 * 1024)) / GREATEST(1, s.total_hours / 24)) < 100
+                  AND s.avg_cpu < 5
+                )
+              ) THEN 'idle'
+              WHEN (
+                s.is_underutilized_candidate
+                OR (
+                  s.total_hours >= 24
+                  AND s.total_cost > 5
+                  AND s.avg_cpu IS NOT NULL
+                  AND s.avg_cpu >= 5
+                  AND s.avg_cpu < 20
+                  AND ((s.network_usage_bytes / (1024 * 1024)) / GREATEST(1, s.total_hours / 24)) < 1024
+                )
+              ) THEN 'underutilized'
+              WHEN (
+                s.is_overutilized_candidate
+                OR (
+                  s.total_hours >= 24
+                  AND s.total_cost > 5
+                  AND s.avg_cpu IS NOT NULL
+                  AND s.avg_cpu > 75
+                )
+              ) THEN 'overutilized'
+              WHEN s.uncovered_hours > 0 THEN 'uncovered'
+              ELSE 'healthy'
+            END
+          ) = $${nextIndex}
+        )
+      `);
+      bind.push(input.query.status);
       nextIndex += 1;
     }
 

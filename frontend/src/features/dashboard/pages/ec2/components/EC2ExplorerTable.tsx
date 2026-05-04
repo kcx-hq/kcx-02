@@ -43,7 +43,17 @@ export function EC2ExplorerTable({
         headerName: column.label,
         field: column.key,
         minWidth: 160,
-        valueFormatter: (params) => formatCellValue(params.value as string | number | null),
+        valueFormatter: (params) => {
+          const row = params.data;
+          if (
+            column.key === "resourceCount"
+            && Number(params.value ?? 0) === 0
+            && Number(row?.unmappedResourceCount ?? 0) > 0
+          ) {
+            return "Unmapped";
+          }
+          return formatCellValue(params.value as string | number | null);
+        },
         cellRenderer: isRecommendationColumn && onRecommendationClick
           ? (params: ICellRendererParams<EC2ExplorerTableRow, string | number | null>) => (
               <button

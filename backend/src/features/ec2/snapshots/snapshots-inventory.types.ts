@@ -1,7 +1,9 @@
 export type InventoryEc2SnapshotsListQuery = {
   cloudConnectionId: string | null;
   regionKey: string | null;
+  volumeId: string | null;
   state: string | null;
+  status: "old" | "orphaned" | "normal" | null;
   storageTier: string | null;
   encrypted: boolean | null;
   search: string | null;
@@ -10,6 +12,12 @@ export type InventoryEc2SnapshotsListQuery = {
 };
 
 export type InventoryEc2SnapshotsSignal = "old" | "orphaned" | "normal" | null;
+export type InventoryEc2SnapshotsVolumeStatus =
+  | "missing"
+  | "deleted"
+  | "unavailable"
+  | "available"
+  | null;
 
 export type InventoryEc2SnapshotsListItem = {
   snapshotId: string;
@@ -21,6 +29,10 @@ export type InventoryEc2SnapshotsListItem = {
   state: string;
   storageTier: string;
   ageDays: number | null;
+  status: InventoryEc2SnapshotsSignal;
+  statusLabel: string;
+  signals: Exclude<InventoryEc2SnapshotsSignal, null | "normal">[];
+  volumeStatus: InventoryEc2SnapshotsVolumeStatus;
   signal: InventoryEc2SnapshotsSignal;
   cost: number;
   recommendation: string | null;

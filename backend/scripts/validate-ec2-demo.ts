@@ -24,6 +24,7 @@ const DEMO_IDS = {
   ],
   volume: "vol-demo-unattached-001",
   snapshot: "snap-demo-old-001",
+  orphanedSnapshot: "snap-demo-orphaned-001",
 };
 
 const EXPECTED = {
@@ -36,6 +37,7 @@ const EXPECTED = {
   "i-demo-stopped-001": { cpu: 0.2, state: "stopped", pricing: "on_demand", recType: null, recCategory: null },
   "vol-demo-unattached-001": { recType: "unattached_volume", recCategory: "storage" },
   "snap-demo-old-001": { recType: "old_snapshot", recCategory: "storage" },
+  "snap-demo-orphaned-001": { recType: "orphaned_snapshot", recCategory: "storage" },
 } as const;
 
 function toDateOnly(date: Date): string {
@@ -260,26 +262,28 @@ async function main(): Promise<void> {
   const snapshotRows = await sequelize.query<{
     snapshot_id: string;
     start_time: Date | null;
+    source_volume_id: string | null;
   }>(
     `
-    SELECT snapshot_id, start_time
+    SELECT snapshot_id, start_time, source_volume_id
     FROM ec2_snapshot_inventory_snapshots
     WHERE tenant_id = :tenantId
-      AND snapshot_id = :snapshotId
+      AND snapshot_id IN (:snapshotIds)
       AND is_current = TRUE
-    LIMIT 1
     `,
     {
       replacements: {
         tenantId: String(tenant.id),
-        snapshotId: DEMO_IDS.snapshot,
+        snapshotIds: [DEMO_IDS.snapshot, DEMO_IDS.orphanedSnapshot],
       },
       type: QueryTypes.SELECT,
     },
   );
 
-  if (snapshotRows[0]) {
-    const s = snapshotRows[0];
+  const snapshotById = new Map(snapshotRows.map((row) => [row.snapshot_id, row]));
+  const oldSnapshot = snapshotById.get(DEMO_IDS.snapshot);
+  if (oldSnapshot) {
+    const s = oldSnapshot;
     const ageDays = s.start_time ? Math.floor((Date.now() - new Date(s.start_time).getTime()) / (1000 * 60 * 60 * 24)) : -1;
     addCheck(checks, s.snapshot_id, "age >= 90 days", true, ageDays >= 90);
     const rec = recByResource.get(s.snapshot_id);
@@ -287,6 +291,17 @@ async function main(): Promise<void> {
     addCheck(checks, s.snapshot_id, "recommendation category", EXPECTED[DEMO_IDS.snapshot].recCategory, rec?.category ?? null);
   } else {
     addCheck(checks, DEMO_IDS.snapshot, "exists in snapshot inventory", true, false);
+  }
+
+  const orphanedSnapshot = snapshotById.get(DEMO_IDS.orphanedSnapshot);
+  if (orphanedSnapshot) {
+    const s = orphanedSnapshot;
+    addCheck(checks, s.snapshot_id, "source volume is missing", "vol-demo-missing-001", s.source_volume_id);
+    const rec = recByResource.get(s.snapshot_id);
+    addCheck(checks, s.snapshot_id, "recommendation type", EXPECTED[DEMO_IDS.orphanedSnapshot].recType, normalizeRecType(rec?.type));
+    addCheck(checks, s.snapshot_id, "recommendation category", EXPECTED[DEMO_IDS.orphanedSnapshot].recCategory, rec?.category ?? null);
+  } else {
+    addCheck(checks, DEMO_IDS.orphanedSnapshot, "exists in snapshot inventory", true, false);
   }
 
   const boundary = [

@@ -13,7 +13,6 @@ import {
   type EC2VolumesControlsState,
 } from "@/features/dashboard/pages/ec2/components/ec2Volumes.types";
 import { ApiError } from "@/lib/api";
-import { cn } from "@/lib/utils";
 
 const CURRENCY_FORMATTER = new Intl.NumberFormat("en-US", {
   style: "currency",
@@ -21,14 +20,8 @@ const CURRENCY_FORMATTER = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 2,
 });
 
-const DATE_TIME_FORMATTER = new Intl.DateTimeFormat("en-US", {
-  dateStyle: "medium",
-  timeStyle: "short",
-});
-
 const VOLUMES_PAGE_PATH = "/dashboard/inventory/aws/ec2/volumes";
-const OPTIMIZATION_PAGE_PATH = "/dashboard/ec2/optimization";
-const INSTANCE_DETAIL_PATH = "/dashboard/inventory/aws/ec2/instances";
+const SNAPSHOTS_PAGE_PATH = "/dashboard/inventory/aws/ec2/snapshots";
 
 const parseNumberOrNull = (value: string): number | null => {
   const normalized = value.trim();
@@ -58,32 +51,10 @@ const formatSize = (value: number | null | undefined): string => {
   return `${value.toLocaleString()} GB`;
 };
 
-const formatDateTime = (value: string | null | undefined): string => {
-  if (!value) return "-";
-  const parsed = Date.parse(value);
-  if (Number.isNaN(parsed)) return "-";
-  return DATE_TIME_FORMATTER.format(new Date(parsed));
-};
-
-const getAttachmentLabel = (volume: InventoryEc2VolumeRow): "Attached" | "Unattached" =>
-  volume.isAttached ? "Attached" : "Unattached";
-
-const getRecommendation = (volume: InventoryEc2VolumeRow): string => {
-  if (volume.isUnattached) return "Delete Unattached";
-  if (volume.isAttachedToStoppedInstance) return "Review Stopped Instance";
-  if (volume.isIdleCandidate) return "Idle Volume";
-  if (volume.isUnderutilizedCandidate) return "Downsize Volume";
-  return "Healthy";
-};
-
-const getRecommendationTone = (volume: InventoryEc2VolumeRow): string => {
-  if (volume.isUnattached || volume.isAttachedToStoppedInstance) {
-    return "border-rose-200 bg-rose-50 text-rose-700";
-  }
-  if (volume.isIdleCandidate || volume.isUnderutilizedCandidate) {
-    return "border-amber-200 bg-amber-50 text-amber-700";
-  }
-  return "border-emerald-200 bg-emerald-50 text-emerald-700";
+const formatVolumeStatus = (volume: InventoryEc2VolumeRow): string => {
+  const raw = volume.statusLabel ?? volume.status;
+  if (!raw) return "-";
+  return toTitle(raw);
 };
 
 const matchesScopeRegion = (volume: InventoryEc2VolumeRow, regions: string[]): boolean => {
@@ -146,6 +117,8 @@ export default function EC2VolumesPage() {
   const selectedEndDate =
     queryParams.get("billingPeriodEnd") ?? queryParams.get("to") ?? queryParams.get("endDate");
   const attachedInstanceIdFilter = isInstancesVolumeNavigation ? queryParams.get("attachedInstanceId") : null;
+  const volumeIdFromQuery = queryParams.get("volumeId")?.trim() ?? "";
+  const volumeIdFilter = volumeIdFromQuery.length > 0 ? volumeIdFromQuery : null;
 
   const [controls, setControls] = useState<EC2VolumesControlsState>({
     ...EC2_VOLUMES_DEFAULT_CONTROLS,
@@ -154,12 +127,14 @@ export default function EC2VolumesPage() {
   const deferredSearch = useDeferredValue(controls.search.trim());
 
   const query = useInventoryEc2Volumes({
+    volumeId: volumeIdFilter,
     attachedInstanceId: attachedInstanceIdFilter,
     startDate: selectedStartDate,
     endDate: selectedEndDate,
     state: controls.state === "all" ? null : controls.state,
     volumeType: controls.volumeType === "all" ? null : controls.volumeType,
     attachmentState: controls.attachment === "all" ? null : controls.attachment,
+    signal: controls.status === "all" ? null : controls.status,
     region: controls.scopeFilters.region.length === 1 ? controls.scopeFilters.region[0] : null,
     search: deferredSearch.length > 0 ? deferredSearch : null,
     sortBy: "mtdCost",
@@ -175,19 +150,20 @@ export default function EC2VolumesPage() {
         if (controls.volumeType !== "all" && (volume.volumeType ?? "").trim().toLowerCase() !== controls.volumeType) return false;
         if (controls.attachment === "attached" && volume.isAttached !== true) return false;
         if (controls.attachment === "unattached" && volume.isAttached === true) return false;
+        if (controls.status !== "all" && (volume.status ?? "").trim().toLowerCase() !== controls.status) return false;
         if (!matchesScopeRegion(volume, controls.scopeFilters.region)) return false;
         if (!matchesScopeTags(volume, controls.scopeFilters.tags)) return false;
         if (!matchesThresholds(volume, controls.thresholds)) return false;
         if (!matchesSearch(volume, deferredSearch)) return false;
         return true;
       }),
-    [controls.attachment, controls.scopeFilters.region, controls.scopeFilters.tags, controls.state, controls.thresholds, controls.volumeType, deferredSearch, query.data?.items],
+    [controls.attachment, controls.scopeFilters.region, controls.scopeFilters.tags, controls.state, controls.status, controls.thresholds, controls.volumeType, deferredSearch, query.data?.items],
   );
 
   const columnDefs = useMemo<ColDef<InventoryEc2VolumeRow>[]>(
     () => [
       {
-        headerName: "Volume",
+        headerName: "Identity: Volume ID / Name",
         field: "volumeId",
         minWidth: 220,
         cellRenderer: (params: ICellRendererParams<InventoryEc2VolumeRow>) => {
@@ -202,45 +178,90 @@ export default function EC2VolumesPage() {
         },
       },
       {
-        headerName: "Cost",
-        field: "mtdCost",
-        minWidth: 130,
-        valueFormatter: (params: ValueFormatterParams<InventoryEc2VolumeRow, number | null | undefined>) =>
-          formatCurrency(params.value),
+        headerName: "Association: Active / Attached",
+        minWidth: 170,
+        valueGetter: (params) => (params.data?.isAttached ? "Active / Attached" : "Inactive / Unattached"),
       },
       {
-        headerName: "Size",
+        headerName: "Usage: Size GB",
+        minWidth: 130,
         field: "sizeGb",
-        minWidth: 120,
         valueFormatter: (params: ValueFormatterParams<InventoryEc2VolumeRow, number | null | undefined>) =>
           formatSize(params.value),
       },
       {
-        headerName: "Type",
+        headerName: "Usage: Hours",
+        minWidth: 110,
+        field: "hours",
+      },
+      {
+        headerName: "Identity: Status",
+        field: "state",
+        minWidth: 130,
+        valueFormatter: (params: ValueFormatterParams<InventoryEc2VolumeRow, string | null | undefined>) =>
+          toTitle(params.value),
+      },
+      {
+        headerName: "Identity: Type",
         field: "volumeType",
         minWidth: 110,
         valueFormatter: (params: ValueFormatterParams<InventoryEc2VolumeRow, string | null | undefined>) =>
           params.value ?? "-",
       },
       {
-        headerName: "State",
-        field: "state",
-        minWidth: 120,
+        headerName: "Association: Instance Name",
+        field: "attachedInstanceName",
+        minWidth: 170,
         valueFormatter: (params: ValueFormatterParams<InventoryEc2VolumeRow, string | null | undefined>) =>
-          toTitle(params.value),
+          params.value ?? "-",
       },
       {
-        headerName: "Attachment",
+        headerName: "Cost: Total",
+        field: "mtdCost",
         minWidth: 130,
-        valueGetter: (params) => (params.data ? getAttachmentLabel(params.data) : "-"),
+        valueFormatter: (params: ValueFormatterParams<InventoryEc2VolumeRow, number | null | undefined>) =>
+          formatCurrency(params.value),
       },
       {
-        headerName: "Attached Instance",
+        headerName: "Cost: Storage",
+        field: "storageCost",
+        minWidth: 130,
+        valueFormatter: (params: ValueFormatterParams<InventoryEc2VolumeRow, number | null | undefined>) =>
+          formatCurrency(params.value),
+      },
+      {
+        headerName: "Cost: IO",
+        field: "ioCost",
+        minWidth: 120,
+        valueFormatter: (params: ValueFormatterParams<InventoryEc2VolumeRow, number | null | undefined>) =>
+          formatCurrency(params.value),
+      },
+      {
+        headerName: "Cost: PIOPS",
+        field: "pioPSCost",
+        minWidth: 120,
+        valueFormatter: (params: ValueFormatterParams<InventoryEc2VolumeRow, number | null | undefined>) =>
+          formatCurrency(params.value),
+      },
+      {
+        headerName: "Insights: SSD Savings",
+        field: "ssdSavings",
+        minWidth: 140,
+        valueFormatter: (params: ValueFormatterParams<InventoryEc2VolumeRow, number | null | undefined>) =>
+          formatCurrency(params.value),
+      },
+      {
+        headerName: "Status",
         minWidth: 220,
+        valueGetter: (params) => (params.data ? formatVolumeStatus(params.data) : "-"),
+      },
+      {
+        headerName: "Snapshot Count",
+        minWidth: 160,
         cellRenderer: (params: ICellRendererParams<InventoryEc2VolumeRow>) => {
           const row = params.data;
           if (!row) return "-";
-          if (!row.attachedInstanceId || row.isAttached !== true) return "Unattached";
+          if ((row.snapshotCount ?? 0) <= 0) return "0";
           return (
             <button
               type="button"
@@ -248,67 +269,11 @@ export default function EC2VolumesPage() {
               onClick={(event) => {
                 event.stopPropagation();
                 const next = new URLSearchParams(location.search);
-                next.delete("attachedInstanceId");
-                next.delete("volumeId");
-                next.set("instanceId", row.attachedInstanceId ?? "");
-                next.set("search", row.attachedInstanceId ?? "");
-                navigate({ pathname: `${INSTANCE_DETAIL_PATH}/${row.attachedInstanceId}`, search: next.toString() });
-              }}
-            >
-              <span className="ec2-instances-table__instance-cell">
-                <strong>{row.attachedInstanceName ?? row.attachedInstanceId}</strong>
-                <span>{row.attachedInstanceId}</span>
-              </span>
-            </button>
-          );
-        },
-      },
-      {
-        headerName: "Instance State",
-        field: "attachedInstanceState",
-        minWidth: 130,
-        valueFormatter: (params: ValueFormatterParams<InventoryEc2VolumeRow, string | null | undefined>) =>
-          toTitle(params.value),
-      },
-      {
-        headerName: "Last Attached Time",
-        minWidth: 190,
-        valueGetter: (params) => {
-          const metadata = params.data?.metadata;
-          if (!metadata || typeof metadata !== "object") return "-";
-          const candidate = metadata.lastAttachedTime ?? metadata.lastAttachedAt ?? metadata.attachTime ?? null;
-          return typeof candidate === "string" ? formatDateTime(candidate) : "-";
-        },
-      },
-      {
-        headerName: "Region",
-        minWidth: 180,
-        valueGetter: (params) => params.data?.regionName ?? params.data?.regionId ?? params.data?.regionKey ?? "-",
-      },
-      {
-        headerName: "Created Time",
-        minWidth: 190,
-        valueGetter: (params) => formatDateTime(params.data?.discoveredAt ?? params.data?.usageDate),
-      },
-      {
-        headerName: "Recommendation",
-        minWidth: 220,
-        cellRenderer: (params: ICellRendererParams<InventoryEc2VolumeRow>) => {
-          const row = params.data;
-          if (!row) return "-";
-          return (
-            <button
-              type="button"
-              className={cn("rounded-full border px-2 py-1 text-xs font-medium", getRecommendationTone(row))}
-              onClick={(event) => {
-                event.stopPropagation();
-                const next = new URLSearchParams(location.search);
-                next.set("source", "volume-recommendation");
                 next.set("volumeId", row.volumeId);
-                navigate({ pathname: OPTIMIZATION_PAGE_PATH, search: next.toString() });
+                navigate({ pathname: SNAPSHOTS_PAGE_PATH, search: next.toString() });
               }}
             >
-              {getRecommendation(row)}
+              {row.snapshotCount}
             </button>
           );
         },
@@ -374,6 +339,26 @@ export default function EC2VolumesPage() {
       });
     }
 
+    if (controls.status !== "all") {
+      chips.push({
+        id: "status",
+        label: `Status: ${toTitle(controls.status)}`,
+        onRemove: () => setControls((current) => ({ ...current, status: "all" })),
+      });
+    }
+
+    if (volumeIdFilter) {
+      chips.push({
+        id: "volume-id",
+        label: `Volume: ${volumeIdFilter}`,
+        onRemove: () => {
+          const next = new URLSearchParams(location.search);
+          next.delete("volumeId");
+          navigate({ pathname: VOLUMES_PAGE_PATH, search: next.toString() }, { replace: true });
+        },
+      });
+    }
+
     const thresholds: Array<{ key: keyof EC2VolumesControlsState["thresholds"]; label: string }> = [
       { key: "costMin", label: "Cost Min" },
       { key: "costMax", label: "Cost Max" },
@@ -399,7 +384,7 @@ export default function EC2VolumesPage() {
     });
 
     return chips;
-  }, [controls.attachment, controls.scopeFilters.region, controls.scopeFilters.tags, controls.state, controls.thresholds, controls.volumeType]);
+  }, [controls.attachment, controls.scopeFilters.region, controls.scopeFilters.tags, controls.state, controls.status, controls.thresholds, controls.volumeType, location.search, navigate, volumeIdFilter]);
 
   const volumesErrorMessage =
     query.error instanceof ApiError
@@ -424,6 +409,7 @@ export default function EC2VolumesPage() {
                 state: "all",
                 volumeType: "all",
                 attachment: "all",
+                status: "all",
                 scopeFilters: { region: [], tags: [] },
                 thresholds: {
                   costMin: "",
@@ -457,8 +443,12 @@ export default function EC2VolumesPage() {
             />
           ) : rows.length === 0 ? (
             <EmptyStateBlock
-              title="No volumes found"
-              message="No EC2 volumes match the active filters. Try resetting some filters."
+              title={volumeIdFilter ? "Volume not found" : "No volumes found"}
+              message={
+                volumeIdFilter
+                  ? `No EC2 volume found for volumeId "${volumeIdFilter}".`
+                  : "No EC2 volumes match the active filters. Try resetting some filters."
+              }
             />
           ) : (
             <BaseDataTable

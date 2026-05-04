@@ -41,6 +41,8 @@ import type {
   S3BucketLifecycleInsightResponse,
   S3LifecyclePolicyApplyRequest,
   S3LifecyclePolicyApplyResponse,
+  S3LifecyclePolicyDeleteRequest,
+  S3LifecyclePolicyDeleteResponse,
   S3PolicyActionHistoryResponse,
   S3OptimizationResponse,
   OptimizationIdleOverview,
@@ -291,6 +293,8 @@ function withEc2ExplorerFilters(
 
   params.set("metric", filters.metric);
   params.set("groupBy", filters.groupBy);
+  if (filters.granularity) params.set("granularity", filters.granularity);
+  if (filters.volumeView) params.set("volumeView", filters.volumeView);
   if (filters.startDate) params.set("startDate", filters.startDate);
   if (filters.endDate) params.set("endDate", filters.endDate);
   if (typeof filters.tagKey === "string" && filters.tagKey.trim().length > 0) {
@@ -316,6 +320,16 @@ function withEc2ExplorerFilters(
 
   appendArray("states", filters.states);
   appendArray("instanceTypes", filters.instanceTypes);
+  appendArray("teams", filters.teams);
+  appendArray("products", filters.products);
+  appendArray("environments", filters.environments);
+  appendArray("accounts", filters.accounts);
+  appendArray("volumeTypes", filters.volumeTypes);
+  appendArray("volumeStatuses", filters.volumeStatuses);
+  if (filters.volumeAttachment) params.set("volumeAttachment", filters.volumeAttachment);
+  if (typeof filters.debugDataTransfer === "boolean") {
+    params.set("debugDataTransfer", String(filters.debugDataTransfer));
+  }
 
   const query = params.toString();
   return query.length > 0 ? `${path}?${query}` : path;
@@ -678,7 +692,7 @@ export const dashboardApi = {
     return apiGet<Ec2DataTransferResponse>(withEc2DataTransferFilters("/dashboard/ec2/data-transfer", scope, filters));
   },
   getEc2ElasticIps(scope: DashboardResolvedScope, filters?: Ec2ElasticIpFiltersQuery) {
-    return apiGet<Ec2ElasticIpResponse>(withEc2ElasticIpFilters("/ec2/elastic-ips", scope, filters));
+    return apiGet<Ec2ElasticIpResponse>(withEc2ElasticIpFilters("/dashboard/ec2/elastic-ips", scope, filters));
   },
   getS3CostInsights(scope: DashboardResolvedScope, filters?: S3CostInsightsFiltersQuery) {
     return apiGet<S3CostInsightsResponse>(withS3CostInsightsFilters("/dashboard/s3/cost-insights", scope, filters));
@@ -695,6 +709,9 @@ export const dashboardApi = {
   },
   applyS3LifecyclePolicy(scope: DashboardResolvedScope, payload: S3LifecyclePolicyApplyRequest) {
     return apiPost<S3LifecyclePolicyApplyResponse>(withDashboardQuery("/dashboard/s3/lifecycle-policy", scope), payload);
+  },
+  deleteS3LifecyclePolicy(scope: DashboardResolvedScope, payload: S3LifecyclePolicyDeleteRequest) {
+    return apiPost<S3LifecyclePolicyDeleteResponse>(withDashboardQuery("/dashboard/s3/lifecycle-policy/delete", scope), payload);
   },
   getPolicyActionHistory(scope: DashboardResolvedScope) {
     return apiGet<S3PolicyActionHistoryResponse>(withDashboardQuery("/dashboard/policy/actions", scope));
@@ -767,6 +784,8 @@ export type {
   S3OptimizationResponse,
   S3LifecyclePolicyApplyRequest,
   S3LifecyclePolicyApplyResponse,
+  S3LifecyclePolicyDeleteRequest,
+  S3LifecyclePolicyDeleteResponse,
   S3PolicyActionHistoryResponse,
   OptimizationIdleOverview,
   OptimizationCommitmentOverview,

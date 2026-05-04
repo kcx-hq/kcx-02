@@ -319,7 +319,14 @@ final_rows AS (
     END::text AS optimization_status
   FROM enriched e
 ),
-upserted AS (
+deleted AS (
+  DELETE FROM fact_ebs_volume_daily t
+  USING final_rows f
+  WHERE t.tenant_id = f.tenant_id
+    AND t.volume_id = f.volume_id
+    AND t.usage_date = f.usage_date
+),
+inserted AS (
   INSERT INTO fact_ebs_volume_daily (
     tenant_id,
     cloud_connection_id,
@@ -382,33 +389,6 @@ upserted AS (
     NOW(),
     NOW()
   FROM final_rows f
-  ON CONFLICT (tenant_id, volume_id, usage_date)
-  DO UPDATE SET
-    cloud_connection_id              = COALESCE(EXCLUDED.cloud_connection_id, fact_ebs_volume_daily.cloud_connection_id),
-    billing_source_id                = COALESCE(EXCLUDED.billing_source_id, fact_ebs_volume_daily.billing_source_id),
-    provider_id                      = COALESCE(EXCLUDED.provider_id, fact_ebs_volume_daily.provider_id),
-    resource_key                     = COALESCE(EXCLUDED.resource_key, fact_ebs_volume_daily.resource_key),
-    region_key                       = COALESCE(EXCLUDED.region_key, fact_ebs_volume_daily.region_key),
-    sub_account_key                  = COALESCE(EXCLUDED.sub_account_key, fact_ebs_volume_daily.sub_account_key),
-    volume_type                      = COALESCE(EXCLUDED.volume_type, fact_ebs_volume_daily.volume_type),
-    size_gb                          = COALESCE(EXCLUDED.size_gb, fact_ebs_volume_daily.size_gb),
-    iops                             = COALESCE(EXCLUDED.iops, fact_ebs_volume_daily.iops),
-    throughput                       = COALESCE(EXCLUDED.throughput, fact_ebs_volume_daily.throughput),
-    availability_zone                = COALESCE(EXCLUDED.availability_zone, fact_ebs_volume_daily.availability_zone),
-    state                            = COALESCE(EXCLUDED.state, fact_ebs_volume_daily.state),
-    attached_instance_id             = COALESCE(EXCLUDED.attached_instance_id, fact_ebs_volume_daily.attached_instance_id),
-    is_attached                      = COALESCE(EXCLUDED.is_attached, fact_ebs_volume_daily.is_attached),
-    storage_cost                     = COALESCE(EXCLUDED.storage_cost, fact_ebs_volume_daily.storage_cost),
-    io_cost                          = COALESCE(EXCLUDED.io_cost, fact_ebs_volume_daily.io_cost),
-    throughput_cost                  = COALESCE(EXCLUDED.throughput_cost, fact_ebs_volume_daily.throughput_cost),
-    total_cost                       = COALESCE(EXCLUDED.total_cost, fact_ebs_volume_daily.total_cost),
-    currency_code                    = COALESCE(EXCLUDED.currency_code, fact_ebs_volume_daily.currency_code),
-    is_unattached                    = COALESCE(EXCLUDED.is_unattached, fact_ebs_volume_daily.is_unattached),
-    is_attached_to_stopped_instance  = COALESCE(EXCLUDED.is_attached_to_stopped_instance, fact_ebs_volume_daily.is_attached_to_stopped_instance),
-    is_idle_candidate                = COALESCE(EXCLUDED.is_idle_candidate, fact_ebs_volume_daily.is_idle_candidate),
-    is_underutilized_candidate       = COALESCE(EXCLUDED.is_underutilized_candidate, fact_ebs_volume_daily.is_underutilized_candidate),
-    optimization_status              = COALESCE(EXCLUDED.optimization_status, fact_ebs_volume_daily.optimization_status),
-    updated_at                       = NOW()
   RETURNING
     is_idle_candidate,
     is_unattached,
@@ -419,7 +399,7 @@ SELECT
   COUNT(*) FILTER (WHERE COALESCE(is_idle_candidate, FALSE))::int AS idle_count,
   COUNT(*) FILTER (WHERE COALESCE(is_unattached, FALSE))::int AS unattached_count,
   COUNT(*) FILTER (WHERE optimization_status = 'warning')::int AS warning_count
-FROM upserted;
+FROM inserted;
 `,
       {
         replacements: {

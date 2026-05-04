@@ -7,7 +7,9 @@ import type { InventoryEc2SnapshotsListQuery } from "./snapshots-inventory.types
 const snapshotsInventoryQuerySchema = z.object({
   cloudConnectionId: z.string().uuid().nullable(),
   regionKey: z.string().trim().regex(/^\d+$/).max(30).nullable(),
+  volumeId: z.string().trim().min(1).max(100).nullable(),
   state: z.string().trim().min(1).max(100).nullable(),
+  status: z.enum(["old", "orphaned", "normal"]).nullable(),
   storageTier: z.string().trim().min(1).max(100).nullable(),
   encrypted: z.boolean().nullable(),
   search: z.string().trim().min(1).max(200).nullable(),
@@ -46,7 +48,11 @@ export function parseSnapshotsInventoryListQuery(req: Request): InventoryEc2Snap
   const regionKey = toNullableString(
     firstQueryValue(req.query.regionKey) ?? firstQueryValue(req.query.region_key),
   );
+  const volumeId = toNullableString(
+    firstQueryValue(req.query.volumeId) ?? firstQueryValue(req.query.volume_id),
+  );
   const state = toNullableString(firstQueryValue(req.query.state));
+  const status = toNullableString(firstQueryValue(req.query.status));
   const storageTier = toNullableString(
     firstQueryValue(req.query.storageTier) ?? firstQueryValue(req.query.storage_tier),
   );
@@ -61,7 +67,9 @@ export function parseSnapshotsInventoryListQuery(req: Request): InventoryEc2Snap
   return parseWithSchema(snapshotsInventoryQuerySchema, {
     cloudConnectionId,
     regionKey,
+    volumeId,
     state,
+    status,
     storageTier,
     encrypted,
     search,
