@@ -55,12 +55,39 @@ export async function handleApplyS3BucketLifecyclePolicy(req: Request, res: Resp
 
   const payload = req.body as {
     bucketName?: string;
+    bucket_name?: string;
+    accountId?: string;
+    account_id?: string;
+    region?: string;
     ruleName?: string;
+    rule_name?: string;
     status?: "Enabled" | "Disabled";
-    scope?: { type?: "entire_bucket" | "prefix"; prefix?: string };
-    transitions?: Array<{ days?: number; storageClass?: "STANDARD_IA" | "GLACIER" | "DEEP_ARCHIVE" }>;
+    scope?: {
+      type?: "entire_bucket" | "prefix";
+      prefix?: string;
+      minObjectSizeBytes?: number | null;
+      maxObjectSizeBytes?: number | null;
+      min_object_size_bytes?: number | null;
+      max_object_size_bytes?: number | null;
+    };
+    transitions?: Array<{ days?: number; storageClass?: "STANDARD_IA" | "GLACIER" | "DEEP_ARCHIVE" | "INTELLIGENT_TIERING" }>;
+    transitions_config?: Array<{ days?: number; storage_class?: "STANDARD_IA" | "GLACIER" | "DEEP_ARCHIVE" | "INTELLIGENT_TIERING" }>;
+    noncurrentVersionTransitions?: Array<{ days?: number; storageClass?: "STANDARD_IA" | "GLACIER" | "DEEP_ARCHIVE" | "INTELLIGENT_TIERING" }>;
+    noncurrent_version_transitions?: Array<{ days?: number; storage_class?: "STANDARD_IA" | "GLACIER" | "DEEP_ARCHIVE" | "INTELLIGENT_TIERING" }>;
+    noncurrentVersionExpirationDays?: number | null;
+    noncurrent_version_expiration_days?: number | null;
+    expiredObjectDeleteMarker?: boolean | null;
+    expired_object_delete_marker?: boolean | null;
     expirationDays?: number | null;
+    expiration_days?: number | null;
     abortIncompleteMultipartUploadDays?: number | null;
+    abort_multipart_days?: number | null;
+    deleteWarningAccepted?: boolean | null;
+    delete_warning_accepted?: boolean | null;
+    lifecycle_status?: "Enabled" | "Disabled";
+    rule_status?: "Enabled" | "Disabled";
+    ruleScope?: { type?: "entire_bucket" | "prefix"; prefix?: string };
+    scope_config?: { type?: "entire_bucket" | "prefix"; prefix?: string };
   };
 
   const actorUserId =
@@ -69,12 +96,29 @@ export async function handleApplyS3BucketLifecyclePolicy(req: Request, res: Resp
       : null;
 
   const data = await s3OptimizationService.applyBucketLifecyclePolicy(scope, {
-    bucketName: String(payload.bucketName ?? "").trim(),
-    ruleName: String(payload.ruleName ?? "").trim(),
-    status: payload.status === "Disabled" ? "Disabled" : "Enabled",
+    bucketName: String(payload.bucketName ?? payload.bucket_name ?? "").trim(),
+    accountId: String(payload.accountId ?? payload.account_id ?? "").trim() || null,
+    region: String(payload.region ?? "").trim() || null,
+    ruleName: String(payload.ruleName ?? payload.rule_name ?? "").trim(),
+    status:
+      payload.status === "Disabled" || payload.lifecycle_status === "Disabled" || payload.rule_status === "Disabled"
+        ? "Disabled"
+        : "Enabled",
     scope: {
-      type: payload.scope?.type === "prefix" ? "prefix" : "entire_bucket",
-      ...(typeof payload.scope?.prefix === "string" ? { prefix: payload.scope.prefix } : {}),
+      type: (payload.scope?.type ?? payload.ruleScope?.type ?? payload.scope_config?.type) === "prefix"
+        ? "prefix"
+        : "entire_bucket",
+      ...(typeof (payload.scope?.prefix ?? payload.ruleScope?.prefix ?? payload.scope_config?.prefix) === "string"
+        ? { prefix: payload.scope?.prefix ?? payload.ruleScope?.prefix ?? payload.scope_config?.prefix }
+        : {}),
+      minObjectSizeBytes:
+        payload.scope?.minObjectSizeBytes ??
+        payload.scope?.min_object_size_bytes ??
+        null,
+      maxObjectSizeBytes:
+        payload.scope?.maxObjectSizeBytes ??
+        payload.scope?.max_object_size_bytes ??
+        null,
     },
     transitions: Array.isArray(payload.transitions)
       ? payload.transitions.map((item) => ({
@@ -83,11 +127,52 @@ export async function handleApplyS3BucketLifecyclePolicy(req: Request, res: Resp
             ? "DEEP_ARCHIVE"
             : item.storageClass === "STANDARD_IA"
               ? "STANDARD_IA"
+              : item.storageClass === "INTELLIGENT_TIERING"
+                ? "INTELLIGENT_TIERING"
               : "GLACIER",
         }))
+      : Array.isArray(payload.transitions_config)
+        ? payload.transitions_config.map((item) => ({
+            days: Number(item.days),
+            storageClass: item.storage_class === "DEEP_ARCHIVE"
+              ? "DEEP_ARCHIVE"
+              : item.storage_class === "STANDARD_IA"
+                ? "STANDARD_IA"
+                : item.storage_class === "INTELLIGENT_TIERING"
+                  ? "INTELLIGENT_TIERING"
+                  : "GLACIER",
+        }))
       : [],
-    expirationDays: payload.expirationDays ?? null,
-    abortIncompleteMultipartUploadDays: payload.abortIncompleteMultipartUploadDays ?? null,
+    noncurrentVersionTransitions: Array.isArray(payload.noncurrentVersionTransitions)
+      ? payload.noncurrentVersionTransitions.map((item) => ({
+          days: Number(item.days),
+          storageClass: item.storageClass === "DEEP_ARCHIVE"
+            ? "DEEP_ARCHIVE"
+            : item.storageClass === "STANDARD_IA"
+              ? "STANDARD_IA"
+              : item.storageClass === "INTELLIGENT_TIERING"
+                ? "INTELLIGENT_TIERING"
+                : "GLACIER",
+        }))
+      : Array.isArray(payload.noncurrent_version_transitions)
+        ? payload.noncurrent_version_transitions.map((item) => ({
+            days: Number(item.days),
+            storageClass: item.storage_class === "DEEP_ARCHIVE"
+              ? "DEEP_ARCHIVE"
+              : item.storage_class === "STANDARD_IA"
+                ? "STANDARD_IA"
+                : item.storage_class === "INTELLIGENT_TIERING"
+                  ? "INTELLIGENT_TIERING"
+                  : "GLACIER",
+          }))
+        : [],
+    expirationDays: payload.expirationDays ?? payload.expiration_days ?? null,
+    abortIncompleteMultipartUploadDays:
+      payload.abortIncompleteMultipartUploadDays ?? payload.abort_multipart_days ?? null,
+    noncurrentVersionExpirationDays:
+      payload.noncurrentVersionExpirationDays ?? payload.noncurrent_version_expiration_days ?? null,
+    expiredObjectDeleteMarker: payload.expiredObjectDeleteMarker ?? payload.expired_object_delete_marker ?? null,
+    deleteWarningAccepted: payload.deleteWarningAccepted ?? payload.delete_warning_accepted ?? null,
   }, actorUserId);
 
   sendSuccess({
@@ -110,6 +195,46 @@ export async function handleGetPolicyActionHistory(req: Request, res: Response):
     req,
     statusCode: HTTP_STATUS.OK,
     message: "Policy action history fetched successfully",
+    data,
+  });
+}
+
+export async function handleDeleteS3BucketLifecyclePolicy(req: Request, res: Response): Promise<void> {
+  const dashboardRequest = buildDashboardRequest(req);
+  validateDashboardRequest(dashboardRequest);
+  const scope = await scopeResolver.resolve(dashboardRequest);
+
+  const payload = req.body as {
+    bucketName?: string;
+    bucket_name?: string;
+    ruleName?: string;
+    rule_name?: string;
+    accountId?: string;
+    account_id?: string;
+    region?: string;
+  };
+
+  const actorUserId =
+    typeof req.auth?.user.id === "string" || typeof req.auth?.user.id === "number"
+      ? String(req.auth?.user.id)
+      : null;
+
+  const data = await s3OptimizationService.deleteBucketLifecyclePolicy(
+    scope,
+    {
+      bucketName: String(payload.bucketName ?? payload.bucket_name ?? "").trim(),
+      ruleName: String(payload.ruleName ?? payload.rule_name ?? "").trim(),
+      accountId: String(payload.accountId ?? payload.account_id ?? "").trim() || null,
+      region: String(payload.region ?? "").trim() || null,
+    },
+    actorUserId,
+  );
+
+  sendSuccess({
+    res,
+    req,
+    statusCode: HTTP_STATUS.OK,
+    message: "S3 lifecycle policy deleted successfully",
     data,
   });
 }

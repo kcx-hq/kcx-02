@@ -98,6 +98,35 @@ const toErrorMessage = (error) => {
   return "Unknown AWS parquet ingestion error";
 };
 
+const toSerializableErrorValue = (value) => {
+  if (value == null) return value;
+  if (value instanceof Error) {
+    return {
+      name: value.name,
+      message: value.message,
+      stack: value.stack,
+    };
+  }
+  if (typeof value === "object") {
+    try {
+      return JSON.parse(JSON.stringify(value));
+    } catch {
+      return String(value);
+    }
+  }
+  return value;
+};
+
+const buildNestedErrorDetails = (error) => ({
+  errorName: error && typeof error === "object" && "name" in error ? String(error.name ?? "") : null,
+  errorMessage: error && typeof error === "object" && "message" in error ? String(error.message ?? "") : null,
+  errorErrors: error && typeof error === "object" && "errors" in error ? toSerializableErrorValue(error.errors) : null,
+  errorFields: error && typeof error === "object" && "fields" in error ? toSerializableErrorValue(error.fields) : null,
+  errorParent: error && typeof error === "object" && "parent" in error ? toSerializableErrorValue(error.parent) : null,
+  errorOriginal: error && typeof error === "object" && "original" in error ? toSerializableErrorValue(error.original) : null,
+  generatedSql: error && typeof error === "object" && "sql" in error ? toSerializableErrorValue(error.sql) : null,
+});
+
 const setRunState = async (runId, patch) => {
   await updateIngestionRunStatus(runId, {
     last_heartbeat_at: now(),
@@ -631,6 +660,7 @@ export async function processAwsExportParquetRun({ run }) {
           billingSourceId: source.id,
           rowsLoaded,
           reason: toErrorMessage(dbSyncError),
+          ...buildNestedErrorDetails(dbSyncError),
         });
         throw dbSyncError;
       }

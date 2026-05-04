@@ -158,7 +158,7 @@ export default function S3UsageBucketDetailPage() {
     }
 
     navigate({
-      pathname: "/dashboard/policy",
+      pathname: "/dashboard/policy/s3",
       search: searchParams.toString() ? `?${searchParams.toString()}` : "",
     });
   };

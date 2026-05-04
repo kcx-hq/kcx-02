@@ -45,29 +45,74 @@ function handleUnauthorized(path: string, status: number) {
   navigateTo("/login", { replace: true })
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null
+}
+
+async function parseResponseBody(response: Response): Promise<unknown> {
+  const contentType = response.headers.get("content-type") ?? ""
+  if (contentType.toLowerCase().includes("application/json")) {
+    return response.json().catch(() => null)
+  }
+
+  const text = await response.text().catch(() => "")
+  const trimmed = text.trim()
+  if (!trimmed) return null
+
+  try {
+    return JSON.parse(trimmed) as unknown
+  } catch {
+    return { message: trimmed }
+  }
+}
+
+function getErrorMessage(payload: unknown, fallback = "Request failed"): string {
+  if (!isRecord(payload)) return fallback
+
+  if (typeof payload.message === "string" && payload.message.trim()) {
+    return payload.message
+  }
+
+  const errorValue = payload.error
+  if (isRecord(errorValue)) {
+    if (typeof errorValue.message === "string" && errorValue.message.trim()) {
+      return errorValue.message
+    }
+    if (typeof errorValue.details === "string" && errorValue.details.trim()) {
+      return errorValue.details
+    }
+    if (isRecord(errorValue.details) && typeof errorValue.details.message === "string" && errorValue.details.message.trim()) {
+      return errorValue.details.message
+    }
+  }
+
+  return fallback
+}
+
 export async function apiPost<TData>(path: string, body: unknown, init?: RequestInit): Promise<TData> {
   const url = joinUrl(appEnv.apiBaseUrl, path)
   const token = getAuthToken()
+  const { headers: initHeaders, ...restInit } = init ?? {}
   const response = await fetch(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(init?.headers ?? {}),
+      ...(initHeaders ?? {}),
     },
     body: JSON.stringify(body),
-    ...init,
+    ...restInit,
   })
 
-  const payload = (await response.json().catch(() => null)) as ApiResponse<TData> | null
+  const payload = (await parseResponseBody(response)) as ApiResponse<TData> | null
 
   if (!response.ok) {
     handleUnauthorized(path, response.status)
-    throw new ApiError(payload?.message ?? "Request failed", response.status, payload)
+    throw new ApiError(getErrorMessage(payload), response.status, payload)
   }
   if (!payload || payload.success !== true) {
     handleUnauthorized(path, response.status)
-    throw new ApiError(payload?.message ?? "Request failed", response.status, payload)
+    throw new ApiError(getErrorMessage(payload), response.status, payload)
   }
 
   return payload.data
@@ -76,24 +121,25 @@ export async function apiPost<TData>(path: string, body: unknown, init?: Request
 export async function apiGet<TData>(path: string, init?: RequestInit): Promise<TData> {
   const url = joinUrl(appEnv.apiBaseUrl, path)
   const token = getAuthToken()
+  const { headers: initHeaders, ...restInit } = init ?? {}
   const response = await fetch(url, {
     method: "GET",
     headers: {
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(init?.headers ?? {}),
+      ...(initHeaders ?? {}),
     },
-    ...init,
+    ...restInit,
   })
 
-  const payload = (await response.json().catch(() => null)) as ApiResponse<TData> | null
+  const payload = (await parseResponseBody(response)) as ApiResponse<TData> | null
 
   if (!response.ok) {
     handleUnauthorized(path, response.status)
-    throw new ApiError(payload?.message ?? "Request failed", response.status, payload)
+    throw new ApiError(getErrorMessage(payload), response.status, payload)
   }
   if (!payload || payload.success !== true) {
     handleUnauthorized(path, response.status)
-    throw new ApiError(payload?.message ?? "Request failed", response.status, payload)
+    throw new ApiError(getErrorMessage(payload), response.status, payload)
   }
 
   return payload.data
@@ -102,26 +148,27 @@ export async function apiGet<TData>(path: string, init?: RequestInit): Promise<T
 export async function apiPatch<TData>(path: string, body: unknown, init?: RequestInit): Promise<TData> {
   const url = joinUrl(appEnv.apiBaseUrl, path)
   const token = getAuthToken()
+  const { headers: initHeaders, ...restInit } = init ?? {}
   const response = await fetch(url, {
     method: "PATCH",
     headers: {
       "Content-Type": "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(init?.headers ?? {}),
+      ...(initHeaders ?? {}),
     },
     body: JSON.stringify(body),
-    ...init,
+    ...restInit,
   })
 
-  const payload = (await response.json().catch(() => null)) as ApiResponse<TData> | null
+  const payload = (await parseResponseBody(response)) as ApiResponse<TData> | null
 
   if (!response.ok) {
     handleUnauthorized(path, response.status)
-    throw new ApiError(payload?.message ?? "Request failed", response.status, payload)
+    throw new ApiError(getErrorMessage(payload), response.status, payload)
   }
   if (!payload || payload.success !== true) {
     handleUnauthorized(path, response.status)
-    throw new ApiError(payload?.message ?? "Request failed", response.status, payload)
+    throw new ApiError(getErrorMessage(payload), response.status, payload)
   }
 
   return payload.data
@@ -130,25 +177,22 @@ export async function apiPatch<TData>(path: string, body: unknown, init?: Reques
 export async function apiPostForm<TData>(path: string, formData: FormData, init?: RequestInit): Promise<TData> {
   const url = joinUrl(appEnv.apiBaseUrl, path)
   const token = getAuthToken()
+  const { headers: initHeaders, ...restInit } = init ?? {}
   const response = await fetch(url, {
     method: "POST",
     headers: {
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(init?.headers ?? {}),
+      ...(initHeaders ?? {}),
     },
     body: formData,
-    ...init,
+    ...restInit,
   })
 
-  const payload = (await response.json().catch(() => null)) as (ApiResponse<TData> | TData | { message?: string } | null)
+  const payload = (await parseResponseBody(response)) as (ApiResponse<TData> | TData | { message?: string } | null)
 
   if (!response.ok) {
     handleUnauthorized(path, response.status)
-    const errorMessage =
-      payload && typeof payload === "object" && "message" in payload && typeof payload.message === "string"
-        ? payload.message
-        : "Request failed"
-    throw new ApiError(errorMessage, response.status, payload)
+    throw new ApiError(getErrorMessage(payload), response.status, payload)
   }
 
   if (
@@ -162,4 +206,3 @@ export async function apiPostForm<TData>(path: string, formData: FormData, init?
 
   return payload as TData
 }
-

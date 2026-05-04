@@ -1,4 +1,4 @@
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   dashboardApi,
   type AnomaliesFiltersQuery,
@@ -26,6 +26,8 @@ import {
   type S3BucketLifecycleInsightResponse,
   type S3LifecyclePolicyApplyRequest,
   type S3LifecyclePolicyApplyResponse,
+  type S3LifecyclePolicyDeleteRequest,
+  type S3LifecyclePolicyDeleteResponse,
   type S3PolicyActionHistoryResponse,
   type S3OptimizationResponse,
   type OptimizationIdleOverview,
@@ -388,12 +390,18 @@ export function useS3BucketLifecycleInsightQuery(bucketName: string | null) {
 
 export function useApplyS3LifecyclePolicyMutation() {
   const { scope } = useDashboardScope();
+  const queryClient = useQueryClient();
   return useMutation<S3LifecyclePolicyApplyResponse, Error, S3LifecyclePolicyApplyRequest>({
     mutationFn: (payload) => {
       if (!scope) {
         throw new Error("Dashboard scope is not resolved yet");
       }
       return dashboardApi.applyS3LifecyclePolicy(scope, payload);
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: ["dashboard", "policy", "actions"],
+      });
     },
   });
 }
@@ -404,5 +412,23 @@ export function usePolicyActionHistoryQuery() {
     queryKey: ["dashboard", "policy", "actions", scope],
     queryFn: () => dashboardApi.getPolicyActionHistory(assertScope(scope)),
     enabled: Boolean(scope),
+  });
+}
+
+export function useDeleteS3LifecyclePolicyMutation() {
+  const { scope } = useDashboardScope();
+  const queryClient = useQueryClient();
+  return useMutation<S3LifecyclePolicyDeleteResponse, Error, S3LifecyclePolicyDeleteRequest>({
+    mutationFn: (payload) => {
+      if (!scope) {
+        throw new Error("Dashboard scope is not resolved yet");
+      }
+      return dashboardApi.deleteS3LifecyclePolicy(scope, payload);
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: ["dashboard", "policy", "actions"],
+      });
+    },
   });
 }

@@ -9,6 +9,22 @@ type RegionKeys = {
   usEast1: string;
 };
 
+type ResourceTemplate = {
+  resourceId: string;
+  resourceName: string;
+  dbService: string;
+  dbEngine: string;
+  regionCode: "ap-south-1" | "us-east-1";
+  olderTotal: string;
+  newerTotal: string;
+  dataFootprintGbOlder: string;
+  dataFootprintGbNewer: string;
+  loadAvgOlder: string;
+  loadAvgNewer: string;
+  connectionsAvgOlder: string;
+  connectionsAvgNewer: string;
+};
+
 type SeedRowInput = {
   usageDate: string;
   resourceId: string;
@@ -25,14 +41,206 @@ type SeedRowInput = {
   backupCost: string;
 };
 
-const CONNECTION_NAME = "kcx-123";
+const CONNECTION_NAME = "janu-674";
 const ACTIVE_STATUSES = ["active", "active_with_warnings"] as const;
 
 const RESOURCE_IDS = {
-  rdsOlder: "kcx-dev-dbexp-rds-aurora-ap-south-1-older",
-  rdsNewer: "kcx-dev-dbexp-rds-aurora-ap-south-1-newer",
-  dynamoNewer: "kcx-dev-dbexp-dynamodb-us-east-1-newer",
+  auroraPgClusterApSouth1: "kcx-dev-dbexp-aurora-pg-cluster-ap-south-1",
+  auroraPgInstanceApSouth1: "kcx-dev-dbexp-aurora-pg-instance-ap-south-1",
+  rdsPostgresApSouth1: "kcx-dev-dbexp-rds-postgres-ap-south-1",
+  rdsMysqlUsEast1: "kcx-dev-dbexp-rds-mysql-us-east-1",
+  dynamodbOrdersUsEast1: "kcx-dev-dbexp-dynamodb-orders-us-east-1",
+  elasticacheRedisApSouth1: "kcx-dev-dbexp-elasticache-redis-ap-south-1",
+  memorydbRedisUsEast1: "kcx-dev-dbexp-memorydb-redis-us-east-1",
+  documentdbMongoUsEast1: "kcx-dev-dbexp-documentdb-mongo-us-east-1",
+  neptuneGraphUsEast1: "kcx-dev-dbexp-neptune-graph-us-east-1",
+  timestreamMetricsUsEast1: "kcx-dev-dbexp-timestream-metrics-us-east-1",
+  keyspacesCassandraUsEast1: "kcx-dev-dbexp-keyspaces-cassandra-us-east-1",
+  redshiftWarehouseUsEast1: "kcx-dev-dbexp-redshift-warehouse-us-east-1",
 } as const;
+
+const RESOURCE_TEMPLATES: ResourceTemplate[] = [
+  {
+    resourceId: RESOURCE_IDS.auroraPgClusterApSouth1,
+    resourceName: "production-aurora-pg-cluster",
+    dbService: "Aurora",
+    dbEngine: "Aurora PostgreSQL",
+    regionCode: "ap-south-1",
+    olderTotal: "18.50",
+    newerTotal: "22.40",
+    dataFootprintGbOlder: "460.00",
+    dataFootprintGbNewer: "492.00",
+    loadAvgOlder: "2.70",
+    loadAvgNewer: "3.10",
+    connectionsAvgOlder: "140",
+    connectionsAvgNewer: "168",
+  },
+  {
+    resourceId: RESOURCE_IDS.auroraPgInstanceApSouth1,
+    resourceName: "production-aurora-pg-instance-1",
+    dbService: "Aurora",
+    dbEngine: "Aurora PostgreSQL",
+    regionCode: "ap-south-1",
+    olderTotal: "8.20",
+    newerTotal: "10.10",
+    dataFootprintGbOlder: "220.00",
+    dataFootprintGbNewer: "236.00",
+    loadAvgOlder: "2.20",
+    loadAvgNewer: "2.60",
+    connectionsAvgOlder: "110",
+    connectionsAvgNewer: "132",
+  },
+  {
+    resourceId: RESOURCE_IDS.rdsPostgresApSouth1,
+    resourceName: "customer-postgres-db",
+    dbService: "AmazonRDS",
+    dbEngine: "PostgreSQL",
+    regionCode: "ap-south-1",
+    olderTotal: "7.60",
+    newerTotal: "9.30",
+    dataFootprintGbOlder: "190.00",
+    dataFootprintGbNewer: "208.00",
+    loadAvgOlder: "1.90",
+    loadAvgNewer: "2.30",
+    connectionsAvgOlder: "92",
+    connectionsAvgNewer: "108",
+  },
+  {
+    resourceId: RESOURCE_IDS.rdsMysqlUsEast1,
+    resourceName: "orders-mysql-db",
+    dbService: "AmazonRDS",
+    dbEngine: "MySQL",
+    regionCode: "us-east-1",
+    olderTotal: "5.40",
+    newerTotal: "6.80",
+    dataFootprintGbOlder: "160.00",
+    dataFootprintGbNewer: "176.00",
+    loadAvgOlder: "1.60",
+    loadAvgNewer: "1.90",
+    connectionsAvgOlder: "78",
+    connectionsAvgNewer: "94",
+  },
+  {
+    resourceId: RESOURCE_IDS.dynamodbOrdersUsEast1,
+    resourceName: "orders-table",
+    dbService: "DynamoDB",
+    dbEngine: "Key-Value",
+    regionCode: "us-east-1",
+    olderTotal: "3.10",
+    newerTotal: "4.20",
+    dataFootprintGbOlder: "68.00",
+    dataFootprintGbNewer: "79.00",
+    loadAvgOlder: "0.90",
+    loadAvgNewer: "1.10",
+    connectionsAvgOlder: "22",
+    connectionsAvgNewer: "30",
+  },
+  {
+    resourceId: RESOURCE_IDS.elasticacheRedisApSouth1,
+    resourceName: "session-cache-redis",
+    dbService: "ElastiCache",
+    dbEngine: "Redis",
+    regionCode: "ap-south-1",
+    olderTotal: "4.50",
+    newerTotal: "5.70",
+    dataFootprintGbOlder: "72.00",
+    dataFootprintGbNewer: "88.00",
+    loadAvgOlder: "1.40",
+    loadAvgNewer: "1.70",
+    connectionsAvgOlder: "124",
+    connectionsAvgNewer: "146",
+  },
+  {
+    resourceId: RESOURCE_IDS.memorydbRedisUsEast1,
+    resourceName: "durable-redis-cluster",
+    dbService: "MemoryDB",
+    dbEngine: "Redis",
+    regionCode: "us-east-1",
+    olderTotal: "6.40",
+    newerTotal: "8.10",
+    dataFootprintGbOlder: "104.00",
+    dataFootprintGbNewer: "121.00",
+    loadAvgOlder: "1.70",
+    loadAvgNewer: "2.00",
+    connectionsAvgOlder: "116",
+    connectionsAvgNewer: "138",
+  },
+  {
+    resourceId: RESOURCE_IDS.documentdbMongoUsEast1,
+    resourceName: "documentdb-customer-cluster",
+    dbService: "DocumentDB",
+    dbEngine: "MongoDB-compatible",
+    regionCode: "us-east-1",
+    olderTotal: "7.80",
+    newerTotal: "9.60",
+    dataFootprintGbOlder: "210.00",
+    dataFootprintGbNewer: "228.00",
+    loadAvgOlder: "1.50",
+    loadAvgNewer: "1.80",
+    connectionsAvgOlder: "72",
+    connectionsAvgNewer: "86",
+  },
+  {
+    resourceId: RESOURCE_IDS.neptuneGraphUsEast1,
+    resourceName: "recommendation-graph-db",
+    dbService: "Neptune",
+    dbEngine: "Graph",
+    regionCode: "us-east-1",
+    olderTotal: "8.90",
+    newerTotal: "11.20",
+    dataFootprintGbOlder: "132.00",
+    dataFootprintGbNewer: "148.00",
+    loadAvgOlder: "1.60",
+    loadAvgNewer: "1.95",
+    connectionsAvgOlder: "44",
+    connectionsAvgNewer: "56",
+  },
+  {
+    resourceId: RESOURCE_IDS.timestreamMetricsUsEast1,
+    resourceName: "metrics-timeseries-db",
+    dbService: "Timestream",
+    dbEngine: "Time Series",
+    regionCode: "us-east-1",
+    olderTotal: "2.20",
+    newerTotal: "3.40",
+    dataFootprintGbOlder: "48.00",
+    dataFootprintGbNewer: "61.00",
+    loadAvgOlder: "0.70",
+    loadAvgNewer: "0.95",
+    connectionsAvgOlder: "18",
+    connectionsAvgNewer: "26",
+  },
+  {
+    resourceId: RESOURCE_IDS.keyspacesCassandraUsEast1,
+    resourceName: "event-keyspace-table",
+    dbService: "Keyspaces",
+    dbEngine: "Cassandra-compatible",
+    regionCode: "us-east-1",
+    olderTotal: "2.70",
+    newerTotal: "3.80",
+    dataFootprintGbOlder: "55.00",
+    dataFootprintGbNewer: "67.00",
+    loadAvgOlder: "0.80",
+    loadAvgNewer: "1.00",
+    connectionsAvgOlder: "20",
+    connectionsAvgNewer: "28",
+  },
+  {
+    resourceId: RESOURCE_IDS.redshiftWarehouseUsEast1,
+    resourceName: "analytics-warehouse-cluster",
+    dbService: "Redshift",
+    dbEngine: "Data Warehouse",
+    regionCode: "us-east-1",
+    olderTotal: "16.50",
+    newerTotal: "23.00",
+    dataFootprintGbOlder: "520.00",
+    dataFootprintGbNewer: "610.00",
+    loadAvgOlder: "2.40",
+    loadAvgNewer: "3.00",
+    connectionsAvgOlder: "74",
+    connectionsAvgNewer: "92",
+  },
+];
 
 const toDateOnlyUtc = (value: Date): string => {
   const year = value.getUTCFullYear();
@@ -104,54 +312,47 @@ function buildRows(regionKeys: RegionKeys): SeedRowInput[] {
   const today = new Date();
   const newerDate = toDateOnlyUtc(shiftUtcDays(today, -2));
   const olderDate = toDateOnlyUtc(shiftUtcDays(today, -7));
+  const regionByCode = {
+    "ap-south-1": regionKeys.apSouth1,
+    "us-east-1": regionKeys.usEast1,
+  } as const;
 
-  return [
-    {
+  const rows: SeedRowInput[] = [];
+  for (const template of RESOURCE_TEMPLATES) {
+    rows.push({
       usageDate: olderDate,
-      resourceId: RESOURCE_IDS.rdsOlder,
-      resourceName: "KCX Dev RDS Aurora Older",
-      dbService: "RDS",
-      dbEngine: "aurora-postgresql",
-      regionKey: regionKeys.apSouth1,
-      dataFootprintGb: "120.50",
-      loadAvg: "1.25",
-      connectionsAvg: "42",
-      computeCost: "18.50",
-      storageCost: "3.20",
-      ioCost: "1.10",
-      backupCost: "0.80",
-    },
-    {
+      resourceId: template.resourceId,
+      resourceName: template.resourceName,
+      dbService: template.dbService,
+      dbEngine: template.dbEngine,
+      regionKey: regionByCode[template.regionCode],
+      dataFootprintGb: template.dataFootprintGbOlder,
+      loadAvg: template.loadAvgOlder,
+      connectionsAvg: template.connectionsAvgOlder,
+      computeCost: (Number(template.olderTotal) * 0.6).toFixed(2),
+      storageCost: (Number(template.olderTotal) * 0.25).toFixed(2),
+      ioCost: (Number(template.olderTotal) * 0.1).toFixed(2),
+      backupCost: (Number(template.olderTotal) * 0.05).toFixed(2),
+    });
+
+    rows.push({
       usageDate: newerDate,
-      resourceId: RESOURCE_IDS.rdsNewer,
-      resourceName: "KCX Dev RDS Aurora Newer",
-      dbService: "RDS",
-      dbEngine: "aurora-postgresql",
-      regionKey: regionKeys.apSouth1,
-      dataFootprintGb: "140.25",
-      loadAvg: "2.10",
-      connectionsAvg: "68",
-      computeCost: "42.00",
-      storageCost: "6.50",
-      ioCost: "2.80",
-      backupCost: "1.70",
-    },
-    {
-      usageDate: newerDate,
-      resourceId: RESOURCE_IDS.dynamoNewer,
-      resourceName: "KCX Dev DynamoDB Newer",
-      dbService: "DynamoDB",
-      dbEngine: "dynamodb",
-      regionKey: regionKeys.usEast1,
-      dataFootprintGb: "75.00",
-      loadAvg: "1.60",
-      connectionsAvg: "54",
-      computeCost: "24.00",
-      storageCost: "4.60",
-      ioCost: "3.10",
-      backupCost: "1.20",
-    },
-  ];
+      resourceId: template.resourceId,
+      resourceName: template.resourceName,
+      dbService: template.dbService,
+      dbEngine: template.dbEngine,
+      regionKey: regionByCode[template.regionCode],
+      dataFootprintGb: template.dataFootprintGbNewer,
+      loadAvg: template.loadAvgNewer,
+      connectionsAvg: template.connectionsAvgNewer,
+      computeCost: (Number(template.newerTotal) * 0.6).toFixed(2),
+      storageCost: (Number(template.newerTotal) * 0.25).toFixed(2),
+      ioCost: (Number(template.newerTotal) * 0.1).toFixed(2),
+      backupCost: (Number(template.newerTotal) * 0.05).toFixed(2),
+    });
+  }
+
+  return rows;
 }
 
 async function upsertRows(): Promise<void> {

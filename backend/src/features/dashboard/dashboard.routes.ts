@@ -53,6 +53,7 @@ import { handleGetResourcesDashboard } from "./resources/resources.controller.js
 import { handleGetS3CostInsights } from "./s3/s3-cost-insights.controller.js";
 import {
   handleApplyS3BucketLifecyclePolicy,
+  handleDeleteS3BucketLifecyclePolicy,
   handleGetPolicyActionHistory,
   handleGetS3BucketLifecycleInsight,
   handleGetS3Optimization,
@@ -163,6 +164,7 @@ router.get("/dashboard/s3/optimization", asyncHandler(handleGetS3Optimization));
 router.get("/dashboard/s3/lifecycle-insight", asyncHandler(handleGetS3BucketLifecycleInsight));
 router.get("/dashboard/s3/usage/bucket-lifecycle-insight", asyncHandler(handleGetS3BucketLifecycleInsight));
 router.post("/dashboard/s3/lifecycle-policy", asyncHandler(handleApplyS3BucketLifecyclePolicy));
+router.post("/dashboard/s3/lifecycle-policy/delete", asyncHandler(handleDeleteS3BucketLifecyclePolicy));
 router.get("/dashboard/policy/actions", asyncHandler(handleGetPolicyActionHistory));
 router.get("/dashboard/budget", asyncHandler(handleGetBudgetDashboard));
 router.post("/dashboard/budget", asyncHandler(handleCreateBudget));

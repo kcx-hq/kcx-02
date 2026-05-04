@@ -145,8 +145,6 @@ export function S3UsageFilters({ value, filterOptions, onChange, onReset, isLoad
       aria-label="S3 usage filters"
       ref={rootRef}
     >
-      {isLoading ? <span className="cost-explorer-chart-panel__status">Loading S3 usage filters...</span> : null}
-
       <div className="cost-explorer-toolbar-row">
         <div className="cost-explorer-toolbar-item s3-usage-filter-panel__item--cost-by">
           <button

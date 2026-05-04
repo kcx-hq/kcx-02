@@ -19,6 +19,11 @@ const uniqueSorted = (values: string[]): string[] =>
     left.localeCompare(right),
   );
 
+const metricOptions: Array<{ value: DatabaseExplorerMetric; label: string }> = [
+  { value: "cost", label: "Cost" },
+  { value: "usage", label: "Usage" },
+];
+
 export default function DatabaseExplorerPage() {
   const [metric, setMetric] = useState<DatabaseExplorerMetric>("cost");
   const [groupBy, setGroupBy] = useState<DatabaseExplorerGroupBy>("db_service");
@@ -38,14 +43,13 @@ export default function DatabaseExplorerPage() {
   const query = useDatabaseExplorerQuery(filters);
   const data = query.data;
 
-  const groupedValues = useMemo(() => uniqueSorted(data?.table.map((row) => row.group) ?? []), [data?.table]);
   const dbServiceOptions = useMemo(
-    () => uniqueSorted([...(groupBy === "db_service" ? groupedValues : []), dbService]),
-    [dbService, groupBy, groupedValues],
+    () => uniqueSorted(data?.filterOptions?.dbServices ?? []),
+    [data?.filterOptions?.dbServices],
   );
   const dbEngineOptions = useMemo(
-    () => uniqueSorted([...(groupBy === "db_engine" ? groupedValues : []), dbEngine]),
-    [dbEngine, groupBy, groupedValues],
+    () => uniqueSorted(data?.filterOptions?.dbEngines ?? []),
+    [data?.filterOptions?.dbEngines],
   );
 
   const pageLoading = query.isLoading && !data;
@@ -53,7 +57,31 @@ export default function DatabaseExplorerPage() {
 
   return (
     <div className="dashboard-page database-explorer-page cost-explorer-page">
-      <DashboardPageHeader title="Database" />
+      <DashboardPageHeader
+        title={
+          <div className="database-explorer-page__metric-title">
+            <span className="cost-explorer-field__label">Metric</span>
+            <div
+              className="cost-explorer-segmented cost-explorer-segmented--tray database-explorer-page__metric-switch"
+              role="group"
+              aria-label="Database explorer metric"
+              style={{ gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }}
+            >
+              {metricOptions.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  className={`cost-explorer-segmented__item${metric === option.value ? " is-active" : ""}`}
+                  onClick={() => setMetric(option.value)}
+                  aria-pressed={metric === option.value}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        }
+      />
 
       <DatabaseExplorerFilters
         metric={metric}

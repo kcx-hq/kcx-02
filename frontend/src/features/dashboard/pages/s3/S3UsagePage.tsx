@@ -152,7 +152,6 @@ export default function S3UsagePage() {
   const usageRows = useMemo(() => (query.data?.usageOperationTable ?? []) as S3UsageInsightsRow[], [query.data?.usageOperationTable]);
   const bucketUsageRows = useMemo<S3BucketUsageRow[]>(() => {
     const bucketRows = query.data?.bucketTable ?? [];
-    const series = query.data?.chart.breakdown.series ?? [];
     const storageSeries = storageBreakdownQuery.data?.chart.breakdown.series ?? [];
     const transferSeries = transferBreakdownQuery.data?.chart.breakdown.series ?? [];
     const requestSeries = requestBreakdownQuery.data?.chart.breakdown.series ?? [];
@@ -194,15 +193,11 @@ export default function S3UsagePage() {
       };
     });
 
-    return series
-      .map((item) => String(item.name ?? "").trim())
-      .map((bucketName) => rows.find((row) => row.bucketName === bucketName))
-      .filter((row): row is S3BucketUsageRow => Boolean(row))
+    return rows
       .filter((row) => row.bucketName.length > 0)
       .sort((a, b) => b.quantity - a.quantity);
   }, [
     query.data?.bucketTable,
-    query.data?.chart.breakdown.series,
     requestBreakdownQuery.data?.chart.breakdown.series,
     storageBreakdownQuery.data?.chart.breakdown.series,
     transferBreakdownQuery.data?.chart.breakdown.series,
@@ -239,7 +234,16 @@ export default function S3UsagePage() {
       {!hasBlockingError ? (
         <section className="s3-overview-table-panel" aria-label="S3 usage table">
           {isInitialLoading ? (
-            <p className="dashboard-note">Loading S3 buckets...</p>
+            <div className="s3-usage-table-skeleton" aria-hidden="true">
+              <div className="s3-usage-table-skeleton__toolbar" />
+              <div className="s3-usage-table-skeleton__row" />
+              <div className="s3-usage-table-skeleton__row" />
+              <div className="s3-usage-table-skeleton__row" />
+              <div className="s3-usage-table-skeleton__row" />
+              <div className="s3-usage-table-skeleton__row" />
+              <div className="s3-usage-table-skeleton__row" />
+              <div className="s3-usage-table-skeleton__row" />
+            </div>
           ) : (
             <S3UsageInsightsTable
               rows={usageRows}
