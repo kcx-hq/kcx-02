@@ -234,12 +234,21 @@ export function DashboardSidebar() {
                   title={collapsed ? node.label : undefined}
                   aria-expanded={isNodeOpen}
                   aria-controls={nodeId}
-                  onClick={() =>
+                  onClick={() => {
+                    const isExactNodePath = location.pathname === node.path;
+                    if (!isExactNodePath) {
+                      navigate({ pathname: node.path, search: location.search });
+                      setOpenGroups((current) => ({
+                        ...current,
+                        [nodeKey]: true,
+                      }));
+                      return;
+                    }
                     setOpenGroups((current) => ({
                       ...current,
                       [nodeKey]: !(current[nodeKey] ?? true),
-                    }))
-                  }
+                    }));
+                  }}
                 >
                   <DashboardIcon name={node.icon} className="dashboard-nav-item__icon" />
                   <span className="dashboard-nav-item__label">{node.label}</span>
@@ -273,14 +282,6 @@ export function DashboardSidebar() {
                             onClick={() => {
                               if (group.path && !hasSubmenuItems) {
                                 navigate({ pathname: group.path, search: location.search });
-                                return;
-                              }
-                              if (group.path && (group.label === "S3" || group.label === "EC2")) {
-                                navigate({ pathname: group.path, search: location.search });
-                                setOpenGroups((current) => ({
-                                  ...current,
-                                  [groupKey]: true,
-                                }));
                                 return;
                               }
                               setOpenGroups((current) => ({

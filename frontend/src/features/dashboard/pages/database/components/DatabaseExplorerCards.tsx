@@ -39,7 +39,6 @@ export function DatabaseExplorerCards({ cards, isLoading = false }: DatabaseExpl
       <KpiCard label="Active DB Resources" value={formatInteger(safeCards.activeResources)} />
       <KpiCard label="Data Footprint" value={formatNumber(safeCards.dataFootprintGb, " GB")} />
       <KpiCard label="Avg Load" value={formatCompactNumber(safeCards.avgLoad)} />
-      <KpiCard label="Connections / Throughput" value={formatCompactNumber(safeCards.connections)} />
     </KpiGrid>
   );
 }

@@ -126,6 +126,11 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 2px;
 }
 
 .dashboard-nav-item {
@@ -270,6 +275,7 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
+  flex-shrink: 0;
 }
 
 .dashboard-sidebar__client-home-btn {
@@ -1899,7 +1905,7 @@
 }
 
 .dashboard-kpi-grid.db-explorer-kpi-grid {
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
 }
 
 .dashboard-kpi-card {
@@ -2531,6 +2537,10 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .dashboard-kpi-grid.db-explorer-kpi-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .overview-kpi-strip {
     margin-top: 0;
   }
@@ -2593,6 +2603,10 @@
   .dashboard-kpi-grid,
   .dashboard-showcase-grid--charts,
   .dashboard-showcase-grid--placeholders {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-kpi-grid.db-explorer-kpi-grid {
     grid-template-columns: 1fr;
   }
 
