@@ -1229,12 +1229,16 @@ export class S3CostInsightsRepository {
         WHERE ${filter.whereClause}
           AND ${S3_SERVICE_NAME_FILTER_SQL}
       ),
-      filtered_with_filters AS (
+      scoped_data AS (
         SELECT
           filtered.*,
           ${S3_STORAGE_CLASS_LABEL_SQL} AS storage_class,
           ${S3_COST_CATEGORY_SQL} AS cost_category
         FROM filtered
+      ),
+      filtered_with_filters AS (
+        SELECT *
+        FROM scoped_data
         WHERE ${filterPredicates.clause}
       ),
       bucket_agg AS (

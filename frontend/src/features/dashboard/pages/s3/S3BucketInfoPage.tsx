@@ -140,9 +140,9 @@ export default function S3BucketInfoPage() {
         <div className="s3-bucket-section">
           <section className="cost-explorer-widget-shell s3-bucket-kpi-shell">
             <div className="s3-bucket-kpi-row" aria-label="S3 bucket combined KPIs">
-              <article className="s3-bucket-kpi-tile">
+              <article className="s3-bucket-kpi-tile s3-bucket-kpi-tile--bucket">
                 <p className="cost-explorer-insight-tile__label">Total Bucket</p>
-                <p className="s3-bucket-kpi-tile__meta">{integerFormatter.format(usageKpis.buckets)}</p>
+                <p className="s3-bucket-kpi-tile__count">{integerFormatter.format(usageKpis.buckets)}</p>
               </article>
               <article className="s3-bucket-kpi-tile">
                 <p className="cost-explorer-insight-tile__label">Total Storage</p>
