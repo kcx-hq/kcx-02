@@ -85,7 +85,7 @@ WITH anchor AS (
       AND (CAST(:providerId AS bigint) IS NULL OR cv.provider_id = CAST(:providerId AS bigint))
   ) x
 ),
-inv_ranked AS (
+inv_base AS (
   SELECT
     eis.tenant_id,
     eis.instance_id,
@@ -117,10 +117,9 @@ inv_ranked AS (
     eis.image_id,
     eis.launch_time,
     eis.deleted_at,
-    ROW_NUMBER() OVER (
-      PARTITION BY eis.tenant_id, eis.instance_id, eis.discovered_at::date
-      ORDER BY eis.discovered_at DESC NULLS LAST, eis.updated_at DESC NULLS LAST, eis.created_at DESC NULLS LAST
-    ) AS rn
+    eis.discovered_at,
+    eis.updated_at,
+    eis.created_at
   FROM ec2_instance_inventory_snapshots eis
   WHERE eis.tenant_id IS NOT NULL
     AND eis.instance_id IS NOT NULL
@@ -132,15 +131,61 @@ inv_ranked AS (
     AND (CAST(:providerId AS bigint) IS NULL OR eis.provider_id = CAST(:providerId AS bigint))
 ),
 inv AS (
-  SELECT * FROM inv_ranked WHERE rn = 1
+  SELECT DISTINCT ON (ib.tenant_id, ib.instance_id, ib.usage_date)
+    ib.tenant_id,
+    ib.instance_id,
+    ib.usage_date,
+    ib.cloud_connection_id,
+    ib.provider_id,
+    ib.resource_key,
+    ib.region_key,
+    ib.sub_account_key,
+    ib.instance_name,
+    ib.instance_type,
+    ib.availability_zone,
+    ib.state,
+    ib.is_spot,
+    ib.platform,
+    ib.platform_details,
+    ib.architecture,
+    ib.tenancy,
+    ib.asg_name,
+    ib.vpc_id,
+    ib.subnet_id,
+    ib.image_id,
+    ib.launch_time,
+    ib.deleted_at
+  FROM inv_base ib
+  ORDER BY
+    ib.tenant_id,
+    ib.instance_id,
+    ib.usage_date,
+    ib.discovered_at DESC NULLS LAST,
+    ib.updated_at DESC NULLS LAST,
+    ib.created_at DESC NULLS LAST
 ),
-util_ranked AS (
+util_base AS (
   SELECT
-    u.*,
-    ROW_NUMBER() OVER (
-      PARTITION BY u.tenant_id, u.instance_id, u.usage_date
-      ORDER BY u.updated_at DESC NULLS LAST, u.created_at DESC NULLS LAST, u.id DESC
-    ) AS rn
+    u.tenant_id,
+    u.instance_id,
+    u.usage_date,
+    u.cloud_connection_id,
+    u.provider_id,
+    u.resource_key,
+    u.region_key,
+    u.sub_account_key,
+    u.cpu_avg,
+    u.cpu_max,
+    u.cpu_min,
+    u.memory_avg,
+    u.memory_max,
+    u.disk_used_percent_avg,
+    u.disk_used_percent_max,
+    u.network_in_bytes,
+    u.network_out_bytes,
+    u.is_idle_candidate,
+    u.is_underutilized_candidate,
+    u.is_overutilized_candidate
   FROM ec2_instance_utilization_daily u
   WHERE u.tenant_id IS NOT NULL
     AND u.instance_id IS NOT NULL
@@ -152,15 +197,53 @@ util_ranked AS (
     AND (CAST(:providerId AS bigint) IS NULL OR u.provider_id = CAST(:providerId AS bigint))
 ),
 util AS (
-  SELECT * FROM util_ranked WHERE rn = 1
-),
-cost_ranked AS (
   SELECT
-    c.*,
-    ROW_NUMBER() OVER (
-      PARTITION BY c.tenant_id, c.instance_id, c.usage_date
-      ORDER BY c.updated_at DESC NULLS LAST, c.created_at DESC NULLS LAST, c.id DESC
-    ) AS rn
+    ub.tenant_id,
+    ub.instance_id,
+    ub.usage_date,
+    MAX(ub.cloud_connection_id) AS cloud_connection_id,
+    MAX(ub.provider_id) AS provider_id,
+    MAX(ub.resource_key) AS resource_key,
+    MAX(ub.region_key) AS region_key,
+    MAX(ub.sub_account_key) AS sub_account_key,
+    AVG(ub.cpu_avg)::numeric(10,4) AS cpu_avg,
+    MAX(ub.cpu_max)::numeric(10,4) AS cpu_max,
+    MIN(ub.cpu_min)::numeric(10,4) AS cpu_min,
+    AVG(ub.memory_avg)::numeric(10,4) AS memory_avg,
+    MAX(ub.memory_max)::numeric(10,4) AS memory_max,
+    AVG(ub.disk_used_percent_avg)::numeric(10,4) AS disk_used_percent_avg,
+    MAX(ub.disk_used_percent_max)::numeric(10,4) AS disk_used_percent_max,
+    MAX(ub.network_in_bytes) AS network_in_bytes,
+    MAX(ub.network_out_bytes) AS network_out_bytes,
+    BOOL_OR(COALESCE(ub.is_idle_candidate, FALSE)) AS is_idle_candidate,
+    BOOL_OR(COALESCE(ub.is_underutilized_candidate, FALSE)) AS is_underutilized_candidate,
+    BOOL_OR(COALESCE(ub.is_overutilized_candidate, FALSE)) AS is_overutilized_candidate
+  FROM util_base ub
+  GROUP BY ub.tenant_id, ub.instance_id, ub.usage_date
+),
+cost_base AS (
+  SELECT
+    c.tenant_id,
+    c.instance_id,
+    c.usage_date,
+    c.cloud_connection_id,
+    c.billing_source_id,
+    c.provider_id,
+    c.resource_key,
+    c.region_key,
+    c.sub_account_key,
+    c.instance_type,
+    c.currency_code,
+    c.compute_cost,
+    c.ebs_cost,
+    c.data_transfer_cost,
+    c.tax_cost,
+    c.credit_amount,
+    c.refund_amount,
+    c.total_billed_cost,
+    c.total_effective_cost,
+    c.total_list_cost,
+    c.usage_hours
   FROM fact_ec2_instance_cost_daily c
   WHERE c.instance_id IS NOT NULL
     AND NULLIF(TRIM(c.instance_id), '') IS NOT NULL
@@ -171,15 +254,51 @@ cost_ranked AS (
     AND (CAST(:providerId AS bigint) IS NULL OR c.provider_id = CAST(:providerId AS bigint))
 ),
 cost AS (
-  SELECT * FROM cost_ranked WHERE rn = 1
-),
-coverage_ranked AS (
   SELECT
-    cv.*,
-    ROW_NUMBER() OVER (
-      PARTITION BY cv.tenant_id, cv.instance_id, cv.usage_date
-      ORDER BY cv.updated_at DESC NULLS LAST, cv.created_at DESC NULLS LAST, cv.id DESC
-    ) AS rn
+    cb.tenant_id,
+    cb.instance_id,
+    cb.usage_date,
+    MAX(cb.cloud_connection_id) AS cloud_connection_id,
+    MAX(cb.billing_source_id) AS billing_source_id,
+    MAX(cb.provider_id) AS provider_id,
+    MAX(cb.resource_key) AS resource_key,
+    MAX(cb.region_key) AS region_key,
+    MAX(cb.sub_account_key) AS sub_account_key,
+    MAX(cb.instance_type) AS instance_type,
+    MAX(cb.currency_code) AS currency_code,
+    SUM(COALESCE(cb.compute_cost, 0))::numeric(18,6) AS compute_cost,
+    SUM(COALESCE(cb.ebs_cost, 0))::numeric(18,6) AS ebs_cost,
+    SUM(COALESCE(cb.data_transfer_cost, 0))::numeric(18,6) AS data_transfer_cost,
+    SUM(COALESCE(cb.tax_cost, 0))::numeric(18,6) AS tax_cost,
+    SUM(COALESCE(cb.credit_amount, 0))::numeric(18,6) AS credit_amount,
+    SUM(COALESCE(cb.refund_amount, 0))::numeric(18,6) AS refund_amount,
+    SUM(COALESCE(cb.total_billed_cost, 0))::numeric(18,6) AS total_billed_cost,
+    SUM(COALESCE(cb.total_effective_cost, 0))::numeric(18,6) AS total_effective_cost,
+    SUM(COALESCE(cb.total_list_cost, 0))::numeric(18,6) AS total_list_cost,
+    SUM(COALESCE(cb.usage_hours, 0))::numeric(18,6) AS usage_hours
+  FROM cost_base cb
+  GROUP BY cb.tenant_id, cb.instance_id, cb.usage_date
+),
+coverage_base AS (
+  SELECT
+    cv.tenant_id,
+    cv.instance_id,
+    cv.usage_date,
+    cv.cloud_connection_id,
+    cv.billing_source_id,
+    cv.provider_id,
+    cv.resource_key,
+    cv.region_key,
+    cv.sub_account_key,
+    cv.instance_type,
+    cv.reservation_type,
+    cv.reservation_arn,
+    cv.savings_plan_arn,
+    cv.savings_plan_type,
+    cv.covered_hours,
+    cv.uncovered_hours,
+    cv.covered_cost,
+    cv.uncovered_cost
   FROM fact_ec2_instance_coverage_daily cv
   WHERE cv.instance_id IS NOT NULL
     AND NULLIF(TRIM(cv.instance_id), '') IS NOT NULL
@@ -190,7 +309,27 @@ coverage_ranked AS (
     AND (CAST(:providerId AS bigint) IS NULL OR cv.provider_id = CAST(:providerId AS bigint))
 ),
 coverage AS (
-  SELECT * FROM coverage_ranked WHERE rn = 1
+  SELECT
+    cb.tenant_id,
+    cb.instance_id,
+    cb.usage_date,
+    MAX(cb.cloud_connection_id) AS cloud_connection_id,
+    MAX(cb.billing_source_id) AS billing_source_id,
+    MAX(cb.provider_id) AS provider_id,
+    MAX(cb.resource_key) AS resource_key,
+    MAX(cb.region_key) AS region_key,
+    MAX(cb.sub_account_key) AS sub_account_key,
+    MAX(cb.instance_type) AS instance_type,
+    MAX(cb.reservation_type) AS reservation_type,
+    MAX(cb.reservation_arn) AS reservation_arn,
+    MAX(cb.savings_plan_arn) AS savings_plan_arn,
+    MAX(cb.savings_plan_type) AS savings_plan_type,
+    SUM(COALESCE(cb.covered_hours, 0))::numeric(18,6) AS covered_hours,
+    SUM(COALESCE(cb.uncovered_hours, 0))::numeric(18,6) AS uncovered_hours,
+    SUM(COALESCE(cb.covered_cost, 0))::numeric(18,6) AS covered_cost,
+    SUM(COALESCE(cb.uncovered_cost, 0))::numeric(18,6) AS uncovered_cost
+  FROM coverage_base cb
+  GROUP BY cb.tenant_id, cb.instance_id, cb.usage_date
 ),
 final_rows AS (
   SELECT

@@ -10583,6 +10583,169 @@
   gap: 14px;
 }
 
+.ec2-instance-detail__page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.ec2-instance-detail__page-header h2 {
+  margin: 6px 0 0;
+  color: #203736;
+  font-size: 1.2rem;
+}
+
+.ec2-instance-detail__date-range {
+  display: flex;
+  gap: 10px;
+}
+
+.ec2-instance-detail__date-range label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: #5d7370;
+  font-size: 0.75rem;
+}
+
+.ec2-instance-detail__date-range input {
+  border: 1px solid #d2e1dd;
+  border-radius: 8px;
+  padding: 6px 8px;
+  background: #fff;
+}
+
+.ec2-instance-detail__layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 190px;
+  gap: 14px;
+}
+
+.ec2-instance-detail__content {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.ec2-instance-detail__summary-card {
+  border-color: #cde4df;
+}
+
+.ec2-instance-detail__summary-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+
+.ec2-instance-detail__status-pill {
+  border-radius: 999px;
+  padding: 5px 10px;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.ec2-instance-detail__status-pill--healthy {
+  background: #ecf8f5;
+  color: #1f6d4f;
+}
+
+.ec2-instance-detail__status-pill--optimization-opportunity {
+  background: #fff6ea;
+  color: #8a5a18;
+}
+
+.ec2-instance-detail__status-pill--risk-detected {
+  background: #fff0ef;
+  color: #8b3f3a;
+}
+
+.ec2-instance-detail__summary-grid {
+  margin-top: 12px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.ec2-instance-detail__summary-grid div {
+  border: 1px solid #deebe8;
+  background: #f9fcfc;
+  border-radius: 10px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ec2-instance-detail__summary-grid span {
+  color: #617774;
+  font-size: 0.75rem;
+}
+
+.ec2-instance-detail__summary-grid strong {
+  color: #274340;
+}
+
+.ec2-instance-detail__recommendation-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.ec2-instance-detail__recommendation-card {
+  border: 1px solid #deebe8;
+  border-radius: 10px;
+  padding: 12px;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ec2-instance-detail__recommendation-card h4 {
+  margin: 0;
+  color: #274340;
+}
+
+.ec2-instance-detail__recommendation-card header span {
+  color: #5d7370;
+  font-size: 0.78rem;
+}
+
+.ec2-instance-detail__recommendation-body p {
+  margin: 0;
+  font-size: 0.82rem;
+  color: #334f4c;
+}
+
+.ec2-instance-detail__recommendation-meta {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  color: #385553;
+  font-size: 0.79rem;
+}
+
+.ec2-instance-detail__sticky-nav {
+  position: sticky;
+  top: 20px;
+  align-self: start;
+  border: 1px solid #deebe8;
+  border-radius: 10px;
+  background: #fff;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ec2-instance-detail__sticky-nav a {
+  color: #2f7068;
+  font-size: 0.82rem;
+  text-decoration: none;
+}
+
 .ec2-instance-detail__breadcrumbs {
   display: flex;
   align-items: center;
@@ -10809,6 +10972,25 @@
 }
 
 @media (max-width: 1100px) {
+  .ec2-instance-detail__layout {
+    grid-template-columns: 1fr;
+  }
+  .ec2-instance-detail__sticky-nav {
+    display: none;
+  }
+  .ec2-instance-detail__recommendation-grid {
+    grid-template-columns: 1fr;
+  }
+  .ec2-instance-detail__summary-grid {
+    grid-template-columns: 1fr;
+  }
+  .ec2-instance-detail__date-range {
+    width: 100%;
+    justify-content: flex-start;
+  }
+  .ec2-instance-detail__page-header {
+    flex-direction: column;
+  }
   .ec2-instance-detail__kpis {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }

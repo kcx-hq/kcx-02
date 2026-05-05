@@ -195,6 +195,8 @@ const env = {
     optionalPositiveInteger(process.env.EC2_SCHEDULED_JOBS_BATCH_SIZE) ?? 10,
   ec2ScheduledJobsMaxBatchesPerPoll:
     optionalPositiveInteger(process.env.EC2_SCHEDULED_JOBS_MAX_BATCHES_PER_POLL) ?? 5,
+  ec2HourlyRetentionDays:
+    optionalPositiveInteger(process.env.EC2_HOURLY_RETENTION_DAYS) ?? 30,
   s3BucketConfigSchedulerEnabled:
     optionalBoolean(process.env.S3_BUCKET_CONFIG_SCHEDULER_ENABLED) ?? true,
   s3BucketConfigSchedulerIntervalMs:
