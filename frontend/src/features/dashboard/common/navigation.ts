@@ -118,7 +118,14 @@ export const dashboardNav: DashboardNavNode[] = [
         label: "Database",
         icon: "server",
         path: "/dashboard/services/database",
-        items: [],
+        items: [
+          {
+            kind: "link",
+            label: "Assets",
+            path: "/dashboard/services/database/assets",
+            icon: "boxes",
+          },
+        ],
       },
     ],
   },

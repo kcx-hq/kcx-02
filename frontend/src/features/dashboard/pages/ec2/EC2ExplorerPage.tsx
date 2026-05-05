@@ -216,7 +216,7 @@ export default function EC2ExplorerPage() {
         ? "cost"
         : null;
   useEffect(() => {
-    if (controls.metric !== "data-transfer" || !query.data) return;
+    if (controls.metric !== "data-transfer" || !query.data || !dataTransferDebugEnabled) return;
     const firstRow = query.data.graph.series[0]?.data[0] ?? null;
     const chartTotal = query.data.graph.series.reduce(
       (sum, series) =>
@@ -236,30 +236,28 @@ export default function EC2ExplorerPage() {
       kpiCost: query.data.summary.totalCost,
       kpiUsageGb: query.data.summary.storageGb,
     });
-    if (dataTransferDebugEnabled) {
-      const topUnknown = query.data.dataTransferDebug?.topUnknownContributors ?? [];
-      const topUnknownRows = query.data.dataTransferDebug?.topUnknownRows ?? [];
-      const topUsageTypes = new Map<string, number>();
-      const topDescriptions = new Map<string, number>();
-      for (const row of topUnknown) {
-        topUsageTypes.set(row.usageType, (topUsageTypes.get(row.usageType) ?? 0) + row.cost);
-        topDescriptions.set(row.lineItemDescription, (topDescriptions.get(row.lineItemDescription) ?? 0) + row.cost);
-      }
-      const sortDesc = (a: [string, number], b: [string, number]) => b[1] - a[1];
-      console.debug("[EC2 Explorer][Data Transfer][Unknown Debug]", {
-        totalUnknownCost: query.data.dataTransferDebug?.totalUnknownCost ?? 0,
-        totalUnknownUsageGb: query.data.dataTransferDebug?.totalUnknownUsageGb ?? 0,
-        unknownResourceCount: query.data.dataTransferDebug?.unknownResourceCount ?? 0,
-        unmappedResourceCount: query.data.dataTransferDebug?.unmappedResourceCount ?? 0,
-        unmappedResourceCost: query.data.dataTransferDebug?.unmappedResourceCost ?? 0,
-        unmappedResourceUsageGb: query.data.dataTransferDebug?.unmappedResourceUsageGb ?? 0,
-        topUnknownUsageTypes: [...topUsageTypes.entries()].sort(sortDesc).slice(0, 10),
-        topUnknownDescriptions: [...topDescriptions.entries()].sort(sortDesc).slice(0, 10),
-        topUnknownRows: topUnknownRows.slice(0, 20),
-        likelyDemoUnknownRows: topUnknownRows.filter((row) => row.likelyDemoData).length,
-        unknownDateBuckets: [...new Set(topUnknownRows.map((row) => row.dateBucket))].slice(0, 50),
-      });
+    const topUnknown = query.data.dataTransferDebug?.topUnknownContributors ?? [];
+    const topUnknownRows = query.data.dataTransferDebug?.topUnknownRows ?? [];
+    const topUsageTypes = new Map<string, number>();
+    const topDescriptions = new Map<string, number>();
+    for (const row of topUnknown) {
+      topUsageTypes.set(row.usageType, (topUsageTypes.get(row.usageType) ?? 0) + row.cost);
+      topDescriptions.set(row.lineItemDescription, (topDescriptions.get(row.lineItemDescription) ?? 0) + row.cost);
     }
+    const sortDesc = (a: [string, number], b: [string, number]) => b[1] - a[1];
+    console.debug("[EC2 Explorer][Data Transfer][Unknown Debug]", {
+      totalUnknownCost: query.data.dataTransferDebug?.totalUnknownCost ?? 0,
+      totalUnknownUsageGb: query.data.dataTransferDebug?.totalUnknownUsageGb ?? 0,
+      unknownResourceCount: query.data.dataTransferDebug?.unknownResourceCount ?? 0,
+      unmappedResourceCount: query.data.dataTransferDebug?.unmappedResourceCount ?? 0,
+      unmappedResourceCost: query.data.dataTransferDebug?.unmappedResourceCost ?? 0,
+      unmappedResourceUsageGb: query.data.dataTransferDebug?.unmappedResourceUsageGb ?? 0,
+      topUnknownUsageTypes: [...topUsageTypes.entries()].sort(sortDesc).slice(0, 10),
+      topUnknownDescriptions: [...topDescriptions.entries()].sort(sortDesc).slice(0, 10),
+      topUnknownRows: topUnknownRows.slice(0, 20),
+      likelyDemoUnknownRows: topUnknownRows.filter((row) => row.likelyDemoData).length,
+      unknownDateBuckets: [...new Set(topUnknownRows.map((row) => row.dateBucket))].slice(0, 50),
+    });
   }, [controls.metric, dataTransferDebugEnabled, dataTransferValueKey, dataTransferView, query.data]);
   const resolvedGraphType = useMemo<"line" | "stacked_bar">(
     () => controls.chartType,
