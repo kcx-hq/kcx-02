@@ -164,9 +164,13 @@ export default function S3UsageBucketDetailPage() {
   };
 
   const handleBack = () => {
+    const section = (new URLSearchParams(location.search).get("s3Section") ?? "").trim().toLowerCase();
+    const backPath = section === "cost" ? "/dashboard/s3/cost" : "/dashboard/s3/usage";
+    const searchParams = new URLSearchParams(location.search);
+    searchParams.delete("s3Section");
     navigate({
-      pathname: "/dashboard/s3/usage",
-      search: location.search,
+      pathname: backPath,
+      search: searchParams.toString(),
     });
   };
 

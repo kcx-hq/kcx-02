@@ -30,6 +30,13 @@ import {
   type S3LifecyclePolicyDeleteResponse,
   type S3PolicyActionHistoryResponse,
   type S3OptimizationResponse,
+  type S3ReplicationDestinationBucketsResponse,
+  type S3ReplicationResponse,
+  type S3ReplicationRoleAutoCreateRequest,
+  type S3ReplicationRoleAutoCreateResponse,
+  type S3ReplicationSetupApplyResponse,
+  type S3ReplicationSetupPreviewResponse,
+  type S3ReplicationSetupRequest,
   type OptimizationIdleOverview,
   type OptimizationCommitmentOverview,
   type OptimizationIdleRecommendationDetail,
@@ -402,6 +409,59 @@ export function useApplyS3LifecyclePolicyMutation() {
       await queryClient.invalidateQueries({
         queryKey: ["dashboard", "policy", "actions"],
       });
+    },
+  });
+}
+
+export function useS3ReplicationQuery() {
+  const { scope } = useDashboardScope();
+  return useQuery<S3ReplicationResponse, Error>({
+    queryKey: ["dashboard", "s3", "replication", scope],
+    queryFn: () => dashboardApi.getS3Replication(assertScope(scope)),
+    enabled: Boolean(scope),
+  });
+}
+
+export function useS3ReplicationDestinationBucketsQuery(sourceBucketName: string | null, enabledOverride: boolean = true) {
+  const { scope } = useDashboardScope();
+  const normalizedSourceBucketName = String(sourceBucketName ?? "").trim();
+  return useQuery<S3ReplicationDestinationBucketsResponse, Error>({
+    queryKey: ["dashboard", "s3", "replication", "destination-buckets", scope, normalizedSourceBucketName],
+    queryFn: () => dashboardApi.getS3ReplicationDestinationBuckets(assertScope(scope), normalizedSourceBucketName),
+    enabled: Boolean(scope) && Boolean(normalizedSourceBucketName) && enabledOverride,
+  });
+}
+
+export function usePreviewS3ReplicationSetupMutation() {
+  const { scope } = useDashboardScope();
+  return useMutation<S3ReplicationSetupPreviewResponse, Error, S3ReplicationSetupRequest>({
+    mutationFn: (payload) => {
+      if (!scope) throw new Error("Dashboard scope is not resolved yet");
+      return dashboardApi.previewS3ReplicationSetup(scope, payload);
+    },
+  });
+}
+
+export function useApplyS3ReplicationSetupMutation() {
+  const { scope } = useDashboardScope();
+  const queryClient = useQueryClient();
+  return useMutation<S3ReplicationSetupApplyResponse, Error, S3ReplicationSetupRequest>({
+    mutationFn: (payload) => {
+      if (!scope) throw new Error("Dashboard scope is not resolved yet");
+      return dashboardApi.applyS3ReplicationSetup(scope, payload);
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["dashboard", "s3", "replication"] });
+    },
+  });
+}
+
+export function useAutoCreateS3ReplicationRoleMutation() {
+  const { scope } = useDashboardScope();
+  return useMutation<S3ReplicationRoleAutoCreateResponse, Error, S3ReplicationRoleAutoCreateRequest>({
+    mutationFn: (payload) => {
+      if (!scope) throw new Error("Dashboard scope is not resolved yet");
+      return dashboardApi.autoCreateS3ReplicationRole(scope, payload);
     },
   });
 }

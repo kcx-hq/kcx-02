@@ -176,9 +176,11 @@ export default function S3BucketInfoPage() {
               <S3BucketCombinedTable
                 rows={combinedRows}
                 onBucketClick={(bucketName) => {
+                  const searchParams = new URLSearchParams(location.search);
+                  searchParams.set("s3Section", "cost");
                   navigate({
-                    pathname: `/dashboard/s3/cost/bucket/${encodeURIComponent(bucketName)}`,
-                    search: location.search,
+                    pathname: `/dashboard/s3/bucket/${encodeURIComponent(bucketName)}`,
+                    search: searchParams.toString(),
                   });
                 }}
               />

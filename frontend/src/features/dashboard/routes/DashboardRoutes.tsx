@@ -15,7 +15,6 @@ import EC2ExplorerPage from "../pages/ec2/EC2ExplorerPage";
 import EC2VolumesPage from "../pages/ec2/EC2VolumesPage";
 import EC2OptimizationPage from "../pages/ec2/EC2OptimizationPage";
 import EC2DataTransferPage from "../pages/ec2/EC2DataTransferPage";
-import S3BucketDetailPage from "../pages/s3/S3BucketDetailPage";
 import S3UsageBucketDetailPage from "../pages/s3/S3UsageBucketDetailPage";
 import S3OptimizationPage from "../pages/s3/S3OptimizationPage";
 import S3BucketPage from "../pages/s3/S3BucketPage";
@@ -104,8 +103,9 @@ export default function DashboardRoutes() {
         <Route path="ec2/network/elastic-ip" element={<EC2EipPage />} />
         <Route path="s3" element={<S3BucketPage />} />
         <Route path="s3/bucket" element={<S3BucketInfoPage />} />
+        <Route path="s3/bucket/:bucketName" element={<S3UsageBucketDetailPage />} />
         <Route path="s3/cost" element={<S3BucketPage />} />
-        <Route path="s3/cost/bucket/:bucketName" element={<S3BucketDetailPage />} />
+        <Route path="s3/cost/bucket/:bucketName" element={<S3UsageBucketDetailPage />} />
         <Route path="s3/usage" element={<S3BucketPage />} />
         <Route path="s3/usage/bucket/:bucketName" element={<S3UsageBucketDetailPage />} />
         <Route path="s3/optimization" element={<S3OptimizationPage />} />

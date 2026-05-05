@@ -251,12 +251,14 @@ export default function S3UsagePage() {
               bucketQuantityLabel="Usage"
               usageCategory={filters.category}
               showAllCategoryBreakdown={showAllCategoryBreakdown}
-              onBucketClick={(bucketName) =>
+              onBucketClick={(bucketName) => {
+                const searchParams = new URLSearchParams(location.search);
+                searchParams.set("s3Section", "usage");
                 navigate({
-                  pathname: `/dashboard/s3/usage/bucket/${encodeURIComponent(bucketName)}`,
-                  search: location.search,
-                })
-              }
+                  pathname: `/dashboard/s3/bucket/${encodeURIComponent(bucketName)}`,
+                  search: searchParams.toString(),
+                });
+              }}
             />
           )}
         </section>

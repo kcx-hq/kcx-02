@@ -45,6 +45,13 @@ import type {
   S3LifecyclePolicyDeleteResponse,
   S3PolicyActionHistoryResponse,
   S3OptimizationResponse,
+  S3ReplicationDestinationBucketsResponse,
+  S3ReplicationResponse,
+  S3ReplicationRoleAutoCreateRequest,
+  S3ReplicationRoleAutoCreateResponse,
+  S3ReplicationSetupApplyResponse,
+  S3ReplicationSetupPreviewResponse,
+  S3ReplicationSetupRequest,
   OptimizationIdleOverview,
   OptimizationCommitmentOverview,
   OptimizationIdleRecommendationsResponse,
@@ -688,6 +695,32 @@ export const dashboardApi = {
   getS3Optimization(scope: DashboardResolvedScope) {
     return apiGet<S3OptimizationResponse>(withDashboardQuery("/dashboard/s3/optimization", scope));
   },
+  getS3Replication(scope: DashboardResolvedScope) {
+    return apiGet<S3ReplicationResponse>(withDashboardQuery("/dashboard/s3/replication", scope));
+  },
+  getS3ReplicationDestinationBuckets(scope: DashboardResolvedScope, sourceBucketName: string) {
+    const params = new URLSearchParams(buildDashboardQueryParams(scope));
+    params.set("sourceBucketName", sourceBucketName);
+    return apiGet<S3ReplicationDestinationBucketsResponse>(`/dashboard/s3/replication/destination-buckets?${params.toString()}`);
+  },
+  previewS3ReplicationSetup(scope: DashboardResolvedScope, payload: S3ReplicationSetupRequest) {
+    return apiPost<S3ReplicationSetupPreviewResponse>(
+      withDashboardQuery("/dashboard/s3/replication/setup/preview", scope),
+      payload,
+    );
+  },
+  applyS3ReplicationSetup(scope: DashboardResolvedScope, payload: S3ReplicationSetupRequest) {
+    return apiPost<S3ReplicationSetupApplyResponse>(
+      withDashboardQuery("/dashboard/s3/replication/setup/apply", scope),
+      payload,
+    );
+  },
+  autoCreateS3ReplicationRole(scope: DashboardResolvedScope, payload: S3ReplicationRoleAutoCreateRequest) {
+    return apiPost<S3ReplicationRoleAutoCreateResponse>(
+      withDashboardQuery("/dashboard/s3/replication/role/auto-create", scope),
+      payload,
+    );
+  },
 
   getS3BucketLifecycleInsight(scope: DashboardResolvedScope, bucketName: string) {
     const params = new URLSearchParams(buildDashboardQueryParams(scope));
@@ -770,6 +803,13 @@ export type {
   S3CostInsightsResponse,
   S3BucketLifecycleInsightResponse,
   S3OptimizationResponse,
+  S3ReplicationDestinationBucketsResponse,
+  S3ReplicationResponse,
+  S3ReplicationRoleAutoCreateRequest,
+  S3ReplicationRoleAutoCreateResponse,
+  S3ReplicationSetupApplyResponse,
+  S3ReplicationSetupPreviewResponse,
+  S3ReplicationSetupRequest,
   S3LifecyclePolicyApplyRequest,
   S3LifecyclePolicyApplyResponse,
   S3LifecyclePolicyDeleteRequest,

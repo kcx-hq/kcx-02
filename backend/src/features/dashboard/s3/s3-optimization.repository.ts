@@ -12,6 +12,7 @@ import type {
   S3OptimizationBucketRow,
   S3PolicyActionHistoryItem,
   S3PolicyActionStatus,
+  S3BucketReplicationRow,
 } from "./s3-optimization.types.js";
 import { logger } from "../../../utils/logger.js";
 
@@ -58,6 +59,16 @@ type S3BucketLifecycleExecutionContextDbRow = {
   cloud_connection_id: string | null;
 };
 
+type S3ReplicationDbRow = {
+  bucket_name: string | null;
+  account_id: string | null;
+  region: string | null;
+  replication_status: string | null;
+  replication_rules_count: number | string | null;
+  replication_config_json: unknown;
+  scan_time: string | null;
+};
+
 type S3PolicyActionHistoryDbRow = {
   id: string | null;
   service_name: string | null;
@@ -96,7 +107,130 @@ const hasLifecyclePolicy = (status: string | null, rulesCount: number | null): b
   return normalizedStatus === "present" || normalizedStatus === "enabled" || normalizedStatus === "configured";
 };
 
+const toReplicationStatus = (statusRaw: string | null): "present" | "absent" | "unknown" => {
+  const status = String(statusRaw ?? "").trim().toLowerCase();
+  if (status === "present" || status === "enabled" || status === "configured") return "present";
+  if (status === "absent") return "absent";
+  return "unknown";
+};
+
 export class S3OptimizationRepository {
+  async getReplicationVisibilityRows(scope: DashboardScope): Promise<S3BucketReplicationRow[]> {
+    const binds: unknown[] = [scope.tenantId];
+    const where: string[] = ["tenant_id = $1::uuid"];
+
+    if (scope.scopeType === "global") {
+      if (typeof scope.providerId === "number") {
+        binds.push(scope.providerId);
+        where.push(`provider_id = $${binds.length}`);
+      }
+      if (Array.isArray(scope.billingSourceIds) && scope.billingSourceIds.length > 0) {
+        binds.push(scope.billingSourceIds);
+        where.push(`(billing_source_id IS NULL OR billing_source_id = ANY($${binds.length}::bigint[]))`);
+      }
+    }
+
+    const rows = await sequelize.query<S3ReplicationDbRow>(
+      `
+      SELECT
+        latest.bucket_name,
+        latest.account_id,
+        latest.region,
+        latest.replication_status,
+        latest.replication_rules_count,
+        latest.replication_config_json,
+        latest.scan_time::text AS scan_time
+      FROM (
+        SELECT DISTINCT ON (bucket_name, account_id)
+          bucket_name,
+          account_id,
+          region,
+          replication_status,
+          replication_rules_count,
+          replication_config_json,
+          scan_time
+        FROM s3_bucket_config_snapshot
+        WHERE ${where.join("\n          AND ")}
+        ORDER BY bucket_name ASC, account_id ASC, scan_time DESC
+      ) AS latest
+      ORDER BY latest.bucket_name ASC, latest.account_id ASC;
+      `,
+      { bind: binds, type: QueryTypes.SELECT },
+    );
+
+    const mapped = await Promise.all(
+      rows.map(async (row) => {
+        const replicationStatus = toReplicationStatus(row.replication_status);
+        const rulesCount = Math.max(0, toNumber(row.replication_rules_count) ?? 0);
+        const replicationConfig =
+          row.replication_config_json && typeof row.replication_config_json === "object"
+            ? (row.replication_config_json as Record<string, unknown>)
+            : null;
+        const rules = Array.isArray(replicationConfig?.Rules)
+          ? (replicationConfig?.Rules as Array<Record<string, unknown>>)
+          : [];
+        const firstRule = rules[0] ?? null;
+        const destination = firstRule?.Destination && typeof firstRule.Destination === "object"
+          ? (firstRule.Destination as Record<string, unknown>)
+          : null;
+        const destinationBucketArn = typeof destination?.Bucket === "string" ? String(destination.Bucket) : "";
+        const destinationBucket = destinationBucketArn.startsWith("arn:aws:s3:::")
+          ? destinationBucketArn.slice("arn:aws:s3:::".length)
+          : destinationBucketArn || null;
+        const destinationRegion = typeof destination?.Region === "string" ? String(destination.Region) : null;
+        const destinationAccount = typeof destination?.Account === "string" ? String(destination.Account).trim() : null;
+        const statusValues = rules.map((rule) => String(rule?.Status ?? "").trim().toLowerCase()).filter(Boolean);
+        const status = statusValues.length === 0
+          ? "unknown"
+          : statusValues.every((item) => item === "enabled")
+            ? "enabled"
+            : statusValues.every((item) => item === "disabled")
+              ? "disabled"
+              : "mixed";
+
+        const replicationType = destinationAccount
+          ? destinationAccount === String(row.account_id ?? "").trim()
+            ? "same_account"
+            : "cross_account"
+          : "unknown";
+
+        const monthlyStorageCost = await this.getBucketStorageCostForDaysSafe(
+          scope.tenantId,
+          String(row.bucket_name ?? "").trim(),
+          String(row.account_id ?? "").trim(),
+          30,
+        );
+        const isImportantBucket = monthlyStorageCost != null && monthlyStorageCost >= 100;
+        const recommendation = replicationStatus === "absent" && isImportantBucket
+          ? "This bucket has no replication configured. Consider replication for critical data, disaster recovery, or cross-region backup."
+          : null;
+
+        const actions = replicationStatus === "present"
+          ? (["view", "edit", "remove"] as const)
+          : replicationStatus === "absent"
+            ? (["setup_replication", "view_setup_guide"] as const)
+            : (["fix_permission"] as const);
+
+        return {
+          bucketName: String(row.bucket_name ?? "").trim(),
+          accountId: String(row.account_id ?? "").trim(),
+          region: row.region ? String(row.region).trim() : null,
+          replicationStatus,
+          rulesCount,
+          destinationBucket,
+          destinationRegion,
+          replicationType,
+          status,
+          lastChecked: String(row.scan_time ?? ""),
+          recommendation,
+          actions: [...actions],
+        } satisfies S3BucketReplicationRow;
+      }),
+    );
+
+    return mapped;
+  }
+
   async getLatestBucketLifecycleRows(scope: DashboardScope): Promise<S3OptimizationBucketRow[]> {
     const binds: unknown[] = [scope.tenantId];
     const where: string[] = ["tenant_id = $1::uuid"];
@@ -188,7 +322,9 @@ export class S3OptimizationRepository {
           });
           return {
             ...item,
-            policyAppliedStatus: item.hasLifecyclePolicy ? "EXTERNAL" : "NOT_APPLIED",
+            policyAppliedStatus: item.hasLifecyclePolicy
+              ? ("EXTERNAL" as const)
+              : ("NOT_APPLIED" as const),
             policyAppliedAt: null,
             lifecycleSavings: {
               status: "not_available" as const,
@@ -654,6 +790,31 @@ export class S3OptimizationRepository {
     const start = new Date();
     start.setUTCDate(start.getUTCDate() - days);
     return this.getBucketStorageCostBetween(tenantId, bucketName, accountId, start, end);
+  }
+
+  private async getBucketStorageCostForDaysSafe(
+    tenantId: string,
+    bucketName: string,
+    accountId: string,
+    days: number,
+  ): Promise<number | null> {
+    try {
+      return await this.getBucketStorageCostForDays(tenantId, bucketName, accountId, days);
+    } catch (error) {
+      const errorCode =
+        error && typeof error === "object" && "original" in error && (error as { original?: { code?: string } }).original
+          ? String((error as { original?: { code?: string } }).original?.code ?? "")
+          : "";
+      if (errorCode === "42P01") {
+        logger.warn("S3 replication scoring skipped: cost line item table not available", {
+          tenantId,
+          bucketName,
+          accountId,
+        });
+        return null;
+      }
+      throw error;
+    }
   }
 
   private async getBucketStorageCostBetween(
