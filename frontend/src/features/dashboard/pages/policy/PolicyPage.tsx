@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { Eye, Pencil, Trash2 } from "lucide-react";
 import { useDeleteS3LifecyclePolicyMutation, usePolicyActionHistoryQuery } from "../../hooks/useDashboardQueries";
 import { getAuthUser } from "@/lib/auth";
-import type { S3PolicyActionHistoryItem } from "../../api/dashboardApi";
+import type { S3PolicyActionHistoryItem } from "../../api/dashboardTypes";
 
 function formatCreatedByLabel(createdByUserId: string | null, currentUserId: string | null, currentUserName: string): string {
   if (!createdByUserId) return "System";

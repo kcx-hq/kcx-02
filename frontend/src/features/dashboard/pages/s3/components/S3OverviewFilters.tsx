@@ -93,7 +93,7 @@ export function S3OverviewFilters({
     if (draftSeriesBy === "bucket") return filterOptions?.bucket ?? [];
     return filterOptions?.costCategory ?? [];
   }, [draftSeriesBy, filterOptions?.bucket, filterOptions?.costCategory, filterOptions?.operation, filterOptions?.productFamily, filterOptions?.storageClass]);
-  const hasFilterOptions = Boolean(filterOptions);
+  const hasFilterOptions = Boolean(filterOptions) && !isLoading;
 
   const chips = useMemo<FilterChip[]>(() => {
     const items: FilterChip[] = [];
@@ -431,7 +431,7 @@ export function S3OverviewFilters({
                   searchByPopover.yAxisMetric,
                 ).map((option) => {
                   const selected = option === value.yAxisMetric;
-                  const label = getYAxisLabel(option);
+                  const label = getYAxisLabel(option as NonNullable<S3CostInsightsFiltersQuery["yAxisMetric"]>);
                   return (
                     <button
                       key={option}

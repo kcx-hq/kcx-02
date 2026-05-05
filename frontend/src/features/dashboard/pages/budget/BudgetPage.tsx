@@ -124,12 +124,6 @@ export default function BudgetPage() {
     },
   });
 
-  const formCanSubmit =
-    form.budgetName.trim().length > 0 &&
-    Number(form.budgetAmount) > 0 &&
-    form.startMonth.trim().length > 0 &&
-    (form.ongoing || form.endMonth.trim().length > 0);
-
   const validateForm = () => {
     if (form.budgetName.trim().length === 0) return "Budget name is required.";
     if (!(Number(form.budgetAmount) > 0)) return "Budget amount must be greater than 0.";

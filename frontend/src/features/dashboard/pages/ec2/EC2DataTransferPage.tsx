@@ -27,6 +27,7 @@ const summaryFallback: Ec2DataTransferResponse["summary"] = {
   internetCost: 0,
   interRegionCost: 0,
   interAzCost: 0,
+  regionalCost: 0,
   unknownCost: 0,
   potentialSavings: 0,
 };
@@ -121,7 +122,7 @@ export default function EC2DataTransferPage() {
     return chips;
   }, [controls.scopeFilters.region, controls.transferType]);
 
-  const navigateToInstances = (transferType: "internet" | "inter_region" | "inter_az" | "unknown") => {
+  const navigateToInstances = (transferType: Ec2DataTransferResponse["breakdown"][number]["transferType"]) => {
     const next = new URLSearchParams(location.search);
     next.set("transferType", transferType);
     if (scopeStartDate) next.set("startDate", scopeStartDate);

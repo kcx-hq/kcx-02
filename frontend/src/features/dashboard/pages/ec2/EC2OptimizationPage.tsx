@@ -6,7 +6,7 @@ import type { ColDef } from "ag-grid-community";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ApiError } from "@/lib/api";
 import { dashboardApi } from "../../api/dashboardApi";
-import type { Ec2RecommendationRecord, Ec2RecommendationType } from "../../api/dashboardApi";
+import type { Ec2RecommendationRecord, Ec2RecommendationType } from "../../api/dashboardTypes";
 
 import { BaseDataTable } from "../../common/tables/BaseDataTable";
 import { useEc2RecommendationsQuery } from "../../hooks/useDashboardQueries";

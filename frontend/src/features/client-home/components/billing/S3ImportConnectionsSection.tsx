@@ -89,7 +89,6 @@ export function S3ImportConnectionsSection() {
   const [sessionBucket, setSessionBucket] = useState("")
   const [sessionRootPrefix, setSessionRootPrefix] = useState("")
   const [sessionCurrentPrefix, setSessionCurrentPrefix] = useState("")
-  const [sessionExpiresAt, setSessionExpiresAt] = useState<string | null>(null)
   const [items, setItems] = useState<S3UploadExplorerItem[]>([])
   const [explorerLoading, setExplorerLoading] = useState(false)
   const [explorerError, setExplorerError] = useState<string | null>(null)
@@ -157,7 +156,6 @@ export function S3ImportConnectionsSection() {
     setSessionBucket("")
     setSessionRootPrefix("")
     setSessionCurrentPrefix("")
-    setSessionExpiresAt(null)
     setItems([])
     setSelectedKeys([])
     setExplorerError(null)
@@ -181,7 +179,6 @@ export function S3ImportConnectionsSection() {
       })
       setItems(response.items)
       setSessionCurrentPrefix(response.currentPrefix)
-      setSessionExpiresAt(response.expiresAt)
     } catch (error) {
       setExplorerError(error instanceof ApiError ? error.message : "Failed to load S3 directory.")
     } finally {
@@ -204,7 +201,6 @@ export function S3ImportConnectionsSection() {
       setSessionBucket(session.bucket)
       setSessionRootPrefix(session.basePrefix || "")
       setSessionCurrentPrefix(session.basePrefix || "")
-      setSessionExpiresAt(session.expiresAt)
       await loadListing(session.sessionId, session.basePrefix || "")
     } catch (error) {
       setExplorerError(error instanceof ApiError ? error.message : "Failed to open S3 explorer.")
@@ -248,7 +244,6 @@ export function S3ImportConnectionsSection() {
       setSessionBucket(response.session.bucket)
       setSessionRootPrefix(response.session.basePrefix || "")
       setSessionCurrentPrefix(response.session.basePrefix || "")
-      setSessionExpiresAt(response.session.expiresAt)
       setSelectedKeys([])
       await loadListing(response.session.sessionId, response.session.basePrefix || "")
     } catch (error) {

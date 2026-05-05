@@ -14,14 +14,12 @@ import {
   USAGE_TYPE_OPTIONS,
   VOLUME_VIEW_OPTIONS,
   type EC2Aggregation,
-  type EC2Condition,
   type EC2CostBasis,
   type EC2ExplorerControlsState,
   type EC2GroupBy,
   type EC2Metric,
   type EC2State,
   type EC2UsageType,
-  type EC2VolumeView,
 } from "../ec2ExplorerControls.types";
 import { EC2ExplorerGroupByPopover } from "./EC2ExplorerGroupByPopover";
 import { EC2ExplorerScopeFilters } from "./EC2ExplorerScopeFilters";
@@ -180,17 +178,6 @@ export function EC2ExplorerTopControls({ value, onChange, onReset, children }: E
     </div>
   );
 
-  const metricConfigOptions: Array<Option<EC2CostBasis | EC2UsageType | EC2Condition>> =
-    value.metric === "cost"
-      ? COST_BASIS_OPTIONS
-      : value.metric === "usage" || value.metric === "data-transfer"
-        ? value.metric === "data-transfer"
-          ? DATA_TRANSFER_VIEW_OPTIONS
-          : USAGE_TYPE_OPTIONS
-        : value.metric === "volumes"
-          ? VOLUME_VIEW_OPTIONS
-        : CONDITION_OPTIONS;
-
   return (
     <section className="cost-explorer-control-surface ec2-explorer-controls" ref={rootRef} aria-label="EC2 Explorer Controls">
       <div className="cost-explorer-toolbar-row ec2-explorer-toolbar-row--primary">
@@ -267,36 +254,41 @@ export function EC2ExplorerTopControls({ value, onChange, onReset, children }: E
             {activePopover === "config"
               ? value.metric === "cost"
                 ? renderOptionList({
-                    options: metricConfigOptions as Array<Option<EC2CostBasis>>,
+                    options: COST_BASIS_OPTIONS,
                     selected: value.costBasis,
                     onSelect: (nextCostBasis: EC2CostBasis) => {
                       update({ costBasis: nextCostBasis });
                     },
                   })
+                : value.metric === "usage"
+                  ? renderOptionList({
+                      options: USAGE_TYPE_OPTIONS,
+                      selected: value.usageType,
+                      onSelect: (next) => {
+                        update({ usageType: next });
+                      },
+                    })
+                  : value.metric === "data-transfer"
+                    ? renderOptionList({
+                        options: DATA_TRANSFER_VIEW_OPTIONS,
+                        selected: value.usageType,
+                        onSelect: (next) => {
+                          update({ usageType: next });
+                        },
+                      })
+                    : value.metric === "volumes"
+                      ? renderOptionList({
+                          options: VOLUME_VIEW_OPTIONS,
+                          selected: value.volumeView,
+                          onSelect: (next) => {
+                            update({ volumeView: next });
+                          },
+                        })
                 : renderOptionList({
-                    options: metricConfigOptions,
-                    selected:
-                      value.metric === "usage"
-                        ? value.usageType
-                        : value.metric === "data-transfer"
-                          ? value.usageType
-                          : value.metric === "volumes"
-                          ? value.volumeView
-                          : value.instancesCondition,
+                    options: CONDITION_OPTIONS,
+                    selected: value.instancesCondition,
                     onSelect: (next) => {
-                      if (value.metric === "usage") {
-                        update({ usageType: next as EC2UsageType });
-                        return;
-                      }
-                      if (value.metric === "data-transfer") {
-                        update({ usageType: next as EC2UsageType });
-                        return;
-                      }
-                      if (value.metric === "volumes") {
-                        update({ volumeView: next as EC2VolumeView });
-                        return;
-                      }
-                      update({ instancesCondition: next as EC2Condition });
+                      update({ instancesCondition: next });
                     },
                   })
               : null}

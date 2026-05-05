@@ -490,7 +490,7 @@ export default function EC2ExplorerPage() {
             Unknown cost: {query.data.dataTransferDebug.totalUnknownCost.toFixed(2)} | Unknown usage GB: {query.data.dataTransferDebug.totalUnknownUsageGb.toFixed(2)} | Unmapped resources: {query.data.dataTransferDebug.unmappedResourceCount} ({query.data.dataTransferDebug.unmappedResourceCost.toFixed(2)}){query.data.dataTransferDebug.topUnknownRows.some((row) => row.likelyDemoData) ? " | Includes demo unclassified transfer rows" : ""}
           </p>
         ) : null}
-        {(controls.groupBy === "network-cost" || (controls.metric === "usage" && controls.usageType === "network" && controls.groupBy === "network-type")) ? (
+        {(controls.groupBy === "transfer-type" || (controls.metric === "usage" && controls.usageType === "network" && controls.groupBy === "usage-type")) ? (
           <p className="dashboard-note">
             Billed Usage is from AWS billing data and may differ from CloudWatch Network Usage.
           </p>
@@ -555,7 +555,7 @@ export default function EC2ExplorerPage() {
             navigateToInstanceList("explorer-graph", {
               selectedDate: date,
               groupValue: seriesLabel ?? seriesKey ?? "all",
-              ...((controls.groupBy === "network-cost" || controls.groupBy === "network-type") && seriesLabel ? { networkType: seriesLabel } : {}),
+              ...((controls.groupBy === "transfer-type" || controls.groupBy === "usage-type") && seriesLabel ? { networkType: seriesLabel } : {}),
             });
           }}
         />
@@ -595,7 +595,7 @@ export default function EC2ExplorerPage() {
             }
             navigateToInstanceList("explorer-table", {
               groupValue,
-              ...(controls.groupBy === "network-cost" || controls.groupBy === "network-type" ? { networkType: groupValue } : {}),
+              ...(controls.groupBy === "transfer-type" || controls.groupBy === "usage-type" ? { networkType: groupValue } : {}),
             });
           }}
           onRecommendationClick={() => {
