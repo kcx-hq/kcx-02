@@ -6,7 +6,7 @@ import type { ColDef } from "ag-grid-community";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ApiError } from "@/lib/api";
 import { dashboardApi } from "../../api/dashboardApi";
-import type { Ec2RecommendationRecord, Ec2RecommendationType } from "../../api/dashboardTypes";
+import type { Ec2RecommendationRecord, Ec2RecommendationStatus, Ec2RecommendationType } from "../../api/dashboardTypes";
 
 import { BaseDataTable } from "../../common/tables/BaseDataTable";
 import { useEc2RecommendationsQuery } from "../../hooks/useDashboardQueries";
@@ -17,7 +17,7 @@ import type { EC2ScopeFilters } from "./ec2ExplorerControls.types";
 const INSTANCES_PAGE_PATH = "/dashboard/inventory/aws/ec2/instances";
 const VOLUMES_PAGE_PATH = "/dashboard/inventory/aws/ec2/volumes";
 type MainTab = "overview" | "recommendations";
-type RecommendationsFilterKey = "category" | "issueType" | "severity";
+type RecommendationsFilterKey = "category" | "issueType" | "status" | "severity";
 type FilterOption = { key: string; label: string };
 
 const MAIN_TABS: Array<{ key: MainTab; label: string }> = [
@@ -70,12 +70,28 @@ const truncateText = (value: string | null | undefined, max: number = 90): strin
   if (!raw) return "-";
   return raw.length > max ? `${raw.slice(0, max - 1)}...` : raw;
 };
+const toInstanceDetailFocus = (type: Ec2RecommendationType): string | null => {
+  if (
+    type === "high_internet_data_transfer" ||
+    type === "high_inter_az_data_transfer" ||
+    type === "high_inter_region_data_transfer" ||
+    type === "high_nat_gateway_cost" ||
+    type === "low_cpu_high_network"
+  ) return "network";
+  if (type === "idle_instance" || type === "underutilized_instance" || type === "overutilized_instance") return "performance";
+  if (type === "uncovered_on_demand") return "pricing";
+  if (type === "unattached_volume" || type === "old_snapshot") return "storage";
+  return null;
+};
 const normalizeFilterValue = (value: string | null): string => (value ?? "").trim();
 const toRiskClassName = (risk: Ec2RecommendationRecord["risk"]): string => {
   const normalized = (risk ?? "").toString().trim().toUpperCase();
   if (normalized === "LOW" || normalized === "MEDIUM" || normalized === "HIGH") return normalized;
   return "LOW";
 };
+const statusLabel = (value: Ec2RecommendationStatus): string =>
+  value === "in_progress" ? "In Progress" : toTitle(value);
+const activeStatuses: Ec2RecommendationStatus[] = ["open", "in_progress"];
 function FilterDropdown({
   label,
   selected,
@@ -154,7 +170,11 @@ export default function EC2OptimizationPage() {
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [issueTypeFilter, setIssueTypeFilter] = useState("all");
   const [severityFilter, setSeverityFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("active");
   const [searchFilter, setSearchFilter] = useState("");
+  const [statusOverrides, setStatusOverrides] = useState<Record<number, Ec2RecommendationStatus>>({});
+  const [pendingRecommendationId, setPendingRecommendationId] = useState<number | null>(null);
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
   const deferredSearchFilter = useDeferredValue(searchFilter);
   const queryResourceId = normalizeFilterValue(searchParams.get("resourceId") ?? searchParams.get("instanceId"));
   const queryCategory = normalizeFilterValue(searchParams.get("category"));
@@ -248,7 +268,12 @@ export default function EC2OptimizationPage() {
 
   const openResource = (item: Ec2RecommendationRecord) => {
     if (item.resourceType === "instance") {
-      navigate({ pathname: `${INSTANCES_PAGE_PATH}/${item.resourceId}`, search: searchParams.toString() });
+      const next = new URLSearchParams(searchParams.toString());
+      const focus = toInstanceDetailFocus(item.type);
+      if (focus) next.set("focus", focus);
+      next.set("issue", item.type);
+      next.set("recommendationId", String(item.id));
+      navigate({ pathname: `${INSTANCES_PAGE_PATH}/${item.resourceId}`, search: next.toString() });
       return;
     }
     if (item.resourceType === "volume") {
@@ -318,6 +343,9 @@ export default function EC2OptimizationPage() {
   const filteredRecommendations = useMemo(
     () =>
       scopedRows.filter((item) => {
+        const effectiveStatus = statusOverrides[item.id] ?? item.status;
+        if (statusFilter === "active" && !activeStatuses.includes(effectiveStatus)) return false;
+        if (statusFilter !== "active" && statusFilter !== "all" && effectiveStatus !== statusFilter) return false;
         if (categoryFilter !== "all" && item.category !== categoryFilter) return false;
         if (issueTypeFilter !== "all" && item.type !== issueTypeFilter) return false;
         if (severityFilter !== "all" && item.risk !== severityFilter) return false;
@@ -336,8 +364,41 @@ export default function EC2OptimizationPage() {
         }
         return true;
       }),
-    [scopedRows, categoryFilter, issueTypeFilter, severityFilter, deferredSearchFilter],
+    [scopedRows, statusOverrides, statusFilter, categoryFilter, issueTypeFilter, severityFilter, deferredSearchFilter],
   );
+
+  const updateRecommendationStatus = async (item: Ec2RecommendationRecord, nextStatus: Ec2RecommendationStatus) => {
+    if (!scope) return;
+    const previousStatus = statusOverrides[item.id] ?? item.status;
+    const reason = (nextStatus === "dismissed" || nextStatus === "completed")
+      ? window.prompt("Optional reason/note", "")?.trim() || null
+      : null;
+    let snoozed_until: string | null = null;
+    if (nextStatus === "snoozed") {
+      const preset = window.prompt("Snooze: type 7, 30, or YYYY-MM-DD", "7")?.trim() ?? "";
+      if (!preset) return;
+      if (preset === "7" || preset === "30") {
+        const date = new Date();
+        date.setDate(date.getDate() + Number(preset));
+        snoozed_until = toIsoDate(date);
+      } else {
+        snoozed_until = preset;
+      }
+    }
+    setPendingRecommendationId(item.id);
+    setStatusOverrides((prev) => ({ ...prev, [item.id]: nextStatus }));
+    try {
+      await dashboardApi.updateEc2RecommendationStatus(scope, item.id, { status: nextStatus, reason, snoozed_until });
+      setActionMessage("Recommendation updated");
+      void query.refetch();
+    } catch {
+      setStatusOverrides((prev) => ({ ...prev, [item.id]: previousStatus }));
+      setActionMessage("Failed to update recommendation");
+    } finally {
+      setPendingRecommendationId(null);
+      window.setTimeout(() => setActionMessage(null), 3000);
+    }
+  };
 
   const topTypeSummary = useMemo(() => {
     const byType = new Map<Ec2RecommendationType, { count: number; saving: number; risk: Ec2RecommendationRecord["risk"] }>();
@@ -374,9 +435,41 @@ export default function EC2OptimizationPage() {
       { headerName: "Saving", valueGetter: (p) => formatCurrency(p.data?.estimatedMonthlySaving), minWidth: 130 },
       { headerName: "Risk", valueGetter: (p) => toTitle(p.data?.risk ?? "-"), maxWidth: 110 },
       { headerName: "Effort", valueGetter: (p) => toTitle(p.data?.effort ?? "-"), maxWidth: 110 },
-      { headerName: "Status", valueGetter: (p) => toTitle(p.data?.status ?? "-"), maxWidth: 120 },
+      { headerName: "Status", valueGetter: (p) => statusLabel((statusOverrides[p.data?.id ?? -1] ?? p.data?.status ?? "open") as Ec2RecommendationStatus), maxWidth: 130 },
+      {
+        headerName: "Actions",
+        minWidth: 200,
+        cellRenderer: (p: { data?: Ec2RecommendationRecord }) => {
+          if (!p.data) return null;
+          const row = p.data;
+          const status = statusOverrides[row.id] ?? row.status;
+          const options: Array<{ label: string; status: Ec2RecommendationStatus }> = status === "open"
+            ? [{ label: "Mark In Progress", status: "in_progress" }, { label: "Snooze", status: "snoozed" }, { label: "Dismiss", status: "dismissed" }, { label: "Mark Completed", status: "completed" }]
+            : status === "in_progress"
+              ? [{ label: "Mark Open", status: "open" }, { label: "Snooze", status: "snoozed" }, { label: "Dismiss", status: "dismissed" }, { label: "Mark Completed", status: "completed" }]
+              : status === "snoozed"
+                ? [{ label: "Reopen", status: "open" }, { label: "Mark In Progress", status: "in_progress" }, { label: "Dismiss", status: "dismissed" }]
+                : [{ label: "Reopen", status: "open" }];
+          return (
+            <select
+              data-stop-row-click="true"
+              disabled={pendingRecommendationId === row.id}
+              value=""
+              onChange={(event) => {
+                const next = event.target.value as Ec2RecommendationStatus;
+                if (!next) return;
+                void updateRecommendationStatus(row, next);
+                event.target.value = "";
+              }}
+            >
+              <option value="">Update Status</option>
+              {options.map((option) => <option key={option.status} value={option.status}>{option.label}</option>)}
+            </select>
+          );
+        },
+      },
     ],
-    [],
+    [statusOverrides, pendingRecommendationId],
   );
 
   const errorMessage =
@@ -414,6 +507,7 @@ export default function EC2OptimizationPage() {
   const clearRecommendationFilters = () => {
     setCategoryFilter("all");
     setIssueTypeFilter("all");
+    setStatusFilter("active");
     setSeverityFilter("all");
     setSearchFilter("");
     setActiveDropdown(null);
@@ -565,6 +659,25 @@ export default function EC2OptimizationPage() {
                 }}
               />
               <FilterDropdown
+                label="Status"
+                selected={statusFilter}
+                options={[
+                  { key: "active", label: "Open + In Progress" },
+                  { key: "open", label: "Open" },
+                  { key: "in_progress", label: "In Progress" },
+                  { key: "snoozed", label: "Snoozed" },
+                  { key: "dismissed", label: "Dismissed" },
+                  { key: "completed", label: "Completed" },
+                  { key: "all", label: "All" },
+                ]}
+                isOpen={activeDropdown === "status"}
+                onToggle={() => setActiveDropdown((v) => (v === "status" ? null : "status"))}
+                onSelect={(key) => {
+                  setStatusFilter(key);
+                  setActiveDropdown(null);
+                }}
+              />
+              <FilterDropdown
                 label="Severity"
                 selected={severityFilter}
                 options={recommendationFilterOptions.severity}
@@ -604,6 +717,7 @@ export default function EC2OptimizationPage() {
                 </button>
               </div>
             </div>
+            {actionMessage ? <p className="dashboard-note">{actionMessage}</p> : null}
             {activeFilterChips.length > 0 ? (
               <div className="cost-explorer-chip-bar" aria-label="Active recommendation filters">
                 <div className="cost-explorer-chip-row">

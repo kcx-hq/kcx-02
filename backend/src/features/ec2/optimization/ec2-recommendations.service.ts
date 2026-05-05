@@ -663,7 +663,13 @@ export class Ec2RecommendationsService {
     };
   }
 
-  async updateStatus(input: { tenantId: string; id: number; status: Ec2RecommendationRecord["status"] }): Promise<boolean> {
+  async updateStatus(input: {
+    tenantId: string;
+    id: number;
+    status: Ec2RecommendationRecord["status"];
+    reason: string | null;
+    snoozedUntil: string | null;
+  }): Promise<boolean> {
     return this.repository.updateRecommendationStatus(input);
   }
 }

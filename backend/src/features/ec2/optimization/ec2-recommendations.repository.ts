@@ -130,13 +130,30 @@ type EipCandidateRow = {
 const toUpperStatus = (status: Ec2RecommendationStatus): string => status.toUpperCase();
 const toLowerStatus = (status: string | null | undefined): Ec2RecommendationStatus => {
   const normalized = (status ?? "OPEN").trim().toLowerCase();
-  if (normalized === "open" || normalized === "accepted" || normalized === "ignored" || normalized === "snoozed" || normalized === "completed") {
+  if (normalized === "open" || normalized === "in_progress" || normalized === "snoozed" || normalized === "dismissed" || normalized === "completed") {
     return normalized;
   }
   return "open";
 };
 
 export class Ec2RecommendationsRepository {
+  private factRecommendationsColumnsCache: Set<string> | null = null;
+
+  private async getFactRecommendationsColumns(): Promise<Set<string>> {
+    if (this.factRecommendationsColumnsCache) return this.factRecommendationsColumnsCache;
+    const rows = await sequelize.query<{ column_name: string }>(
+      `
+      SELECT column_name
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = 'fact_recommendations';
+      `,
+      { type: QueryTypes.SELECT },
+    );
+    this.factRecommendationsColumnsCache = new Set(rows.map((row) => row.column_name));
+    return this.factRecommendationsColumnsCache;
+  }
+
   async getInstanceCandidates(input: Ec2RefreshRecommendationsInput): Promise<InstanceCandidateRow[]> {
     return sequelize.query<InstanceCandidateRow>(
       `
@@ -277,6 +294,8 @@ export class Ec2RecommendationsRepository {
       FROM ec2_volume_inventory_snapshots inv
       LEFT JOIN costs c
         ON c.volume_id = inv.volume_id
+       AND c.cloud_connection_id IS NOT DISTINCT FROM inv.cloud_connection_id
+       AND c.billing_source_id IS NOT DISTINCT FROM :billingSourceId::bigint
       LEFT JOIN utilization u
         ON u.volume_id = inv.volume_id
        AND u.cloud_connection_id IS NOT DISTINCT FROM inv.cloud_connection_id
@@ -303,6 +322,8 @@ export class Ec2RecommendationsRepository {
       `
       WITH snapshot_cost AS (
         SELECT
+          f.cloud_connection_id,
+          f.billing_source_id,
           dr.resource_id AS snapshot_id,
           SUM(COALESCE(f.billed_cost, f.effective_cost, 0))::double precision AS snapshot_cost
         FROM fact_cost_line_items f
@@ -310,9 +331,10 @@ export class Ec2RecommendationsRepository {
         WHERE f.tenant_id = :tenantId::uuid
           AND f.usage_start_time >= :dateFrom::date
           AND f.usage_start_time < (:dateTo::date + INTERVAL '1 day')
+          AND (:cloudConnectionId::uuid IS NULL OR f.cloud_connection_id = :cloudConnectionId::uuid)
           AND LOWER(COALESCE(dr.resource_type, '')) = 'ec2_snapshot'
           AND (:billingSourceId::bigint IS NULL OR f.billing_source_id = :billingSourceId::bigint)
-        GROUP BY dr.resource_id
+        GROUP BY f.cloud_connection_id, f.billing_source_id, dr.resource_id
       )
       SELECT
         inv.cloud_connection_id AS "cloudConnectionId",
@@ -337,7 +359,10 @@ export class Ec2RecommendationsRepository {
         COALESCE(sc.snapshot_cost, 0)::double precision AS "snapshotCost",
         inv.tags_json AS "tagsJson"
       FROM ec2_snapshot_inventory_snapshots inv
-      LEFT JOIN snapshot_cost sc ON sc.snapshot_id = inv.snapshot_id
+      LEFT JOIN snapshot_cost sc
+        ON sc.snapshot_id = inv.snapshot_id
+       AND sc.cloud_connection_id IS NOT DISTINCT FROM inv.cloud_connection_id
+       AND sc.billing_source_id IS NOT DISTINCT FROM :billingSourceId::bigint
       LEFT JOIN ec2_volume_inventory_snapshots vol
         ON vol.tenant_id = inv.tenant_id
        AND vol.cloud_connection_id IS NOT DISTINCT FROM inv.cloud_connection_id
@@ -387,6 +412,7 @@ export class Ec2RecommendationsRepository {
       LEFT JOIN ec2_instance_inventory_snapshots eis
         ON eis.tenant_id = f.tenant_id
        AND eis.instance_id = dres.resource_id
+       AND eis.cloud_connection_id IS NOT DISTINCT FROM f.cloud_connection_id
        AND eis.is_current = TRUE
       LEFT JOIN dim_sub_account dsa ON dsa.id = f.sub_account_key
       LEFT JOIN dim_region dr ON dr.id = f.region_key
@@ -511,6 +537,8 @@ export class Ec2RecommendationsRepository {
       `
       WITH eip_cost AS (
         SELECT
+          f.cloud_connection_id,
+          f.billing_source_id,
           dres.resource_id::text AS resource_id,
           SUM(COALESCE(f.effective_cost, f.billed_cost, 0))::double precision AS eip_cost
         FROM fact_cost_line_items f
@@ -520,8 +548,9 @@ export class Ec2RecommendationsRepository {
         WHERE f.tenant_id = :tenantId::uuid
           AND f.usage_start_time >= :dateFrom::date
           AND f.usage_start_time < (:dateTo::date + INTERVAL '1 day')
+          AND (:cloudConnectionId::uuid IS NULL OR f.cloud_connection_id = :cloudConnectionId::uuid)
           AND (:billingSourceId::bigint IS NULL OR f.billing_source_id = :billingSourceId::bigint)
-        GROUP BY dres.resource_id
+        GROUP BY f.cloud_connection_id, f.billing_source_id, dres.resource_id
       )
       SELECT
         inv.cloud_connection_id AS "cloudConnectionId",
@@ -540,8 +569,12 @@ export class Ec2RecommendationsRepository {
       LEFT JOIN dim_region dr ON dr.id = inv.region_key
       LEFT JOIN eip_cost ec1
         ON ec1.resource_id = inv.allocation_id
+       AND ec1.cloud_connection_id IS NOT DISTINCT FROM inv.cloud_connection_id
+       AND ec1.billing_source_id IS NOT DISTINCT FROM :billingSourceId::bigint
       LEFT JOIN eip_cost ec2
         ON ec2.resource_id = inv.public_ip
+       AND ec2.cloud_connection_id IS NOT DISTINCT FROM inv.cloud_connection_id
+       AND ec2.billing_source_id IS NOT DISTINCT FROM :billingSourceId::bigint
       WHERE inv.tenant_id = :tenantId::uuid
         AND inv.is_current = TRUE
         AND (:cloudConnectionId::uuid IS NULL OR inv.cloud_connection_id = :cloudConnectionId::uuid)
@@ -555,6 +588,20 @@ export class Ec2RecommendationsRepository {
   }
 
   async getPersistedRecommendations(input: Ec2RecommendationsQuery): Promise<Ec2RecommendationRecord[]> {
+    const recommendationColumns = await this.getFactRecommendationsColumns();
+    const hasStatusReasonColumn = recommendationColumns.has("status_reason");
+    const hasSnoozedUntilColumn = recommendationColumns.has("snoozed_until");
+    const effectiveStatusExpr = hasSnoozedUntilColumn
+      ? `
+        CASE
+          WHEN LOWER(COALESCE(fr.status, 'open')) = 'snoozed'
+            AND fr.snoozed_until IS NOT NULL
+            AND fr.snoozed_until < NOW()
+            THEN 'open'
+          ELSE LOWER(COALESCE(fr.status, 'open'))
+        END
+      `
+      : `LOWER(COALESCE(fr.status, 'open'))`;
     const rows = await sequelize.query<
       Omit<Ec2RecommendationRecord, "status"> & { status: string | null }
     >(
@@ -595,7 +642,9 @@ export class Ec2RecommendationsRepository {
         fr.estimated_monthly_savings::double precision AS "estimatedMonthlySaving",
         LOWER(COALESCE(fr.risk_level, 'medium'))::text AS risk,
         LOWER(COALESCE(fr.effort_level, 'low'))::text AS effort,
-        fr.status::text AS status,
+        (${effectiveStatusExpr})::text AS status,
+        ${hasStatusReasonColumn ? `NULLIF(TRIM(COALESCE(fr.status_reason, '')), '')::text` : `NULL::text`} AS "statusReason",
+        ${hasSnoozedUntilColumn ? `CASE WHEN fr.snoozed_until IS NULL THEN NULL ELSE fr.snoozed_until::text END` : `NULL::text`} AS "snoozedUntil",
         CASE WHEN fr.detected_at IS NULL THEN NULL ELSE fr.detected_at::text END AS "detectedAt",
         CASE WHEN fr.last_seen_at IS NULL THEN NULL ELSE fr.last_seen_at::text END AS "lastSeenAt",
         fr.metadata_json AS metadata
@@ -607,7 +656,7 @@ export class Ec2RecommendationsRepository {
         AND (:billingSourceId::bigint IS NULL OR fr.billing_source_id = :billingSourceId::bigint)
         AND (:category::text IS NULL OR LOWER(fr.category) = :category::text)
         AND (:type::text IS NULL OR fr.recommendation_type = :type::text)
-        AND (:status::text IS NULL OR LOWER(fr.status) = :status::text)
+        AND (:status::text IS NULL OR (${effectiveStatusExpr}) = :status::text)
         AND (:account::text IS NULL OR LOWER(COALESCE(fr.aws_account_id, '')) = LOWER(:account::text))
         AND (:region::text IS NULL OR LOWER(COALESCE(fr.aws_region_code, dr.region_id, dr.region_name, '')) LIKE ('%' || LOWER(:region::text) || '%'))
         AND (
@@ -682,7 +731,7 @@ export class Ec2RecommendationsRepository {
         seenKeys.add(key);
         const existingRow = existingByKey.get(key);
         const existingStatus = toLowerStatus(existingRow?.status);
-        const preserveStatus = existingStatus === "accepted" || existingStatus === "ignored" || existingStatus === "snoozed";
+        const preserveStatus = existingStatus === "in_progress" || existingStatus === "dismissed" || existingStatus === "snoozed";
 
         const payload: Record<string, unknown> = {
           tenantId: rec.tenantId,
@@ -748,9 +797,33 @@ export class Ec2RecommendationsRepository {
     });
   }
 
-  async updateRecommendationStatus(input: { tenantId: string; id: number; status: Ec2RecommendationStatus }): Promise<boolean> {
+  async updateRecommendationStatus(input: {
+    tenantId: string;
+    id: number;
+    status: Ec2RecommendationStatus;
+    reason: string | null;
+    snoozedUntil: string | null;
+  }): Promise<boolean> {
+    const recommendationColumns = await this.getFactRecommendationsColumns();
+    const hasStatusReasonColumn = recommendationColumns.has("status_reason");
+    const hasSnoozedUntilColumn = recommendationColumns.has("snoozed_until");
+    const hasStatusUpdatedAtColumn = recommendationColumns.has("status_updated_at");
+    const updatePayload: Record<string, unknown> = {
+      status: toUpperStatus(input.status),
+      updatedAt: new Date(),
+    };
+    if (hasStatusReasonColumn) {
+      updatePayload.statusReason = input.reason;
+    }
+    if (hasSnoozedUntilColumn) {
+      updatePayload.snoozedUntil =
+        input.status === "snoozed" && input.snoozedUntil ? new Date(`${input.snoozedUntil}T00:00:00Z`) : null;
+    }
+    if (hasStatusUpdatedAtColumn) {
+      updatePayload.statusUpdatedAt = new Date();
+    }
     const [affected] = await FactRecommendations.update(
-      { status: toUpperStatus(input.status), updatedAt: new Date() },
+      updatePayload,
       {
         where: {
           id: input.id,

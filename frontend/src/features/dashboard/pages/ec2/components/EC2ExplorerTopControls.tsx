@@ -47,7 +47,7 @@ const DATA_TRANSFER_VIEW_OPTIONS: Array<Option<EC2UsageType>> = [
 const GROUP_BY_BY_METRIC: Record<EC2Metric, EC2GroupBy[]> = {
   cost: ["none", "cost-category", "region", "account", "availability-zone", "instance", "instance-type", "reservation-type", "usage-type", "operation", "tag"],
   usage: ["none", "region", "account", "availability-zone", "instance", "instance-type", "usage-type", "tag"],
-  "data-transfer": ["none", "transfer-type", "region", "account", "availability-zone", "instance", "instance-type", "source-region", "destination-region", "tag"],
+  "data-transfer": ["transfer-type", "instance", "region"],
   instances: ["none", "region", "account", "availability-zone", "instance", "instance-type", "instance-state", "reservation-type", "recommendation", "tag"],
   volumes: ["none", "volume", "volume_type", "attachment_state", "instance", "storage_tier", "iops_tier", "size_bucket", "lifecycle_state", "region", "account", "availability-zone", "tag"],
 };

@@ -16,7 +16,7 @@ export type Ec2RecommendationType =
 export type Ec2RecommendationResourceType = "instance" | "volume" | "snapshot" | "elastic_ip";
 export type Ec2RecommendationRisk = "low" | "medium" | "high";
 export type Ec2RecommendationEffort = "low" | "medium" | "high";
-export type Ec2RecommendationStatus = "open" | "accepted" | "ignored" | "snoozed" | "completed";
+export type Ec2RecommendationStatus = "open" | "in_progress" | "snoozed" | "dismissed" | "completed";
 
 export type Ec2RecommendationsQuery = {
   tenantId: string;
@@ -59,6 +59,8 @@ export type Ec2RecommendationRecord = {
   risk: Ec2RecommendationRisk;
   effort: Ec2RecommendationEffort;
   status: Ec2RecommendationStatus;
+  statusReason: string | null;
+  snoozedUntil: string | null;
   detectedAt: string | null;
   lastSeenAt: string | null;
   metadata: Record<string, unknown> | null;

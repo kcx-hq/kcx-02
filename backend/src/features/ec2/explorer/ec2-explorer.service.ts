@@ -1187,8 +1187,7 @@ export class Ec2ExplorerService {
         if (!classified.isDataTransferCandidate || classified.isNatGateway) continue;
         const transferType = classified.transferType;
         const date = bucketDate(row.date, input.granularity);
-        const group =
-          view === "distribution" ? transferType : groupForCurCostRow({ ...row, category: "data_transfer" }, input);
+        const group = groupForCurCostRow({ ...row, category: "data_transfer" }, input);
         const usageGb = row.usageQuantity;
         const mappedResourceId =
           row.instanceId
@@ -1277,15 +1276,35 @@ export class Ec2ExplorerService {
       const trendPercent = previousCost > 0 ? ((totalCost - previousCost) / previousCost) * 100 : 0;
       const dates = [...byDateGroup.keys()].sort();
       const groups = [...new Set([...byDateGroup.values()].flatMap((m) => [...m.keys()]))];
+      const chartGroupLimit = 10;
+      const chartValueByGroup = new Map<string, number>();
+      for (const [group, item] of byGroup.entries()) {
+        chartValueByGroup.set(group, view === "usage" ? item.usageGb : item.cost);
+      }
+      const sortedGroupsForChart = [...groups].sort((a, b) => (chartValueByGroup.get(b) ?? 0) - (chartValueByGroup.get(a) ?? 0));
+      const shouldCondenseChartSeries = input.groupBy === "instance" || input.groupBy === "region";
+      const topGroups = shouldCondenseChartSeries ? sortedGroupsForChart.slice(0, chartGroupLimit) : sortedGroupsForChart;
+      const otherGroups = shouldCondenseChartSeries ? sortedGroupsForChart.slice(chartGroupLimit) : [];
+      const graphGroups = [...topGroups, ...(otherGroups.length > 0 ? ["other"] : [])];
       const graph: Ec2ExplorerGraph = {
         type: "stacked_bar",
         xKey: "date",
-        series: groups.map((group) => ({
+        series: graphGroups.map((group) => ({
           key: group,
-          label: metricLabel(group),
+          label: group === "other" ? "Other" : metricLabel(group),
           data: dates.map((date) => {
             const bucket = byDateGroup.get(date);
-            const point = bucket?.get(group) ?? { cost: 0, usageGb: 0 };
+            const point = group === "other"
+              ? otherGroups.reduce(
+                  (acc, otherGroup) => {
+                    const entry = bucket?.get(otherGroup) ?? { cost: 0, usageGb: 0 };
+                    acc.cost += entry.cost;
+                    acc.usageGb += entry.usageGb;
+                    return acc;
+                  },
+                  { cost: 0, usageGb: 0 },
+                )
+              : (bucket?.get(group) ?? { cost: 0, usageGb: 0 });
             const bucketTotalCost = [...(bucket?.values() ?? [])].reduce((sum, item) => sum + item.cost, 0);
             const cost = toFixedNumber(point.cost);
             const usageGb = toFixedNumber(point.usageGb);
@@ -1306,32 +1325,166 @@ export class Ec2ExplorerService {
         })),
       };
       const topTransferType = [...byGroup.entries()].sort((a, b) => b[1].cost - a[1].cost)[0]?.[0] ?? "unknown";
-      const primaryColumn =
-        view === "usage"
-          ? { key: "usageGb", label: "Billed Usage GB" }
-          : view === "distribution"
-            ? { key: "pct", label: "% of Data Transfer" }
-            : { key: "cost", label: "Cost" };
-      const table: Ec2ExplorerTable = {
-        columns: [
-          { key: "transferType", label: "Transfer Type" },
-          primaryColumn,
-          ...(primaryColumn.key === "cost" ? [{ key: "usageGb", label: "Billed Usage GB" }, { key: "pct", label: "% of Data Transfer" }] : []),
-          ...(primaryColumn.key === "usageGb" ? [{ key: "cost", label: "Cost" }, { key: "pct", label: "% of Data Transfer" }] : []),
-          ...(primaryColumn.key === "pct" ? [{ key: "cost", label: "Cost" }, { key: "usageGb", label: "Billed Usage GB" }] : []),
-          { key: "resourceCount", label: "Resource Count" },
-          { key: "unmappedResourceCount", label: "Unmapped Resources" },
-        ],
-        rows: [...byGroup.entries()].map(([group, item]) => ({
-          id: group,
-          transferType: metricLabel(group),
-          usageGb: toFixedNumber(item.usageGb),
-          cost: toFixedNumber(item.cost),
-          pct: toFixedNumber(totalCost > 0 ? (item.cost / totalCost) * 100 : 0),
-          resourceCount: item.resources.size,
-          unmappedResourceCount: group === "unknown" ? unmappedResourceKeys.size : 0,
-        })).sort((a, b) => Number(b.cost) - Number(a.cost)),
-      };
+      const table: Ec2ExplorerTable =
+        input.groupBy === "transfer_type"
+          ? (() => {
+              const primaryColumn =
+                view === "usage"
+                  ? { key: "usageGb", label: "Billed Usage GB" }
+                  : view === "distribution"
+                    ? { key: "pct", label: "% of Data Transfer" }
+                    : { key: "cost", label: "Cost" };
+              return {
+                columns: [
+                  { key: "transferType", label: "Transfer Type" },
+                  primaryColumn,
+                  ...(primaryColumn.key === "cost" ? [{ key: "usageGb", label: "Billed Usage GB" }, { key: "pct", label: "% of Data Transfer" }] : []),
+                  ...(primaryColumn.key === "usageGb" ? [{ key: "cost", label: "Cost" }, { key: "pct", label: "% of Data Transfer" }] : []),
+                  ...(primaryColumn.key === "pct" ? [{ key: "cost", label: "Cost" }, { key: "usageGb", label: "Billed Usage GB" }] : []),
+                  { key: "resourceCount", label: "Resource Count" },
+                  { key: "unmappedResourceCount", label: "Unmapped Resources" },
+                ],
+                rows: [...byGroup.entries()].map(([group, item]) => ({
+                  id: group,
+                  transferType: metricLabel(group),
+                  usageGb: toFixedNumber(item.usageGb),
+                  cost: toFixedNumber(item.cost),
+                  pct: toFixedNumber(totalCost > 0 ? (item.cost / totalCost) * 100 : 0),
+                  resourceCount: item.resources.size,
+                  unmappedResourceCount: group === "unknown" ? unmappedResourceKeys.size : 0,
+                })).sort((a, b) => Number(b.cost) - Number(a.cost)),
+              };
+            })()
+          : input.groupBy === "region"
+            ? (() => {
+                const byRegion = new Map<string, {
+                  region: string;
+                  dataTransferCost: number;
+                  totalGb: number;
+                  internetGb: number;
+                  interAzGb: number;
+                  regionalGb: number;
+                  resources: Set<string>;
+                }>();
+                for (const row of curRows) {
+                  const classified = classifyDataTransferSignals(row);
+                  if (!classified.isDataTransferCandidate || classified.isNatGateway) continue;
+                  const mappedResourceId =
+                    row.instanceId
+                    ?? row.attachedInstanceId
+                    ?? toPossibleInstanceId(row.lineItemResourceId)
+                    ?? toPossibleInstanceId(row.lineItemDescription)
+                    ?? toPossibleInstanceId(row.usageType)
+                    ?? toPossibleInstanceId(row.productUsageType);
+                  const region = row.region || "Unknown";
+                  const current = byRegion.get(region) ?? {
+                    region,
+                    dataTransferCost: 0,
+                    totalGb: 0,
+                    internetGb: 0,
+                    interAzGb: 0,
+                    regionalGb: 0,
+                    resources: new Set<string>(),
+                  };
+                  current.dataTransferCost += row.cost;
+                  current.totalGb += row.usageQuantity;
+                  if (classified.transferType === "internet") current.internetGb += row.usageQuantity;
+                  if (classified.transferType === "inter_az") current.interAzGb += row.usageQuantity;
+                  if (classified.transferType === "regional") current.regionalGb += row.usageQuantity;
+                  if (mappedResourceId) current.resources.add(mappedResourceId);
+                  byRegion.set(region, current);
+                }
+
+                return {
+                  columns: [
+                    { key: "region", label: "Region" },
+                    { key: "dataTransferCost", label: "Data Transfer Cost (USD)" },
+                    { key: "internetGb", label: "Internet Data Transfer (GB)" },
+                    { key: "interAzGb", label: "Inter-AZ Data Transfer (GB)" },
+                    { key: "regionalGb", label: "Regional Data Transfer (GB)" },
+                    { key: "totalGb", label: "Total Data Transfer (GB)" },
+                    { key: "resourceCount", label: "Resource Count" },
+                  ],
+                  rows: [...byRegion.values()]
+                    .map((item) => ({
+                      id: item.region,
+                      region: item.region,
+                      dataTransferCost: toFixedNumber(item.dataTransferCost),
+                      internetGb: toFixedNumber(item.internetGb),
+                      interAzGb: toFixedNumber(item.interAzGb),
+                      regionalGb: toFixedNumber(item.regionalGb),
+                      totalGb: toFixedNumber(item.totalGb),
+                      resourceCount: item.resources.size,
+                    }))
+                    .sort((a, b) => Number(b.dataTransferCost) - Number(a.dataTransferCost)),
+                };
+              })()
+            : (() => {
+              const byInstance = new Map<string, {
+                instance: string;
+                region: string;
+                instanceType: string;
+                dataTransferCost: number;
+                totalGb: number;
+                internetGb: number;
+                interAzGb: number;
+                regionalGb: number;
+              }>();
+              for (const row of curRows) {
+                const classified = classifyDataTransferSignals(row);
+                if (!classified.isDataTransferCandidate || classified.isNatGateway) continue;
+                const instanceId =
+                  row.instanceId
+                  ?? row.attachedInstanceId
+                  ?? toPossibleInstanceId(row.lineItemResourceId)
+                  ?? toPossibleInstanceId(row.lineItemDescription)
+                  ?? toPossibleInstanceId(row.usageType)
+                  ?? toPossibleInstanceId(row.productUsageType);
+                if (!instanceId) continue;
+                const current = byInstance.get(instanceId) ?? {
+                  instance: instanceId,
+                  region: row.region || "Unknown",
+                  instanceType: row.instanceType || "Unknown",
+                  dataTransferCost: 0,
+                  totalGb: 0,
+                  internetGb: 0,
+                  interAzGb: 0,
+                  regionalGb: 0,
+                };
+                current.dataTransferCost += row.cost;
+                current.totalGb += row.usageQuantity;
+                if (classified.transferType === "internet") current.internetGb += row.usageQuantity;
+                if (classified.transferType === "inter_az") current.interAzGb += row.usageQuantity;
+                if (classified.transferType === "regional") current.regionalGb += row.usageQuantity;
+                byInstance.set(instanceId, current);
+              }
+
+              return {
+                columns: [
+                  { key: "instance", label: "Instance" },
+                  { key: "dataTransferCost", label: "Data Transfer Cost (USD)" },
+                  { key: "internetGb", label: "Internet Data Transfer (GB)" },
+                  { key: "interAzGb", label: "Inter-AZ Data Transfer (GB)" },
+                  { key: "regionalGb", label: "Regional Data Transfer (GB)" },
+                  { key: "totalGb", label: "Total Data Transfer (GB)" },
+                  { key: "region", label: "Region" },
+                  { key: "instanceType", label: "Instance Type" },
+                ],
+                rows: [...byInstance.values()]
+                  .map((item) => ({
+                    id: item.instance,
+                    instance: item.instance,
+                    dataTransferCost: toFixedNumber(item.dataTransferCost),
+                    internetGb: toFixedNumber(item.internetGb),
+                    interAzGb: toFixedNumber(item.interAzGb),
+                    regionalGb: toFixedNumber(item.regionalGb),
+                    totalGb: toFixedNumber(item.totalGb),
+                    region: item.region,
+                    instanceType: item.instanceType,
+                  }))
+                  .sort((a, b) => Number(b.dataTransferCost) - Number(a.dataTransferCost)),
+              };
+            })();
       logger.debug("EC2 explorer data-transfer view totals", {
         tenantId: input.scope.tenantId,
         selectedView: view,

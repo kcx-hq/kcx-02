@@ -144,6 +144,7 @@ export default function EC2InstancesPage() {
       queryTransferType === "internet" ||
       queryTransferType === "inter_region" ||
       queryTransferType === "inter_az" ||
+      queryTransferType === "regional" ||
       queryTransferType === "unknown"
         ? queryTransferType
         : null,
@@ -272,6 +273,7 @@ export default function EC2InstancesPage() {
       queryTransferType === "internet" ||
       queryTransferType === "inter_region" ||
       queryTransferType === "inter_az" ||
+      queryTransferType === "regional" ||
       queryTransferType === "unknown"
     ) {
       const transferLabel =
@@ -279,6 +281,8 @@ export default function EC2InstancesPage() {
           ? "Inter-Region"
           : queryTransferType === "inter_az"
             ? "Inter-AZ"
+            : queryTransferType === "regional"
+              ? "Regional"
             : queryTransferType.charAt(0).toUpperCase() + queryTransferType.slice(1);
       chips.push({
         id: "transfer-type",

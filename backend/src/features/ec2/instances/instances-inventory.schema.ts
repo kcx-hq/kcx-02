@@ -25,7 +25,7 @@ const instancesInventoryQuerySchema = z.object({
     "Other Network",
   ]).nullable(),
   status: z.enum(["all", "idle", "underutilized", "overutilized", "uncovered", "healthy"]).default("all"),
-  transferType: z.enum(["internet", "inter_region", "inter_az", "unknown"]).nullable(),
+  transferType: z.enum(["internet", "inter_region", "inter_az", "regional", "unknown"]).nullable(),
   search: z.string().trim().min(1).max(200).nullable(),
   startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(),
   endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(),

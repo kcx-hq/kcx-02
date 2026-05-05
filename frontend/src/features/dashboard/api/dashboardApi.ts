@@ -725,10 +725,14 @@ export const dashboardApi = {
       payload ?? {},
     );
   },
-  updateEc2RecommendationStatus(scope: DashboardResolvedScope, recommendationId: number, status: Ec2RecommendationStatus) {
-    return apiPatch<{ id: number; status: Ec2RecommendationStatus }>(
+  updateEc2RecommendationStatus(
+    scope: DashboardResolvedScope,
+    recommendationId: number,
+    payload: { status: Ec2RecommendationStatus; reason?: string | null; snoozed_until?: string | null },
+  ) {
+    return apiPatch<{ id: number; status: Ec2RecommendationStatus; statusReason?: string | null; snoozedUntil?: string | null }>(
       withDashboardQuery(`/dashboard/ec2/recommendations/${recommendationId}/status`, scope),
-      { status },
+      payload,
     );
   },
   getEc2Explorer(scope: DashboardResolvedScope, filters: Ec2ExplorerFiltersQuery) {

@@ -140,7 +140,7 @@ export default function EC2ExplorerPage() {
         : metricParam === "cost" || metricParam === "usage" || metricParam === "instances" || metricParam === "volumes"
           ? metricParam
           : EC2_EXPLORER_DEFAULT_CONTROLS.metric;
-    const groupBy =
+    const rawGroupBy =
       groupByParam === "transfer_type"
         ? "transfer-type"
         : groupByParam === "source_region"
@@ -160,6 +160,13 @@ export default function EC2ExplorerPage() {
                       : groupByParam === "instance_state"
                         ? "instance-state"
                         : (groupByParam as EC2ExplorerControlsState["groupBy"]) ?? EC2_EXPLORER_DEFAULT_CONTROLS.groupBy;
+    const groupBy =
+      metric === "data-transfer" &&
+      rawGroupBy !== "transfer-type" &&
+      rawGroupBy !== "instance" &&
+      rawGroupBy !== "region"
+        ? "transfer-type"
+        : rawGroupBy;
     const usageType = usageTypeParam === "network" || usageTypeParam === "disk" || usageTypeParam === "cpu"
       ? usageTypeParam
       : EC2_EXPLORER_DEFAULT_CONTROLS.usageType;
@@ -563,6 +570,8 @@ export default function EC2ExplorerPage() {
 
       <section className="ec2-explorer-table-panel" aria-label="EC2 explorer table panel">
         <EC2ExplorerTable
+          metric={controls.metric}
+          groupBy={controls.groupBy}
           loading={query.isLoading}
           error={query.isError ? query.error : null}
           table={query.data?.table ?? null}

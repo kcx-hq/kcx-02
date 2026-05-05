@@ -27,6 +27,13 @@ export type InventoryEc2InstanceRow = {
   uncoveredHours: number
   monthToDateCost: number
   dataTransferCost: number
+  dataTransfer: {
+    totalGb: number
+    internetGb: number
+    interAzGb: number
+    regionalGb: number
+    cost: number
+  }
   networkUsageBytes: number
   otherUnallocatedCost: number
   latestDailyCost: number | null
@@ -75,7 +82,7 @@ export type InventoryEc2InstancesListParams = {
     | "Other Network"
     | null
   status?: "all" | "idle" | "underutilized" | "overutilized" | "uncovered" | "healthy"
-  transferType?: "internet" | "inter_region" | "inter_az" | "unknown" | null
+  transferType?: "internet" | "inter_region" | "inter_az" | "regional" | "unknown" | null
   search?: string | null
   startDate?: string | null
   endDate?: string | null
@@ -207,7 +214,11 @@ export type InventoryEc2InstanceDetailResponse = {
     action: string
     saving: number
     risk: string
+    severity?: string | null
     status: string
+    createdAt?: string | null
+    updatedAt?: string | null
+    detectedAt?: string | null
   }>
   trends: {
     costTrend: Array<{
@@ -375,6 +386,13 @@ const normalizeInstanceRow = (value: unknown): InventoryEc2InstanceRow | null =>
     uncoveredHours: toNumberOrNull(value.uncoveredHours) ?? 0,
     monthToDateCost,
     dataTransferCost: toNumberOrNull(value.dataTransferCost) ?? 0,
+    dataTransfer: {
+      totalGb: toNumberOrNull(isRecord(value.dataTransfer) ? value.dataTransfer.totalGb : null) ?? 0,
+      internetGb: toNumberOrNull(isRecord(value.dataTransfer) ? value.dataTransfer.internetGb : null) ?? 0,
+      interAzGb: toNumberOrNull(isRecord(value.dataTransfer) ? value.dataTransfer.interAzGb : null) ?? 0,
+      regionalGb: toNumberOrNull(isRecord(value.dataTransfer) ? value.dataTransfer.regionalGb : null) ?? 0,
+      cost: toNumberOrNull(isRecord(value.dataTransfer) ? value.dataTransfer.cost : null) ?? 0,
+    },
     networkUsageBytes: toNumberOrNull(value.networkUsageBytes) ?? 0,
     otherUnallocatedCost: toNumberOrNull(value.otherUnallocatedCost) ?? 0,
     latestDailyCost: toNumberOrNull(value.latestDailyCost),

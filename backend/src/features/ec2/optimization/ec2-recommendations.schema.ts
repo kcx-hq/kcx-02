@@ -50,7 +50,7 @@ const querySchema = z.object({
     "high_nat_gateway_cost",
     "unattached_elastic_ip",
   ]).nullable(),
-  status: z.enum(["open", "accepted", "ignored", "snoozed", "completed"]).nullable(),
+  status: z.enum(["open", "in_progress", "snoozed", "dismissed", "completed"]).nullable(),
   account: z.string().nullable(),
   region: z.string().nullable(),
   team: z.string().nullable(),
@@ -68,7 +68,9 @@ const refreshSchema = z.object({
 });
 
 const statusSchema = z.object({
-  status: z.enum(["open", "accepted", "ignored", "snoozed", "completed"]),
+  status: z.enum(["open", "in_progress", "snoozed", "dismissed", "completed"]),
+  reason: z.string().trim().max(1000).nullable().optional(),
+  snoozed_until: z.string().regex(DATE_ONLY_REGEX).nullable().optional(),
 });
 
 const parseTags = (value: string | undefined): string[] =>
@@ -108,9 +110,24 @@ export function buildEc2RefreshInput(req: Request): Ec2RefreshRecommendationsInp
   });
 }
 
-export function buildEc2RecommendationStatusPatch(req: Request): { id: number; status: Ec2RecommendationStatus } {
+export function buildEc2RecommendationStatusPatch(req: Request): {
+  id: number;
+  status: Ec2RecommendationStatus;
+  reason: string | null;
+  snoozedUntil: string | null;
+} {
   const id = Number(req.params.id);
   if (!Number.isInteger(id) || id <= 0) throw new Error("Invalid recommendation id");
   const parsed = parseWithSchema(statusSchema, req.body ?? {});
-  return { id, status: parsed.status };
+  const reason = typeof parsed.reason === "string" && parsed.reason.trim().length > 0 ? parsed.reason.trim() : null;
+  const snoozedUntil = typeof parsed.snoozed_until === "string" && parsed.snoozed_until.trim().length > 0
+    ? parsed.snoozed_until.trim()
+    : null;
+  if (parsed.status === "snoozed" && !snoozedUntil) {
+    throw new Error("snoozed_until is required when status is snoozed");
+  }
+  if (parsed.status !== "snoozed" && snoozedUntil) {
+    throw new Error("snoozed_until is only allowed when status is snoozed");
+  }
+  return { id, status: parsed.status, reason, snoozedUntil };
 }

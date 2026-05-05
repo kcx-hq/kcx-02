@@ -290,7 +290,7 @@ export type Ec2RecommendationType =
   | "low_cpu_high_network"
   | "high_nat_gateway_cost"
   | "unattached_elastic_ip";
-export type Ec2RecommendationStatus = "open" | "accepted" | "ignored" | "snoozed" | "completed";
+export type Ec2RecommendationStatus = "open" | "in_progress" | "snoozed" | "dismissed" | "completed";
 
 export type Ec2RecommendationsFiltersQuery = {
   cloudConnectionId?: string;
@@ -324,6 +324,8 @@ export type Ec2RecommendationRecord = {
   risk: "low" | "medium" | "high";
   effort: "low" | "medium" | "high";
   status: Ec2RecommendationStatus;
+  statusReason: string | null;
+  snoozedUntil: string | null;
   detectedAt: string | null;
   lastSeenAt: string | null;
   metadata: Record<string, unknown> | null;
