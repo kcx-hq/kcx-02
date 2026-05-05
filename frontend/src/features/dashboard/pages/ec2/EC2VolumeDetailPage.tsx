@@ -2,7 +2,6 @@ import { useMemo } from "react";
 import type { EChartsOption } from "echarts";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 
-import { useInventoryEc2Snapshots } from "@/features/client-home/hooks/useInventoryEc2Snapshots";
 import { useInventoryEc2VolumePerformance } from "@/features/client-home/hooks/useInventoryEc2VolumePerformance";
 import type {
   InventoryEc2VolumePerformanceMetric,
@@ -233,23 +232,10 @@ export default function EC2VolumeDetailPage() {
     Boolean(volumeId),
   );
 
-  const snapshotsQuery = useInventoryEc2Snapshots({
-    cloudConnectionId: volumeCloudConnectionId,
-    search: selectedVolume?.volumeId ?? null,
-    page: 1,
-    pageSize: 100,
-  });
-
   const backToVolumes = () => {
     const next = new URLSearchParams(location.search);
     next.delete("volumeId");
     navigate({ pathname: VOLUMES_PAGE_PATH, search: next.toString() });
-  };
-
-  const updateDateRange = (key: "startDate" | "endDate", value: string) => {
-    const next = new URLSearchParams(location.search);
-    next.set(key, value);
-    navigate({ pathname: location.pathname, search: next.toString() });
   };
 
   if (volumesQuery.isLoading) {

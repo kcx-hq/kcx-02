@@ -87,12 +87,6 @@ export default function EC2InstanceDetailPage() {
     navigate({ pathname: INSTANCES_PAGE_PATH, search: next.toString() });
   };
 
-  const updateDateRange = (key: "startDate" | "endDate", value: string) => {
-    const next = new URLSearchParams(location.search);
-    next.set(key, value);
-    navigate({ pathname: location.pathname, search: next.toString() });
-  };
-
   if (detailQuery.isLoading) return <div className="dashboard-page"><p className="dashboard-note">Loading instance details...</p></div>;
 
   if (detailQuery.isError || !detailQuery.data) {
