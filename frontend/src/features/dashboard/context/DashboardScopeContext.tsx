@@ -26,6 +26,10 @@ export function DashboardScopeProvider({ children }: { children: ReactNode }) {
   const scopeQuery = useQuery({
     queryKey: ["dashboard", "scope", scopeInput],
     queryFn: () => dashboardApi.getScope(scopeInput),
+    placeholderData: (previousData) => previousData,
+    staleTime: 60_000,
+    gcTime: 10 * 60_000,
+    refetchOnWindowFocus: false,
   });
 
   const value = useMemo<DashboardScopeContextValue>(

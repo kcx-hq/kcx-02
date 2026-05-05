@@ -28,6 +28,7 @@ import EC2InstanceDetailPage from "../pages/ec2/EC2InstanceDetailPage";
 import EC2VolumeDetailPage from "../pages/ec2/EC2VolumeDetailPage";
 import EC2EipPage from "../pages/ec2/EC2EipPage";
 import DatabaseExplorerPage from "../pages/database/DatabaseExplorerPage";
+import DatabaseAssetsPage from "../pages/database/db-assets-page";
 
 function DashboardOverviewRedirect() {
   const location = useLocation();
@@ -128,6 +129,7 @@ export default function DashboardRoutes() {
         <Route path="policy" element={<PolicyPage />} />
         <Route path="policy/s3" element={<S3PolicyPage />} />
         <Route path="services/database" element={<DatabaseExplorerPage />} />
+        <Route path="services/database/assets" element={<DatabaseAssetsPage />} />
         <Route path="resources" element={<ResourcesPage />} />
         <Route path="allocation" element={<AllocationPage />} />
         <Route path="optimization" element={<OptimizationPage />} />

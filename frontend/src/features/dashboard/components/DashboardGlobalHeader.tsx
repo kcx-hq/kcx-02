@@ -466,11 +466,20 @@ export function DashboardGlobalHeader() {
         { label: "Optimization" },
       ];
     }
+    if (path === "/dashboard/services/database/assets") {
+      return [
+        { label: rootCrumb, path: "/dashboard/overview" },
+        { label: "Services", path: "/dashboard/inventory" },
+        { label: "Database", path: "/dashboard/services/database" },
+        { label: "Assets" },
+      ];
+    }
     if (path === "/dashboard/services/database") {
       return [
         { label: rootCrumb, path: "/dashboard/overview" },
         { label: "Services", path: "/dashboard/inventory" },
         { label: "Database" },
+        { label: "Explorer" },
       ];
     }
 

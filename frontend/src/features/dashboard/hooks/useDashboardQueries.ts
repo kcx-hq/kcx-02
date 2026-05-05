@@ -20,6 +20,8 @@ import {
   type Ec2ElasticIpResponse,
   type DatabaseExplorerFilters,
   type DatabaseExplorerResponse,
+  type DatabaseAssetsFilters,
+  type DatabaseAssetsResponse,
 
   type S3CostInsightsFiltersQuery,
   type S3CostInsightsResponse,
@@ -115,6 +117,17 @@ export function useDatabaseExplorerQuery(filters: DatabaseExplorerFilters) {
   return useQuery<DatabaseExplorerResponse, Error>({
     queryKey: ["dashboard", "services", "database", "explorer", scope, filters],
     queryFn: () => dashboardApi.getDatabaseExplorer(assertScope(scope), filters),
+    enabled: Boolean(scope?.from && scope?.to),
+    placeholderData: (previousData) => previousData,
+    staleTime: 30_000,
+  });
+}
+
+export function useDatabaseAssetsQuery(filters: DatabaseAssetsFilters) {
+  const { scope } = useDashboardScope();
+  return useQuery<DatabaseAssetsResponse, Error>({
+    queryKey: ["dashboard", "services", "database", "assets", scope, filters],
+    queryFn: () => dashboardApi.getDatabaseAssets(assertScope(scope), filters),
     enabled: Boolean(scope?.from && scope?.to),
     placeholderData: (previousData) => previousData,
     staleTime: 30_000,
@@ -296,6 +309,9 @@ export function useEc2OptimizationSummaryQuery(filters?: Ec2OptimizationSummaryF
     queryKey: ["dashboard", "ec2", "optimization", "summary", scope, filters],
     queryFn: () => dashboardApi.getEc2OptimizationSummary(assertScope(scope), filters),
     enabled: Boolean(scope),
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
+    placeholderData: (previous) => previous,
   });
 }
 
@@ -306,6 +322,8 @@ export function useEc2OptimizationInstancesQuery(filters?: Ec2OptimizationInstan
     queryFn: () => dashboardApi.getEc2OptimizationInstances(assertScope(scope), filters),
     enabled: Boolean(scope),
     placeholderData: (previous) => previous,
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
   });
 }
 
@@ -316,6 +334,8 @@ export function useEc2RecommendationsQuery(filters?: Ec2RecommendationsFiltersQu
     queryFn: () => dashboardApi.getEc2Recommendations(assertScope(scope), filters),
     enabled: Boolean(scope),
     placeholderData: (previous) => previous,
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
   });
 }
 
@@ -326,6 +346,8 @@ export function useEc2ExplorerQuery(filters: Ec2ExplorerFiltersQuery, enabledOve
     queryFn: () => dashboardApi.getEc2Explorer(assertScope(scope), filters),
     enabled: Boolean(scope) && enabledOverride,
     placeholderData: (previous) => previous,
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
   });
 }
 
@@ -338,6 +360,9 @@ export function useEc2ExplorerNetworkBreakdownQuery(
     queryKey: ["dashboard", "ec2", "explorer", "network-breakdown", scope, filters],
     queryFn: () => dashboardApi.getEc2ExplorerNetworkBreakdown(assertScope(scope), filters),
     enabled: Boolean(scope) && enabledOverride,
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
+    placeholderData: (previous) => previous,
   });
 }
 
@@ -348,6 +373,8 @@ export function useEc2DataTransferQuery(filters?: Ec2DataTransferFiltersQuery, e
     queryFn: () => dashboardApi.getEc2DataTransfer(assertScope(scope), filters),
     enabled: Boolean(scope) && enabledOverride,
     placeholderData: (previous) => previous,
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
   });
 }
 
@@ -358,15 +385,23 @@ export function useEc2ElasticIpsQuery(filters?: Ec2ElasticIpFiltersQuery, enable
     queryFn: () => dashboardApi.getEc2ElasticIps(assertScope(scope), filters),
     enabled: Boolean(scope) && enabledOverride,
     placeholderData: (previous) => previous,
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
   });
 }
 
-export function useS3CostInsightsQuery(filters?: S3CostInsightsFiltersQuery) {
+export function useS3CostInsightsQuery(
+  filters?: S3CostInsightsFiltersQuery,
+  options?: { enabled?: boolean },
+) {
   const { scope } = useDashboardScope();
   return useQuery<S3CostInsightsResponse, Error>({
     queryKey: ["dashboard", "s3", "cost-insights", scope, filters],
     queryFn: () => dashboardApi.getS3CostInsights(assertScope(scope), filters),
-    enabled: Boolean(scope),
+    enabled: Boolean(scope) && (options?.enabled ?? true),
+    placeholderData: (previous) => previous,
+    staleTime: 90_000,
+    refetchOnWindowFocus: false,
   });
 }
 
@@ -376,6 +411,9 @@ export function useS3OptimizationQuery() {
     queryKey: ["dashboard", "s3", "optimization", scope],
     queryFn: () => dashboardApi.getS3Optimization(assertScope(scope)),
     enabled: Boolean(scope),
+    placeholderData: (previous) => previous,
+    staleTime: 90_000,
+    refetchOnWindowFocus: false,
   });
 }
 
@@ -385,6 +423,9 @@ export function useS3BucketLifecycleInsightQuery(bucketName: string | null) {
     queryKey: ["dashboard", "s3", "lifecycle-insight", scope, bucketName],
     queryFn: () => dashboardApi.getS3BucketLifecycleInsight(assertScope(scope), bucketName as string),
     enabled: Boolean(scope) && Boolean(bucketName && bucketName.trim().length > 0),
+    placeholderData: (previous) => previous,
+    staleTime: 90_000,
+    refetchOnWindowFocus: false,
   });
 }
 

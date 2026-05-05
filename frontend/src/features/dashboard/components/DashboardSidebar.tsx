@@ -234,7 +234,17 @@ export function DashboardSidebar() {
                   title={collapsed ? node.label : undefined}
                   aria-expanded={isNodeOpen}
                   aria-controls={nodeId}
-                  onClick={() => {
+                  onClick={(event) => {
+                    const clickedChevron =
+                      event.target instanceof Element &&
+                      Boolean(event.target.closest(".dashboard-nav-group__chevron"));
+                    if (clickedChevron) {
+                      setOpenGroups((current) => ({
+                        ...current,
+                        [nodeKey]: !(current[nodeKey] ?? true),
+                      }));
+                      return;
+                    }
                     const isExactNodePath = location.pathname === node.path;
                     if (!isExactNodePath) {
                       navigate({ pathname: node.path, search: location.search });
@@ -279,9 +289,29 @@ export function DashboardSidebar() {
                             title={collapsed ? group.label : undefined}
                             aria-expanded={hasSubmenuItems ? isGroupOpen : undefined}
                             aria-controls={hasSubmenuItems ? groupId : undefined}
-                            onClick={() => {
+                            onClick={(event) => {
+                              const clickedChevron =
+                                event.target instanceof Element &&
+                                Boolean(event.target.closest(".dashboard-nav-group__chevron"));
+                              if (clickedChevron && hasSubmenuItems) {
+                                setOpenGroups((current) => ({
+                                  ...current,
+                                  [groupKey]: !(current[groupKey] ?? true),
+                                }));
+                                return;
+                              }
                               if (group.path && !hasSubmenuItems) {
                                 navigate({ pathname: group.path, search: location.search });
+                                return;
+                              }
+                              if (group.path && location.pathname !== group.path) {
+                                navigate({ pathname: group.path, search: location.search });
+                                if (hasSubmenuItems) {
+                                  setOpenGroups((current) => ({
+                                    ...current,
+                                    [groupKey]: true,
+                                  }));
+                                }
                                 return;
                               }
                               setOpenGroups((current) => ({

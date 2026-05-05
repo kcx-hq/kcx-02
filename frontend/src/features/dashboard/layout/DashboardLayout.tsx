@@ -8,7 +8,7 @@ import { useDashboardScope } from "../hooks/useDashboardScope";
 function DashboardScopeGate() {
   const { scope, isLoading, isError, error } = useDashboardScope();
 
-  if (isLoading) {
+  if (isLoading && !scope) {
     return <p className="dashboard-note">Resolving dashboard scope...</p>;
   }
 

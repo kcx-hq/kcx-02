@@ -148,6 +148,89 @@ export type DatabaseExplorerResponse = {
   table: DatabaseExplorerTableRow[];
 };
 
+export type DatabaseAssetsSummary = {
+  totalAssets: number;
+  totalCost: number;
+  avgCpu: number | null;
+  totalStorageGb: number | null;
+  recommendationCount: number;
+};
+
+export type DatabaseAssetsFilterOptions = {
+  dbServices: string[];
+  dbEngines: string[];
+  classes: string[];
+  statuses: string[];
+  regions: string[];
+  accounts: string[];
+};
+
+export type DatabaseAssetRow = {
+  resourceId: string | null;
+  resourceArn: string | null;
+  resourceName: string | null;
+  dbIdentifier: string | null;
+  dbService: string | null;
+  dbEngine: string | null;
+  dbEngineVersion: string | null;
+  resourceType: string | null;
+  instanceClass: string | null;
+  capacityMode: string | null;
+  regionKey: string | number | null;
+  regionId: string | null;
+  regionName: string | null;
+  subAccountKey: string | number | null;
+  subAccountId: string | null;
+  subAccountName: string | null;
+  status: string | null;
+  clusterId: string | null;
+  isClusterResource: boolean | null;
+  allocatedStorageGb: number | null;
+  storageUsedGb: number | null;
+  dataFootprintGb: number | null;
+  avgCpu: number | null;
+  maxCpu: number | null;
+  avgConnections: number | null;
+  maxConnections: number | null;
+  avgIops: number | null;
+  avgThroughputBytes: number | null;
+  totalBilledCost: number | null;
+  totalEffectiveCost: number | null;
+  totalListCost: number | null;
+  totalCost: number | null;
+  currencyCode: string | null;
+  recommendationCount: number | null;
+  latestUsageDate: string | null;
+  discoveredAt: string | null;
+};
+
+export type DatabaseAssetsPagination = {
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+};
+
+export type DatabaseAssetsResponse = {
+  summary: DatabaseAssetsSummary;
+  filterOptions: DatabaseAssetsFilterOptions;
+  assets: DatabaseAssetRow[];
+  pagination: DatabaseAssetsPagination;
+};
+
+export type DatabaseAssetsFilters = {
+  cloudConnectionId?: string;
+  regionKey?: string;
+  subAccountKey?: string;
+  dbService?: string;
+  dbEngine?: string;
+  instanceClass?: string;
+  status?: string;
+  search?: string;
+  page?: number;
+  pageSize?: number;
+};
+
 export type Ec2OverviewResponse = {
   section: "ec2-overview";
   title: "EC2 Overview";

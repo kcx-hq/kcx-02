@@ -35,6 +35,8 @@ import type {
   Ec2ElasticIpResponse,
   DatabaseExplorerFilters,
   DatabaseExplorerResponse,
+  DatabaseAssetsFilters,
+  DatabaseAssetsResponse,
 
   S3CostInsightsFiltersQuery,
   S3CostInsightsResponse,
@@ -177,6 +179,50 @@ function withDatabaseExplorerFilters(
   }
   if (typeof filters.cloudConnectionId === "string" && filters.cloudConnectionId.trim().length > 0) {
     params.set("cloud_connection_id", filters.cloudConnectionId.trim());
+  }
+
+  const query = params.toString();
+  return query.length > 0 ? `${path}?${query}` : path;
+}
+
+function withDatabaseAssetsFilters(
+  path: string,
+  scope: DashboardResolvedScope,
+  filters?: DatabaseAssetsFilters,
+): string {
+  const params = new URLSearchParams();
+
+  if (scope.from) params.set("start_date", scope.from);
+  if (scope.to) params.set("end_date", scope.to);
+  if (typeof filters?.cloudConnectionId === "string" && filters.cloudConnectionId.trim().length > 0) {
+    params.set("cloud_connection_id", filters.cloudConnectionId.trim());
+  }
+  if (typeof filters?.regionKey === "string" && filters.regionKey.trim().length > 0) {
+    params.set("region_key", filters.regionKey.trim());
+  }
+  if (typeof filters?.subAccountKey === "string" && filters.subAccountKey.trim().length > 0) {
+    params.set("sub_account_key", filters.subAccountKey.trim());
+  }
+  if (typeof filters?.dbService === "string" && filters.dbService.trim().length > 0) {
+    params.set("db_service", filters.dbService.trim());
+  }
+  if (typeof filters?.dbEngine === "string" && filters.dbEngine.trim().length > 0) {
+    params.set("db_engine", filters.dbEngine.trim());
+  }
+  if (typeof filters?.instanceClass === "string" && filters.instanceClass.trim().length > 0) {
+    params.set("instance_class", filters.instanceClass.trim());
+  }
+  if (typeof filters?.status === "string" && filters.status.trim().length > 0) {
+    params.set("status", filters.status.trim());
+  }
+  if (typeof filters?.search === "string" && filters.search.trim().length > 0) {
+    params.set("search", filters.search.trim());
+  }
+  if (typeof filters?.page === "number") {
+    params.set("page", String(filters.page));
+  }
+  if (typeof filters?.pageSize === "number") {
+    params.set("pageSize", String(filters.pageSize));
   }
 
   const query = params.toString();
@@ -503,6 +549,9 @@ export const dashboardApi = {
       withDatabaseExplorerFilters("/services/database/explorer", scope, filters),
     );
   },
+  getDatabaseAssets(scope: DashboardResolvedScope, filters?: DatabaseAssetsFilters) {
+    return apiGet<DatabaseAssetsResponse>(withDatabaseAssetsFilters("/services/database/assets", scope, filters));
+  },
 
   getResources(scope: DashboardResolvedScope) {
     return apiGet<DashboardSectionData>(withDashboardQuery("/dashboard/resources", scope));
@@ -745,6 +794,8 @@ export type {
   DatabaseExplorerResponse,
   DatabaseExplorerTableRow,
   DatabaseExplorerUsageTrendItem,
+  DatabaseAssetsFilters,
+  DatabaseAssetsResponse,
   DashboardOverviewResponse,
   OverviewAnomaliesResponse,
   OverviewAnomaly,
