@@ -128,27 +128,28 @@ export default function S3UsagePage() {
   );
 
   const query = useS3CostInsightsQuery(queryFilters);
+  const shouldLoadUsageBreakdowns = !query.isLoading && !query.isError && (query.data?.bucketTable?.length ?? 0) > 0;
   const storageBreakdownQuery = useS3CostInsightsQuery({
     ...queryFilters,
     costCategory: ["Storage"],
     seriesBy: "bucket",
     costBy: "date",
     yAxisMetric: "usage_quantity",
-  });
+  }, { enabled: shouldLoadUsageBreakdowns });
   const transferBreakdownQuery = useS3CostInsightsQuery({
     ...queryFilters,
     costCategory: ["Transfer"],
     seriesBy: "bucket",
     costBy: "date",
     yAxisMetric: "usage_quantity",
-  });
+  }, { enabled: shouldLoadUsageBreakdowns });
   const requestBreakdownQuery = useS3CostInsightsQuery({
     ...queryFilters,
     costCategory: ["Request"],
     seriesBy: "bucket",
     costBy: "date",
     yAxisMetric: "usage_quantity",
-  });
+  }, { enabled: shouldLoadUsageBreakdowns });
   const usageRows = useMemo(() => (query.data?.usageOperationTable ?? []) as S3UsageInsightsRow[], [query.data?.usageOperationTable]);
   const bucketUsageRows = useMemo<S3BucketUsageRow[]>(() => {
     const bucketRows = query.data?.bucketTable ?? [];

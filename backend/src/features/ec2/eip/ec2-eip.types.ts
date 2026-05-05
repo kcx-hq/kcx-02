@@ -1,6 +1,6 @@
 import type { DashboardScope } from "../../dashboard/dashboard.types.js";
 
-export const EC2_EIP_STATES = ["all", "attached", "unattached"] as const;
+export const EC2_EIP_STATES = ["all", "attached", "unattached", "unknown"] as const;
 export type Ec2ElasticIpState = (typeof EC2_EIP_STATES)[number];
 
 export type Ec2ElasticIpInput = {
@@ -36,7 +36,7 @@ export type Ec2ElasticIpRow = {
   accountName: string;
   accountId: string;
   region: string;
-  state: "attached" | "unattached";
+  state: "attached" | "unattached" | "unknown";
   associatedResourceId: string | null;
   cost: number;
   lastSeen: string | null;

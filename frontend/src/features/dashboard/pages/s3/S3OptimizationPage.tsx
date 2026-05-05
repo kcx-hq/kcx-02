@@ -61,12 +61,12 @@ const toReplicationActionLabel = (value: string): string => {
 export default function S3OptimizationPage() {
   const location = useLocation();
   const navigate = useNavigate();
-  const lifecycleQuery = useS3OptimizationQuery();
-  const replicationQuery = useS3ReplicationQuery();
-  const lifecycleRows = useMemo(() => lifecycleQuery.data?.buckets ?? [], [lifecycleQuery.data?.buckets]);
-  const replicationRows = useMemo(() => replicationQuery.data?.buckets ?? [], [replicationQuery.data?.buckets]);
   const [activeTab, setActiveTab] = useState<S3OptimizationTabKey>("lifecycle");
   const [showReplicationGuide, setShowReplicationGuide] = useState(false);
+  const lifecycleQuery = useS3OptimizationQuery(activeTab === "lifecycle");
+  const replicationQuery = useS3ReplicationQuery(activeTab === "replication" || showReplicationGuide);
+  const lifecycleRows = useMemo(() => lifecycleQuery.data?.buckets ?? [], [lifecycleQuery.data?.buckets]);
+  const replicationRows = useMemo(() => replicationQuery.data?.buckets ?? [], [replicationQuery.data?.buckets]);
   const [replicationActionMessage, setReplicationActionMessage] = useState<string | null>(null);
   const [setupForm, setSetupForm] = useState({
     sourceBucketName: "",
@@ -102,6 +102,19 @@ export default function S3OptimizationPage() {
   useEffect(() => {
     if (currentPage > totalPages) setCurrentPage(totalPages);
   }, [currentPage, totalPages]);
+
+  useEffect(() => {
+    const searchParams = new URLSearchParams(location.search);
+    const tab = String(searchParams.get("tab") ?? "").trim().toLowerCase();
+    const bucketName = String(searchParams.get("bucketName") ?? "").trim();
+    if (tab === "replication") {
+      setActiveTab("replication");
+      if (bucketName) {
+        setSetupForm((prev) => ({ ...prev, sourceBucketName: bucketName }));
+        setShowReplicationGuide(true);
+      }
+    }
+  }, [location.search]);
 
   useEffect(() => {
     if (!showReplicationGuide) return;

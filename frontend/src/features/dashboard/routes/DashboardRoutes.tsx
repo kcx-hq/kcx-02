@@ -15,6 +15,7 @@ import EC2ExplorerPage from "../pages/ec2/EC2ExplorerPage";
 import EC2VolumesPage from "../pages/ec2/EC2VolumesPage";
 import EC2OptimizationPage from "../pages/ec2/EC2OptimizationPage";
 import EC2DataTransferPage from "../pages/ec2/EC2DataTransferPage";
+import S3BucketDetailPage from "../pages/s3/S3BucketDetailPage";
 import S3UsageBucketDetailPage from "../pages/s3/S3UsageBucketDetailPage";
 import S3OptimizationPage from "../pages/s3/S3OptimizationPage";
 import S3BucketPage from "../pages/s3/S3BucketPage";
@@ -28,6 +29,7 @@ import EC2InstanceDetailPage from "../pages/ec2/EC2InstanceDetailPage";
 import EC2VolumeDetailPage from "../pages/ec2/EC2VolumeDetailPage";
 import EC2EipPage from "../pages/ec2/EC2EipPage";
 import DatabaseExplorerPage from "../pages/database/DatabaseExplorerPage";
+import DatabaseAssetsPage from "../pages/database/db-assets-page";
 
 function DashboardOverviewRedirect() {
   const location = useLocation();
@@ -85,6 +87,23 @@ function DashboardInventoryEc2Redirect() {
   );
 }
 
+function DashboardEc2DataTransferRedirect() {
+  const location = useLocation();
+  const params = new URLSearchParams(location.search);
+  params.set("metric", "data-transfer");
+  params.set("groupBy", "transfer-type");
+  params.set("usageType", "network");
+  return (
+    <Navigate
+      to={{
+        pathname: "/dashboard/ec2/explorer",
+        search: params.toString(),
+      }}
+      replace
+    />
+  );
+}
+
 export default function DashboardRoutes() {
   return (
     <Routes>
@@ -99,7 +118,7 @@ export default function DashboardRoutes() {
         <Route path="ec2/explorer" element={<EC2ExplorerPage />} />
         <Route path="ec2/volumes" element={<EC2VolumesPage />} />
         <Route path="ec2/optimization" element={<EC2OptimizationPage />} />
-        <Route path="ec2/network/data-transfer" element={<EC2DataTransferPage />} />
+        <Route path="ec2/network/data-transfer" element={<DashboardEc2DataTransferRedirect />} />
         <Route path="ec2/network/elastic-ip" element={<EC2EipPage />} />
         <Route path="s3" element={<S3BucketPage />} />
         <Route path="s3/bucket" element={<S3BucketInfoPage />} />
@@ -112,6 +131,7 @@ export default function DashboardRoutes() {
         <Route path="policy" element={<PolicyPage />} />
         <Route path="policy/s3" element={<S3PolicyPage />} />
         <Route path="services/database" element={<DatabaseExplorerPage />} />
+        <Route path="services/database/assets" element={<DatabaseAssetsPage />} />
         <Route path="resources" element={<ResourcesPage />} />
         <Route path="allocation" element={<AllocationPage />} />
         <Route path="optimization" element={<OptimizationPage />} />

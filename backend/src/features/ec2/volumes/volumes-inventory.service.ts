@@ -66,11 +66,25 @@ type VolumeRow = {
   currencyCode: string | null;
   dailyCost: number | string | null;
   mtdCost: number | string | null;
+  snapshotCount: number | string | null;
+  snapshotCost: number | string | null;
+  storageCost: number | string | null;
+  ioCost: number | string | null;
+  pioPSCost: number | string | null;
+  hours: number | string | null;
+  ssdSavings: number | string | null;
   isUnattached: boolean | null;
   isAttachedToStoppedInstance: boolean | null;
   isIdleCandidate: boolean | null;
   isUnderutilizedCandidate: boolean | null;
   optimizationStatus: "idle" | "underutilized" | "optimal" | "warning" | null;
+  status: "unattached" | "attached_stopped" | "idle" | "underutilized" | "healthy";
+  statusLabel:
+    | "Unattached"
+    | "Attached to Stopped Instance"
+    | "Idle"
+    | "Underutilized"
+    | "Healthy";
   tags: Record<string, unknown> | null;
   metadata: Record<string, unknown> | null;
 };
@@ -96,6 +110,8 @@ type VolumeIdentityRow = {
   attachedInstanceId: string | null;
   attachedInstanceName: string | null;
   attachedInstanceState: string | null;
+  snapshotCount: number | string | null;
+  snapshotCost: number | string | null;
   tagsJson: Record<string, unknown> | null;
   metadataJson: Record<string, unknown> | null;
 };
@@ -240,11 +256,47 @@ export class VolumesInventoryService {
         inv.attached_instance_id AS "attachedInstanceId",
         inst.attached_instance_name AS "attachedInstanceName",
         inst.attached_instance_state AS "attachedInstanceState",
+        COALESCE(snapshot_stats.snapshot_count, 0)::double precision AS "snapshotCount",
+        COALESCE(snapshot_stats.snapshot_cost, 0)::double precision AS "snapshotCost",
         inv.tags_json AS "tagsJson",
         inv.metadata_json AS "metadataJson"
       FROM ec2_volume_inventory_snapshots inv
       LEFT JOIN dim_region dr ON dr.id = inv.region_key
       LEFT JOIN dim_sub_account dsa ON dsa.id = inv.sub_account_key
+      LEFT JOIN LATERAL (
+        WITH snapshots_for_volume AS (
+          SELECT s.snapshot_id
+          FROM ec2_snapshot_inventory_snapshots s
+          WHERE s.tenant_id = inv.tenant_id
+            AND s.source_volume_id = inv.volume_id
+            AND s.is_current = true
+            AND s.deleted_at IS NULL
+            AND (
+              inv.cloud_connection_id IS NULL
+              OR s.cloud_connection_id IS NULL
+              OR s.cloud_connection_id = inv.cloud_connection_id
+            )
+        ),
+        snapshot_cost_scoped AS (
+          SELECT
+            SUM(COALESCE(f.billed_cost, f.effective_cost, f.list_cost, 0))::double precision AS total_cost
+          FROM snapshots_for_volume sfv
+          INNER JOIN dim_resource dr
+            ON dr.tenant_id = inv.tenant_id
+           AND dr.resource_id = sfv.snapshot_id
+           AND LOWER(COALESCE(dr.resource_type, '')) = 'ec2_snapshot'
+          INNER JOIN fact_cost_line_items f
+            ON f.tenant_id = inv.tenant_id
+           AND f.resource_key = dr.id
+          INNER JOIN dim_date dd
+            ON dd.id = f.usage_date_key
+          WHERE dd.full_date >= $4::date
+            AND dd.full_date <= $5::date
+        )
+        SELECT
+          (SELECT COUNT(*)::double precision FROM snapshots_for_volume) AS snapshot_count,
+          COALESCE((SELECT total_cost FROM snapshot_cost_scoped), 0)::double precision AS snapshot_cost
+      ) snapshot_stats ON TRUE
       LEFT JOIN LATERAL (
         SELECT
           COALESCE(NULLIF(TRIM(COALESCE(e.tags_json ->> 'Name', '')), ''), e.instance_id) AS attached_instance_name,
@@ -366,6 +418,10 @@ export class VolumesInventoryService {
         throughputCost,
         snapshotCost,
       },
+      snapshot: {
+        snapshotCount: toNumberOrZero(identity.snapshotCount),
+        snapshotCost: toNumberOrZero(identity.snapshotCost),
+      },
       trends: {
         costTrend,
         sizeTrend,
@@ -447,11 +503,20 @@ export class VolumesInventoryService {
         base.currency_code AS "currencyCode",
         base.daily_cost AS "dailyCost",
         base.mtd_cost AS "mtdCost",
+        base.snapshot_count AS "snapshotCount",
+        base.snapshot_cost AS "snapshotCost",
+        base.storage_cost AS "storageCost",
+        base.io_cost AS "ioCost",
+        base.piops_cost AS "pioPSCost",
+        base.hours AS "hours",
+        base.ssd_savings AS "ssdSavings",
         base.is_unattached AS "isUnattached",
         base.is_attached_to_stopped_instance AS "isAttachedToStoppedInstance",
         base.is_idle_candidate AS "isIdleCandidate",
         base.is_underutilized_candidate AS "isUnderutilizedCandidate",
         base.optimization_status AS "optimizationStatus",
+        base.status AS "status",
+        base.status_label AS "statusLabel",
         base.tags AS "tags",
         base.metadata AS "metadata"
       FROM base
@@ -490,11 +555,20 @@ export class VolumesInventoryService {
       currencyCode: row.currencyCode,
       dailyCost: toNumberOrZero(row.dailyCost),
       mtdCost: toNumberOrZero(row.mtdCost),
+      snapshotCount: toNumberOrZero(row.snapshotCount),
+      snapshotCost: toNumberOrZero(row.snapshotCost),
+      storageCost: toNumberOrZero(row.storageCost),
+      ioCost: toNumberOrZero(row.ioCost),
+      pioPSCost: toNumberOrZero(row.pioPSCost),
+      hours: toNumberOrZero(row.hours),
+      ssdSavings: toNumberOrZero(row.ssdSavings),
       isUnattached: row.isUnattached,
       isAttachedToStoppedInstance: row.isAttachedToStoppedInstance,
       isIdleCandidate: row.isIdleCandidate,
       isUnderutilizedCandidate: row.isUnderutilizedCandidate,
       optimizationStatus: row.optimizationStatus,
+      status: row.status,
+      statusLabel: row.statusLabel,
       tags: row.tags,
       metadata: row.metadata,
     }));
@@ -819,6 +893,9 @@ export class VolumesInventoryService {
           f.cloud_connection_id::text AS cloud_connection_id,
           f.usage_date,
           f.total_cost::double precision AS total_cost,
+          COALESCE(f.storage_cost, 0)::double precision AS storage_cost,
+          COALESCE(f.io_cost, 0)::double precision AS io_cost,
+          COALESCE(f.throughput_cost, 0)::double precision AS throughput_cost,
           f.currency_code,
           ROW_NUMBER() OVER (
             PARTITION BY f.volume_id, f.cloud_connection_id
@@ -835,6 +912,10 @@ export class VolumesInventoryService {
           cost_scoped.volume_id,
           cost_scoped.cloud_connection_id,
           COALESCE(SUM(cost_scoped.total_cost), 0)::double precision AS mtd_cost,
+          COALESCE(SUM(cost_scoped.storage_cost), 0)::double precision AS storage_cost,
+          COALESCE(SUM(cost_scoped.io_cost), 0)::double precision AS io_cost,
+          COALESCE(SUM(cost_scoped.throughput_cost), 0)::double precision AS piops_cost,
+          (($3::date - $2::date + 1) * 24)::double precision AS hours,
           COALESCE(
             SUM(
               CASE WHEN cost_scoped.usage_date = cost_scoped.latest_usage_date THEN cost_scoped.total_cost ELSE 0 END
@@ -865,6 +946,47 @@ export class VolumesInventoryService {
           AND u.usage_date <= $3::date
         GROUP BY u.volume_id, u.cloud_connection_id
       ),
+      snapshot_scoped AS (
+        SELECT
+          s.source_volume_id AS volume_id,
+          s.cloud_connection_id::text AS cloud_connection_id,
+          s.snapshot_id
+        FROM ec2_snapshot_inventory_snapshots s
+        WHERE s.tenant_id = $1::uuid
+          AND s.is_current = TRUE
+          AND s.deleted_at IS NULL
+      ),
+      snapshot_cost_scoped AS (
+        SELECT
+          ss.volume_id,
+          ss.cloud_connection_id,
+          SUM(COALESCE(fcli.billed_cost, fcli.effective_cost, fcli.list_cost, 0))::double precision AS snapshot_cost
+        FROM snapshot_scoped ss
+        INNER JOIN dim_resource dr
+          ON dr.tenant_id = $1::uuid
+         AND dr.resource_id = ss.snapshot_id
+         AND LOWER(COALESCE(dr.resource_type, '')) = 'ec2_snapshot'
+        INNER JOIN fact_cost_line_items fcli
+          ON fcli.tenant_id = $1::uuid
+         AND fcli.resource_key = dr.id
+        INNER JOIN dim_date dd
+          ON dd.id = fcli.usage_date_key
+        WHERE dd.full_date >= $2::date
+          AND dd.full_date <= $3::date
+        GROUP BY ss.volume_id, ss.cloud_connection_id
+      ),
+      snapshot_agg AS (
+        SELECT
+          ss.volume_id,
+          ss.cloud_connection_id,
+          COUNT(*)::double precision AS snapshot_count,
+          COALESCE(MAX(scs.snapshot_cost), 0)::double precision AS snapshot_cost
+        FROM snapshot_scoped ss
+        LEFT JOIN snapshot_cost_scoped scs
+          ON scs.volume_id = ss.volume_id
+         AND scs.cloud_connection_id IS NOT DISTINCT FROM ss.cloud_connection_id
+        GROUP BY ss.volume_id, ss.cloud_connection_id
+      ),
       base AS (
         SELECT
           current.volume_id,
@@ -891,6 +1013,13 @@ export class VolumesInventoryService {
           cost_latest.currency_code,
           COALESCE(cost_agg.daily_cost, 0)::double precision AS daily_cost,
           COALESCE(cost_agg.mtd_cost, 0)::double precision AS mtd_cost,
+          COALESCE(cost_agg.storage_cost, 0)::double precision AS storage_cost,
+          COALESCE(cost_agg.io_cost, 0)::double precision AS io_cost,
+          COALESCE(cost_agg.piops_cost, 0)::double precision AS piops_cost,
+          COALESCE(cost_agg.hours, 0)::double precision AS hours,
+          0::double precision AS ssd_savings,
+          COALESCE(snapshot.snapshot_count, 0)::double precision AS snapshot_count,
+          COALESCE(snapshot.snapshot_cost, 0)::double precision AS snapshot_cost,
           COALESCE(NOT COALESCE(current.is_attached, FALSE), FALSE) AS is_unattached,
           (
             COALESCE(current.is_attached, FALSE)
@@ -903,6 +1032,26 @@ export class VolumesInventoryService {
             WHEN COALESCE(utilization.is_underutilized_candidate, FALSE) THEN 'underutilized'
             ELSE 'optimal'
           END AS optimization_status,
+          CASE
+            WHEN COALESCE(NOT COALESCE(current.is_attached, FALSE), FALSE) THEN 'unattached'
+            WHEN (
+              COALESCE(current.is_attached, FALSE)
+              AND LOWER(COALESCE(inst.attached_instance_state, '')) = 'stopped'
+            ) THEN 'attached_stopped'
+            WHEN COALESCE(utilization.is_idle_candidate, FALSE) THEN 'idle'
+            WHEN COALESCE(utilization.is_underutilized_candidate, FALSE) THEN 'underutilized'
+            ELSE 'healthy'
+          END AS status,
+          CASE
+            WHEN COALESCE(NOT COALESCE(current.is_attached, FALSE), FALSE) THEN 'Unattached'
+            WHEN (
+              COALESCE(current.is_attached, FALSE)
+              AND LOWER(COALESCE(inst.attached_instance_state, '')) = 'stopped'
+            ) THEN 'Attached to Stopped Instance'
+            WHEN COALESCE(utilization.is_idle_candidate, FALSE) THEN 'Idle'
+            WHEN COALESCE(utilization.is_underutilized_candidate, FALSE) THEN 'Underutilized'
+            ELSE 'Healthy'
+          END AS status_label,
           current.discovered_at,
           current.tags_json AS tags,
           current.metadata_json AS metadata,
@@ -924,7 +1073,11 @@ export class VolumesInventoryService {
         LEFT JOIN LATERAL (
           SELECT
             agg.daily_cost,
-            agg.mtd_cost
+            agg.mtd_cost,
+            agg.storage_cost,
+            agg.io_cost,
+            agg.piops_cost,
+            agg.hours
           FROM cost_agg agg
           WHERE agg.volume_id = current.volume_id
             AND (
@@ -967,6 +1120,21 @@ export class VolumesInventoryService {
             CASE WHEN ua.cloud_connection_id = current.cloud_connection_id THEN 0 ELSE 1 END
           LIMIT 1
         ) utilization ON TRUE
+        LEFT JOIN LATERAL (
+          SELECT
+            sa.snapshot_count,
+            sa.snapshot_cost
+          FROM snapshot_agg sa
+          WHERE sa.volume_id = current.volume_id
+            AND (
+              current.cloud_connection_id IS NULL
+              OR sa.cloud_connection_id IS NULL
+              OR sa.cloud_connection_id = current.cloud_connection_id
+            )
+          ORDER BY
+            CASE WHEN sa.cloud_connection_id = current.cloud_connection_id THEN 0 ELSE 1 END
+          LIMIT 1
+        ) snapshot ON TRUE
         LEFT JOIN LATERAL (
           SELECT
             COALESCE(NULLIF(TRIM(COALESCE(inv.tags_json ->> 'Name', '')), ''), inv.instance_id) AS attached_instance_name,

@@ -6,17 +6,17 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { EC2ExplorerScopeFilters } from "./EC2ExplorerScopeFilters";
 import { EC2ExplorerThresholdsPopover } from "./EC2ExplorerThresholdsPopover";
 import {
-  EC2_INSTANCES_CONDITION_OPTIONS,
+  EC2_INSTANCES_STATUS_OPTIONS,
   EC2_INSTANCES_RESERVATION_OPTIONS,
   EC2_INSTANCES_STATE_OPTIONS,
-  type EC2InstancesCondition,
+  type EC2InstancesStatus,
   type EC2InstancesControlsState,
   type EC2InstancesNetworkType,
   type EC2InstancesReservationType,
   type EC2InstancesStateFilter,
 } from "./ec2Instances.types";
 
-type PopoverKey = "condition" | "state" | "instanceType" | "reservationType" | "networkType" | "thresholds";
+type PopoverKey = "status" | "state" | "instanceType" | "reservationType" | "networkType" | "thresholds";
 const NETWORK_TYPE_OPTIONS: Array<{ key: EC2InstancesNetworkType; label: string }> = [
   { key: "all", label: "All" },
   { key: "Internet Data Transfer", label: "Internet Data Transfer" },
@@ -39,7 +39,7 @@ type EC2InstancesTopBarProps = {
   onChange: (next: EC2InstancesControlsState) => void;
   onReset: () => void;
   visibleControls?: Array<
-    "filters" | "condition" | "state" | "instanceType" | "reservationType" | "networkType" | "search" | "thresholds" | "reset"
+    "filters" | "status" | "state" | "instanceType" | "reservationType" | "networkType" | "search" | "thresholds" | "reset"
   >;
   children?: ReactNode;
 };
@@ -97,7 +97,7 @@ export function EC2InstancesTopBar({
       new Set(
         visibleControls ?? [
           "filters",
-          "condition",
+          "status",
           "state",
           "instanceType",
           "reservationType",
@@ -162,28 +162,28 @@ export function EC2InstancesTopBar({
             </div>
           ) : null}
 
-          {controlSet.has("condition") ? (
+          {controlSet.has("status") ? (
             <div className="cost-explorer-toolbar-item">
             <button
               type="button"
-              className={`cost-explorer-toolbar-trigger${activePopover === "condition" ? " is-active" : ""}`}
-              onClick={() => togglePopover("condition")}
-              aria-expanded={activePopover === "condition"}
+              className={`cost-explorer-toolbar-trigger${activePopover === "status" ? " is-active" : ""}`}
+              onClick={() => togglePopover("status")}
+              aria-expanded={activePopover === "status"}
               aria-haspopup="dialog"
             >
-              <span className="cost-explorer-toolbar-trigger__label">Condition</span>
+              <span className="cost-explorer-toolbar-trigger__label">Status</span>
               <span className="cost-explorer-toolbar-trigger__row">
                 <span className="cost-explorer-toolbar-trigger__value">
-                  {EC2_INSTANCES_CONDITION_OPTIONS.find((item) => item.key === value.condition)?.label ?? "All"}
+                  {EC2_INSTANCES_STATUS_OPTIONS.find((item) => item.key === value.status)?.label ?? "All"}
                 </span>
                 <ChevronDown className="cost-explorer-toolbar-trigger__caret" size={14} aria-hidden="true" />
               </span>
             </button>
-            {activePopover === "condition"
+            {activePopover === "status"
               ? renderOptionList({
-                  options: EC2_INSTANCES_CONDITION_OPTIONS,
-                  selected: value.condition,
-                  onSelect: (nextCondition: EC2InstancesCondition) => update({ condition: nextCondition }),
+                  options: EC2_INSTANCES_STATUS_OPTIONS,
+                  selected: value.status,
+                  onSelect: (nextStatus: EC2InstancesStatus) => update({ status: nextStatus }),
                 })
               : null}
             </div>

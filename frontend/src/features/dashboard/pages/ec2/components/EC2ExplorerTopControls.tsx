@@ -6,13 +6,14 @@ import {
   AGGREGATION_OPTIONS,
   CONDITION_OPTIONS,
   COST_BASIS_OPTIONS,
+  GRANULARITY_OPTIONS,
   DEFAULT_EC2_EXPLORER_CONTROLS,
   GROUP_BY_OPTIONS,
   METRIC_OPTIONS,
   STATE_OPTIONS,
   USAGE_TYPE_OPTIONS,
+  VOLUME_VIEW_OPTIONS,
   type EC2Aggregation,
-  type EC2Condition,
   type EC2CostBasis,
   type EC2ExplorerControlsState,
   type EC2GroupBy,
@@ -30,11 +31,32 @@ type PopoverKey =
   | "groupBy"
   | "usageAggregation"
   | "instancesState"
+  | "granularity"
   | "thresholds";
 
 type Option<T extends string> = {
   key: T;
   label: string;
+};
+const DATA_TRANSFER_VIEW_OPTIONS: Array<Option<EC2UsageType>> = [
+  { key: "network", label: "Cost" },
+  { key: "disk", label: "Usage (GB)" },
+  { key: "cpu", label: "Distribution" },
+];
+
+const GROUP_BY_BY_METRIC: Record<EC2Metric, EC2GroupBy[]> = {
+  cost: ["none", "cost-category", "region", "account", "availability-zone", "instance", "instance-type", "reservation-type", "usage-type", "operation", "tag"],
+  usage: ["none", "region", "account", "availability-zone", "instance", "instance-type", "usage-type", "tag"],
+  "data-transfer": ["none", "transfer-type", "region", "account", "availability-zone", "instance", "instance-type", "source-region", "destination-region", "tag"],
+  instances: ["none", "region", "account", "availability-zone", "instance", "instance-type", "instance-state", "reservation-type", "recommendation", "tag"],
+  volumes: ["none", "volume", "volume_type", "attachment_state", "instance", "storage_tier", "iops_tier", "size_bucket", "lifecycle_state", "region", "account", "availability-zone", "tag"],
+};
+const DEFAULT_GROUP_BY_BY_METRIC: Record<EC2Metric, EC2GroupBy> = {
+  cost: "cost-category",
+  usage: "instance",
+  "data-transfer": "transfer-type",
+  instances: "instance",
+  volumes: "volume_type",
 };
 
 type EC2ExplorerTopControlsProps = {
@@ -51,6 +73,7 @@ export function EC2ExplorerTopControls({ value, onChange, onReset, children }: E
 
   useEffect(() => {
     const handlePointerDown = (event: MouseEvent) => {
+      if (activePopover === "groupBy") return;
       if (!rootRef.current) return;
       if (rootRef.current.contains(event.target as Node)) return;
       setActivePopover(null);
@@ -68,7 +91,7 @@ export function EC2ExplorerTopControls({ value, onChange, onReset, children }: E
       window.removeEventListener("mousedown", handlePointerDown);
       window.removeEventListener("keydown", handleEscape);
     };
-  }, []);
+  }, [activePopover]);
 
   const update = (patch: Partial<EC2ExplorerControlsState>) => {
     onChange({
@@ -81,13 +104,30 @@ export function EC2ExplorerTopControls({ value, onChange, onReset, children }: E
     if (value.metric === "cost") {
       return COST_BASIS_OPTIONS.find((item) => item.key === value.costBasis)?.label ?? "Effective Cost";
     }
+    if (value.metric === "data-transfer") {
+      if (value.usageType === "network") return "Cost";
+      if (value.usageType === "disk") return "Usage (GB)";
+      return "Distribution";
+    }
     if (value.metric === "usage") {
       return USAGE_TYPE_OPTIONS.find((item) => item.key === value.usageType)?.label ?? "CPU";
+    }
+    if (value.metric === "volumes") {
+      return VOLUME_VIEW_OPTIONS.find((item) => item.key === value.volumeView)?.label ?? "Storage";
     }
     return CONDITION_OPTIONS.find((item) => item.key === value.instancesCondition)?.label ?? "All";
   }, [value.costBasis, value.groupBy, value.instancesCondition, value.metric, value.usageType]);
 
-  const configLabel = value.metric === "cost" ? "Cost Basis" : value.metric === "usage" ? "Usage Metric" : "Condition";
+  const configLabel =
+    value.metric === "cost"
+      ? "Cost Basis"
+      : value.metric === "usage"
+        ? "Usage Metric"
+        : value.metric === "data-transfer"
+          ? "View"
+          : value.metric === "volumes"
+            ? "View"
+            : "Condition";
   const groupByLabel = GROUP_BY_OPTIONS.find((item) => item.key === value.groupBy)?.label ?? "None";
   const aggregationLabel = AGGREGATION_OPTIONS.find((item) => item.key === value.usageAggregation)?.label ?? "Avg";
   const stateLabel = STATE_OPTIONS.find((item) => item.key === value.instancesState)?.label ?? "Running";
@@ -100,39 +140,12 @@ export function EC2ExplorerTopControls({ value, onChange, onReset, children }: E
     setActivePopover((current) => (current === key ? null : key));
   };
 
-  const visibleGroupByOptions = useMemo(
-    () =>
-      GROUP_BY_OPTIONS.filter((option) => {
-        if (value.metric === "usage") {
-          if (value.usageType === "network") {
-            return ["region", "account", "instance-type", "network-type", "tag"].includes(option.key);
-          }
-          if (value.usageType === "cpu") {
-            return ["region", "account", "instance-type", "team", "product", "environment", "tag"].includes(option.key);
-          }
-          return ["region", "account", "instance-type", "tag"].includes(option.key);
-        }
-        if (option.key === "network-type") return value.metric === "usage" && value.usageType === "network";
-        if (option.key === "cost-category") return value.metric === "cost";
-        if (option.key === "network-cost") return value.metric === "cost";
-        return true;
-      }),
-    [value.metric, value.usageType],
-  );
+  const visibleGroupByOptions = useMemo(() => {
+    const allowed = new Set(GROUP_BY_BY_METRIC[value.metric]);
+    return GROUP_BY_OPTIONS.filter((option) => allowed.has(option.key));
+  }, [value.metric]);
   const isGroupByVisibleForMetric = (groupBy: EC2GroupBy, metric: EC2Metric): boolean => {
-    if (groupBy === "network-type") return metric === "usage" && value.usageType === "network";
-    if (metric === "usage") {
-      if (value.usageType === "network") {
-        return ["region", "account", "instance-type", "network-type", "tag"].includes(groupBy);
-      }
-      if (value.usageType === "cpu") {
-        return ["region", "account", "instance-type", "team", "product", "environment", "tag"].includes(groupBy);
-      }
-      return ["region", "account", "instance-type", "tag"].includes(groupBy);
-    }
-    if (groupBy === "cost-category") return metric === "cost";
-    if (groupBy === "network-cost") return metric === "cost";
-    return true;
+    return GROUP_BY_BY_METRIC[metric].includes(groupBy);
   };
 
   const renderOptionList = <T extends string>(params: {
@@ -164,13 +177,6 @@ export function EC2ExplorerTopControls({ value, onChange, onReset, children }: E
       </div>
     </div>
   );
-
-  const metricConfigOptions: Array<Option<EC2CostBasis | EC2UsageType | EC2Condition>> =
-    value.metric === "cost"
-      ? COST_BASIS_OPTIONS
-      : value.metric === "usage"
-        ? USAGE_TYPE_OPTIONS
-        : CONDITION_OPTIONS;
 
   return (
     <section className="cost-explorer-control-surface ec2-explorer-controls" ref={rootRef} aria-label="EC2 Explorer Controls">
@@ -216,12 +222,7 @@ export function EC2ExplorerTopControls({ value, onChange, onReset, children }: E
                   selected: value.metric,
                   onSelect: (nextMetric: EC2Metric) => {
                     const currentGroupByVisible = isGroupByVisibleForMetric(value.groupBy, nextMetric);
-                    const fallbackGroupBy: EC2GroupBy =
-                      nextMetric === "usage"
-                        ? (value.usageType === "network" ? "network-type" : "region")
-                        : nextMetric === "cost"
-                          ? "cost-category"
-                          : "instance-type";
+                    const fallbackGroupBy: EC2GroupBy = DEFAULT_GROUP_BY_BY_METRIC[nextMetric];
 
                     update({
                       metric: nextMetric,
@@ -253,38 +254,68 @@ export function EC2ExplorerTopControls({ value, onChange, onReset, children }: E
             {activePopover === "config"
               ? value.metric === "cost"
                 ? renderOptionList({
-                    options: metricConfigOptions as Array<Option<EC2CostBasis>>,
+                    options: COST_BASIS_OPTIONS,
                     selected: value.costBasis,
                     onSelect: (nextCostBasis: EC2CostBasis) => {
                       update({ costBasis: nextCostBasis });
                     },
                   })
+                : value.metric === "usage"
+                  ? renderOptionList({
+                      options: USAGE_TYPE_OPTIONS,
+                      selected: value.usageType,
+                      onSelect: (next) => {
+                        update({ usageType: next });
+                      },
+                    })
+                  : value.metric === "data-transfer"
+                    ? renderOptionList({
+                        options: DATA_TRANSFER_VIEW_OPTIONS,
+                        selected: value.usageType,
+                        onSelect: (next) => {
+                          update({ usageType: next });
+                        },
+                      })
+                    : value.metric === "volumes"
+                      ? renderOptionList({
+                          options: VOLUME_VIEW_OPTIONS,
+                          selected: value.volumeView,
+                          onSelect: (next) => {
+                            update({ volumeView: next });
+                          },
+                        })
                 : renderOptionList({
-                    options: metricConfigOptions,
-                    selected: value.metric === "usage" ? value.usageType : value.instancesCondition,
+                    options: CONDITION_OPTIONS,
+                    selected: value.instancesCondition,
                     onSelect: (next) => {
-                      if (value.metric === "usage") {
-                        const nextUsageType = next as EC2UsageType;
-                        update({
-                          usageType: nextUsageType,
-                          groupBy:
-                            nextUsageType === "network"
-                              ? (value.groupBy === "team" || value.groupBy === "product" || value.groupBy === "environment" ? "network-type" : value.groupBy)
-                              : value.groupBy === "network-type"
-                                ? "region"
-                                : value.groupBy,
-                          groupByValues:
-                            nextUsageType === "network"
-                              ? value.groupByValues
-                              : value.groupBy === "network-type"
-                                ? []
-                                : value.groupByValues,
-                        });
-                        return;
-                      }
-                      update({ instancesCondition: next as EC2Condition });
+                      update({ instancesCondition: next });
                     },
                   })
+              : null}
+          </div>
+
+          <div className="cost-explorer-toolbar-item">
+            <button
+              type="button"
+              className={`cost-explorer-toolbar-trigger${activePopover === "granularity" ? " is-active" : ""}`}
+              onClick={() => togglePopover("granularity")}
+              aria-expanded={activePopover === "granularity"}
+              aria-haspopup="dialog"
+            >
+              <span className="cost-explorer-toolbar-trigger__label">Granularity</span>
+              <span className="cost-explorer-toolbar-trigger__row">
+                <span className="cost-explorer-toolbar-trigger__value">
+                  {GRANULARITY_OPTIONS.find((item) => item.key === value.granularity)?.label ?? "Daily"}
+                </span>
+                <ChevronDown className="cost-explorer-toolbar-trigger__caret" size={14} aria-hidden="true" />
+              </span>
+            </button>
+            {activePopover === "granularity"
+              ? renderOptionList({
+                  options: GRANULARITY_OPTIONS,
+                  selected: value.granularity,
+                  onSelect: (next) => update({ granularity: next }),
+                })
               : null}
           </div>
 
@@ -328,21 +359,6 @@ export function EC2ExplorerTopControls({ value, onChange, onReset, children }: E
                 <ChevronDown className="cost-explorer-toolbar-trigger__caret" size={14} aria-hidden="true" />
               </span>
             </button>
-            {activePopover === "groupBy"
-              ? (
-                <div className="cost-explorer-filter-popover cost-explorer-filter-popover--split ec2-explorer-filter-popover ec2-explorer-filter-popover--groupby">
-                  <EC2ExplorerGroupByPopover
-                    options={visibleGroupByOptions}
-                    valueGroupBy={value.groupBy}
-                    valueGroupByValues={value.groupByValues}
-                    onApply={({ groupBy, groupByValues }) => {
-                      update({ groupBy, groupByValues });
-                    }}
-                    onClose={() => setActivePopover(null)}
-                  />
-                </div>
-              )
-              : null}
           </div>
 
           {value.metric === "instances" ? (
@@ -417,6 +433,25 @@ export function EC2ExplorerTopControls({ value, onChange, onReset, children }: E
               value={value.scopeFilters}
               onChange={(nextScopeFilters) => update({ scopeFilters: nextScopeFilters })}
               onApply={() => setScopeFiltersOpen(false)}
+            />
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={activePopover === "groupBy"} onOpenChange={(open) => setActivePopover(open ? "groupBy" : null)}>
+        <DialogContent className="left-auto right-0 top-0 h-screen max-h-screen w-[min(96vw,42rem)] max-w-none -translate-x-0 -translate-y-0 rounded-none border-l border-[color:var(--border-light)] p-6 data-[state=open]:slide-in-from-right data-[state=closed]:slide-out-to-right data-[state=open]:zoom-in-100 data-[state=closed]:zoom-out-100">
+          <DialogHeader className="space-y-1">
+            <DialogTitle className="text-xl font-semibold text-text-primary">Group By</DialogTitle>
+          </DialogHeader>
+          <div className="mt-4 ec2-explorer-groupby-drawer">
+            <EC2ExplorerGroupByPopover
+              options={visibleGroupByOptions}
+              valueGroupBy={value.groupBy}
+              valueGroupByValues={value.groupByValues}
+              onApply={({ groupBy, groupByValues }) => {
+                update({ groupBy, groupByValues });
+              }}
+              onClose={() => setActivePopover(null)}
             />
           </div>
         </DialogContent>

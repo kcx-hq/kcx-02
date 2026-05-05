@@ -1,17 +1,15 @@
-import { Check, ChevronDown, Filter, RotateCcw, Search, X } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+﻿import { Check, ChevronDown, Filter, RotateCcw, Search, X } from "lucide-react";
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import type { ColDef } from "ag-grid-community";
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ApiError } from "@/lib/api";
+import { dashboardApi } from "../../api/dashboardApi";
+import type { Ec2RecommendationRecord, Ec2RecommendationType } from "../../api/dashboardTypes";
 
 import { BaseDataTable } from "../../common/tables/BaseDataTable";
-import {
-  type Ec2RecommendationRecord,
-  type Ec2RecommendationType,
-  useEc2RecommendationsQuery,
-} from "../../hooks/useDashboardQueries";
+import { useEc2RecommendationsQuery } from "../../hooks/useDashboardQueries";
 import { useDashboardScope } from "../../hooks/useDashboardScope";
 import { EC2ExplorerScopeFilters } from "./components/EC2ExplorerScopeFilters";
 import type { EC2ScopeFilters } from "./ec2ExplorerControls.types";
@@ -58,6 +56,7 @@ const typeLabel = (value: Ec2RecommendationType): string => {
   if (value === "overutilized_instance") return "Overutilized Instance";
   if (value === "unattached_volume") return "Unattached Volume";
   if (value === "old_snapshot") return "Old Snapshot";
+  if (value === "orphaned_snapshot") return "Orphaned Snapshot";
   if (value === "uncovered_on_demand") return "Uncovered On-Demand";
   if (value === "high_internet_data_transfer") return "High Internet Data Transfer";
   if (value === "high_inter_region_data_transfer") return "High Inter-Region Data Transfer";
@@ -72,6 +71,11 @@ const truncateText = (value: string | null | undefined, max: number = 90): strin
   return raw.length > max ? `${raw.slice(0, max - 1)}...` : raw;
 };
 const normalizeFilterValue = (value: string | null): string => (value ?? "").trim();
+const toRiskClassName = (risk: Ec2RecommendationRecord["risk"]): string => {
+  const normalized = (risk ?? "").toString().trim().toUpperCase();
+  if (normalized === "LOW" || normalized === "MEDIUM" || normalized === "HIGH") return normalized;
+  return "LOW";
+};
 function FilterDropdown({
   label,
   selected,
@@ -87,7 +91,9 @@ function FilterDropdown({
   onToggle: () => void;
   onSelect: (key: string) => void;
 }) {
-  const selectedLabel = options.find((option) => option.key === selected)?.label ?? "All";
+  const selectedLabel =
+    options.find((option) => option.key === selected)?.label
+    ?? (selected !== "all" ? toTitle(selected) : "All");
   return (
     <div className="cost-explorer-toolbar-item">
       <button
@@ -149,15 +155,38 @@ export default function EC2OptimizationPage() {
   const [issueTypeFilter, setIssueTypeFilter] = useState("all");
   const [severityFilter, setSeverityFilter] = useState("all");
   const [searchFilter, setSearchFilter] = useState("");
+  const deferredSearchFilter = useDeferredValue(searchFilter);
   const queryResourceId = normalizeFilterValue(searchParams.get("resourceId") ?? searchParams.get("instanceId"));
   const queryCategory = normalizeFilterValue(searchParams.get("category"));
   const queryIssueType = normalizeFilterValue(searchParams.get("issueType"));
   const querySearch = normalizeFilterValue(searchParams.get("search"));
+  const queryTab = normalizeFilterValue(searchParams.get("tab"));
+  const snapshotPrefill = useMemo(() => {
+    const stateValue = location.state as
+      | {
+          snapshotOptimizationPrefill?: {
+            resourceId?: string;
+            category?: string;
+            issueType?: string;
+          };
+        }
+      | null;
+    return stateValue?.snapshotOptimizationPrefill ?? null;
+  }, [location.state]);
 
   useEffect(() => {
-    const nextCategory = queryCategory || "all";
-    const nextIssueType = queryIssueType || "all";
-    const nextSearch = querySearch || queryResourceId || "";
+    if (queryTab === "recommendations") {
+      setActiveTab("recommendations");
+    }
+  }, [queryTab]);
+
+  useEffect(() => {
+    const stateCategory = normalizeFilterValue(snapshotPrefill?.category ?? null);
+    const stateIssueType = normalizeFilterValue(snapshotPrefill?.issueType ?? null);
+    const stateResourceId = normalizeFilterValue(snapshotPrefill?.resourceId ?? null);
+    const nextCategory = stateCategory || queryCategory || "all";
+    const nextIssueType = stateIssueType || queryIssueType || "all";
+    const nextSearch = stateResourceId || querySearch || queryResourceId || "";
 
     setCategoryFilter((prev) => (prev === nextCategory ? prev : nextCategory));
     setIssueTypeFilter((prev) => (prev === nextIssueType ? prev : nextIssueType));
@@ -165,7 +194,7 @@ export default function EC2OptimizationPage() {
     if (nextCategory !== "all" || nextIssueType !== "all" || nextSearch) {
       setActiveTab("recommendations");
     }
-  }, [queryCategory, queryIssueType, queryResourceId, querySearch]);
+  }, [queryCategory, queryIssueType, queryResourceId, querySearch, snapshotPrefill]);
 
   useEffect(() => {
     const handlePointerDown = (event: MouseEvent) => {
@@ -184,16 +213,38 @@ export default function EC2OptimizationPage() {
     };
   }, []);
 
-  const query = useEc2RecommendationsQuery({
-    dateFrom,
-    dateTo,
-    region: searchParams.get("region") ?? undefined,
-    account: searchParams.get("account") ?? undefined,
-    team: searchParams.get("team") ?? undefined,
-    product: searchParams.get("product") ?? undefined,
-    environment: searchParams.get("environment") ?? searchParams.get("env") ?? undefined,
-    tags: parseCsvParam(searchParams.get("tags")),
-  });
+  const recommendationsQueryFilters = useMemo(
+    () => ({
+      dateFrom,
+      dateTo,
+      region: searchParams.get("region") ?? undefined,
+      account: searchParams.get("account") ?? undefined,
+      team: searchParams.get("team") ?? undefined,
+      product: searchParams.get("product") ?? undefined,
+      environment: searchParams.get("environment") ?? searchParams.get("env") ?? undefined,
+      tags: parseCsvParam(searchParams.get("tags")),
+    }),
+    [dateFrom, dateTo, searchParams],
+  );
+  const query = useEc2RecommendationsQuery(recommendationsQueryFilters);
+  const orphanedRefreshKeyRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!scope) return;
+    if (queryIssueType !== "orphaned_snapshot") return;
+
+    const refreshKey = `${scope.tenantId}:${dateFrom}:${dateTo}:${queryIssueType}`;
+    if (orphanedRefreshKeyRef.current === refreshKey) return;
+    orphanedRefreshKeyRef.current = refreshKey;
+
+    void (async () => {
+      try {
+        await dashboardApi.refreshEc2Recommendations(scope, { dateFrom, dateTo });
+      } finally {
+        await query.refetch();
+      }
+    })();
+  }, [scope, queryIssueType, dateFrom, dateTo, query]);
 
   const openResource = (item: Ec2RecommendationRecord) => {
     if (item.resourceType === "instance") {
@@ -203,6 +254,19 @@ export default function EC2OptimizationPage() {
     if (item.resourceType === "volume") {
       navigate({ pathname: `${VOLUMES_PAGE_PATH}/${item.resourceId}`, search: searchParams.toString() });
     }
+  };
+
+  const navigateToOptimizationRecommendations = (updates: { issueType?: string; resourceId?: string }) => {
+    const nextParams = new URLSearchParams(searchParams.toString());
+    nextParams.delete("issueType");
+    nextParams.delete("resourceId");
+    nextParams.delete("instanceId");
+    nextParams.delete("search");
+
+    if (updates.issueType) nextParams.set("issueType", updates.issueType);
+    if (updates.resourceId) nextParams.set("resourceId", updates.resourceId);
+
+    navigate({ pathname: location.pathname, search: nextParams.toString() });
   };
 
   const allRows = useMemo(() => {
@@ -257,7 +321,7 @@ export default function EC2OptimizationPage() {
         if (categoryFilter !== "all" && item.category !== categoryFilter) return false;
         if (issueTypeFilter !== "all" && item.type !== issueTypeFilter) return false;
         if (severityFilter !== "all" && item.risk !== severityFilter) return false;
-        const query = searchFilter.trim().toLowerCase();
+        const query = deferredSearchFilter.trim().toLowerCase();
         if (query.length > 0) {
           const haystack = [
             item.resourceName,
@@ -272,42 +336,17 @@ export default function EC2OptimizationPage() {
         }
         return true;
       }),
-    [scopedRows, categoryFilter, issueTypeFilter, severityFilter, searchFilter],
+    [scopedRows, categoryFilter, issueTypeFilter, severityFilter, deferredSearchFilter],
   );
 
-  useEffect(() => {
-    const desiredCategory = categoryFilter === "all" ? "" : categoryFilter;
-    const desiredIssueType = issueTypeFilter === "all" ? "" : issueTypeFilter;
-    const desiredSearch = searchFilter.trim();
-    const currentCategory = normalizeFilterValue(searchParams.get("category"));
-    const currentIssueType = normalizeFilterValue(searchParams.get("issueType"));
-    const currentSearch = normalizeFilterValue(searchParams.get("search"));
-
-    if (
-      desiredCategory === currentCategory &&
-      desiredIssueType === currentIssueType &&
-      desiredSearch === currentSearch
-    ) {
-      return;
-    }
-
-    const next = new URLSearchParams(location.search);
-    if (desiredCategory) next.set("category", desiredCategory);
-    else next.delete("category");
-    if (desiredIssueType) next.set("issueType", desiredIssueType);
-    else next.delete("issueType");
-    if (desiredSearch) next.set("search", desiredSearch);
-    else next.delete("search");
-    navigate({ pathname: location.pathname, search: next.toString() }, { replace: true });
-  }, [categoryFilter, issueTypeFilter, location.pathname, location.search, navigate, searchFilter, searchParams]);
-
   const topTypeSummary = useMemo(() => {
-    const byType = new Map<Ec2RecommendationType, { count: number; saving: number }>();
+    const byType = new Map<Ec2RecommendationType, { count: number; saving: number; risk: Ec2RecommendationRecord["risk"] }>();
     for (const row of scopedRows) {
-      const current = byType.get(row.type) ?? { count: 0, saving: 0 };
+      const current = byType.get(row.type) ?? { count: 0, saving: 0, risk: row.risk };
       byType.set(row.type, {
         count: current.count + 1,
         saving: current.saving + (row.estimatedMonthlySaving || 0),
+        risk: current.risk,
       });
     }
     return Array.from(byType.entries())
@@ -370,7 +409,7 @@ export default function EC2OptimizationPage() {
       chips.push({ id: "search", label: "Search", value: searchFilter.trim(), onRemove: () => setSearchFilter("") });
     }
     return chips;
-  }, [categoryFilter, issueTypeFilter, searchFilter, searchParams]);
+  }, [categoryFilter, issueTypeFilter, searchFilter, queryResourceId]);
 
   const clearRecommendationFilters = () => {
     setCategoryFilter("all");
@@ -435,10 +474,17 @@ export default function EC2OptimizationPage() {
                 <p className="optimization-overview-insight-item__title">Top Recommendation Types</p>
                 <div className="mt-3 space-y-2">
                   {topTypeSummary.map((item) => (
-                    <div key={item.type} className="flex items-center justify-between text-sm">
-                      <span>{typeLabel(item.type)}</span>
-                      <span>{formatCurrency(item.saving)}</span>
-                    </div>
+                    <button
+                      key={item.type}
+                      type="button"
+                      className="optimization-overview-nav-link flex w-full items-center justify-between text-sm text-left"
+                      onClick={() => navigateToOptimizationRecommendations({ issueType: item.type })}
+                    >
+                      <span>{`${typeLabel(item.type)} \u2014 ${formatCurrency(item.saving)} (${item.count} ${item.count === 1 ? "resource" : "resources"})`}</span>
+                      <span className={`optimization-rightsizing-pill is-risk-${toRiskClassName(item.risk)}`}>
+                        {`${toTitle(item.risk ?? "-")} Risk`}
+                      </span>
+                    </button>
                   ))}
                 </div>
               </article>
@@ -447,13 +493,31 @@ export default function EC2OptimizationPage() {
                 <p className="optimization-overview-insight-item__title">Top 5 Recommendations by Savings</p>
                 <div className="mt-3 space-y-2">
                   {topRecommendationsBySavings.map((item) => (
-                    <div key={item.id} className="flex items-center justify-between text-sm gap-3">
+                    <button
+                      key={item.id}
+                      type="button"
+                      className="optimization-overview-nav-link flex w-full items-center justify-between text-sm gap-3 text-left"
+                      onClick={() => navigateToOptimizationRecommendations({ resourceId: item.resourceId })}
+                    >
                       <span className="truncate">{item.resourceName || item.resourceId}</span>
                       <span>{formatCurrency(item.estimatedMonthlySaving)}</span>
-                    </div>
+                    </button>
                   ))}
                 </div>
               </article>
+            </div>
+            <div className="mt-4">
+              <button
+                type="button"
+                className="optimization-overview-nav-link cost-explorer-chip-bar__clear cost-explorer-chip-bar__clear--inline"
+                onClick={() => {
+                  const nextParams = new URLSearchParams(searchParams.toString());
+                  nextParams.set("tab", "recommendations");
+                  navigate({ pathname: "/ec2/optimization", search: nextParams.toString() });
+                }}
+              >
+                View All Recommendations 
+              </button>
             </div>
           </div>
         </section>
@@ -590,3 +654,4 @@ export default function EC2OptimizationPage() {
     </div>
   );
 }
+

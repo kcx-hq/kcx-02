@@ -185,6 +185,9 @@ export default function S3OverviewPage() {
     queryKey: ["dashboard", "s3", "cost-insights", "previous-period", previousScope, queryFilters, filters.compareMode],
     queryFn: () => dashboardApi.getS3CostInsights(previousScope as NonNullable<typeof previousScope>, queryFilters),
     enabled: filters.compareMode === "previous_period" && Boolean(previousScope),
+    placeholderData: (previousData) => previousData,
+    staleTime: 90_000,
+    refetchOnWindowFocus: false,
   });
 
   const comparisonTotal = comparisonQuery.data?.kpis.totalS3Cost ?? null;

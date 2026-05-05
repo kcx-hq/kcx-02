@@ -39,7 +39,7 @@ export function DatabaseExplorerTrend({ metric, trend, isLoading = false }: Data
     () => (metric === "usage" ? trend.filter(isUsageTrendItem) : trend.filter(isCostTrendItem)),
     [metric, trend],
   );
-  const labels = useMemo(() => activeTrend.map((item) => toDateLabel(item.date)), [activeTrend]);
+  const labels = useMemo(() => activeTrend.map((item) => item.date), [activeTrend]);
 
   const option = useMemo<EChartsOption>(() => {
     if (metric === "usage") {
@@ -57,13 +57,21 @@ export function DatabaseExplorerTrend({ metric, trend, isLoading = false }: Data
           itemWidth: 18,
           textStyle: { color: "#58706d", fontSize: 11 },
         },
-        grid: { left: 10, right: 10, top: 36, bottom: 14, containLabel: true },
+        grid: { left: 10, right: 18, top: 36, bottom: 14, containLabel: true },
         xAxis: {
           type: "category",
           boundaryGap: false,
           data: labels,
           axisLine: { lineStyle: { color: "#d7e4df" } },
-          axisLabel: { color: "#5c7370", fontSize: 11, hideOverlap: true, rotate: labels.length > 24 ? 28 : 0 },
+          axisLabel: {
+            color: "#5c7370",
+            fontSize: 11,
+            hideOverlap: true,
+            rotate: labels.length > 24 ? 28 : 0,
+            formatter: (value: string) => toDateLabel(value),
+            showMinLabel: true,
+            showMaxLabel: true,
+          },
         },
         yAxis: {
           type: "value",
@@ -121,7 +129,8 @@ export function DatabaseExplorerTrend({ metric, trend, isLoading = false }: Data
             )
             .join("");
 
-          return `<div style="min-width:190px;"><div style="font-weight:600;margin-bottom:4px;">${points[0]?.axisValueLabel ?? ""}</div>${rows}<div style="margin-top:6px;padding-top:6px;border-top:1px solid rgba(148,163,184,0.3);display:flex;justify-content:space-between;gap:10px;"><span>Total</span><strong>${formatCurrency(total)}</strong></div></div>`;
+          const axisLabel = points[0]?.axisValueLabel ? toDateLabel(points[0].axisValueLabel) : "";
+          return `<div style="min-width:190px;"><div style="font-weight:600;margin-bottom:4px;">${axisLabel}</div>${rows}<div style="margin-top:6px;padding-top:6px;border-top:1px solid rgba(148,163,184,0.3);display:flex;justify-content:space-between;gap:10px;"><span>Total</span><strong>${formatCurrency(total)}</strong></div></div>`;
         },
       },
       legend: {
@@ -131,12 +140,20 @@ export function DatabaseExplorerTrend({ metric, trend, isLoading = false }: Data
         itemWidth: 18,
         textStyle: { color: "#58706d", fontSize: 11 },
       },
-      grid: { left: 10, right: 10, top: 36, bottom: 14, containLabel: true },
+      grid: { left: 10, right: 18, top: 36, bottom: 14, containLabel: true },
       xAxis: {
         type: "category",
         data: labels,
         axisLine: { lineStyle: { color: "#d7e4df" } },
-        axisLabel: { color: "#5c7370", fontSize: 11, hideOverlap: true, rotate: labels.length > 24 ? 28 : 0 },
+        axisLabel: {
+          color: "#5c7370",
+          fontSize: 11,
+          hideOverlap: true,
+          rotate: labels.length > 24 ? 28 : 0,
+          formatter: (value: string) => toDateLabel(value),
+          showMinLabel: true,
+          showMaxLabel: true,
+        },
       },
       yAxis: {
         type: "value",

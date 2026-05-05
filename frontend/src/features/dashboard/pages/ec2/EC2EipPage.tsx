@@ -12,7 +12,7 @@ import {
 } from "./components/ec2Instances.types";
 
 const PAGE_SIZE = 25;
-type Ec2ElasticIpState = "all" | "attached" | "unattached";
+type Ec2ElasticIpState = "all" | "attached" | "unattached" | "unknown";
 const currency = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 });
 
 const toIsoDate = (value: Date): string => value.toISOString().slice(0, 10);
@@ -25,12 +25,14 @@ const getDefaultDateRange = (): { start: string; end: string } => {
 const getStateFromControls = (state: EC2InstancesControlsState["state"]): Ec2ElasticIpState => {
   if (state === "running") return "attached";
   if (state === "stopped") return "unattached";
+  if (state === "terminated") return "unknown";
   return state === "all" ? "all" : "all";
 };
 
 const getControlsStateFromParam = (state: string | null): EC2InstancesControlsState["state"] => {
   if (state === "attached") return "running";
   if (state === "unattached") return "stopped";
+  if (state === "unknown") return "terminated";
   return "all";
 };
 
@@ -41,8 +43,6 @@ export default function EC2EipPage() {
 
   const defaults = getDefaultDateRange();
   const [page, setPage] = useState(Number(queryParams.get("page") ?? "1") || 1);
-  const [accountId, setAccountId] = useState(queryParams.get("accountId") ?? "");
-  const [region, setRegion] = useState(queryParams.get("region") ?? "");
 
   const [controls, setControls] = useState<EC2InstancesControlsState>({
     ...EC2_INSTANCES_DEFAULT_CONTROLS,
@@ -59,8 +59,8 @@ export default function EC2EipPage() {
     next.set("endDate", endDate);
     next.set("state", getStateFromControls(controls.state));
     if (controls.search.trim()) next.set("search", controls.search.trim()); else next.delete("search");
-    if (accountId.trim()) next.set("accountId", accountId.trim()); else next.delete("accountId");
-    if (region.trim()) next.set("region", region.trim()); else next.delete("region");
+    next.delete("accountId");
+    next.delete("region");
     next.set("page", String(page));
     next.set("pageSize", String(PAGE_SIZE));
     const nextSearch = next.toString();
@@ -68,15 +68,15 @@ export default function EC2EipPage() {
     if (nextSearch !== currentSearch) {
       navigate({ pathname: location.pathname, search: nextSearch }, { replace: true });
     }
-  }, [accountId, controls.search, controls.state, endDate, location.pathname, location.search, navigate, page, region, startDate]);
+  }, [controls.search, controls.state, endDate, location.pathname, location.search, navigate, page, startDate]);
 
   const query = useEc2ElasticIpsQuery({
     startDate,
     endDate,
     state: getStateFromControls(controls.state),
     search: controls.search.trim() || null,
-    accountId: accountId.trim() || null,
-    region: region.trim() || null,
+    accountId: null,
+    region: null,
     page,
     pageSize: PAGE_SIZE,
   });
@@ -137,16 +137,9 @@ export default function EC2EipPage() {
           }}
           onReset={() => {
             setControls({ ...EC2_INSTANCES_DEFAULT_CONTROLS });
-            setAccountId("");
-            setRegion("");
             setPage(1);
           }}
         />
-
-        <div className="cost-explorer-chip-row" style={{ marginTop: 10, gap: 8 }}>
-          <input className="ec2-instances-search-trigger__input" placeholder="Account ID" value={accountId} onChange={(e) => { setAccountId(e.target.value); setPage(1); }} />
-          <input className="ec2-instances-search-trigger__input" placeholder="Region" value={region} onChange={(e) => { setRegion(e.target.value); setPage(1); }} />
-        </div>
 
         <section className="ec2-explorer-summary" aria-label="Elastic IP summary cards" style={{ marginTop: 12 }}>
           {[

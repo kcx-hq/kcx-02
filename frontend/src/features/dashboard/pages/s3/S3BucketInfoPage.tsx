@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useS3CostInsightsQuery } from "../../hooks/useDashboardQueries";
 import type { S3BucketTableRow } from "./components/S3BucketInsightsTable";
@@ -23,25 +23,26 @@ const integerFormatter = new Intl.NumberFormat("en-US", {
 export default function S3BucketInfoPage() {
   const navigate = useNavigate();
   const location = useLocation();
+  const [usageMetricsEnabled, setUsageMetricsEnabled] = useState(false);
   const query = useS3CostInsightsQuery();
   const storageBreakdownQuery = useS3CostInsightsQuery({
     costCategory: ["Storage"],
     seriesBy: "bucket",
     costBy: "date",
     yAxisMetric: "usage_quantity",
-  });
+  }, { enabled: usageMetricsEnabled });
   const transferBreakdownQuery = useS3CostInsightsQuery({
     costCategory: ["Transfer"],
     seriesBy: "bucket",
     costBy: "date",
     yAxisMetric: "usage_quantity",
-  });
+  }, { enabled: usageMetricsEnabled });
   const requestBreakdownQuery = useS3CostInsightsQuery({
     costCategory: ["Request"],
     seriesBy: "bucket",
     costBy: "date",
     yAxisMetric: "usage_quantity",
-  });
+  }, { enabled: usageMetricsEnabled });
 
   const rows = useMemo(() => (query.data?.bucketTable ?? []) as S3BucketTableRow[], [query.data?.bucketTable]);
   const scopedRows = useMemo(
@@ -127,9 +128,11 @@ export default function S3BucketInfoPage() {
   }, [combinedRows]);
 
   const isUsageLoading =
+    usageMetricsEnabled && (
     storageBreakdownQuery.isLoading ||
     transferBreakdownQuery.isLoading ||
-    requestBreakdownQuery.isLoading;
+    requestBreakdownQuery.isLoading
+    );
 
   return (
     <div className="dashboard-page">
@@ -142,24 +145,31 @@ export default function S3BucketInfoPage() {
             <div className="s3-bucket-kpi-row" aria-label="S3 bucket combined KPIs">
               <article className="s3-bucket-kpi-tile s3-bucket-kpi-tile--bucket">
                 <p className="cost-explorer-insight-tile__label">Total Bucket</p>
-                <p className="s3-bucket-kpi-tile__count">{integerFormatter.format(usageKpis.buckets)}</p>
+                <p className="s3-bucket-kpi-tile__count">{integerFormatter.format(costKpis.buckets)}</p>
               </article>
               <article className="s3-bucket-kpi-tile">
                 <p className="cost-explorer-insight-tile__label">Total Storage</p>
                 <p className="s3-bucket-kpi-tile__meta">Cost: {currencyFormatter.format(costKpis.totalStorageCost)}</p>
-                <p className="s3-bucket-kpi-tile__meta">Usage: {decimalFormatter.format(usageKpis.totalStorageGb)} GB avg/day</p>
+                <p className="s3-bucket-kpi-tile__meta">Usage: {usageMetricsEnabled ? `${decimalFormatter.format(usageKpis.totalStorageGb)} GB avg/day` : "Load usage metrics"}</p>
               </article>
               <article className="s3-bucket-kpi-tile">
                 <p className="cost-explorer-insight-tile__label">Total Request</p>
                 <p className="s3-bucket-kpi-tile__meta">Cost: {currencyFormatter.format(costKpis.totalRequestCost)}</p>
-                <p className="s3-bucket-kpi-tile__meta">Usage: {integerFormatter.format(usageKpis.totalRequestCount)}</p>
+                <p className="s3-bucket-kpi-tile__meta">Usage: {usageMetricsEnabled ? integerFormatter.format(usageKpis.totalRequestCount) : "Load usage metrics"}</p>
               </article>
               <article className="s3-bucket-kpi-tile">
                 <p className="cost-explorer-insight-tile__label">Total Transfer</p>
                 <p className="s3-bucket-kpi-tile__meta">Cost: {currencyFormatter.format(costKpis.totalTransferCost)}</p>
-                <p className="s3-bucket-kpi-tile__meta">Usage: {decimalFormatter.format(usageKpis.totalTransferGb)} GB</p>
+                <p className="s3-bucket-kpi-tile__meta">Usage: {usageMetricsEnabled ? `${decimalFormatter.format(usageKpis.totalTransferGb)} GB` : "Load usage metrics"}</p>
               </article>
             </div>
+            {!usageMetricsEnabled ? (
+              <div style={{ marginTop: 10 }}>
+                <button type="button" className="optimization-rightsizing-pagination__btn" onClick={() => setUsageMetricsEnabled(true)}>
+                  Load Usage Metrics
+                </button>
+              </div>
+            ) : null}
           </section>
 
           <section className="cost-explorer-widget-shell s3-bucket-table-shell">

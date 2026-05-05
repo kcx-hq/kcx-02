@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 
 import { type S3CostInsightsFiltersQuery } from "../../api/dashboardApi";
-import { useS3BucketLifecycleInsightQuery, useS3CostInsightsQuery } from "../../hooks/useDashboardQueries";
+import { useS3BucketLifecycleInsightQuery, useS3CostInsightsQuery, useS3ReplicationQuery } from "../../hooks/useDashboardQueries";
 import { S3BucketDetailPanel } from "./components/S3BucketDetailPanel";
 import { type S3BucketTableRow } from "./components/S3BucketInsightsTable";
 import { S3BucketUsageTrendPanel } from "./components/S3BucketUsageTrendPanel";
@@ -46,6 +46,8 @@ export default function S3UsageBucketDetailPage() {
 
   const query = useS3CostInsightsQuery(queryFilters);
   const lifecycleInsightQuery = useS3BucketLifecycleInsightQuery(bucketNameParam || null);
+  const replicationQuery = useS3ReplicationQuery(bucketNameParam.length > 0);
+  const shouldLoadUsageBreakdowns = bucketNameParam.length > 0 && !query.isLoading && !query.isError;
   const storageUsageQuery = useS3CostInsightsQuery({
     ...queryFilters,
     bucket: bucketNameParam,
@@ -53,7 +55,7 @@ export default function S3UsageBucketDetailPage() {
     seriesBy: "bucket",
     costBy: "date",
     yAxisMetric: "usage_quantity",
-  });
+  }, { enabled: shouldLoadUsageBreakdowns });
   const transferUsageQuery = useS3CostInsightsQuery({
     ...queryFilters,
     bucket: bucketNameParam,
@@ -61,7 +63,7 @@ export default function S3UsageBucketDetailPage() {
     seriesBy: "bucket",
     costBy: "date",
     yAxisMetric: "usage_quantity",
-  });
+  }, { enabled: shouldLoadUsageBreakdowns });
   const requestUsageQuery = useS3CostInsightsQuery({
     ...queryFilters,
     bucket: bucketNameParam,
@@ -69,7 +71,7 @@ export default function S3UsageBucketDetailPage() {
     seriesBy: "bucket",
     costBy: "date",
     yAxisMetric: "usage_quantity",
-  });
+  }, { enabled: shouldLoadUsageBreakdowns });
   const usageByTypeTrendQuery = useS3CostInsightsQuery({
     ...queryFilters,
     bucket: bucketNameParam,
@@ -77,7 +79,7 @@ export default function S3UsageBucketDetailPage() {
     seriesBy: "cost_category",
     costBy: "date",
     yAxisMetric: "usage_quantity",
-  });
+  }, { enabled: shouldLoadUsageBreakdowns });
   const storageClassUsageQuery = useS3CostInsightsQuery({
     ...queryFilters,
     bucket: bucketNameParam,
@@ -85,7 +87,7 @@ export default function S3UsageBucketDetailPage() {
     seriesBy: "storage_class",
     costBy: "date",
     yAxisMetric: "usage_quantity",
-  });
+  }, { enabled: shouldLoadUsageBreakdowns });
   const rows = useMemo(() => (query.data?.bucketTable ?? []) as S3BucketTableRow[], [query.data?.bucketTable]);
   const selectedBucket = useMemo(() => {
     const normalized = bucketNameParam.toLowerCase();
@@ -94,10 +96,10 @@ export default function S3UsageBucketDetailPage() {
 
   const usageMetrics = useMemo(() => {
     const sumSeriesValues = (querySeries: { chart?: { breakdown?: { series?: Array<{ name?: string; values: Array<number | null> }> } } } | undefined) =>
-      (querySeries?.chart.breakdown.series ?? [])
+      (querySeries?.chart?.breakdown?.series ?? [])
         .filter((item) => String(item.name ?? "").trim().toLowerCase() === bucketNameParam.toLowerCase())
         .flatMap((item) => item.values)
-        .reduce((sum, value) => sum + Number(value ?? 0), 0);
+        .reduce<number>((sum, value) => sum + Number(value ?? 0), 0);
 
     return {
       storageGb: sumSeriesValues(storageUsageQuery.data),
@@ -119,6 +121,14 @@ export default function S3UsageBucketDetailPage() {
 
   const lifecycleInsight = lifecycleInsightQuery.data?.insight ?? null;
   const effectiveLifecycleInsight = lifecycleInsight;
+  const replicationInsight = useMemo(() => {
+    const normalized = bucketNameParam.toLowerCase();
+    return (
+      (replicationQuery.data?.buckets ?? []).find(
+        (row) => String(row.bucketName ?? "").trim().toLowerCase() === normalized,
+      ) ?? null
+    );
+  }, [bucketNameParam, replicationQuery.data?.buckets]);
   const lifecycleStatusLabel = useMemo(() => {
     if (!effectiveLifecycleInsight?.lifecycleStatus) return effectiveLifecycleInsight?.hasLifecyclePolicy ? "Present" : "Unknown";
     return String(effectiveLifecycleInsight.lifecycleStatus)
@@ -162,6 +172,35 @@ export default function S3UsageBucketDetailPage() {
       search: searchParams.toString() ? `?${searchParams.toString()}` : "",
     });
   };
+
+  const handleOpenReplicationOptimization = () => {
+    const searchParams = new URLSearchParams(location.search);
+    if (bucketNameParam) {
+      searchParams.set("bucketName", bucketNameParam);
+    }
+    searchParams.set("tab", "replication");
+
+    navigate({
+      pathname: "/dashboard/s3/optimization",
+      search: searchParams.toString() ? `?${searchParams.toString()}` : "",
+    });
+  };
+
+  const replicationStatusLabel = useMemo(() => {
+    const value = String(replicationInsight?.replicationStatus ?? "").trim().toLowerCase();
+    if (value === "present") return "Present";
+    if (value === "absent") return "Missing";
+    if (value === "unknown") return "Unknown";
+    return "Not Available";
+  }, [replicationInsight?.replicationStatus]);
+
+  const replicationStatusTone = useMemo(() => {
+    const value = String(replicationInsight?.replicationStatus ?? "").trim().toLowerCase();
+    if (value === "present") return "good";
+    if (value === "absent") return "critical";
+    if (value === "unknown") return "warn";
+    return "unknown";
+  }, [replicationInsight?.replicationStatus]);
 
   const handleBack = () => {
     const section = (new URLSearchParams(location.search).get("s3Section") ?? "").trim().toLowerCase();
@@ -236,7 +275,7 @@ export default function S3UsageBucketDetailPage() {
                     <article key={`${rule.id ?? "rule"}-${idx}`} className="s3-lifecycle-insight-card__rule">
                       <p className="s3-lifecycle-insight-card__rule-name">{rule.id || `Rule ${idx + 1}`}</p>
                       <p className="s3-lifecycle-insight-card__rule-meta">
-                        {rule.status} • Transition: {rule.hasTransition ? "Yes" : "No"} • Expiration: {rule.hasExpiration ? "Yes" : "No"}
+                        {rule.status} | Transition: {rule.hasTransition ? "Yes" : "No"} | Expiration: {rule.hasExpiration ? "Yes" : "No"}
                       </p>
                     </article>
                   ))}
@@ -246,6 +285,54 @@ export default function S3UsageBucketDetailPage() {
             {lifecycleInsightQuery.isError ? (
               <p className="s3-lifecycle-insight-card__error">
                 Failed to load lifecycle snapshot: {lifecycleInsightQuery.error.message}
+              </p>
+            ) : null}
+          </section>
+          <section className="s3-lifecycle-insight-card" aria-label="Replication insight">
+            <div className="s3-lifecycle-insight-card__header">
+              <h3 className="s3-lifecycle-insight-card__title">Replication Insight</h3>
+              <div className="s3-lifecycle-insight-card__header-actions">
+                <button type="button" className="s3-lifecycle-insight-card__create-policy-btn" onClick={handleOpenReplicationOptimization}>
+                  {replicationInsight ? "Manage Replication" : "Setup Replication"}
+                </button>
+                <span className={`s3-lifecycle-insight-card__status is-${replicationStatusTone}`}>
+                  {replicationStatusLabel}
+                </span>
+              </div>
+            </div>
+            <div className="s3-lifecycle-insight-card__meta">
+              <article className="s3-lifecycle-insight-card__meta-item">
+                <p className="s3-lifecycle-insight-card__meta-label">Rules Count</p>
+                <p className="s3-lifecycle-insight-card__meta-value">{replicationInsight?.rulesCount ?? "--"}</p>
+              </article>
+              <article className="s3-lifecycle-insight-card__meta-item">
+                <p className="s3-lifecycle-insight-card__meta-label">Destination Bucket</p>
+                <p className="s3-lifecycle-insight-card__meta-value">{replicationInsight?.destinationBucket ?? "--"}</p>
+              </article>
+              <article className="s3-lifecycle-insight-card__meta-item">
+                <p className="s3-lifecycle-insight-card__meta-label">Destination Region</p>
+                <p className="s3-lifecycle-insight-card__meta-value">{replicationInsight?.destinationRegion ?? "--"}</p>
+              </article>
+              <article className="s3-lifecycle-insight-card__meta-item">
+                <p className="s3-lifecycle-insight-card__meta-label">Last Checked</p>
+                <p className="s3-lifecycle-insight-card__meta-value">
+                  {replicationInsight?.lastChecked
+                    ? new Date(replicationInsight.lastChecked).toLocaleString("en-US", { year: "numeric", month: "short", day: "2-digit" })
+                    : "--"}
+                </p>
+              </article>
+            </div>
+            <p className="s3-lifecycle-insight-card__headline">
+              {replicationInsight?.recommendation ?? "Replication status is not available for this bucket."}
+            </p>
+            {!replicationInsight ? (
+              <p className="s3-lifecycle-insight-card__recommendation">
+                No replication status found for this bucket. Use Setup Replication to open S3 Optimization directly on the replication tab.
+              </p>
+            ) : null}
+            {replicationQuery.isError ? (
+              <p className="s3-lifecycle-insight-card__error">
+                Failed to load replication data: {replicationQuery.error.message}
               </p>
             ) : null}
           </section>

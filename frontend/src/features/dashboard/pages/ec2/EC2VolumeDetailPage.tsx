@@ -22,6 +22,7 @@ import {
 
 const VOLUMES_PAGE_PATH = "/dashboard/inventory/aws/ec2/volumes";
 const INSTANCES_PAGE_PATH = "/dashboard/inventory/aws/ec2/instances";
+const SNAPSHOTS_PAGE_PATH = "/dashboard/inventory/aws/ec2/snapshots";
 
 const CURRENCY_FORMATTER = new Intl.NumberFormat("en-US", {
   style: "currency",
@@ -113,20 +114,6 @@ const getMetadataString = (volume: InventoryEc2VolumeRow, keys: string[]): strin
     const value = metadata[key];
     if (typeof value === "string" && value.trim().length > 0) return value;
     if (typeof value === "number" || typeof value === "boolean") return String(value);
-  }
-  return null;
-};
-
-const getMetadataNumber = (volume: InventoryEc2VolumeRow, keys: string[]): number | null => {
-  const metadata = volume.metadata;
-  if (!metadata || typeof metadata !== "object") return null;
-  for (const key of keys) {
-    const value = metadata[key];
-    if (typeof value === "number" && Number.isFinite(value)) return value;
-    if (typeof value === "string") {
-      const parsed = Number(value);
-      if (Number.isFinite(parsed)) return parsed;
-    }
   }
   return null;
 };
@@ -303,6 +290,8 @@ export default function EC2VolumeDetailPage() {
 
   const detailData = volumeDetailQuery.data;
   const totalVolumeCost = detailData?.costBreakdown.totalVolumeCost ?? selectedVolume.mtdCost ?? 0;
+  const volumeSnapshotCount = detailData?.snapshot.snapshotCount ?? selectedVolume.snapshotCount ?? 0;
+  const volumeSnapshotCost = detailData?.snapshot.snapshotCost ?? selectedVolume.snapshotCost ?? 0;
   const hasSeparateCostFields = Boolean(
     detailData &&
       (
@@ -426,21 +415,21 @@ export default function EC2VolumeDetailPage() {
 
   const performanceReady = performanceSeries.some((series) => series.points.length > 0);
 
-  const volumeSnapshots = (snapshotsQuery.data?.items ?? []).filter(
-    (snapshot) => snapshot.sourceVolumeId === selectedVolume.volumeId || snapshot.sourceVolumeName === selectedVolume.volumeName,
+  const volumeSnapshots = (snapshotsQuery.data?.rows ?? []).filter(
+    (snapshot) => snapshot.sourceVolumeId === selectedVolume.volumeId,
   );
 
   const snapshotRows = volumeSnapshots.map((snapshot) => {
-    const createdAtMs = snapshot.startTime ? Date.parse(snapshot.startTime) : Number.NaN;
+    const createdAtMs = typeof snapshot.ageDays === "number" ? Date.now() - snapshot.ageDays * 24 * 60 * 60 * 1000 : Number.NaN;
     const nowMs = Date.now();
     const ageDays = Number.isNaN(createdAtMs) ? null : Math.max(0, Math.floor((nowMs - createdAtMs) / (1000 * 60 * 60 * 24)));
     return {
       snapshotId: snapshot.snapshotId,
-      createdTime: formatDateTime(snapshot.startTime),
+      createdTime: "-",
       size: "Needs backend source",
       cost: formatCurrency(snapshot.cost),
       age: ageDays === null ? "-" : `${ageDays} days`,
-      recommendation: snapshot.likelyOrphaned ? "Review retention policy" : "Healthy",
+      recommendation: snapshot.recommendation ?? snapshot.statusLabel ?? "Healthy",
     };
   });
 
@@ -453,7 +442,16 @@ export default function EC2VolumeDetailPage() {
     { headerName: "Recommendation", field: "recommendation", minWidth: 200 },
   ];
 
-  const recommendationsRows = [
+  type RecommendationRow = {
+    type: string;
+    problem: string;
+    evidence: string;
+    action: string;
+    saving: string;
+    risk: string;
+    status: string;
+  };
+  const recommendationsRows: RecommendationRow[] = [
     selectedVolume.isUnattached
       ? {
           type: "Unattached",
@@ -487,9 +485,9 @@ export default function EC2VolumeDetailPage() {
           status: "Open",
         }
       : null,
-  ].filter((row): row is NonNullable<(typeof recommendationsRows)[number]> => Boolean(row));
+  ].filter((row): row is RecommendationRow => Boolean(row));
 
-  const recommendationColumns: ColDef<(typeof recommendationsRows)[number]>[] = [
+  const recommendationColumns: ColDef<RecommendationRow>[] = [
     { headerName: "Type", field: "type", minWidth: 120 },
     { headerName: "Problem", field: "problem", minWidth: 180 },
     { headerName: "Evidence", field: "evidence", minWidth: 230 },
@@ -564,6 +562,38 @@ export default function EC2VolumeDetailPage() {
             <div className={`ec2-instance-detail__insight ec2-instance-detail__insight--${insight.tone}`}>
               <strong>{insight.label}</strong>
               <span>{insight.message}</span>
+            </div>
+
+            <div>
+              <h4>Snapshot</h4>
+              <table className="ec2-instance-detail__simple-table">
+                <tbody>
+                  <tr>
+                    <th>Snapshot Count</th>
+                    <td>{volumeSnapshotCount}</td>
+                  </tr>
+                  <tr>
+                    <th>Snapshot Cost</th>
+                    <td>{formatCurrency(volumeSnapshotCost)}</td>
+                  </tr>
+                  <tr>
+                    <th>Link</th>
+                    <td>
+                      <button
+                        type="button"
+                        className="ec2-linked-cell-btn"
+                        onClick={() => {
+                          const next = new URLSearchParams(location.search);
+                          next.set("volumeId", selectedVolume.volumeId);
+                          navigate({ pathname: SNAPSHOTS_PAGE_PATH, search: next.toString() });
+                        }}
+                      >
+                        View Snapshots
+                      </button>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
 
             <div className="ec2-instance-detail__charts2">

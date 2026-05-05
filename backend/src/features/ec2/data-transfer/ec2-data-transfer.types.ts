@@ -1,6 +1,6 @@
 import type { DashboardScope } from "../../dashboard/dashboard.types.js";
 
-export const EC2_TRANSFER_TYPES = ["internet", "inter_region", "inter_az", "unknown"] as const;
+export const EC2_TRANSFER_TYPES = ["internet", "inter_region", "inter_az", "regional", "unknown"] as const;
 export type Ec2TransferType = (typeof EC2_TRANSFER_TYPES)[number];
 
 export type Ec2DataTransferInput = {
@@ -71,6 +71,7 @@ export type Ec2DataTransferResponse = {
     internetCost: number;
     interRegionCost: number;
     interAzCost: number;
+    regionalCost: number;
     unknownCost: number;
     potentialSavings: number;
   };
@@ -88,6 +89,7 @@ export type Ec2DataTransferResponse = {
     internetCost: number;
     interRegionCost: number;
     interAzCost: number;
+    regionalCost: number;
     unknownCost: number;
     totalCost: number;
     usageGb: number;

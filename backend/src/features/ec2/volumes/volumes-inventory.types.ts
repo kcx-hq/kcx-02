@@ -7,7 +7,7 @@ export type InventoryEc2VolumesListQuery = {
   isAttached: boolean | null;
   attachmentState: "attached" | "unattached" | "attached_stopped" | null;
   optimizationStatus: "idle" | "underutilized" | "optimal" | "warning" | null;
-  signal: "unattached" | "attached_stopped" | "idle" | "underutilized" | null;
+  signal: "unattached" | "attached_stopped" | "idle" | "underutilized" | "low_utilization" | "healthy" | null;
   region: string | null;
   search: string | null;
   startDate: string | null;
@@ -52,11 +52,25 @@ export type InventoryEc2VolumesListItem = {
   currencyCode: string | null;
   dailyCost: number;
   mtdCost: number;
+  snapshotCount: number;
+  snapshotCost: number;
+  storageCost: number;
+  ioCost: number;
+  pioPSCost: number;
+  hours: number;
+  ssdSavings: number;
   isUnattached: boolean | null;
   isAttachedToStoppedInstance: boolean | null;
   isIdleCandidate: boolean | null;
   isUnderutilizedCandidate: boolean | null;
   optimizationStatus: "idle" | "underutilized" | "optimal" | "warning" | null;
+  status: "unattached" | "attached_stopped" | "idle" | "underutilized" | "healthy";
+  statusLabel:
+    | "Unattached"
+    | "Attached to Stopped Instance"
+    | "Idle"
+    | "Underutilized"
+    | "Healthy";
   tags: Record<string, unknown> | null;
   metadata: Record<string, unknown> | null;
 };
@@ -166,6 +180,10 @@ export type InventoryEc2VolumeDetailResponse = {
     storageCost: number;
     iopsCost: number;
     throughputCost: number;
+    snapshotCost: number;
+  };
+  snapshot: {
+    snapshotCount: number;
     snapshotCost: number;
   };
   trends: {

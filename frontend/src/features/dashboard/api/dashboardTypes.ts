@@ -148,6 +148,89 @@ export type DatabaseExplorerResponse = {
   table: DatabaseExplorerTableRow[];
 };
 
+export type DatabaseAssetsSummary = {
+  totalAssets: number;
+  totalCost: number;
+  avgCpu: number | null;
+  totalStorageGb: number | null;
+  recommendationCount: number;
+};
+
+export type DatabaseAssetsFilterOptions = {
+  dbServices: string[];
+  dbEngines: string[];
+  classes: string[];
+  statuses: string[];
+  regions: string[];
+  accounts: string[];
+};
+
+export type DatabaseAssetRow = {
+  resourceId: string | null;
+  resourceArn: string | null;
+  resourceName: string | null;
+  dbIdentifier: string | null;
+  dbService: string | null;
+  dbEngine: string | null;
+  dbEngineVersion: string | null;
+  resourceType: string | null;
+  instanceClass: string | null;
+  capacityMode: string | null;
+  regionKey: string | number | null;
+  regionId: string | null;
+  regionName: string | null;
+  subAccountKey: string | number | null;
+  subAccountId: string | null;
+  subAccountName: string | null;
+  status: string | null;
+  clusterId: string | null;
+  isClusterResource: boolean | null;
+  allocatedStorageGb: number | null;
+  storageUsedGb: number | null;
+  dataFootprintGb: number | null;
+  avgCpu: number | null;
+  maxCpu: number | null;
+  avgConnections: number | null;
+  maxConnections: number | null;
+  avgIops: number | null;
+  avgThroughputBytes: number | null;
+  totalBilledCost: number | null;
+  totalEffectiveCost: number | null;
+  totalListCost: number | null;
+  totalCost: number | null;
+  currencyCode: string | null;
+  recommendationCount: number | null;
+  latestUsageDate: string | null;
+  discoveredAt: string | null;
+};
+
+export type DatabaseAssetsPagination = {
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+};
+
+export type DatabaseAssetsResponse = {
+  summary: DatabaseAssetsSummary;
+  filterOptions: DatabaseAssetsFilterOptions;
+  assets: DatabaseAssetRow[];
+  pagination: DatabaseAssetsPagination;
+};
+
+export type DatabaseAssetsFilters = {
+  cloudConnectionId?: string;
+  regionKey?: string;
+  subAccountKey?: string;
+  dbService?: string;
+  dbEngine?: string;
+  instanceClass?: string;
+  status?: string;
+  search?: string;
+  page?: number;
+  pageSize?: number;
+};
+
 export type Ec2OverviewResponse = {
   section: "ec2-overview";
   title: "EC2 Overview";
@@ -199,6 +282,7 @@ export type Ec2RecommendationType =
   | "overutilized_instance"
   | "unattached_volume"
   | "old_snapshot"
+  | "orphaned_snapshot"
   | "uncovered_on_demand"
   | "high_internet_data_transfer"
   | "high_inter_region_data_transfer"
@@ -260,21 +344,39 @@ export type Ec2RecommendationsResponse = {
   };
 };
 
-export type Ec2ExplorerMetric = "cost" | "usage" | "instances";
+export type Ec2ExplorerMetric = "cost" | "usage" | "instances" | "volumes" | "data_transfer";
 export type Ec2ExplorerGroupBy =
   | "none"
   | "region"
   | "account"
+  | "availability_zone"
   | "instance_type"
-  | "team"
-  | "product"
-  | "environment"
   | "reservation_type"
   | "cost_category"
-  | "network_cost"
-  | "network_type"
+  | "usage_type"
+  | "operation"
+  | "instance_state"
+  | "recommendation"
+  | "volume"
+  | "volume_type"
+  | "attachment_state"
+  | "instance"
+  | "storage_tier"
+  | "iops_tier"
+  | "size_bucket"
+  | "lifecycle_state"
+  | "transfer_type"
+  | "source_region"
+  | "destination_region"
   | "tag";
-export type Ec2ExplorerCostBasis = "billed_cost" | "effective_cost" | "amortized_cost";
+export type Ec2ExplorerGranularity = "hourly" | "daily" | "monthly";
+export type Ec2ExplorerVolumeView = "storage" | "storage_hours" | "cost" | "count";
+export type Ec2ExplorerCostBasis =
+  | "billed_cost"
+  | "effective_cost"
+  | "amortized_cost"
+  | "net_amortized_cost"
+  | "net_unblended_cost";
 export type Ec2ExplorerUsageMetric = "cpu" | "network_in" | "network_out" | "disk_read" | "disk_write";
 export type Ec2ExplorerUsageType = "cpu" | "network" | "disk";
 export type Ec2ExplorerAggregation = "avg" | "max" | "p95";
@@ -284,6 +386,8 @@ export type Ec2ExplorerFiltersQuery = {
   startDate?: string;
   endDate?: string;
   metric: Ec2ExplorerMetric;
+  granularity?: Ec2ExplorerGranularity;
+  volumeView?: Ec2ExplorerVolumeView;
   groupBy: Ec2ExplorerGroupBy;
   tagKey?: string | null;
   regions?: string[];
@@ -302,6 +406,14 @@ export type Ec2ExplorerFiltersQuery = {
   maxNetwork?: number | null;
   states?: string[];
   instanceTypes?: string[];
+  teams?: string[];
+  products?: string[];
+  environments?: string[];
+  accounts?: string[];
+  volumeTypes?: string[];
+  volumeAttachment?: "all" | "attached" | "unattached";
+  volumeStatuses?: string[];
+  debugDataTransfer?: boolean;
 };
 
 export type Ec2ExplorerResponse = {
@@ -310,6 +422,11 @@ export type Ec2ExplorerResponse = {
     previousCost: number;
     trendPercent: number;
     instanceCount: number;
+    volumeCount: number;
+    attachedInstanceCount: number;
+    unattachedVolumeCount: number;
+    storageGb: number;
+    storageGbHours: number;
     avgCpu: number;
     totalNetworkGb: number;
   };
@@ -319,12 +436,67 @@ export type Ec2ExplorerResponse = {
     series: Array<{
       key: string;
       label: string;
-      data: Array<{ date: string; value: number }>;
+      data: Array<{
+        date: string;
+        value: number;
+        cost?: number;
+        total_cost?: number;
+        data_transfer_cost?: number;
+        usage_gb?: number;
+        billed_usage_gb?: number;
+        total_usage_gb?: number;
+        percent_share?: number;
+      }>;
     }>;
   };
   table: {
     columns: Array<{ key: string; label: string }>;
     rows: Array<{ id: string; [key: string]: string | number | null }>;
+  };
+  dataTransferDebug?: {
+    totalUnknownCost: number;
+    totalUnknownUsageGb: number;
+    unknownResourceCount: number;
+    unmappedResourceCount: number;
+    unmappedResourceCost: number;
+    unmappedResourceUsageGb: number;
+    unknown_resource_count: number;
+    unmapped_resource_cost: number;
+    unmapped_resource_usage_gb: number;
+    topUnknownContributors: Array<{
+      usageType: string;
+      operation: string;
+      productFamily: string;
+      lineItemDescription: string;
+      lineItemType: string;
+      serviceCode: string;
+      productCode: string;
+      region: string;
+      usageAmount: number;
+      usageUnit: string;
+      cost: number;
+      resourceId: string;
+      normalizedResourceId: string;
+      dateBucket: string;
+      likelyDemoData: boolean;
+    }>;
+    topUnknownRows: Array<{
+      usageType: string;
+      operation: string;
+      productFamily: string;
+      lineItemDescription: string;
+      lineItemType: string;
+      serviceCode: string;
+      productCode: string;
+      region: string;
+      usageAmount: number;
+      usageUnit: string;
+      cost: number;
+      resourceId: string;
+      normalizedResourceId: string;
+      dateBucket: string;
+      likelyDemoData: boolean;
+    }>;
   };
 };
 
@@ -350,7 +522,7 @@ export type Ec2NetworkBreakdownResponse = {
   note: string | null;
 };
 
-export type Ec2DataTransferType = "internet" | "inter_region" | "inter_az" | "unknown";
+export type Ec2DataTransferType = "internet" | "inter_region" | "inter_az" | "regional" | "unknown";
 export type Ec2DataTransferSortBy =
   | "cost"
   | "usageGb"
@@ -378,6 +550,7 @@ export type Ec2DataTransferResponse = {
     internetCost: number;
     interRegionCost: number;
     interAzCost: number;
+    regionalCost: number;
     unknownCost: number;
     potentialSavings: number;
   };
@@ -395,13 +568,14 @@ export type Ec2DataTransferResponse = {
     internetCost: number;
     interRegionCost: number;
     interAzCost: number;
+    regionalCost: number;
     unknownCost: number;
     totalCost: number;
     usageGb: number;
   }>;
 };
 
-export type Ec2ElasticIpState = "all" | "attached" | "unattached";
+export type Ec2ElasticIpState = "all" | "attached" | "unattached" | "unknown";
 
 export type Ec2ElasticIpFiltersQuery = {
   startDate?: string;
@@ -427,7 +601,7 @@ export type Ec2ElasticIpResponse = {
     accountName: string;
     accountId: string;
     region: string;
-    state: "attached" | "unattached";
+    state: "attached" | "unattached" | "unknown";
     associatedResourceId: string | null;
     cost: number;
     lastSeen: string | null;

@@ -1,6 +1,7 @@
 import { apiGet } from "@/lib/api"
 
 export type InventoryEc2SnapshotSignal = "old" | "orphaned" | "normal" | null
+export type InventoryEc2SnapshotStatus = "old" | "orphaned" | "normal" | null
 
 export type InventoryEc2SnapshotRow = {
   snapshotId: string
@@ -12,6 +13,10 @@ export type InventoryEc2SnapshotRow = {
   state: string
   storageTier: string
   ageDays: number | null
+  status: InventoryEc2SnapshotStatus
+  statusLabel: string | null
+  signals: Array<Exclude<InventoryEc2SnapshotStatus, null | "normal">>
+  volumeStatus: "missing" | "deleted" | "unavailable" | "available" | null
   signal: InventoryEc2SnapshotSignal
   cost: number | null
   recommendation: string | null
@@ -41,7 +46,9 @@ export type InventoryEc2SnapshotsListResponse = {
 export type InventoryEc2SnapshotsListParams = {
   cloudConnectionId?: string | null
   regionKey?: string | null
+  volumeId?: string | null
   state?: string | null
+  status?: Exclude<InventoryEc2SnapshotStatus, null> | null
   storageTier?: string | null
   encrypted?: boolean | null
   search?: string | null
@@ -77,6 +84,34 @@ const toSignal = (value: unknown): InventoryEc2SnapshotSignal => {
   return null
 }
 
+const toSignals = (
+  value: unknown,
+): Array<Exclude<InventoryEc2SnapshotStatus, null | "normal">> => {
+  if (!Array.isArray(value)) return []
+  return value
+    .filter((item): item is string => typeof item === "string")
+    .map((item) => item.trim().toLowerCase())
+    .filter(
+      (item): item is Exclude<InventoryEc2SnapshotStatus, null | "normal"> =>
+        item === "old" || item === "orphaned",
+    )
+}
+
+const toVolumeStatus = (
+  value: unknown,
+): InventoryEc2SnapshotRow["volumeStatus"] => {
+  const normalized = toStringOrNull(value)?.toLowerCase()
+  if (
+    normalized === "missing" ||
+    normalized === "deleted" ||
+    normalized === "unavailable" ||
+    normalized === "available"
+  ) {
+    return normalized
+  }
+  return null
+}
+
 const normalizeSnapshotRow = (value: unknown): InventoryEc2SnapshotRow | null => {
   if (!isRecord(value)) return null
 
@@ -84,6 +119,7 @@ const normalizeSnapshotRow = (value: unknown): InventoryEc2SnapshotRow | null =>
   if (!snapshotId) return null
 
   const signal = toSignal(value.signal)
+  const status = toSignal(value.status)
 
   return {
     snapshotId,
@@ -95,6 +131,10 @@ const normalizeSnapshotRow = (value: unknown): InventoryEc2SnapshotRow | null =>
     state: toStringOrNull(value.state) ?? "",
     storageTier: toStringOrNull(value.storageTier) ?? "",
     ageDays: toNumberOrNull(value.ageDays),
+    status,
+    statusLabel: toStringOrNull(value.statusLabel),
+    signals: toSignals(value.signals),
+    volumeStatus: toVolumeStatus(value.volumeStatus),
     signal,
     cost: toNumberOrNull(value.cost),
     recommendation: toStringOrNull(value.recommendation),
@@ -174,7 +214,9 @@ export async function getInventoryEc2Snapshots(
 
   if (params.cloudConnectionId) searchParams.set("cloudConnectionId", params.cloudConnectionId)
   if (params.regionKey) searchParams.set("regionKey", params.regionKey)
+  if (params.volumeId) searchParams.set("volumeId", params.volumeId)
   if (params.state) searchParams.set("state", params.state)
+  if (params.status) searchParams.set("status", params.status)
   if (params.storageTier) searchParams.set("storageTier", params.storageTier)
   if (typeof params.encrypted === "boolean") searchParams.set("encrypted", String(params.encrypted))
   if (params.search) searchParams.set("search", params.search)

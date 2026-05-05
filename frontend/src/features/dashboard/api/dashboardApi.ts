@@ -35,6 +35,8 @@ import type {
   Ec2ElasticIpResponse,
   DatabaseExplorerFilters,
   DatabaseExplorerResponse,
+  DatabaseAssetsFilters,
+  DatabaseAssetsResponse,
 
   S3CostInsightsFiltersQuery,
   S3CostInsightsResponse,
@@ -190,6 +192,50 @@ function withDatabaseExplorerFilters(
   return query.length > 0 ? `${path}?${query}` : path;
 }
 
+function withDatabaseAssetsFilters(
+  path: string,
+  scope: DashboardResolvedScope,
+  filters?: DatabaseAssetsFilters,
+): string {
+  const params = new URLSearchParams();
+
+  if (scope.from) params.set("start_date", scope.from);
+  if (scope.to) params.set("end_date", scope.to);
+  if (typeof filters?.cloudConnectionId === "string" && filters.cloudConnectionId.trim().length > 0) {
+    params.set("cloud_connection_id", filters.cloudConnectionId.trim());
+  }
+  if (typeof filters?.regionKey === "string" && filters.regionKey.trim().length > 0) {
+    params.set("region_key", filters.regionKey.trim());
+  }
+  if (typeof filters?.subAccountKey === "string" && filters.subAccountKey.trim().length > 0) {
+    params.set("sub_account_key", filters.subAccountKey.trim());
+  }
+  if (typeof filters?.dbService === "string" && filters.dbService.trim().length > 0) {
+    params.set("db_service", filters.dbService.trim());
+  }
+  if (typeof filters?.dbEngine === "string" && filters.dbEngine.trim().length > 0) {
+    params.set("db_engine", filters.dbEngine.trim());
+  }
+  if (typeof filters?.instanceClass === "string" && filters.instanceClass.trim().length > 0) {
+    params.set("instance_class", filters.instanceClass.trim());
+  }
+  if (typeof filters?.status === "string" && filters.status.trim().length > 0) {
+    params.set("status", filters.status.trim());
+  }
+  if (typeof filters?.search === "string" && filters.search.trim().length > 0) {
+    params.set("search", filters.search.trim());
+  }
+  if (typeof filters?.page === "number") {
+    params.set("page", String(filters.page));
+  }
+  if (typeof filters?.pageSize === "number") {
+    params.set("pageSize", String(filters.pageSize));
+  }
+
+  const query = params.toString();
+  return query.length > 0 ? `${path}?${query}` : path;
+}
+
 function withOptimizationFilters(
   path: string,
   scope: DashboardResolvedScope,
@@ -300,6 +346,8 @@ function withEc2ExplorerFilters(
 
   params.set("metric", filters.metric);
   params.set("groupBy", filters.groupBy);
+  if (filters.granularity) params.set("granularity", filters.granularity);
+  if (filters.volumeView) params.set("volumeView", filters.volumeView);
   if (filters.startDate) params.set("startDate", filters.startDate);
   if (filters.endDate) params.set("endDate", filters.endDate);
   if (typeof filters.tagKey === "string" && filters.tagKey.trim().length > 0) {
@@ -325,6 +373,16 @@ function withEc2ExplorerFilters(
 
   appendArray("states", filters.states);
   appendArray("instanceTypes", filters.instanceTypes);
+  appendArray("teams", filters.teams);
+  appendArray("products", filters.products);
+  appendArray("environments", filters.environments);
+  appendArray("accounts", filters.accounts);
+  appendArray("volumeTypes", filters.volumeTypes);
+  appendArray("volumeStatuses", filters.volumeStatuses);
+  if (filters.volumeAttachment) params.set("volumeAttachment", filters.volumeAttachment);
+  if (typeof filters.debugDataTransfer === "boolean") {
+    params.set("debugDataTransfer", String(filters.debugDataTransfer));
+  }
 
   const query = params.toString();
   return query.length > 0 ? `${path}?${query}` : path;
@@ -497,6 +555,9 @@ export const dashboardApi = {
     return apiGet<DatabaseExplorerResponse>(
       withDatabaseExplorerFilters("/services/database/explorer", scope, filters),
     );
+  },
+  getDatabaseAssets(scope: DashboardResolvedScope, filters?: DatabaseAssetsFilters) {
+    return apiGet<DatabaseAssetsResponse>(withDatabaseAssetsFilters("/services/database/assets", scope, filters));
   },
 
   getResources(scope: DashboardResolvedScope) {
@@ -687,7 +748,7 @@ export const dashboardApi = {
     return apiGet<Ec2DataTransferResponse>(withEc2DataTransferFilters("/dashboard/ec2/data-transfer", scope, filters));
   },
   getEc2ElasticIps(scope: DashboardResolvedScope, filters?: Ec2ElasticIpFiltersQuery) {
-    return apiGet<Ec2ElasticIpResponse>(withEc2ElasticIpFilters("/ec2/elastic-ips", scope, filters));
+    return apiGet<Ec2ElasticIpResponse>(withEc2ElasticIpFilters("/dashboard/ec2/elastic-ips", scope, filters));
   },
   getS3CostInsights(scope: DashboardResolvedScope, filters?: S3CostInsightsFiltersQuery) {
     return apiGet<S3CostInsightsResponse>(withS3CostInsightsFilters("/dashboard/s3/cost-insights", scope, filters));
@@ -766,6 +827,8 @@ export type {
   DatabaseExplorerResponse,
   DatabaseExplorerTableRow,
   DatabaseExplorerUsageTrendItem,
+  DatabaseAssetsFilters,
+  DatabaseAssetsResponse,
   DashboardOverviewResponse,
   OverviewAnomaliesResponse,
   OverviewAnomaly,

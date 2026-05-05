@@ -7,6 +7,12 @@ const serviceGroups: InventoryServiceGroup[] = [
     title: "Compute (EC2)",
     items: [
       {
+        id: "ec2-explorer",
+        label: "EC2 Explorer",
+        href: "/dashboard/ec2/explorer",
+        matchPrefixes: ["/dashboard/ec2/explorer"],
+      },
+      {
         id: "ec2-instances",
         label: "Instances",
         href: "/dashboard/inventory/aws/ec2/instances",
@@ -25,6 +31,24 @@ const serviceGroups: InventoryServiceGroup[] = [
         matchPrefixes: ["/dashboard/inventory/aws/ec2/snapshots"],
       },
       {
+        id: "ec2-optimization",
+        label: "Optimization",
+        href: "/dashboard/ec2/optimization",
+        matchPrefixes: ["/dashboard/ec2/optimization"],
+      },
+      {
+        id: "ec2-data-transfer",
+        label: "Data Transfer",
+        href: "/dashboard/ec2/network/data-transfer",
+        matchPrefixes: ["/dashboard/ec2/network/data-transfer"],
+      },
+      {
+        id: "ec2-elastic-ip",
+        label: "Elastic IP",
+        href: "/dashboard/inventory/aws/ec2/elastic-ip",
+        matchPrefixes: ["/dashboard/inventory/aws/ec2/elastic-ip", "/dashboard/ec2/network/elastic-ip"],
+      },
+      {
         id: "ec2-amis",
         label: "AMIs",
         placeholder: true,
@@ -36,9 +60,28 @@ const serviceGroups: InventoryServiceGroup[] = [
     title: "Storage",
     items: [
       {
-        id: "s3-buckets",
-        label: "S3 Buckets",
-        placeholder: true,
+        id: "s3-explorer",
+        label: "S3 Explorer",
+        href: "/dashboard/s3",
+        matchPrefixes: ["/dashboard/s3"],
+      },
+      {
+        id: "s3-cost",
+        label: "S3 Cost",
+        href: "/dashboard/s3/cost",
+        matchPrefixes: ["/dashboard/s3/cost"],
+      },
+      {
+        id: "s3-usage",
+        label: "S3 Usage",
+        href: "/dashboard/s3/usage",
+        matchPrefixes: ["/dashboard/s3/usage"],
+      },
+      {
+        id: "s3-optimization",
+        label: "S3 Optimization",
+        href: "/dashboard/s3/optimization",
+        matchPrefixes: ["/dashboard/s3/optimization"],
       },
     ],
   },
@@ -47,9 +90,16 @@ const serviceGroups: InventoryServiceGroup[] = [
     title: "Database",
     items: [
       {
-        id: "rds-instances",
-        label: "RDS Instances",
-        placeholder: true,
+        id: "database-explorer",
+        label: "Database Explorer",
+        href: "/dashboard/services/database",
+        matchPrefixes: ["/dashboard/services/database"],
+      },
+      {
+        id: "database-assets",
+        label: "Database Assets",
+        href: "/dashboard/services/database/assets",
+        matchPrefixes: ["/dashboard/services/database/assets"],
       },
     ],
   },

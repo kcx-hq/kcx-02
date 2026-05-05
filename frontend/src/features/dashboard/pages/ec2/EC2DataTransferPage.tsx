@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import type { ColDef, ValueFormatterParams } from "ag-grid-community";
 import type { EChartsOption } from "echarts";
 
@@ -7,6 +8,7 @@ import { EmptyStateBlock } from "../../common/components/EmptyStateBlock";
 import { BaseEChart } from "../../common/charts/BaseEChart";
 import { BaseDataTable } from "../../common/tables/BaseDataTable";
 import { useEc2DataTransferQuery } from "../../hooks/useDashboardQueries";
+import { useDashboardScope } from "../../hooks/useDashboardScope";
 import { EC2InstancesContextChips } from "./components/EC2InstancesContextChips";
 import { EC2DataTransferTopBar } from "./components/EC2DataTransferTopBar";
 import {
@@ -25,12 +27,39 @@ const summaryFallback: Ec2DataTransferResponse["summary"] = {
   internetCost: 0,
   interRegionCost: 0,
   interAzCost: 0,
+  regionalCost: 0,
   unknownCost: 0,
   potentialSavings: 0,
 };
 
+const INSTANCE_LIST_PATH = "/dashboard/inventory/aws/ec2/instances";
+const toTransferTypeFromSeriesName = (value: string): "internet" | "inter_region" | "inter_az" | "unknown" | null => {
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "internet") return "internet";
+  if (normalized === "inter-region") return "inter_region";
+  if (normalized === "inter-az") return "inter_az";
+  if (normalized === "unknown") return "unknown";
+  return null;
+};
+
 export default function EC2DataTransferPage() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { scope } = useDashboardScope();
   const [controls, setControls] = useState<EC2DataTransferControlsState>(EC2_DATA_TRANSFER_DEFAULT_CONTROLS);
+  const scopeParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
+  const scopeStartDate =
+    scope?.from ??
+    scopeParams.get("from") ??
+    scopeParams.get("billingPeriodStart") ??
+    scopeParams.get("startDate") ??
+    undefined;
+  const scopeEndDate =
+    scope?.to ??
+    scopeParams.get("to") ??
+    scopeParams.get("billingPeriodEnd") ??
+    scopeParams.get("endDate") ??
+    undefined;
 
   const filters = useMemo<Ec2DataTransferFiltersQuery>(() => ({
     transferType: controls.transferType === "all" ? null : controls.transferType,
@@ -93,6 +122,14 @@ export default function EC2DataTransferPage() {
     return chips;
   }, [controls.scopeFilters.region, controls.transferType]);
 
+  const navigateToInstances = (transferType: Ec2DataTransferResponse["breakdown"][number]["transferType"]) => {
+    const next = new URLSearchParams(location.search);
+    next.set("transferType", transferType);
+    if (scopeStartDate) next.set("startDate", scopeStartDate);
+    if (scopeEndDate) next.set("endDate", scopeEndDate);
+    navigate({ pathname: INSTANCE_LIST_PATH, search: next.toString() });
+  };
+
   return (
     <div className="dashboard-page cost-explorer-page">
       <EC2DataTransferTopBar
@@ -127,7 +164,16 @@ export default function EC2DataTransferPage() {
         {query.isError ? (
           <EmptyStateBlock title="Unable to load trend" message={query.error.message} />
         ) : (
-          <BaseEChart option={trendOption} height={360} />
+          <BaseEChart
+            option={trendOption}
+            height={360}
+            onPointClick={(params) => {
+              const record = params as { seriesName?: string };
+              const transferType = record.seriesName ? toTransferTypeFromSeriesName(record.seriesName) : null;
+              if (!transferType) return;
+              navigateToInstances(transferType);
+            }}
+          />
         )}
       </section>
 
@@ -136,7 +182,12 @@ export default function EC2DataTransferPage() {
         {query.isError ? (
           <EmptyStateBlock title="Unable to load data transfer breakdown" message={query.error.message} />
         ) : (
-          <BaseDataTable columnDefs={breakdownCols} rowData={query.data?.breakdown ?? []} autoHeight />
+          <BaseDataTable
+            columnDefs={breakdownCols}
+            rowData={query.data?.breakdown ?? []}
+            autoHeight
+            onRowClick={(row) => navigateToInstances(row.transferType)}
+          />
         )}
       </section>
     </div>
