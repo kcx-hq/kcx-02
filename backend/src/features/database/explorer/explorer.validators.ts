@@ -6,7 +6,9 @@ import { BadRequestError } from "../../../errors/http-errors.js";
 import type { ExplorerQueryParams } from "./explorer.types.js";
 
 const metricSchema = z.enum(["cost", "usage"]).default("cost");
-const groupBySchema = z.enum(["db_service", "db_engine", "region"]).default("db_service");
+const groupBySchema = z
+  .enum(["db_service", "db_engine", "region", "resource_type", "instance_class", "cluster", "cost_category"])
+  .default("db_service");
 
 const requiredDateString = (fieldName: string) =>
   z.preprocess(

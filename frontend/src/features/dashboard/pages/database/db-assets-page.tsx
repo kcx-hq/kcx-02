@@ -1,7 +1,5 @@
 import { useMemo, useState } from "react";
 
-import { DashboardPageHeader } from "../../components/DashboardPageHeader";
-import { useDashboardScope } from "../../hooks/useDashboardScope";
 import { useDatabaseAssetsQuery } from "../../hooks/useDashboardQueries";
 import type { DatabaseAssetsFilters as DatabaseAssetsQueryFilters } from "../../api/dashboardTypes";
 import { DatabaseAssetsCards } from "./components/db-assets-cards";
@@ -14,14 +12,10 @@ import { DatabaseAssetsTable } from "./components/db-assets-table";
 const DEFAULT_PAGE_SIZE = 20;
 
 export default function DatabaseAssetsPage() {
-  const { scope } = useDashboardScope();
   const [filterState, setFilterState] = useState<DatabaseAssetsFiltersValue>({
     search: "",
     regionKey: "",
     dbEngine: "",
-    instanceClass: "",
-    status: "",
-    subAccountKey: "",
   });
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
@@ -30,9 +24,6 @@ export default function DatabaseAssetsPage() {
     () => ({
       ...(filterState.regionKey ? { regionKey: filterState.regionKey } : {}),
       ...(filterState.dbEngine ? { dbEngine: filterState.dbEngine } : {}),
-      ...(filterState.instanceClass ? { instanceClass: filterState.instanceClass } : {}),
-      ...(filterState.status ? { status: filterState.status } : {}),
-      ...(filterState.subAccountKey ? { subAccountKey: filterState.subAccountKey } : {}),
       ...(filterState.search.trim() ? { search: filterState.search.trim() } : {}),
       page,
       pageSize,
@@ -54,22 +45,8 @@ export default function DatabaseAssetsPage() {
     recommendationCount: 0,
   };
 
-  const scopeLabel = scope?.from && scope?.to ? `${scope.from} to ${scope.to}` : scope?.title ?? "";
-
   return (
     <div className="dashboard-page database-assets-page cost-explorer-page">
-      <DashboardPageHeader
-        title={
-          <div>
-            <h1 className="dashboard-page-header__title">Assets</h1>
-            <p className="dashboard-note" style={{ margin: "6px 0 0" }}>
-              Unified view of database assets across active database services
-              {scopeLabel ? ` (${scopeLabel})` : ""}
-            </p>
-          </div>
-        }
-      />
-
       <DatabaseAssetsFilters
         value={filterState}
         filterOptions={
@@ -79,7 +56,6 @@ export default function DatabaseAssetsPage() {
             classes: [],
             statuses: [],
             regions: [],
-            accounts: [],
           }
         }
         onChange={(next) => {
@@ -87,9 +63,8 @@ export default function DatabaseAssetsPage() {
           setPage(1);
         }}
         onClear={() => {
-          setFilterState({ search: "", regionKey: "", dbEngine: "", instanceClass: "", status: "", subAccountKey: "" });
+          setFilterState({ search: "", regionKey: "", dbEngine: "" });
           setPage(1);
-          setPageSize(DEFAULT_PAGE_SIZE);
         }}
       />
 

@@ -4,9 +4,6 @@ type DatabaseAssetsFiltersValue = {
   search: string;
   regionKey: string;
   dbEngine: string;
-  instanceClass: string;
-  status: string;
-  subAccountKey: string;
 };
 
 type DatabaseAssetsFiltersProps = {
@@ -16,21 +13,59 @@ type DatabaseAssetsFiltersProps = {
   onClear: () => void;
 };
 
-const uniqueSorted = (values: string[]): string[] =>
-  [...new Set(values.map((value) => String(value ?? "").trim()).filter(Boolean))].sort((left, right) =>
-    left.localeCompare(right),
-  );
+type NormalizedOption = { label: string; value: string };
+
+const normalizeFilterOptions = (options: unknown): NormalizedOption[] => {
+  if (!Array.isArray(options)) return [];
+  const normalized = options
+    .map((item): NormalizedOption | null => {
+      if (typeof item === "string") {
+        const value = item.trim();
+        if (!value) return null;
+        return { label: value, value };
+      }
+      if (item && typeof item === "object") {
+        const record = item as Record<string, unknown>;
+        const rawLabel =
+          record.label ??
+          record.name ??
+          record.regionName ??
+          record.regionId ??
+          record.value ??
+          record.id ??
+          record.key ??
+          record.regionKey ??
+          "-";
+        const rawValue =
+          record.regionKey ??
+          record.value ??
+          record.id ??
+          record.key ??
+          record.label ??
+          record.name;
+        const label = String(rawLabel ?? "").trim() || "-";
+        const value = String(rawValue ?? "").trim();
+        if (!value) return null;
+        return { label, value };
+      }
+      return null;
+    })
+    .filter((entry): entry is NormalizedOption => Boolean(entry));
+
+  const dedup = new Map<string, NormalizedOption>();
+  for (const option of normalized) {
+    if (!dedup.has(option.value)) dedup.set(option.value, option);
+  }
+  return [...dedup.values()].sort((left, right) => left.label.localeCompare(right.label));
+};
 
 export function DatabaseAssetsFilters({ value, filterOptions, onChange, onClear }: DatabaseAssetsFiltersProps) {
-  const regions = uniqueSorted(filterOptions.regions ?? []);
-  const engines = uniqueSorted(filterOptions.dbEngines ?? []);
-  const classes = uniqueSorted(filterOptions.classes ?? []);
-  const statuses = uniqueSorted(filterOptions.statuses ?? []);
-  const accounts = uniqueSorted(filterOptions.accounts ?? []);
+  const regions = normalizeFilterOptions(filterOptions.regions);
+  const engines = normalizeFilterOptions(filterOptions.dbEngines);
 
   return (
     <section className="cost-explorer-control-surface" aria-label="Database assets controls">
-      <div className="cost-explorer-toolbar-row">
+      <div className="cost-explorer-toolbar-row db-assets-filters-row">
         <label className="cost-explorer-toolbar-item cost-explorer-field">
           <span className="cost-explorer-field__label">Search</span>
           <input
@@ -46,8 +81,8 @@ export function DatabaseAssetsFilters({ value, filterOptions, onChange, onClear 
           <select className="cost-explorer-field__control" value={value.regionKey} onChange={(event) => onChange({ ...value, regionKey: event.target.value })}>
             <option value="">All Regions</option>
             {regions.map((option) => (
-              <option key={option} value={option}>
-                {option}
+              <option key={option.value} value={option.value}>
+                {option.label}
               </option>
             ))}
           </select>
@@ -58,54 +93,14 @@ export function DatabaseAssetsFilters({ value, filterOptions, onChange, onClear 
           <select className="cost-explorer-field__control" value={value.dbEngine} onChange={(event) => onChange({ ...value, dbEngine: event.target.value })}>
             <option value="">All Engines</option>
             {engines.map((option) => (
-              <option key={option} value={option}>
-                {option}
+              <option key={option.value} value={option.value}>
+                {option.label}
               </option>
             ))}
           </select>
         </label>
 
-        <label className="cost-explorer-toolbar-item cost-explorer-field">
-          <span className="cost-explorer-field__label">Class</span>
-          <select className="cost-explorer-field__control" value={value.instanceClass} onChange={(event) => onChange({ ...value, instanceClass: event.target.value })}>
-            <option value="">All Classes</option>
-            {classes.map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label className="cost-explorer-toolbar-item cost-explorer-field">
-          <span className="cost-explorer-field__label">Status</span>
-          <select className="cost-explorer-field__control" value={value.status} onChange={(event) => onChange({ ...value, status: event.target.value })}>
-            <option value="">All Statuses</option>
-            {statuses.map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        {accounts.length > 0 ? (
-          <label className="cost-explorer-toolbar-item cost-explorer-field">
-            <span className="cost-explorer-field__label">Account</span>
-            <select className="cost-explorer-field__control" value={value.subAccountKey} onChange={(event) => onChange({ ...value, subAccountKey: event.target.value })}>
-              <option value="">All Accounts</option>
-              {accounts.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
-          </label>
-        ) : null}
-      </div>
-
-      <div className="cost-explorer-chip-bar" aria-label="Selected filter summary">
-        <div className="cost-explorer-chip-row">
+        <div className="db-assets-filters-row__clear-wrap">
           <button type="button" className="cost-explorer-chip-bar__clear cost-explorer-chip-bar__clear--inline" onClick={onClear}>
             Clear filters
           </button>

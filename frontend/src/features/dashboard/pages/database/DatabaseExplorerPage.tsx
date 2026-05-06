@@ -54,6 +54,12 @@ export default function DatabaseExplorerPage() {
 
   const pageLoading = query.isLoading && !data;
   const showError = query.isError && !data;
+  const handleMetricChange = (nextMetric: DatabaseExplorerMetric) => {
+    setMetric(nextMetric);
+    if (nextMetric === "usage" && groupBy === "cost_category") {
+      setGroupBy("db_service");
+    }
+  };
 
   return (
     <div className="dashboard-page database-explorer-page cost-explorer-page">
@@ -72,7 +78,7 @@ export default function DatabaseExplorerPage() {
                   key={option.value}
                   type="button"
                   className={`cost-explorer-segmented__item${metric === option.value ? " is-active" : ""}`}
-                  onClick={() => setMetric(option.value)}
+                  onClick={() => handleMetricChange(option.value)}
                   aria-pressed={metric === option.value}
                 >
                   {option.label}
@@ -90,7 +96,7 @@ export default function DatabaseExplorerPage() {
         dbEngine={dbEngine}
         dbServiceOptions={dbServiceOptions}
         dbEngineOptions={dbEngineOptions}
-        onMetricChange={setMetric}
+        onMetricChange={handleMetricChange}
         onGroupByChange={setGroupBy}
         onDbServiceChange={setDbService}
         onDbEngineChange={setDbEngine}
@@ -114,7 +120,13 @@ export default function DatabaseExplorerPage() {
             }
             isLoading={pageLoading}
           />
-          <DatabaseExplorerTrend metric={metric} trend={data?.trend ?? []} isLoading={pageLoading} />
+          <DatabaseExplorerTrend
+            metric={metric}
+            groupBy={groupBy}
+            trend={data?.trend ?? []}
+            trendGrouped={data?.trendGrouped}
+            isLoading={pageLoading}
+          />
           <DatabaseExplorerGroupedTable rows={data?.table ?? []} isLoading={pageLoading} />
         </>
       ) : null}

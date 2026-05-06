@@ -76,7 +76,14 @@ export type Ec2OptimizationSummaryFiltersQuery = {
 };
 
 export type DatabaseExplorerMetric = "cost" | "usage";
-export type DatabaseExplorerGroupBy = "db_service" | "db_engine" | "region";
+export type DatabaseExplorerGroupBy =
+  | "db_service"
+  | "db_engine"
+  | "region"
+  | "resource_type"
+  | "instance_class"
+  | "cluster"
+  | "cost_category";
 
 export type DatabaseExplorerFilters = {
   metric: DatabaseExplorerMetric;
@@ -140,11 +147,33 @@ export type DatabaseExplorerFilterOptions = {
   dbEngines: string[];
 };
 
+export type DatabaseExplorerTrendGroupedPoint = {
+  date: string;
+  value: number;
+};
+
+export type DatabaseExplorerTrendGroupedSeries = {
+  key: string;
+  label: string;
+  data: DatabaseExplorerTrendGroupedPoint[];
+  total?: number;
+};
+
+export type DatabaseExplorerTrendGrouped = {
+  metric: DatabaseExplorerMetric;
+  groupBy: DatabaseExplorerGroupBy;
+  chartType: "stacked_bar" | "line";
+  xKey: "date";
+  usageMetric?: "load_avg";
+  series: DatabaseExplorerTrendGroupedSeries[];
+};
+
 export type DatabaseExplorerResponse = {
   filters: DatabaseExplorerAppliedFilters;
   filterOptions: DatabaseExplorerFilterOptions;
   cards: DatabaseExplorerCards;
   trend: Array<DatabaseExplorerCostTrendItem | DatabaseExplorerUsageTrendItem>;
+  trendGrouped?: DatabaseExplorerTrendGrouped;
   table: DatabaseExplorerTableRow[];
 };
 
@@ -156,13 +185,23 @@ export type DatabaseAssetsSummary = {
   recommendationCount: number;
 };
 
+export type DatabaseAssetsFilterOptionObject = {
+  label?: string | null;
+  name?: string | null;
+  value?: string | number | null;
+  id?: string | number | null;
+  key?: string | number | null;
+};
+
+export type DatabaseAssetsFilterOption = string | DatabaseAssetsFilterOptionObject;
+
 export type DatabaseAssetsFilterOptions = {
-  dbServices: string[];
-  dbEngines: string[];
-  classes: string[];
-  statuses: string[];
-  regions: string[];
-  accounts: string[];
+  dbServices: DatabaseAssetsFilterOption[];
+  dbEngines: DatabaseAssetsFilterOption[];
+  classes: DatabaseAssetsFilterOption[];
+  statuses: DatabaseAssetsFilterOption[];
+  regions: DatabaseAssetsFilterOption[];
+  accounts?: DatabaseAssetsFilterOption[];
 };
 
 export type DatabaseAssetRow = {

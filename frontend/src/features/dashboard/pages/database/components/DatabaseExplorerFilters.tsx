@@ -22,6 +22,10 @@ const groupByOptions: Array<{ value: DatabaseExplorerGroupBy; label: string }> =
   { value: "db_service", label: "DB Service" },
   { value: "db_engine", label: "Engine" },
   { value: "region", label: "Region" },
+  { value: "resource_type", label: "Resource Type" },
+  { value: "instance_class", label: "Instance Class" },
+  { value: "cluster", label: "Cluster" },
+  { value: "cost_category", label: "Cost Category" },
 ];
 
 export function DatabaseExplorerFilters({
@@ -61,7 +65,7 @@ export function DatabaseExplorerFilters({
             onChange={(event) => onGroupByChange(event.target.value as DatabaseExplorerGroupBy)}
           >
             {groupByOptions.map((option) => (
-              <option key={option.value} value={option.value}>
+              <option key={option.value} value={option.value} disabled={metric === "usage" && option.value === "cost_category"}>
                 {option.label}
               </option>
             ))}

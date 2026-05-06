@@ -1,5 +1,13 @@
 export const EXPLORER_METRICS = ["cost", "usage"] as const;
-export const EXPLORER_GROUP_BY = ["db_service", "db_engine", "region"] as const;
+export const EXPLORER_GROUP_BY = [
+  "db_service",
+  "db_engine",
+  "region",
+  "resource_type",
+  "instance_class",
+  "cluster",
+  "cost_category",
+] as const;
 
 export type ExplorerMetric = (typeof EXPLORER_METRICS)[number];
 export type ExplorerGroupBy = (typeof EXPLORER_GROUP_BY)[number];
@@ -42,6 +50,27 @@ export type ExplorerUsageTrendItem = {
 
 export type ExplorerTrendItem = ExplorerCostTrendItem | ExplorerUsageTrendItem;
 
+export type ExplorerTrendGroupedPoint = {
+  date: string;
+  value: number;
+};
+
+export type ExplorerTrendGroupedSeries = {
+  key: string;
+  label: string;
+  data: ExplorerTrendGroupedPoint[];
+  total?: number;
+};
+
+export type ExplorerTrendGrouped = {
+  metric: ExplorerMetric;
+  groupBy: ExplorerGroupBy;
+  chartType: "stacked_bar" | "line";
+  xKey: "date";
+  usageMetric?: "load_avg";
+  series: ExplorerTrendGroupedSeries[];
+};
+
 export type ExplorerTableRow = {
   group: string;
   totalCost: number;
@@ -64,5 +93,6 @@ export type ExplorerResponse = {
   filterOptions: ExplorerFilterOptions;
   cards: ExplorerCards;
   trend: ExplorerTrendItem[];
+  trendGrouped?: ExplorerTrendGrouped;
   table: ExplorerTableRow[];
 };
