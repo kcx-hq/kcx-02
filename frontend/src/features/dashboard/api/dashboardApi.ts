@@ -168,6 +168,9 @@ function withDatabaseExplorerFilters(
   if (scope.to) params.set("end_date", scope.to);
   if (filters.metric) params.set("metric", filters.metric);
   if (filters.groupBy) params.set("group_by", filters.groupBy);
+  if (typeof filters.databaseType === "string" && filters.databaseType.trim().length > 0) {
+    params.set("database_type", filters.databaseType.trim());
+  }
   if (typeof filters.regionKey !== "undefined" && filters.regionKey !== null && String(filters.regionKey).trim().length > 0) {
     params.set("region_key", String(filters.regionKey).trim());
   }

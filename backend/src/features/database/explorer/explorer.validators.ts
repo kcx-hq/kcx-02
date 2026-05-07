@@ -7,8 +7,11 @@ import type { ExplorerQueryParams } from "./explorer.types.js";
 
 const metricSchema = z.enum(["cost", "usage"]).default("cost");
 const groupBySchema = z
-  .enum(["db_service", "db_engine", "region", "resource_type", "instance_class", "cluster", "cost_category"])
-  .default("db_service");
+  .enum(["database_type", "db_service", "db_engine", "region", "resource_type", "instance_class", "cluster", "cost_category"])
+  .default("database_type");
+const databaseTypeSchema = z
+  .enum(["relational", "key_value", "in_memory", "document", "graph", "wide_column", "time_series"])
+  .optional();
 
 const requiredDateString = (fieldName: string) =>
   z.preprocess(
@@ -35,6 +38,7 @@ const explorerQuerySchema = z
     endDate: requiredDateString("end_date"),
     cloudConnectionId: z.string().trim().min(1).optional(),
     regionKey: z.string().trim().min(1).optional(),
+    databaseType: databaseTypeSchema,
     dbService: z.string().trim().min(1).optional(),
     dbEngine: z.string().trim().min(1).optional(),
     metric: metricSchema,
@@ -60,9 +64,10 @@ export function parseExplorerQuery(req: Request): ExplorerQueryParams {
     endDate: firstValue(req.query.end_date),
     cloudConnectionId: optionalString(req.query.cloud_connection_id),
     regionKey: optionalString(req.query.region_key),
+    databaseType: optionalString(req.query.database_type),
     dbService: optionalString(req.query.db_service),
     dbEngine: optionalString(req.query.db_engine),
     metric: firstValue(req.query.metric) ?? "cost",
-    groupBy: firstValue(req.query.group_by) ?? "db_service",
+    groupBy: firstValue(req.query.group_by) ?? "database_type",
   });
 }

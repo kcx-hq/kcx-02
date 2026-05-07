@@ -39,6 +39,7 @@ const isUsageTrendItem = (item: DatabaseExplorerResponse["trend"][number]): item
   "load" in item;
 
 const toGroupByLabel = (groupBy: DatabaseExplorerGroupBy): string => {
+  if (groupBy === "database_type") return "Database Type";
   if (groupBy === "db_service") return "DB Service";
   if (groupBy === "db_engine") return "DB Engine";
   if (groupBy === "resource_type") return "Resource Type";
@@ -287,11 +288,7 @@ export function DatabaseExplorerTrend({ metric, groupBy, trend, trendGrouped, is
   }, [activeGrouped, activeTrend, groupedLabels, labels, metric]);
 
   const title = metric === "usage" ? "Database Usage Trend" : "Database Cost Trend";
-  const subtitle = activeGrouped
-    ? `Daily ${metric === "usage" ? "load" : "cost"} segmented by ${toGroupByLabel(groupBy)}`
-    : metric === "usage"
-      ? "Daily load and connections"
-      : "Daily cost by compute, storage, IO, and backup";
+  const subtitle = `Daily ${metric === "usage" ? "load" : "cost"} segmented by ${toGroupByLabel(groupBy)}`;
   const chartReady = activeGrouped ? groupedLabels.length > 0 && activeGrouped.series.length > 0 : activeTrend.length > 0;
 
   return (

@@ -1,5 +1,6 @@
 export const EXPLORER_METRICS = ["cost", "usage"] as const;
 export const EXPLORER_GROUP_BY = [
+  "database_type",
   "db_service",
   "db_engine",
   "region",
@@ -18,6 +19,14 @@ export type ExplorerQueryParams = {
   endDate: string;
   cloudConnectionId?: string;
   regionKey?: string;
+  databaseType?:
+    | "relational"
+    | "key_value"
+    | "in_memory"
+    | "document"
+    | "graph"
+    | "wide_column"
+    | "time_series";
   dbService?: string;
   dbEngine?: string;
   metric: ExplorerMetric;

@@ -13,11 +13,10 @@ import {
   DatabaseExplorerGroupedTable,
   DatabaseExplorerTrend,
 } from "./components";
-
-const uniqueSorted = (values: string[]): string[] =>
-  [...new Set(values.map((value) => value.trim()).filter(Boolean))].sort((left, right) =>
-    left.localeCompare(right),
-  );
+import {
+  deriveAutoGroupBy,
+  type DatabaseTypeValue,
+} from "./databaseExplorer.taxonomy";
 
 const metricOptions: Array<{ value: DatabaseExplorerMetric; label: string }> = [
   { value: "cost", label: "Cost" },
@@ -26,39 +25,56 @@ const metricOptions: Array<{ value: DatabaseExplorerMetric; label: string }> = [
 
 export default function DatabaseExplorerPage() {
   const [metric, setMetric] = useState<DatabaseExplorerMetric>("cost");
-  const [groupBy, setGroupBy] = useState<DatabaseExplorerGroupBy>("db_service");
+  const [groupBy, setGroupBy] = useState<"auto" | DatabaseExplorerGroupBy>("auto");
+  const [databaseType, setDatabaseType] = useState<DatabaseTypeValue>("all");
   const [dbService, setDbService] = useState("");
   const [dbEngine, setDbEngine] = useState("");
+
+  const effectiveGroupBy = useMemo<DatabaseExplorerGroupBy>(
+    () => (groupBy === "auto" ? deriveAutoGroupBy(databaseType, dbService, dbEngine) : groupBy),
+    [databaseType, dbEngine, dbService, groupBy],
+  );
 
   const filters = useMemo<DatabaseExplorerFiltersQuery>(
     () => ({
       metric,
-      groupBy,
+      groupBy: effectiveGroupBy,
+      ...(databaseType !== "all" ? { databaseType } : {}),
       ...(dbService.trim() ? { dbService: dbService.trim() } : {}),
       ...(dbEngine.trim() ? { dbEngine: dbEngine.trim() } : {}),
     }),
-    [dbEngine, dbService, groupBy, metric],
+    [databaseType, dbEngine, dbService, effectiveGroupBy, metric],
   );
 
   const query = useDatabaseExplorerQuery(filters);
   const data = query.data;
-
-  const dbServiceOptions = useMemo(
-    () => uniqueSorted(data?.filterOptions?.dbServices ?? []),
-    [data?.filterOptions?.dbServices],
-  );
-  const dbEngineOptions = useMemo(
-    () => uniqueSorted(data?.filterOptions?.dbEngines ?? []),
-    [data?.filterOptions?.dbEngines],
-  );
 
   const pageLoading = query.isLoading && !data;
   const showError = query.isError && !data;
   const handleMetricChange = (nextMetric: DatabaseExplorerMetric) => {
     setMetric(nextMetric);
     if (nextMetric === "usage" && groupBy === "cost_category") {
-      setGroupBy("db_service");
+      setGroupBy("auto");
     }
+  };
+
+  const handleClearAll = () => {
+    setGroupBy("auto");
+    setDatabaseType("all");
+    setDbService("");
+    setDbEngine("");
+  };
+
+  const handleApplyGroupBy = (next: {
+    groupBy: "auto" | DatabaseExplorerGroupBy;
+    databaseType: DatabaseTypeValue;
+    dbService: string;
+    dbEngine: string;
+  }) => {
+    setGroupBy(next.groupBy);
+    setDatabaseType(next.databaseType);
+    setDbService(next.dbService);
+    setDbEngine(next.dbEngine);
   };
 
   return (
@@ -92,14 +108,12 @@ export default function DatabaseExplorerPage() {
       <DatabaseExplorerFilters
         metric={metric}
         groupBy={groupBy}
+        effectiveGroupBy={effectiveGroupBy}
+        databaseType={databaseType}
         dbService={dbService}
         dbEngine={dbEngine}
-        dbServiceOptions={dbServiceOptions}
-        dbEngineOptions={dbEngineOptions}
-        onMetricChange={handleMetricChange}
-        onGroupByChange={setGroupBy}
-        onDbServiceChange={setDbService}
-        onDbEngineChange={setDbEngine}
+        onApplyGroupBy={handleApplyGroupBy}
+        onClearAll={handleClearAll}
       />
 
       {pageLoading ? <p className="dashboard-note">Loading database explorer...</p> : null}
@@ -122,7 +136,7 @@ export default function DatabaseExplorerPage() {
           />
           <DatabaseExplorerTrend
             metric={metric}
-            groupBy={groupBy}
+            groupBy={effectiveGroupBy}
             trend={data?.trend ?? []}
             trendGrouped={data?.trendGrouped}
             isLoading={pageLoading}
