@@ -283,7 +283,7 @@ function RecommendationActions({
 
   useEffect(() => {
     if (!open) return;
-    const close = (event: MouseEvent) => {
+    const close = (event: Event) => {
       if (event.target instanceof Element && event.target.closest("[data-ec2-actions-menu='true']")) return;
       setOpen(false);
     };
