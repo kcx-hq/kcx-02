@@ -64,6 +64,10 @@ import createEc2EipInventorySnapshotModel from "./ec2/ec2_eip_inventory_snapshot
 import createEc2AmiInventorySnapshotModel from "./ec2/ec2_ami_inventory_snapshots.js";
 import createEc2LoadBalancerInventorySnapshotModel from "./ec2/ec2_load_balancer_inventory_snapshots.js";
 import createEc2TargetGroupInventorySnapshotModel from "./ec2/ec2_target_group_inventory_snapshots.js";
+import createLoadBalancerModel from "./load_balancers/load_balancers.js";
+import createLoadBalancerTargetGroupModel from "./load_balancers/load_balancer_target_groups.js";
+import createLoadBalancerListenerModel from "./load_balancers/load_balancer_listeners.js";
+import createLoadBalancerCostDailyModel from "./load_balancers/load_balancer_cost_daily.js";
 import createEc2InstanceUtilizationHourlyModel from "./ec2/ec2_instance_utilization_hourly.js";
 import createEc2InstanceUtilizationDailyModel from "./ec2/ec2_instance_utilization_daily.js";
 import createDbResourceInventorySnapshotModel from "./db/db_resource_inventory_snapshots.js";
@@ -158,6 +162,10 @@ const Ec2EipInventorySnapshot = createEc2EipInventorySnapshotModel(sequelize);
 const Ec2AmiInventorySnapshot = createEc2AmiInventorySnapshotModel(sequelize);
 const Ec2LoadBalancerInventorySnapshot = createEc2LoadBalancerInventorySnapshotModel(sequelize);
 const Ec2TargetGroupInventorySnapshot = createEc2TargetGroupInventorySnapshotModel(sequelize);
+const LoadBalancer = createLoadBalancerModel(sequelize);
+const LoadBalancerTargetGroup = createLoadBalancerTargetGroupModel(sequelize);
+const LoadBalancerListener = createLoadBalancerListenerModel(sequelize);
+const LoadBalancerCostDaily = createLoadBalancerCostDailyModel(sequelize);
 const Ec2InstanceUtilizationHourly = createEc2InstanceUtilizationHourlyModel(sequelize);
 const Ec2InstanceUtilizationDaily = createEc2InstanceUtilizationDailyModel(sequelize);
 const DbResourceInventorySnapshot = createDbResourceInventorySnapshotModel(sequelize);
@@ -752,6 +760,10 @@ export {
   Ec2AmiInventorySnapshot,
   Ec2LoadBalancerInventorySnapshot,
   Ec2TargetGroupInventorySnapshot,
+  LoadBalancer,
+  LoadBalancerTargetGroup,
+  LoadBalancerListener,
+  LoadBalancerCostDaily,
   Ec2InstanceUtilizationHourly,
   Ec2InstanceUtilizationDaily,
   DbResourceInventorySnapshot,

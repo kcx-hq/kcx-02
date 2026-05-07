@@ -25,7 +25,6 @@ const COST_COMPONENTS = [
   "data_transfer",
   "nat_gateway",
   "eip",
-  "load_balancer",
   "other",
 ] as const;
 
@@ -112,9 +111,8 @@ const toCostParts = (
   const snapshotCost = additional?.snapshotCost ?? 0;
   const natGatewayCost = additional?.natGatewayCost ?? 0;
   const eipCost = additional?.eipCost ?? 0;
-  const loadBalancerCost = additional?.loadBalancerCost ?? 0;
-  const dataTransferCost = Math.max(0, row.dataTransferCost - natGatewayCost - eipCost - loadBalancerCost);
-  const known = row.computeCost + row.ebsCost + dataTransferCost + snapshotCost + natGatewayCost + eipCost + loadBalancerCost;
+  const dataTransferCost = Math.max(0, row.dataTransferCost - natGatewayCost - eipCost);
+  const known = row.computeCost + row.ebsCost + dataTransferCost + snapshotCost + natGatewayCost + eipCost;
   const totalByBasis = toCostByBasis(row, selectedCostBasis);
   const otherCost = Math.max(0, totalByBasis - known);
   return {
@@ -124,7 +122,6 @@ const toCostParts = (
     data_transfer: dataTransferCost,
     nat_gateway: natGatewayCost,
     eip: eipCost,
-    load_balancer: loadBalancerCost,
     other: otherCost,
   };
 };
@@ -220,7 +217,6 @@ const metricLabel = (key: string): string => {
   if (key === "data_transfer") return "Data Transfer";
   if (key === "nat_gateway") return "NAT Gateway";
   if (key === "eip") return "EIP";
-  if (key === "load_balancer") return "Load Balancer";
   if (key === "other") return "Other";
   if (key === "internet_data_transfer") return "Internet Data Transfer";
   if (key === "inter_region_data_transfer") return "Inter-Region Data Transfer";
@@ -244,7 +240,7 @@ const metricLabel = (key: string): string => {
 
 type CurCostRow = {
   date: string;
-  category: "compute" | "ebs" | "snapshot" | "data_transfer" | "nat_gateway" | "elastic_ip" | "load_balancer" | "other";
+  category: "compute" | "ebs" | "snapshot" | "data_transfer" | "nat_gateway" | "elastic_ip" | "other";
   cost: number;
   usageType: string | null;
   productUsageType: string | null;
@@ -584,7 +580,6 @@ const buildCostTable = (
       { key: "data_transfer", label: "Data Transfer" },
       { key: "nat_gateway", label: "NAT Gateway" },
       { key: "eip", label: "EIP" },
-      { key: "load_balancer", label: "Load Balancer" },
       { key: "other", label: "Other" },
     ];
     const rowsOut = groups.map((group) => {
@@ -1635,7 +1630,6 @@ export class Ec2ExplorerService {
               { key: "dataTransferCost", label: "Data Transfer Cost" },
               { key: "eipCost", label: "EIP Cost" },
               { key: "natGatewayCost", label: "NAT Gateway Cost" },
-              { key: "loadBalancerCost", label: "Load Balancer Cost" },
               { key: "otherCost", label: "Other Cost" },
             ],
             rows: [{
@@ -1647,7 +1641,6 @@ export class Ec2ExplorerService {
               dataTransferCost: toFixedNumber(categoryTotals.get("data_transfer") ?? 0),
               eipCost: toFixedNumber(categoryTotals.get("elastic_ip") ?? 0),
               natGatewayCost: toFixedNumber(categoryTotals.get("nat_gateway") ?? 0),
-              loadBalancerCost: toFixedNumber(categoryTotals.get("load_balancer") ?? 0),
               otherCost: toFixedNumber(categoryTotals.get("other") ?? 0),
             }],
           }

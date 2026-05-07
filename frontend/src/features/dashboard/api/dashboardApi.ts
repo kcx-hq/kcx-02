@@ -33,6 +33,10 @@ import type {
   Ec2DataTransferResponse,
   Ec2ElasticIpFiltersQuery,
   Ec2ElasticIpResponse,
+  LoadBalancerExplorerFiltersQuery,
+  LoadBalancerExplorerSummaryResponse,
+  LoadBalancerExplorerTrendResponse,
+  LoadBalancerExplorerGroupByResponse,
   DatabaseExplorerFilters,
   DatabaseExplorerResponse,
   DatabaseAssetsFilters,
@@ -448,6 +452,38 @@ function withEc2ElasticIpFilters(
   return query.length > 0 ? `${path}?${query}` : path;
 }
 
+function withLoadBalancerExplorerFilters(
+  path: string,
+  scope: DashboardResolvedScope,
+  filters: LoadBalancerExplorerFiltersQuery,
+): string {
+  const params = new URLSearchParams(buildDashboardQueryParams(scope));
+  const appendArray = (key: string, values?: Array<string | number>) => {
+    if (!Array.isArray(values) || values.length === 0) return;
+    params.set(key, values.join(","));
+  };
+
+  params.set("metric", filters.metric);
+  params.set("groupBy", filters.groupBy);
+  if (filters.startDate) params.set("startDate", filters.startDate);
+  if (filters.endDate) params.set("endDate", filters.endDate);
+  if (filters.granularity) params.set("granularity", filters.granularity);
+  if (filters.tagKey) params.set("tagKey", filters.tagKey);
+  if (filters.accountId) params.set("accountId", filters.accountId);
+  appendArray("regions", filters.regions);
+  appendArray("types", filters.types);
+  appendArray("schemes", filters.schemes);
+  appendArray("states", filters.states);
+  appendArray("teams", filters.teams);
+  appendArray("products", filters.products);
+  appendArray("environments", filters.environments);
+  appendArray("tags", filters.tags);
+  appendArray("groupValues", filters.groupValues);
+
+  const query = params.toString();
+  return query.length > 0 ? `${path}?${query}` : path;
+}
+
 function withS3CostInsightsFilters(
   path: string,
   scope: DashboardResolvedScope,
@@ -747,6 +783,21 @@ export const dashboardApi = {
   getEc2ElasticIps(scope: DashboardResolvedScope, filters?: Ec2ElasticIpFiltersQuery) {
     return apiGet<Ec2ElasticIpResponse>(withEc2ElasticIpFilters("/dashboard/ec2/elastic-ips", scope, filters));
   },
+  getLoadBalancerExplorerSummary(scope: DashboardResolvedScope, filters: LoadBalancerExplorerFiltersQuery) {
+    return apiGet<LoadBalancerExplorerSummaryResponse>(
+      withLoadBalancerExplorerFilters("/dashboard/load-balancer/explorer/summary", scope, filters),
+    );
+  },
+  getLoadBalancerExplorerTrend(scope: DashboardResolvedScope, filters: LoadBalancerExplorerFiltersQuery) {
+    return apiGet<LoadBalancerExplorerTrendResponse>(
+      withLoadBalancerExplorerFilters("/dashboard/load-balancer/explorer/trend", scope, filters),
+    );
+  },
+  getLoadBalancerExplorerGroupBy(scope: DashboardResolvedScope, filters: LoadBalancerExplorerFiltersQuery) {
+    return apiGet<LoadBalancerExplorerGroupByResponse>(
+      withLoadBalancerExplorerFilters("/dashboard/load-balancer/explorer/group-by", scope, filters),
+    );
+  },
   getS3CostInsights(scope: DashboardResolvedScope, filters?: S3CostInsightsFiltersQuery) {
     return apiGet<S3CostInsightsResponse>(withS3CostInsightsFilters("/dashboard/s3/cost-insights", scope, filters));
   },
@@ -833,6 +884,13 @@ export type {
   Ec2DataTransferResponse,
   Ec2ElasticIpFiltersQuery,
   Ec2ElasticIpResponse,
+  LoadBalancerExplorerMetric,
+  LoadBalancerExplorerGroupBy,
+  LoadBalancerExplorerGranularity,
+  LoadBalancerExplorerFiltersQuery,
+  LoadBalancerExplorerSummaryResponse,
+  LoadBalancerExplorerTrendResponse,
+  LoadBalancerExplorerGroupByResponse,
   S3CostInsightsFiltersQuery,
   S3CostInsightsResponse,
   S3BucketLifecycleInsightResponse,

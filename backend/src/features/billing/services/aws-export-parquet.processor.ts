@@ -28,6 +28,7 @@ import {
 } from "../../dashboard/optimization/recommendation-sync/sync.service.js";
 import { syncEc2CostHistoryForIngestionRun } from "./ec2-cost-history.service.js";
 import { syncDbCostHistoryForIngestionRun } from "./db-cost-history.service.js";
+import { syncLoadBalancerCostDailyForIngestionRun } from "../../load-balancer/cost/load-balancer-cost-daily.service.js";
 import { createTagDimensionCache, resolveFactPrimaryTagId, resolveFactTagIds } from "./dim-tag.service.js";
 import { assertTagDimensionSchemaReady } from "./ingestion-schema-guard.service.js";
 import { Ec2RecommendationsService } from "../../ec2/optimization/ec2-recommendations.service.js";
@@ -85,6 +86,46 @@ function scheduleStorageLensSyncAfterIngestion({ tenantId, billingSourceId, inge
           ingestionRunId: String(ingestionRunId),
           tenantId: normalizedTenantId,
           billingSourceId: normalizedBillingSourceId,
+          reason: error instanceof Error ? error.message : String(error),
+        });
+      });
+  });
+}
+
+function scheduleLoadBalancerCostAggregationAfterIngestion({
+  ingestionRunId,
+  cloudConnectionId,
+}: {
+  ingestionRunId: string | number;
+  cloudConnectionId?: string | null;
+}): void {
+  setImmediate(() => {
+    void syncLoadBalancerCostDailyForIngestionRun({
+      ingestionRunId: String(ingestionRunId),
+      cloudConnectionId: cloudConnectionId ?? null,
+    })
+      .then((result) => {
+        logger.info("Load balancer cost aggregation completed after AWS parquet ingestion", {
+          triggerSource: "ingestion",
+          ingestionRunId: String(ingestionRunId),
+          cloudConnectionId: cloudConnectionId ?? null,
+          skipped: result.skipped,
+          reason: result.reason ?? null,
+          rowsScanned: result.rowsScanned ?? 0,
+          lbRowsMatched:
+            typeof result.rowsClassified === "number" && typeof result.rowsUnmatched === "number"
+              ? Math.max(result.rowsClassified - result.rowsUnmatched, 0)
+              : 0,
+          unmatchedRows: result.rowsUnmatched ?? 0,
+          dailyRowsWritten: result.rowsUpserted ?? 0,
+          rowsDeleted: result.rowsDeleted ?? 0,
+        });
+      })
+      .catch((error) => {
+        logger.warn("Load balancer cost aggregation failed after AWS parquet ingestion", {
+          triggerSource: "ingestion",
+          ingestionRunId: String(ingestionRunId),
+          cloudConnectionId: cloudConnectionId ?? null,
           reason: error instanceof Error ? error.message : String(error),
         });
       });
@@ -670,6 +711,10 @@ export async function processAwsExportParquetRun({ run }) {
         providerId: source.cloudProviderId,
         billingSourceId: source.id,
         rowsLoaded,
+      });
+      scheduleLoadBalancerCostAggregationAfterIngestion({
+        ingestionRunId: runId,
+        cloudConnectionId: source.cloudConnectionId ? String(source.cloudConnectionId) : null,
       });
 
       try {

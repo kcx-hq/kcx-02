@@ -8,6 +8,9 @@ import {
   COST_BASIS_OPTIONS,
   GRANULARITY_OPTIONS,
   DEFAULT_EC2_EXPLORER_CONTROLS,
+  getGroupByOptionsForMetric,
+  getValidGroupByForMetric,
+  isGroupByAllowedForMetric,
   GROUP_BY_OPTIONS,
   METRIC_OPTIONS,
   STATE_OPTIONS,
@@ -16,7 +19,6 @@ import {
   type EC2Aggregation,
   type EC2CostBasis,
   type EC2ExplorerControlsState,
-  type EC2GroupBy,
   type EC2Metric,
   type EC2State,
   type EC2UsageType,
@@ -43,21 +45,6 @@ const DATA_TRANSFER_VIEW_OPTIONS: Array<Option<EC2UsageType>> = [
   { key: "disk", label: "Usage (GB)" },
   { key: "cpu", label: "Distribution" },
 ];
-
-const GROUP_BY_BY_METRIC: Record<EC2Metric, EC2GroupBy[]> = {
-  cost: ["none", "cost-category", "region", "account", "availability-zone", "instance", "instance-type", "reservation-type", "usage-type", "operation", "tag"],
-  usage: ["none", "region", "account", "availability-zone", "instance", "instance-type", "usage-type", "tag"],
-  "data-transfer": ["transfer-type", "instance", "region"],
-  instances: ["none", "region", "account", "availability-zone", "instance", "instance-type", "instance-state", "reservation-type", "recommendation", "tag"],
-  volumes: ["none", "volume", "volume_type", "attachment_state", "instance", "storage_tier", "iops_tier", "size_bucket", "lifecycle_state", "region", "account", "availability-zone", "tag"],
-};
-const DEFAULT_GROUP_BY_BY_METRIC: Record<EC2Metric, EC2GroupBy> = {
-  cost: "cost-category",
-  usage: "instance",
-  "data-transfer": "transfer-type",
-  instances: "instance",
-  volumes: "volume_type",
-};
 
 type EC2ExplorerTopControlsProps = {
   value: EC2ExplorerControlsState;
@@ -140,13 +127,7 @@ export function EC2ExplorerTopControls({ value, onChange, onReset, children }: E
     setActivePopover((current) => (current === key ? null : key));
   };
 
-  const visibleGroupByOptions = useMemo(() => {
-    const allowed = new Set(GROUP_BY_BY_METRIC[value.metric]);
-    return GROUP_BY_OPTIONS.filter((option) => allowed.has(option.key));
-  }, [value.metric]);
-  const isGroupByVisibleForMetric = (groupBy: EC2GroupBy, metric: EC2Metric): boolean => {
-    return GROUP_BY_BY_METRIC[metric].includes(groupBy);
-  };
+  const visibleGroupByOptions = useMemo(() => getGroupByOptionsForMetric(value.metric), [value.metric]);
 
   const renderOptionList = <T extends string>(params: {
     options: Array<Option<T>>;
@@ -221,12 +202,12 @@ export function EC2ExplorerTopControls({ value, onChange, onReset, children }: E
                   options: METRIC_OPTIONS,
                   selected: value.metric,
                   onSelect: (nextMetric: EC2Metric) => {
-                    const currentGroupByVisible = isGroupByVisibleForMetric(value.groupBy, nextMetric);
-                    const fallbackGroupBy: EC2GroupBy = DEFAULT_GROUP_BY_BY_METRIC[nextMetric];
+                    const currentGroupByVisible = isGroupByAllowedForMetric(value.groupBy, nextMetric);
+                    const nextGroupBy = getValidGroupByForMetric(nextMetric, value.groupBy);
 
                     update({
                       metric: nextMetric,
-                      groupBy: currentGroupByVisible ? value.groupBy : fallbackGroupBy,
+                      groupBy: nextGroupBy,
                       groupByValues: currentGroupByVisible ? value.groupByValues : [],
                     });
                   },

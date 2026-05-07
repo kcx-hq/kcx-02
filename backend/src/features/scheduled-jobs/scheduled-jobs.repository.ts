@@ -1,7 +1,8 @@
 import { QueryTypes, type Transaction } from "sequelize";
 
-import { ScheduledJob as ScheduledJobModel, sequelize } from "../../../models/index.js";
-import type { ScheduledJob } from "../../../models/ec2/scheduled_jobs.js";
+import { ScheduledJob as ScheduledJobModel, sequelize } from "../../models/index.js";
+import type { ScheduledJob } from "../../models/ec2/scheduled_jobs.js";
+import { getInventorySyncScheduledJobTypes } from "./scheduled-jobs.registry.js";
 
 type RecoveredScheduledJobRow = {
   id: string;
@@ -146,6 +147,7 @@ export class ScheduledJobsRepository {
         ? staleBefore
         : new Date(0);
     const normalizedLimit = Math.floor(limit);
+    const staleRecoverableJobTypes = getInventorySyncScheduledJobTypes();
 
     return sequelize.transaction(async (transaction: Transaction) => {
       const dueRows = await sequelize.query<ClaimedDueJobRow>(
@@ -162,7 +164,7 @@ export class ScheduledJobsRepository {
             AND (
               sj.last_status IS DISTINCT FROM 'running'
               OR (
-                sj.job_type = 'ec2_inventory_sync'
+                sj.job_type = ANY($3::text[])
                 AND sj.last_status = 'running'
                 AND COALESCE(sj.last_run_at, sj.updated_at) <= $2
               )
@@ -172,7 +174,7 @@ export class ScheduledJobsRepository {
           FOR UPDATE SKIP LOCKED;
         `,
         {
-          bind: [normalizedLimit, staleCutoff],
+          bind: [normalizedLimit, staleCutoff, staleRecoverableJobTypes],
           type: QueryTypes.SELECT,
           transaction,
         },

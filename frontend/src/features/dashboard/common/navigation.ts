@@ -95,6 +95,26 @@ export const dashboardNav: DashboardNavNode[] = [
       },
       {
         kind: "group",
+        label: "Load Balancer",
+        icon: "activity",
+        path: "/dashboard/load-balancer/explorer",
+        items: [
+          {
+            kind: "link",
+            label: "Explorer",
+            path: "/dashboard/load-balancer/explorer",
+            icon: "line-chart",
+          },
+          {
+            kind: "link",
+            label: "List",
+            path: "/dashboard/inventory/aws/load-balancer/list",
+            icon: "boxes",
+          },
+        ],
+      },
+      {
+        kind: "group",
         label: "S3",
         icon: "boxes",
         path: "/dashboard/s3",

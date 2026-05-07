@@ -435,6 +435,31 @@ export function DashboardGlobalHeader() {
         { label: "EC2" },
       ];
     }
+    if (path.startsWith("/dashboard/inventory/aws/load-balancer/list")) {
+      const match = path.match(/^\/dashboard\/inventory\/aws\/load-balancer\/list\/([^/]+)$/);
+      if (match?.[1]) {
+        return [
+          { label: rootCrumb, path: "/dashboard/overview" },
+          { label: "Services", path: "/dashboard/inventory" },
+          { label: "Load Balancer", path: "/dashboard/load-balancer/explorer" },
+          { label: "List", path: "/dashboard/inventory/aws/load-balancer/list" },
+          { label: decodeURIComponent(match[1]) },
+        ];
+      }
+      return [
+        { label: rootCrumb, path: "/dashboard/overview" },
+        { label: "Services", path: "/dashboard/inventory" },
+        { label: "Load Balancer", path: "/dashboard/load-balancer/explorer" },
+        { label: "List" },
+      ];
+    }
+    if (path.startsWith("/dashboard/load-balancer/explorer")) {
+      return [
+        { label: rootCrumb, path: "/dashboard/overview" },
+        { label: "Services", path: "/dashboard/inventory" },
+        { label: "Load Balancer" },
+      ];
+    }
     if (path === "/dashboard/s3") {
       return [
         { label: rootCrumb, path: "/dashboard/overview" },

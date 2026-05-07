@@ -15,6 +15,7 @@ import {
 import {
   METRIC_OPTIONS,
   type EC2ExplorerControlsState,
+  getValidGroupByForMetric,
 } from "./ec2ExplorerControls.types";
 
 const toApiGroupBy = (
@@ -160,13 +161,7 @@ export default function EC2ExplorerPage() {
                       : groupByParam === "instance_state"
                         ? "instance-state"
                         : (groupByParam as EC2ExplorerControlsState["groupBy"]) ?? EC2_EXPLORER_DEFAULT_CONTROLS.groupBy;
-    const groupBy =
-      metric === "data-transfer" &&
-      rawGroupBy !== "transfer-type" &&
-      rawGroupBy !== "instance" &&
-      rawGroupBy !== "region"
-        ? "transfer-type"
-        : rawGroupBy;
+    const groupBy = getValidGroupByForMetric(metric, rawGroupBy);
     const usageType = usageTypeParam === "network" || usageTypeParam === "disk" || usageTypeParam === "cpu"
       ? usageTypeParam
       : EC2_EXPLORER_DEFAULT_CONTROLS.usageType;

@@ -508,7 +508,6 @@ export type Ec2NetworkBreakdownType =
   | "Inter-AZ Data Transfer"
   | "NAT Gateway"
   | "Elastic IP"
-  | "Load Balancer"
   | "Other Network";
 
 export type Ec2NetworkBreakdownResponse = {
@@ -614,6 +613,83 @@ export type Ec2ElasticIpResponse = {
     page: number;
     pageSize: number;
     total: number;
+  };
+};
+
+export type LoadBalancerExplorerMetric = "cost" | "load_balancers";
+export type LoadBalancerExplorerGroupBy =
+  | "cost_type"
+  | "none"
+  | "account"
+  | "region"
+  | "type"
+  | "scheme"
+  | "state"
+  | "team"
+  | "product"
+  | "environment"
+  | "tag"
+  | "load_balancer";
+export type LoadBalancerExplorerGranularity = "hourly" | "daily" | "monthly";
+
+export type LoadBalancerExplorerFiltersQuery = {
+  startDate?: string;
+  endDate?: string;
+  metric: LoadBalancerExplorerMetric;
+  granularity?: LoadBalancerExplorerGranularity;
+  groupBy: LoadBalancerExplorerGroupBy;
+  tagKey?: string | null;
+  accountId?: string | null;
+  regions?: string[];
+  types?: string[];
+  schemes?: string[];
+  states?: string[];
+  teams?: string[];
+  products?: string[];
+  environments?: string[];
+  tags?: string[];
+  groupValues?: string[];
+};
+
+export type LoadBalancerExplorerSummaryResponse = {
+  summary: {
+    totalCost: number;
+    fixedCost?: number;
+    lcuCost?: number;
+    dataProcessingCost?: number;
+    previousCost: number;
+    trendPercent: number;
+    loadBalancerCount: number;
+    totalLoadBalancers?: number;
+    albCount?: number;
+    nlbCount?: number;
+    activeLoadBalancerCount: number;
+    internetFacingCount: number;
+    internalCount: number;
+    totalProcessedBytesGb: number;
+    avgDailyCost: number;
+  };
+};
+
+export type LoadBalancerExplorerTrendResponse = {
+  graph: {
+    type: "bar" | "stacked_bar" | "line" | "area" | "stacked_area";
+    xKey: "date";
+    series: Array<{
+      key: string;
+      label: string;
+      data: Array<{
+        date: string;
+        value: number;
+      }>;
+    }>;
+  };
+};
+
+export type LoadBalancerExplorerGroupByResponse = {
+  table: {
+    columns: Array<{ key: string; label: string }>;
+    rows: Array<{ id: string; [key: string]: string | number | null }>;
   };
 };
 

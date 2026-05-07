@@ -1,6 +1,6 @@
 import { QueryTypes } from "sequelize";
 
-import { ScheduledJobsRepository } from "../src/features/ec2/scheduled-jobs/scheduled-jobs.repository.js";
+import { ScheduledJobsRepository } from "../src/features/scheduled-jobs/scheduled-jobs.repository.js";
 import { sequelize } from "../src/models/index.js";
 
 type CliOptions = {
@@ -254,4 +254,5 @@ main()
   .finally(async () => {
     await sequelize.close();
   });
+
 

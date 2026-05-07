@@ -6,7 +6,7 @@ import { startIdleActionProcessor } from "./src/features/dashboard/optimization/
 import { startIdleRecommendationScheduler } from "./src/features/dashboard/optimization/recommendation-sync/idle-scheduler.service.js";
 import { startRightsizingActionProcessor } from "./src/features/dashboard/optimization/recommendation-sync/rightsizing-action-processor.service.js";
 import { startRightsizingRecommendationScheduler } from "./src/features/dashboard/optimization/recommendation-sync/rightsizing-scheduler.service.js";
-import { startEc2ScheduledJobsScheduler } from "./src/features/ec2/scheduled-jobs/scheduled-jobs.scheduler.service.js";
+import { startEc2ScheduledJobsScheduler } from "./src/features/scheduled-jobs/scheduled-jobs.scheduler.service.js";
 import { startS3BucketConfigSnapshotScheduler } from "./src/features/billing/services/s3-bucket-config-snapshot-scheduler.service.js";
 import { sequelize } from "./src/models/index.js";
 import { logger } from "./src/utils/logger.js";

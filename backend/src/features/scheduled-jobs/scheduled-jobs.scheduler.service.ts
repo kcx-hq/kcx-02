@@ -1,8 +1,9 @@
-import env from "../../../config/env.js";
-import { logger } from "../../../utils/logger.js";
+import env from "../../config/env.js";
+import { logger } from "../../utils/logger.js";
 
 import { computeNextRunAt } from "./scheduled-jobs.next-run.js";
 import { dispatchScheduledJob } from "./scheduled-jobs.dispatcher.js";
+import { getInventorySyncScheduledJobTypes, getRegisteredScheduledJob, toScheduledJobType } from "./scheduled-jobs.registry.js";
 import { ScheduledJobsRepository } from "./scheduled-jobs.repository.js";
 import type { ScheduledJob } from "./scheduled-jobs.types.js";
 
@@ -23,11 +24,14 @@ const toErrorMessage = (error: unknown): string => {
 
 async function runScheduledJob(job: ScheduledJob, repository: ScheduledJobsRepository): Promise<"completed" | "failed"> {
   const jobId = String(job.id);
-  const jobType = String(job.jobType);
+  const jobType = toScheduledJobType(String(job.jobType));
+  const registeredJob = getRegisteredScheduledJob(jobType);
 
   logger.info("Scheduled job started", {
     jobId,
     jobType,
+    jobKey: registeredJob.key,
+    service: registeredJob.service,
     scheduleType: job.scheduleType,
     tenantId: job.tenantId ? String(job.tenantId) : null,
     cloudConnectionId: job.cloudConnectionId ? String(job.cloudConnectionId) : null,
@@ -42,7 +46,13 @@ async function runScheduledJob(job: ScheduledJob, repository: ScheduledJobsRepos
     }
 
     await repository.markScheduledJobSuccess({ jobId, nextRunAt });
-    logger.info("Scheduled job completed", { jobId, jobType, nextRunAt: nextRunAt.toISOString() });
+    logger.info("Scheduled job completed", {
+      jobId,
+      jobType,
+      jobKey: registeredJob.key,
+      service: registeredJob.service,
+      nextRunAt: nextRunAt.toISOString(),
+    });
     return "completed";
   } catch (error) {
     const errorMessage = toErrorMessage(error);
@@ -62,6 +72,8 @@ async function runScheduledJob(job: ScheduledJob, repository: ScheduledJobsRepos
     logger.warn("Scheduled job failed", {
       jobId,
       jobType,
+      jobKey: registeredJob.key,
+      service: registeredJob.service,
       errorMessage,
       nextRunAt: nextRunAt.toISOString(),
       nextRunReason,
@@ -108,9 +120,10 @@ export async function pollScheduledJobs({
         (job) => job.reclaimedFromStaleRunning === true,
       );
       if (reclaimedStaleRunningJobs.length > 0) {
-        logger.warn("Stale running ec2_inventory_sync job reclaimed during claim", {
+        logger.warn("Stale running inventory_sync job reclaimed during claim", {
           staleAfterMs,
           staleBefore: staleBefore.toISOString(),
+          recoverableJobTypes: getInventorySyncScheduledJobTypes(),
           reclaimedCount: reclaimedStaleRunningJobs.length,
           reclaimedJobs: reclaimedStaleRunningJobs.map((job) => ({
             jobId: String(job.id),
@@ -186,4 +199,3 @@ export function startEc2ScheduledJobsScheduler({
     logger.info("EC2 scheduled jobs scheduler stopped");
   };
 }
-
