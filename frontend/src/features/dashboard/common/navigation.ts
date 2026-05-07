@@ -1,15 +1,17 @@
+import type { SidebarIconKey } from "./sidebarIconMap";
+
 export type DashboardNavLink = {
   kind: "link";
   label: string;
   path: string;
-  icon: string;
+  icon: SidebarIconKey;
   children?: DashboardNavGroup[];
 };
 
 export type DashboardNavGroup = {
   kind: "group";
   label: string;
-  icon: string;
+  icon: SidebarIconKey;
   path?: string;
   items: DashboardNavLink[];
 };
@@ -20,32 +22,32 @@ export const dashboardNav: DashboardNavNode[] = [
   {
     kind: "group",
     label: "Dashboards",
-    icon: "pie-chart",
+    icon: "dashboards",
     items: [
       {
         kind: "link",
         label: "Overview Dashboard",
         path: "/dashboard/overview",
-        icon: "layout-dashboard",
+        icon: "overview",
       },
     ],
   },
   {
     kind: "group",
     label: "Cost",
-    icon: "boxes",
+    icon: "cost",
     items: [
       {
         kind: "link",
         label: "Explorer",
         path: "/dashboard/cost/explorer",
-        icon: "line-chart",
+        icon: "costExplorer",
       },
       {
         kind: "link",
         label: "History",
         path: "/dashboard/cost/history",
-        icon: "activity",
+        icon: "costHistory",
       },
     ],
   },
@@ -53,92 +55,92 @@ export const dashboardNav: DashboardNavNode[] = [
     kind: "link",
     label: "Services",
     path: "/dashboard/inventory",
-    icon: "server",
+    icon: "services",
     children: [
       {
         kind: "group",
         label: "EC2",
-        icon: "boxes",
+        icon: "ec2",
         path: "/dashboard/ec2/explorer",
         items: [
           {
             kind: "link",
             label: "Instances",
             path: "/dashboard/inventory/aws/ec2/instances",
-            icon: "server",
+            icon: "ec2Instances",
           },
           {
             kind: "link",
             label: "Volumes",
             path: "/dashboard/inventory/aws/ec2/volumes",
-            icon: "boxes",
+            icon: "ec2Volumes",
           },
           {
             kind: "link",
             label: "Snapshots",
             path: "/dashboard/inventory/aws/ec2/snapshots",
-            icon: "boxes",
+            icon: "ec2Snapshots",
           },
           {
             kind: "link",
             label: "Optimization",
             path: "/dashboard/ec2/optimization",
-            icon: "gauge",
+            icon: "ec2Optimization",
           },
           {
             kind: "link",
             label: "Elastic IP",
             path: "/dashboard/inventory/aws/ec2/elastic-ip",
-            icon: "activity",
+            icon: "elasticIp",
           },
         ],
       },
       {
         kind: "group",
         label: "S3",
-        icon: "boxes",
+        icon: "s3",
         path: "/dashboard/s3",
         items: [
           {
             kind: "link",
             label: "Bucket",
             path: "/dashboard/s3/bucket",
-            icon: "activity",
+            icon: "s3Bucket",
           },
           {
             kind: "link",
             label: "Optimization",
             path: "/dashboard/s3/optimization",
-            icon: "gauge",
+            icon: "s3Optimization",
           },
         ],
       },
       {
         kind: "group",
         label: "Database",
-        icon: "server",
+        icon: "database",
         path: "/dashboard/services/database",
         items: [
           {
             kind: "link",
             label: "Assets",
             path: "/dashboard/services/database/assets",
-            icon: "boxes",
+            icon: "databaseAssets",
           },
         ],
       },
     ],
   },
-  { kind: "link", label: "Optimization", path: "/dashboard/optimization", icon: "gauge" },
+  { kind: "link", label: "Optimization", path: "/dashboard/optimization", icon: "optimization" },
   {
     kind: "link",
     label: "Anomalies",
     path: "/dashboard/anomalies-alerts",
-    icon: "triangle-alert",
+    icon: "anomalies",
   },
-  { kind: "link", label: "Policy", path: "/dashboard/policy", icon: "file-text" },
-  { kind: "link", label: "Budget", path: "/dashboard/budget", icon: "wallet" },
-  { kind: "link", label: "Report", path: "/dashboard/report", icon: "file-text" },
+  { kind: "link", label: "Policy", path: "/dashboard/policy", icon: "policy" },
+  { kind: "link", label: "Budget", path: "/dashboard/budget", icon: "budget" },
+  { kind: "link", label: "Report", path: "/dashboard/report", icon: "report" },
 ];
 
 const flattenDashboardLink = (link: DashboardNavLink): DashboardNavLink[] => [
