@@ -11581,6 +11581,24 @@
   background: transparent;
 }
 
+.database-explorer-page .database-explorer-filters-row {
+  align-items: flex-end;
+  gap: 6px 12px;
+}
+
+.database-explorer-page .database-explorer-filters-row__clear-wrap {
+  margin-left: auto;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: flex-end;
+  min-height: var(--ce-control-lg-h);
+}
+
+.database-explorer-page .database-explorer-filters-row .cost-explorer-chip-bar__clear--inline {
+  margin-left: 0;
+  white-space: nowrap;
+}
+
 .database-assets-page .db-assets-filters-row {
   align-items: flex-end;
   gap: 6px 12px;
@@ -11641,6 +11659,11 @@
 }
 
 @media (max-width: 900px) {
+  .database-explorer-page .database-explorer-filters-row__clear-wrap {
+    margin-left: 0;
+    width: 100%;
+  }
+
   .database-assets-page .db-assets-filters-row__clear-wrap {
     margin-left: 0;
     width: 100%;

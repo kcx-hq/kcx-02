@@ -62,6 +62,9 @@ const explorerQuerySchema = z
     regionKey: z.string().trim().min(1).optional(),
     dbService: z.string().trim().min(1).optional(),
     dbEngine: z.string().trim().min(1).optional(),
+    resourceType: z.string().trim().min(1).optional(),
+    instanceClass: z.string().trim().min(1).optional(),
+    cluster: z.string().trim().min(1).optional(),
     metric: metricSchema,
     groupBy: z.preprocess((value) => normalizeGroupByInput(value), groupBySchema),
   })
@@ -91,6 +94,9 @@ export function parseExplorerQuery(req: Request): ExplorerQueryParams {
     regionKey: optionalString(req.query.region_key),
     dbService: optionalString(req.query.db_service),
     dbEngine: optionalString(req.query.db_engine),
+    resourceType: optionalString(req.query.resource_type),
+    instanceClass: optionalString(req.query.instance_class),
+    cluster: optionalString(req.query.cluster),
     metric: firstValue(req.query.metric) ?? "cost",
     groupBy: firstValue(req.query.group_by) ?? "db_service",
   });

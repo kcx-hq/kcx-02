@@ -113,6 +113,9 @@ export type DatabaseExplorerFilters = {
   regionKey?: number | string;
   dbService?: string;
   dbEngine?: string;
+  resourceType?: string;
+  instanceClass?: string;
+  cluster?: string;
   cloudConnectionId?: string;
 };
 
@@ -125,6 +128,9 @@ export type DatabaseExplorerAppliedFilters = {
   databaseScope?: DatabaseExplorerScopeValue;
   dbService?: string;
   dbEngine?: string;
+  resourceType?: string;
+  instanceClass?: string;
+  cluster?: string;
   metric: DatabaseExplorerMetric;
   groupBy: DatabaseExplorerGroupBy;
 };
@@ -168,6 +174,10 @@ export type DatabaseExplorerTableRow = {
 export type DatabaseExplorerFilterOptions = {
   dbServices: string[];
   dbEngines: string[];
+  regions: Array<{ value: string; label: string }>;
+  resourceTypes: string[];
+  instanceClasses: string[];
+  clusters: string[];
   /** Scopes with ≥1 fact row in the current window (always includes `all`). */
   availableDatabaseScopes: DatabaseExplorerScopeValue[];
 };

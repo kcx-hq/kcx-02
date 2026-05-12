@@ -42,6 +42,9 @@ export type ExplorerQueryParams = {
   databaseScope?: ExplorerDatabaseScope;
   dbService?: string;
   dbEngine?: string;
+  resourceType?: string;
+  instanceClass?: string;
+  cluster?: string;
   metric: ExplorerMetric;
   groupBy: ExplorerGroupBy;
 };
@@ -108,6 +111,10 @@ export type ExplorerTableRow = {
 export type ExplorerFilterOptions = {
   dbServices: string[];
   dbEngines: string[];
+  regions: Array<{ value: string; label: string }>;
+  resourceTypes: string[];
+  instanceClasses: string[];
+  clusters: string[];
   /** Scopes that have ≥1 fact row in the requested window (plus always `all`). */
   availableDatabaseScopes: ExplorerDatabaseScope[];
 };
