@@ -50,12 +50,14 @@ export function S3UsageOperationTable({
         headerName: "Cost",
         field: "cost",
         minWidth: 160,
+        cellClass: "s3-analytics-number-cell",
         valueFormatter: (params) => currencyFormatter.format(Number(params.value ?? 0)),
       },
       {
         headerName: "Quantity",
         field: "quantity",
         minWidth: 160,
+        cellClass: "s3-analytics-number-cell",
         valueFormatter: (params) => quantityFormatter.format(Number(params.value ?? 0)),
       },
       {
@@ -79,3 +81,4 @@ export function S3UsageOperationTable({
     />
   );
 }
+

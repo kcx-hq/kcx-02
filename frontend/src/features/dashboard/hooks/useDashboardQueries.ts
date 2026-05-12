@@ -399,16 +399,21 @@ export function useEc2ElasticIpsQuery(filters?: Ec2ElasticIpFiltersQuery, enable
 
 export function useS3CostInsightsQuery(
   filters?: S3CostInsightsFiltersQuery,
-  options?: { enabled?: boolean },
+  options?: {
+    enabled?: boolean;
+    staleTime?: number;
+    refetchInterval?: number | false;
+  },
 ) {
   const { scope } = useDashboardScope();
   return useQuery<S3CostInsightsResponse, Error>({
     queryKey: ["dashboard", "s3", "cost-insights", scope, filters],
-    queryFn: () => dashboardApi.getS3CostInsights(assertScope(scope), filters),
+    queryFn: ({ signal }) => dashboardApi.getS3CostInsights(assertScope(scope), filters, { signal }),
     enabled: Boolean(scope) && (options?.enabled ?? true),
     placeholderData: (previous) => previous,
-    staleTime: 90_000,
+    staleTime: options?.staleTime ?? 90_000,
     refetchOnWindowFocus: false,
+    refetchInterval: options?.refetchInterval ?? false,
   });
 }
 

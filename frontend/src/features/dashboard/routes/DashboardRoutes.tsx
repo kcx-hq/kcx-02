@@ -1,4 +1,4 @@
-import { Navigate, Route, Routes, useLocation } from "react-router-dom";
+import { Navigate, Route, Routes, useLocation, useParams } from "react-router-dom";
 import { DashboardLayout } from "../layout/DashboardLayout";
 import OverviewPage from "../pages/overview/OverviewPage";
 import CostExplorerPage from "../pages/cost-explorer/CostExplorerPage";
@@ -14,8 +14,6 @@ import AwsInventoryPage from "../pages/inventory/AwsInventoryPage";
 import EC2ExplorerPage from "../pages/ec2/EC2ExplorerPage";
 import EC2VolumesPage from "../pages/ec2/EC2VolumesPage";
 import EC2OptimizationPage from "../pages/ec2/EC2OptimizationPage";
-import EC2DataTransferPage from "../pages/ec2/EC2DataTransferPage";
-import S3BucketDetailPage from "../pages/s3/S3BucketDetailPage";
 import S3UsageBucketDetailPage from "../pages/s3/S3UsageBucketDetailPage";
 import S3OptimizationPage from "../pages/s3/S3OptimizationPage";
 import S3BucketPage from "../pages/s3/S3BucketPage";
@@ -104,6 +102,49 @@ function DashboardEc2DataTransferRedirect() {
   );
 }
 
+function DashboardS3Redirect() {
+  const location = useLocation();
+
+  return (
+    <Navigate
+      to={{
+        pathname: "/dashboard/s3/bucket",
+        search: location.search,
+      }}
+      replace
+    />
+  );
+}
+
+function DashboardS3ExplorerRedirect() {
+  const location = useLocation();
+
+  return (
+    <Navigate
+      to={{
+        pathname: "/dashboard/s3/cost",
+        search: location.search,
+      }}
+      replace
+    />
+  );
+}
+
+function DashboardS3BucketDetailRedirect() {
+  const location = useLocation();
+  const params = useParams<{ bucketName: string }>();
+  const bucketName = String(params.bucketName ?? "").trim();
+  return (
+    <Navigate
+      to={{
+        pathname: `/dashboard/s3/bucket/${encodeURIComponent(bucketName)}`,
+        search: location.search,
+      }}
+      replace
+    />
+  );
+}
+
 export default function DashboardRoutes() {
   return (
     <Routes>
@@ -120,13 +161,15 @@ export default function DashboardRoutes() {
         <Route path="ec2/optimization" element={<EC2OptimizationPage />} />
         <Route path="ec2/network/data-transfer" element={<DashboardEc2DataTransferRedirect />} />
         <Route path="ec2/network/elastic-ip" element={<EC2EipPage />} />
-        <Route path="s3" element={<S3BucketPage />} />
+        <Route path="s3" element={<DashboardS3Redirect />} />
+        <Route path="s3/overview" element={<DashboardS3Redirect />} />
+        <Route path="s3/explorer" element={<DashboardS3ExplorerRedirect />} />
         <Route path="s3/bucket" element={<S3BucketInfoPage />} />
         <Route path="s3/bucket/:bucketName" element={<S3UsageBucketDetailPage />} />
         <Route path="s3/cost" element={<S3BucketPage />} />
-        <Route path="s3/cost/bucket/:bucketName" element={<S3UsageBucketDetailPage />} />
+        <Route path="s3/cost/bucket/:bucketName" element={<DashboardS3BucketDetailRedirect />} />
         <Route path="s3/usage" element={<S3BucketPage />} />
-        <Route path="s3/usage/bucket/:bucketName" element={<S3UsageBucketDetailPage />} />
+        <Route path="s3/usage/bucket/:bucketName" element={<DashboardS3BucketDetailRedirect />} />
         <Route path="s3/optimization" element={<S3OptimizationPage />} />
         <Route path="policy" element={<PolicyPage />} />
         <Route path="policy/s3" element={<S3PolicyPage />} />

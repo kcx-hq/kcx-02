@@ -62,6 +62,15 @@ const resolveEnvironment = (bucketName: string): string => {
   return "N/A";
 };
 
+const toStatusLabel = (value: string | null | undefined): string => {
+  const normalized = String(value ?? "").trim();
+  if (!normalized) return "Unknown";
+  return normalized
+    .split("_")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(" ");
+};
+
 export function S3BucketDetailPanel({ bucket, usageMetrics, storageClassDistribution = [], storageLens = null, onClose }: Props) {
   const [isInfoPanelOpen, setIsInfoPanelOpen] = useState(false);
   const bucketCost = Number(bucket.cost ?? 0);
@@ -72,6 +81,9 @@ export function S3BucketDetailPanel({ bucket, usageMetrics, storageClassDistribu
   const otherCost = Number(bucket.other ?? 0);
   const trend = Number(bucket.trendPct ?? 0);
   const environment = useMemo(() => resolveEnvironment(String(bucket.bucketName ?? "")), [bucket.bucketName]);
+  const publicAccess = String(bucket.publicAccessStatus ?? "Unknown").trim() || "Unknown";
+  const versioning = toStatusLabel(bucket.versioningStatus);
+  const encryption = toStatusLabel(bucket.encryptionStatus);
 
   const estimatedCurrentVersionBytes = Math.max(Number(usageMetrics.storageGb ?? 0), 0) * 1024 * 1024 * 1024;
   const totalStorageClassUsage = storageClassDistribution.reduce((sum, item) => sum + Number(item.usage ?? 0), 0);
@@ -140,6 +152,9 @@ export function S3BucketDetailPanel({ bucket, usageMetrics, storageClassDistribu
                 <div><dt>Region</dt><dd>{bucket.region || "Unknown"}</dd></div>
                 <div><dt>Owner</dt><dd>{bucket.owner || "Unassigned"}</dd></div>
                 <div><dt>Environment</dt><dd>{environment}</dd></div>
+                <div><dt>Public/Private</dt><dd>{publicAccess}</dd></div>
+                <div><dt>Versioning</dt><dd>{versioning}</dd></div>
+                <div><dt>Encryption</dt><dd>{encryption}</dd></div>
               </dl>
             </section>
 

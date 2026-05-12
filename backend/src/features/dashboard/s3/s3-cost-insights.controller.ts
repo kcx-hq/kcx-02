@@ -48,12 +48,21 @@ const parseS3Filters = (req: Request): Partial<S3CostInsightsFilters> => ({
     | undefined,
 });
 
+const parseResponseMode = (req: Request): "full" | "core" | "quick" | "overview" => {
+  const mode = (parseOptionalString(req.query.responseMode) ?? "full").toLowerCase();
+  if (mode === "quick") return "quick";
+  if (mode === "overview") return "overview";
+  return mode === "core" ? "core" : "full";
+};
+
 export async function handleGetS3CostInsights(req: Request, res: Response): Promise<void> {
   const dashboardRequest = buildDashboardRequest(req);
   validateDashboardRequest(dashboardRequest);
 
   const scope = await scopeResolver.resolve(dashboardRequest);
-  const data = await s3CostInsightsService.getInsights(scope, parseS3Filters(req));
+  const data = await s3CostInsightsService.getInsights(scope, parseS3Filters(req), {
+    responseMode: parseResponseMode(req),
+  });
 
   sendSuccess({
     res,

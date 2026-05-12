@@ -33,6 +33,7 @@ export function S3OverviewFilters({
   onRetry,
 }: Props) {
   const seriesByOptions: NonNullable<S3CostInsightsFiltersQuery["seriesBy"]>[] = [
+    "none",
     "bucket",
     "cost_category",
     "operation",
@@ -41,6 +42,7 @@ export function S3OverviewFilters({
   ];
 
   const getSeriesByLabel = (seriesBy: NonNullable<S3CostInsightsFiltersQuery["seriesBy"]>) => {
+    if (seriesBy === "none") return "None";
     if (seriesBy === "storage_class") return "Storage Type";
     if (seriesBy === "operation") return "Operation";
     if (seriesBy === "product_family") return "Product Family";
@@ -87,6 +89,7 @@ export function S3OverviewFilters({
   }, []);
 
   const draftSeriesValueOptions = useMemo(() => {
+    if (draftSeriesBy === "none") return [];
     if (draftSeriesBy === "storage_class") return filterOptions?.storageClass ?? [];
     if (draftSeriesBy === "operation") return filterOptions?.operation ?? [];
     if (draftSeriesBy === "product_family") return filterOptions?.productFamily ?? [];
@@ -94,6 +97,7 @@ export function S3OverviewFilters({
     return filterOptions?.costCategory ?? [];
   }, [draftSeriesBy, filterOptions?.bucket, filterOptions?.costCategory, filterOptions?.operation, filterOptions?.productFamily, filterOptions?.storageClass]);
   const hasFilterOptions = Boolean(filterOptions) && !isLoading;
+  const controlsDisabled = !hasFilterOptions;
 
   const chips = useMemo<FilterChip[]>(() => {
     const items: FilterChip[] = [];
@@ -252,50 +256,58 @@ export function S3OverviewFilters({
                 </div>
                 <div className="cost-explorer-filter-popover__split-pane cost-explorer-filter-popover__split-pane--right">
                   <p className="cost-explorer-filter-popover__title">Values</p>
-                  <label className="cost-explorer-filter-popover__search-wrap">
-                    <Search className="cost-explorer-filter-popover__search-icon" size={14} aria-hidden="true" />
-                    <input
-                      type="search"
-                      className="cost-explorer-filter-popover__search-input"
-                      value={seriesValuesSearch}
-                      onChange={(event) => setSeriesValuesSearch(event.target.value)}
-                      placeholder={`Search ${draftSeriesByLabel.toLowerCase()}...`}
-                    />
-                  </label>
+                  {draftSeriesBy !== "none" ? (
+                    <label className="cost-explorer-filter-popover__search-wrap">
+                      <Search className="cost-explorer-filter-popover__search-icon" size={14} aria-hidden="true" />
+                      <input
+                        type="search"
+                        className="cost-explorer-filter-popover__search-input"
+                        value={seriesValuesSearch}
+                        onChange={(event) => setSeriesValuesSearch(event.target.value)}
+                        placeholder={`Search ${draftSeriesByLabel.toLowerCase()}...`}
+                      />
+                    </label>
+                  ) : null}
                   <div className="cost-explorer-filter-popover__list cost-explorer-filter-popover__list--value-boxes" role="listbox">
-                    <button
-                      type="button"
-                      className={`cost-explorer-filter-option cost-explorer-filter-option--tile${draftSeriesValues.length === 0 ? " is-active" : ""}`}
-                      onClick={() => setDraftSeriesValues([])}
-                    >
-                      <span className="cost-explorer-filter-option__content">
-                        <span className="cost-explorer-filter-option__label">All values</span>
-                      </span>
-                      {draftSeriesValues.length === 0 ? <Check className="cost-explorer-filter-option__check" size={15} aria-hidden="true" /> : null}
-                    </button>
-                    {filterOptionsBySearch(draftSeriesValueOptions, seriesValuesSearch).map((option) => {
-                      const selected = draftSeriesValues.includes(option);
-                      return (
+                    {draftSeriesBy === "none" ? (
+                      <p className="cost-explorer-filter-popover__empty">No split values needed for None.</p>
+                    ) : (
+                      <>
                         <button
-                          key={option}
                           type="button"
-                          className={`cost-explorer-filter-option cost-explorer-filter-option--tile${selected ? " is-active" : ""}`}
-                          onClick={() =>
-                            setDraftSeriesValues((current) =>
-                              current.includes(option) ? current.filter((item) => item !== option) : [...current, option],
-                            )
-                          }
+                          className={`cost-explorer-filter-option cost-explorer-filter-option--tile${draftSeriesValues.length === 0 ? " is-active" : ""}`}
+                          onClick={() => setDraftSeriesValues([])}
                         >
                           <span className="cost-explorer-filter-option__content">
-                            <span className="cost-explorer-filter-option__label">{option}</span>
+                            <span className="cost-explorer-filter-option__label">All values</span>
                           </span>
-                          {selected ? <Check className="cost-explorer-filter-option__check" size={15} aria-hidden="true" /> : null}
+                          {draftSeriesValues.length === 0 ? <Check className="cost-explorer-filter-option__check" size={15} aria-hidden="true" /> : null}
                         </button>
-                      );
-                    })}
-                    {draftSeriesValueOptions.length === 0 ? (
-                      <p className="cost-explorer-filter-popover__empty">No values available.</p>
-                    ) : null}
+                        {filterOptionsBySearch(draftSeriesValueOptions, seriesValuesSearch).map((option) => {
+                          const selected = draftSeriesValues.includes(option);
+                          return (
+                            <button
+                              key={option}
+                              type="button"
+                              className={`cost-explorer-filter-option cost-explorer-filter-option--tile${selected ? " is-active" : ""}`}
+                              onClick={() =>
+                                setDraftSeriesValues((current) =>
+                                  current.includes(option) ? current.filter((item) => item !== option) : [...current, option],
+                                )
+                              }
+                            >
+                              <span className="cost-explorer-filter-option__content">
+                                <span className="cost-explorer-filter-option__label">{option}</span>
+                              </span>
+                              {selected ? <Check className="cost-explorer-filter-option__check" size={15} aria-hidden="true" /> : null}
+                            </button>
+                          );
+                        })}
+                        {draftSeriesValueOptions.length === 0 ? (
+                          <p className="cost-explorer-filter-popover__empty">No values available.</p>
+                        ) : null}
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
@@ -369,6 +381,7 @@ export function S3OverviewFilters({
             onClick={() => togglePopover("costBy")}
             aria-expanded={activePopover === "costBy"}
             aria-haspopup="dialog"
+            disabled={controlsDisabled}
           >
             <span className="cost-explorer-toolbar-trigger__label">X-Axis</span>
             <span className="cost-explorer-toolbar-trigger__row">
@@ -412,6 +425,7 @@ export function S3OverviewFilters({
             onClick={() => togglePopover("yAxisMetric")}
             aria-expanded={activePopover === "yAxisMetric"}
             aria-haspopup="dialog"
+            disabled={controlsDisabled}
           >
             <span className="cost-explorer-toolbar-trigger__label">Y-Axis</span>
             <span className="cost-explorer-toolbar-trigger__row">
@@ -464,6 +478,7 @@ export function S3OverviewFilters({
             onClick={() => togglePopover("compareMode")}
             aria-expanded={activePopover === "compareMode"}
             aria-haspopup="dialog"
+            disabled={controlsDisabled}
           >
             <span className="cost-explorer-toolbar-trigger__label">Compare</span>
             <span className="cost-explorer-toolbar-trigger__row">

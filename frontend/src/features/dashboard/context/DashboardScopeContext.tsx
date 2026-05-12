@@ -16,10 +16,36 @@ type DashboardScopeContextValue = {
 
 const DashboardScopeContext = createContext<DashboardScopeContextValue | undefined>(undefined);
 
+const formatAsQueryDate = (date: Date): string => {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+};
+
+const resolveScopeInputWithDefaults = (search: string): DashboardScopeInput => {
+  const parsed = parseDashboardScopeInputFromSearch(search);
+  const hasDateRange = Boolean(parsed.from && parsed.to);
+
+  if (hasDateRange) {
+    return parsed;
+  }
+
+  const today = new Date();
+  const start = new Date(today);
+  start.setDate(start.getDate() - 29);
+
+  return {
+    ...parsed,
+    from: formatAsQueryDate(start),
+    to: formatAsQueryDate(today),
+  };
+};
+
 export function DashboardScopeProvider({ children }: { children: ReactNode }) {
   const location = useLocation();
   const scopeInput = useMemo(
-    () => parseDashboardScopeInputFromSearch(location.search),
+    () => resolveScopeInputWithDefaults(location.search),
     [location.search],
   );
 

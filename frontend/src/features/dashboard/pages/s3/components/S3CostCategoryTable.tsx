@@ -79,12 +79,14 @@ export function S3CostCategoryTable({
         headerName: "Cost",
         field: "cost",
         minWidth: 160,
+        cellClass: "s3-analytics-number-cell",
         valueFormatter: (params) => currencyFormatter.format(Number(params.value ?? 0)),
       },
       {
         headerName: "Usage Quantity",
         field: "usageQuantity",
         minWidth: 170,
+        cellClass: "s3-analytics-number-cell",
         valueFormatter: (params) => numberFormatter.format(Number(params.value ?? 0)),
       },
       {
@@ -96,6 +98,7 @@ export function S3CostCategoryTable({
         headerName: "% of Bucket Cost",
         field: "percentOfBucketCost",
         minWidth: 170,
+        cellClass: "s3-analytics-number-cell",
         valueFormatter: (params) => `${percentFormatter.format(Number(params.value ?? 0))}%`,
       },
     ],
@@ -114,3 +117,4 @@ export function S3CostCategoryTable({
     />
   );
 }
+

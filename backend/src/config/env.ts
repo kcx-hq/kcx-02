@@ -201,6 +201,16 @@ const env = {
     optionalPositiveInteger(process.env.S3_BUCKET_CONFIG_SCHEDULER_INTERVAL_MS) ?? 24 * 60 * 60 * 1000,
   s3BucketConfigSchedulerStartupDelayMs:
     optionalPositiveInteger(process.env.S3_BUCKET_CONFIG_SCHEDULER_STARTUP_DELAY_MS) ?? 60_000,
+  storageLensSchedulerEnabled:
+    optionalBoolean(process.env.STORAGE_LENS_SCHEDULER_ENABLED) ?? true,
+  storageLensSchedulerIntervalMs:
+    optionalPositiveInteger(process.env.STORAGE_LENS_SCHEDULER_INTERVAL_MS) ?? 24 * 60 * 60 * 1000,
+  storageLensSchedulerStartupDelayMs:
+    optionalPositiveInteger(process.env.STORAGE_LENS_SCHEDULER_STARTUP_DELAY_MS) ?? 120_000,
+  storageLensDefaultExportPrefix:
+    optionalEnv(process.env.STORAGE_LENS_DEFAULT_EXPORT_PREFIX) ?? "kcx/storage-lens",
+  storageLensSchedulerMaxFilesPerRun:
+    optionalPositiveInteger(process.env.STORAGE_LENS_SCHEDULER_MAX_FILES_PER_RUN) ?? 20,
 };
 
 export default env;

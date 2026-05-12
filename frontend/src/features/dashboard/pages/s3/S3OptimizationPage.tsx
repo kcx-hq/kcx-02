@@ -3,15 +3,18 @@ import { useLocation, useNavigate } from "react-router-dom";
 import {
   useAutoCreateS3ReplicationRoleMutation,
   useApplyS3ReplicationSetupMutation,
+  useS3CostInsightsQuery,
   usePreviewS3ReplicationSetupMutation,
   useS3OptimizationQuery,
   useS3ReplicationDestinationBucketsQuery,
   useS3ReplicationQuery,
 } from "../../hooks/useDashboardQueries";
+import { S3OptimizationOverviewSection } from "./components/S3OptimizationOverviewSection";
 
-type S3OptimizationTabKey = "lifecycle" | "replication";
+type S3OptimizationTabKey = "overview" | "lifecycle" | "replication";
 
 const TAB_ITEMS: Array<{ key: S3OptimizationTabKey; label: string }> = [
+  { key: "overview", label: "Overview" },
   { key: "lifecycle", label: "Lifecycle Policy" },
   { key: "replication", label: "Replication" },
 ];
@@ -33,7 +36,12 @@ const formatScanTime = (value: string): string => {
 
 const formatCurrency = (value: number | null | undefined): string => {
   if (value == null || Number.isNaN(value)) return "--";
-  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 }).format(value);
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 5,
+    maximumFractionDigits: 5,
+  }).format(value);
 };
 
 const toPolicyAppliedLabel = (value: string | null | undefined): string => {
@@ -61,9 +69,10 @@ const toReplicationActionLabel = (value: string): string => {
 export default function S3OptimizationPage() {
   const location = useLocation();
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<S3OptimizationTabKey>("lifecycle");
+  const [activeTab, setActiveTab] = useState<S3OptimizationTabKey>("overview");
   const [showReplicationGuide, setShowReplicationGuide] = useState(false);
-  const lifecycleQuery = useS3OptimizationQuery(activeTab === "lifecycle");
+  const lifecycleQuery = useS3OptimizationQuery(activeTab === "lifecycle" || activeTab === "overview");
+  const s3CostInsightsQuery = useS3CostInsightsQuery();
   const replicationQuery = useS3ReplicationQuery(activeTab === "replication" || showReplicationGuide);
   const lifecycleRows = useMemo(() => lifecycleQuery.data?.buckets ?? [], [lifecycleQuery.data?.buckets]);
   const replicationRows = useMemo(() => replicationQuery.data?.buckets ?? [], [replicationQuery.data?.buckets]);
@@ -91,7 +100,7 @@ export default function S3OptimizationPage() {
   );
   const [pageSize, setPageSize] = useState(15);
   const [currentPage, setCurrentPage] = useState(1);
-  const activeRowsCount = activeTab === "lifecycle" ? lifecycleRows.length : replicationRows.length;
+  const activeRowsCount = activeTab === "lifecycle" ? lifecycleRows.length : activeTab === "replication" ? replicationRows.length : 0;
   const totalItems = activeRowsCount;
   const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
 
@@ -107,12 +116,16 @@ export default function S3OptimizationPage() {
     const searchParams = new URLSearchParams(location.search);
     const tab = String(searchParams.get("tab") ?? "").trim().toLowerCase();
     const bucketName = String(searchParams.get("bucketName") ?? "").trim();
-    if (tab === "replication") {
+    if (tab === "overview") {
+      setActiveTab("overview");
+    } else if (tab === "replication") {
       setActiveTab("replication");
       if (bucketName) {
         setSetupForm((prev) => ({ ...prev, sourceBucketName: bucketName }));
         setShowReplicationGuide(true);
       }
+    } else if (tab === "lifecycle") {
+      setActiveTab("lifecycle");
     }
   }, [location.search]);
 
@@ -203,7 +216,16 @@ export default function S3OptimizationPage() {
           ))}
         </div>
 
-        {activeTab === "lifecycle" ? (
+        {activeTab === "overview" ? (
+          <>
+            {s3CostInsightsQuery.isLoading ? <p className="dashboard-note">Loading S3 optimization overview...</p> : null}
+            {s3CostInsightsQuery.isError ? <p className="dashboard-note">Failed to load S3 optimization overview: {s3CostInsightsQuery.error.message}</p> : null}
+            <S3OptimizationOverviewSection
+              costInsights={s3CostInsightsQuery.data}
+              lifecycleRows={lifecycleRows}
+            />
+          </>
+        ) : activeTab === "lifecycle" ? (
           <>
             {lifecycleQuery.isLoading ? <p className="dashboard-note">Loading S3 lifecycle policy data...</p> : null}
             {lifecycleQuery.isError ? <p className="dashboard-note">Failed to load S3 lifecycle policy data: {lifecycleQuery.error.message}</p> : null}
@@ -376,7 +398,7 @@ export default function S3OptimizationPage() {
           </>
         )}
 
-        {totalItems > 0 ? (
+        {activeTab !== "overview" && totalItems > 0 ? (
           <div className="policy-history-pagination">
             <div className="policy-history-pagination__left">
               <label className="policy-history-pagination__label" htmlFor="s3-lifecycle-page-size">

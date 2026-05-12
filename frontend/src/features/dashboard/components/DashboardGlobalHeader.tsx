@@ -205,6 +205,7 @@ const S3_DEFAULT_FILTERS: S3OverviewFilterValue = {
 };
 
 const S3_SERIES_BY_OPTIONS: Array<S3OverviewFilterValue["seriesBy"]> = [
+  "none",
   "bucket",
   "cost_category",
   "operation",
@@ -335,7 +336,9 @@ export function DashboardGlobalHeader() {
   const location = useLocation();
   const navigate = useNavigate();
   const { scope } = useDashboardScope();
-  const isS3OverviewPage = location.pathname.startsWith("/dashboard/s3/cost");
+  const isS3OverviewPage =
+    location.pathname.startsWith("/dashboard/s3/explorer") ||
+    location.pathname.startsWith("/dashboard/s3/cost");
   const [isRangeMenuOpen, setIsRangeMenuOpen] = useState(false);
   const [isPresetMenuOpen, setIsPresetMenuOpen] = useState(false);
   const [activeRangeTab, setActiveRangeTab] = useState<DateRangeTab>("daily");
@@ -345,6 +348,7 @@ export function DashboardGlobalHeader() {
   const [s3Presets, setS3Presets] = useState<S3OverviewSavedPreset[]>(() => loadS3OverviewPresets());
   const dateMenuRef = useRef<HTMLDivElement | null>(null);
   const presetMenuRef = useRef<HTMLDivElement | null>(null);
+  const hasInitializedDefaultRangeRef = useRef(false);
 
   const searchParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
   const billingStart = parseDateValue(searchParams.get("billingPeriodStart") ?? searchParams.get("from"));
@@ -435,19 +439,38 @@ export function DashboardGlobalHeader() {
         { label: "EC2" },
       ];
     }
-    if (path === "/dashboard/s3") {
+    if (path === "/dashboard/s3" || path === "/dashboard/s3/bucket") {
       return [
         { label: rootCrumb, path: "/dashboard/overview" },
         { label: "Services", path: "/dashboard/inventory" },
-        { label: "S3" },
+        { label: "S3", path: "/dashboard/s3/bucket" },
+        { label: "Bucket" },
       ];
     }
-    if (path.startsWith("/dashboard/s3/cost")) {
+    if (path === "/dashboard/s3/explorer" || path === "/dashboard/s3/cost") {
       return [
         { label: rootCrumb, path: "/dashboard/overview" },
         { label: "Services", path: "/dashboard/inventory" },
-        { label: "S3", path: "/dashboard/s3" },
-        { label: "Cost" },
+        { label: "S3", path: "/dashboard/s3/cost" },
+        { label: "Explorer" },
+      ];
+    }
+    if (path.startsWith("/dashboard/s3/bucket/")) {
+      const bucketName = decodeURIComponent(path.replace("/dashboard/s3/bucket/", "")).trim() || "Bucket Detail";
+      return [
+        { label: rootCrumb, path: "/dashboard/overview" },
+        { label: "Services", path: "/dashboard/inventory" },
+        { label: "S3", path: "/dashboard/s3/bucket" },
+        { label: "Bucket", path: "/dashboard/s3/bucket" },
+        { label: bucketName },
+      ];
+    }
+    if (path.startsWith("/dashboard/s3/cost/bucket/")) {
+      return [
+        { label: rootCrumb, path: "/dashboard/overview" },
+        { label: "Services", path: "/dashboard/inventory" },
+        { label: "S3", path: "/dashboard/s3/cost" },
+        { label: "Explorer" },
       ];
     }
     if (path.startsWith("/dashboard/s3/usage")) {
@@ -565,6 +588,29 @@ export function DashboardGlobalHeader() {
     mutate(params);
     navigate({ pathname: location.pathname, search: params.toString() }, { replace: true });
   };
+
+  useEffect(() => {
+    if (hasInitializedDefaultRangeRef.current) return;
+    hasInitializedDefaultRangeRef.current = true;
+
+    const today = asDay(new Date());
+    const start = addDays(today, -29);
+    const from = formatAsQueryDate(start);
+    const to = formatAsQueryDate(today);
+
+    const nextParams = new URLSearchParams(location.search);
+    nextParams.set("billingPeriodStart", from);
+    nextParams.set("from", from);
+    nextParams.set("billingPeriodEnd", to);
+    nextParams.set("to", to);
+    nextParams.set("granularity", "daily");
+
+    const nextSearch = nextParams.toString();
+    const currentSearch = location.search.startsWith("?") ? location.search.slice(1) : location.search;
+    if (nextSearch !== currentSearch) {
+      navigate({ pathname: location.pathname, search: nextSearch }, { replace: true });
+    }
+  }, [location.pathname, location.search, navigate]);
 
   const setBillingRange = (start: string, end: string) => {
     const normalizedStart = parseDateValue(start);

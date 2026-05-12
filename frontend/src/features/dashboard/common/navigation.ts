@@ -97,8 +97,14 @@ export const dashboardNav: DashboardNavNode[] = [
         kind: "group",
         label: "S3",
         icon: "boxes",
-        path: "/dashboard/s3",
+        path: "/dashboard/s3/bucket",
         items: [
+          {
+            kind: "link",
+            label: "Explorer",
+            path: "/dashboard/s3/cost",
+            icon: "line-chart",
+          },
           {
             kind: "link",
             label: "Bucket",

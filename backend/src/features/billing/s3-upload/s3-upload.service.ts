@@ -345,6 +345,19 @@ export async function createPersistentS3UploadConnection(
 
 export async function listPersistentS3UploadConnections(user: UserContext): Promise<S3UploadConnectionSummary[]> {
   const records = await S3UploadConnection.findAll({
+    attributes: [
+      "id",
+      "bucketName",
+      "basePrefix",
+      "roleArn",
+      "externalId",
+      "awsAccountId",
+      "assumedArn",
+      "resolvedRegion",
+      "lastValidatedAt",
+      "createdAt",
+      "updatedAt",
+    ],
     where: {
       tenantId: user.tenantId,
       status: "active",
@@ -428,6 +441,7 @@ export async function listTemporaryS3UploadSessionScope(
     credentials: session.credentials,
     bucket: session.bucket,
     prefix: currentPrefix,
+    resolvedRegion: session.resolvedRegion,
   });
 
   return {
@@ -465,6 +479,7 @@ export async function importFilesFromTemporaryS3UploadSession(
     bucket: session.bucket,
     basePrefix: session.basePrefix,
     objectKeys: input.objectKeys,
+    resolvedRegion: session.resolvedRegion,
     tenantId: user.tenantId,
     userId: user.userId,
     sessionId,
@@ -574,6 +589,7 @@ export async function importFilesFromTemporaryS3UploadSession(
         credentials: session.credentials,
         bucket: session.bucket,
         key: sourceKey,
+        resolvedRegion: session.resolvedRegion,
       });
 
       console.log("[S3-UPLOAD-DEBUG][IMPORT][SOURCE_OBJECT_VALIDATED]", {

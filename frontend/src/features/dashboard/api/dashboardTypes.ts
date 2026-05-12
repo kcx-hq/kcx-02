@@ -1179,7 +1179,7 @@ export type S3CostInsightsResponse = {
       region: string[];
         account: string[];
         costBy: "date" | "bucket" | "region" | "account";
-        seriesBy: "cost_category" | "usage_type" | "operation" | "product_family" | "bucket" | "storage_class";
+        seriesBy: "none" | "cost_category" | "usage_type" | "operation" | "product_family" | "bucket" | "storage_class";
         yAxisMetric: "billed_cost" | "effective_cost" | "amortized_cost" | "usage_quantity";
       };
   };
@@ -1203,6 +1203,38 @@ export type S3CostInsightsResponse = {
     monthToDateCost: number;
     effectiveCost: number;
   };
+  storageCostDashboard: {
+    currency: "USD";
+    latestUsageDate: string | null;
+    totalStorageByClass: Array<{
+      storageClass: "STANDARD" | "STANDARD_IA" | "GLACIER" | "DEEP_ARCHIVE";
+      bytes: number;
+      gib: number;
+      estimatedMonthlyCost: number;
+    }>;
+    dailyStorageGrowth: {
+      fromDate: string | null;
+      toDate: string | null;
+      bytesGrowth: number;
+      gibGrowth: number;
+      growthPct: number | null;
+    };
+    estimatedMonthlyCost: {
+      total: number;
+      byClass: Record<"STANDARD" | "STANDARD_IA" | "GLACIER" | "DEEP_ARCHIVE", number>;
+    };
+    costTrend: Array<{
+      usageDate: string;
+      estimatedMonthlyCost: number;
+      totalBytes: number;
+    }>;
+    expensiveBuckets: Array<{
+      bucketName: string;
+      estimatedMonthlyCost: number;
+      totalBytes: number;
+      usageDate: string;
+    }>;
+  };
   bucketTable: Array<{
     bucketName: string;
     account: string;
@@ -1216,6 +1248,10 @@ export type S3CostInsightsResponse = {
     savings: number;
     retrieval: number;
     other: number;
+    replicationStatus: string | null;
+    versioningStatus: string | null;
+    encryptionStatus: string | null;
+    publicAccessStatus: "Public" | "Private" | "Unknown";
     trendPct: number;
     storageLens?: {
       usageDate: string;
@@ -1285,9 +1321,182 @@ export type S3CostInsightsResponse = {
     region: string[];
       account: string[];
       costBy: Array<"date" | "bucket" | "region" | "account">;
-      seriesBy: Array<"cost_category" | "usage_type" | "operation" | "product_family" | "bucket" | "storage_class">;
+      seriesBy: Array<"none" | "cost_category" | "usage_type" | "operation" | "product_family" | "bucket" | "storage_class">;
       yAxisMetric: Array<"billed_cost" | "effective_cost" | "amortized_cost" | "usage_quantity">;
     };
+  storageAnomalies: {
+    items: Array<{
+      bucketName: string;
+      accountId: string;
+      region: string | null;
+      reportDate: string;
+      storageGibCurrent: number;
+      storageGib7dAgo: number | null;
+      growthGib: number;
+      growthPercentage: number | null;
+      estimatedMonthlyCostImpact: number;
+      anomalyType: string;
+      severity: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW";
+      confidence: "HIGH" | "MEDIUM" | "LOW";
+      reason: string;
+      recommendedAction: string;
+    }>;
+    total: number;
+  };
+  bucketOptimizationScores: {
+    items: Array<{
+      bucketName: string;
+      accountId: string;
+      region: string | null;
+      score: number;
+      priorityLevel: "P0" | "P1" | "P2" | "P3" | "P4";
+      primaryReason: string;
+      top3Issues: string[];
+      recommendedNextAction: string;
+      estimatedMonthlySaving: number;
+      estimatedAnnualSaving: number;
+    }>;
+    total: number;
+  };
+  bucketHealthScores: {
+    items: Array<{
+      bucketName: string;
+      accountId: string;
+      region: string | null;
+      score: number;
+      healthLabel: "Optimized" | "Healthy" | "Needs Review" | "Risky" | "High Waste / High Risk";
+      dimensions: Record<string, number>;
+    }>;
+    total: number;
+  };
+  lifecycleRecommendations: {
+    items: Array<{
+      recommendationId: string;
+      bucketName: string;
+      category: string;
+      recommendation: string;
+      reason: string;
+      estimatedMonthlySaving: number;
+      estimatedAnnualSaving: number;
+      confidence: "HIGH" | "MEDIUM" | "LOW";
+      implementationComplexity: "LOW" | "MEDIUM" | "HIGH";
+      riskLevel: "LOW" | "MEDIUM" | "HIGH";
+      requiredOwnerAction: string;
+      signalsUsed: string[];
+    }>;
+    total: number;
+  };
+  estimatedSavings: {
+    items: Array<{
+      bucketName: string;
+      savingsType: string;
+      estimatedMonthlySaving: number;
+      estimatedAnnualSaving: number;
+      confidence: "HIGH" | "MEDIUM" | "LOW";
+      assumptions: string[];
+      limitations: string[];
+      currency: "USD";
+    }>;
+    totalMonthlySaving: number;
+    totalAnnualSaving: number;
+  };
+  finopsActionBacklog: {
+    items: Array<{
+      actionId: string;
+      bucketName: string;
+      accountId: string;
+      region: string | null;
+      ownerTeam: string;
+      applicationName: string;
+      businessUnit: string;
+      category: string;
+      severity: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW";
+      priority: "P0" | "P1" | "P2" | "P3" | "P4";
+      recommendation: string;
+      estimatedMonthlySaving: number;
+      estimatedAnnualSaving: number;
+      confidence: "HIGH" | "MEDIUM" | "LOW";
+      status: "NEW" | "ACCEPTED" | "IN_PROGRESS" | "IMPLEMENTED" | "DISMISSED" | "FALSE_POSITIVE";
+      assignedTo: string | null;
+      createdAt: string;
+      updatedAt: string;
+      resolvedAt: string | null;
+      dismissedReason: string | null;
+      sourceSignal: string;
+    }>;
+    summary: {
+      open: number;
+      inProgress: number;
+      implemented: number;
+      slaBreached: number;
+    };
+  };
+  ownerInsights: {
+    items: Array<{
+      ownerTeam: string;
+      applicationName: string;
+      businessUnit: string;
+      environment: string;
+      costCenter: string;
+      technicalOwner: string | null;
+      financeOwner: string | null;
+      criticality: string;
+      supportChannel: string | null;
+      totalMonthlyCost: number;
+      totalMonthlySavingsOpportunity: number;
+      openActionItems: number;
+      slaBreaches: number;
+    }>;
+    unownedExpensiveBuckets: number;
+  };
+  requestCostIntelligence: {
+    items: Array<{
+      bucketName: string;
+      operation: string;
+      requestCount: number;
+      requestCost: number;
+      requestCostPercentage: number;
+      costPer1kRequests: number;
+      costPerGb: number | null;
+      anomalyFlag: boolean;
+      recommendation: string;
+    }>;
+    totalRequestCost: number;
+  };
+  storageClassEfficiency: {
+    items: Array<{
+      bucketName: string;
+      standardGib: number;
+      standardPct: number;
+      standardIaGib: number;
+      standardIaPct: number;
+      glacierGib: number;
+      glacierPct: number;
+      deepArchiveGib: number;
+      deepArchivePct: number;
+      intelligentTieringGib: number;
+      intelligentTieringPct: number;
+      archiveRetrievalRisk: "LOW" | "MEDIUM" | "HIGH";
+      optimizationPotential: "LOW" | "MEDIUM" | "HIGH";
+      storageClassImbalanceScore: number;
+      insight: string;
+    }>;
+  };
+  executiveSummary: {
+    cards: Array<{
+      key: string;
+      label: string;
+      value: string | number;
+      trend: {
+        direction: "up" | "down" | "flat";
+        valuePct: number | null;
+      };
+      confidence: "HIGH" | "MEDIUM" | "LOW";
+      formula: string;
+      dataSource: string[];
+      drilldownTarget: string;
+    }>;
+  };
   };
 
 export type S3CostInsightsFiltersQuery = {
@@ -1297,8 +1506,9 @@ export type S3CostInsightsFiltersQuery = {
   storageClass?: string[];
   region?: string[];
   account?: string[];
+  responseMode?: "full" | "core" | "quick" | "overview";
   costBy?: "date" | "bucket" | "region" | "account";
-  seriesBy?: "cost_category" | "usage_type" | "operation" | "product_family" | "bucket" | "storage_class";
+  seriesBy?: "none" | "cost_category" | "usage_type" | "operation" | "product_family" | "bucket" | "storage_class";
   yAxisMetric?: "billed_cost" | "effective_cost" | "amortized_cost" | "usage_quantity";
 };
 
