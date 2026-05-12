@@ -83,6 +83,12 @@ const parseCsv = (value: string): string[] =>
     .map((entry) => entry.trim())
     .filter((entry) => entry.length > 0);
 
+const normalizeFilterValue = (value: string | null | undefined): string => {
+  const normalized = String(value ?? "").trim();
+  if (!normalized) return "";
+  return normalized.toLowerCase() === "all" ? "" : normalized;
+};
+
 const FILTER_QUERY_KEYS = [
   "startDate",
   "endDate",
@@ -113,12 +119,12 @@ export default function LoadBalancerListPage() {
       params.get("loadBalancerId") ??
       params.get("loadBalancerArn") ??
       "",
-    account: params.get("account") ?? params.get("accountId") ?? "",
-    region: params.get("region") ?? "",
-    type: params.get("type") ?? "",
-    scheme: params.get("scheme") ?? "",
-    state: params.get("state") ?? "",
-    tags: params.get("tags") ?? params.get("tag") ?? "",
+    account: normalizeFilterValue(params.get("account") ?? params.get("accountId")),
+    region: normalizeFilterValue(params.get("region")),
+    type: normalizeFilterValue(params.get("type")),
+    scheme: normalizeFilterValue(params.get("scheme")),
+    state: normalizeFilterValue(params.get("state")),
+    tags: normalizeFilterValue(params.get("tags") ?? params.get("tag")),
     sortBy: (params.get("sortBy") as ListControls["sortBy"]) ?? DEFAULT_CONTROLS.sortBy,
     sortDirection: (params.get("sortDirection") as ListControls["sortDirection"]) ?? DEFAULT_CONTROLS.sortDirection,
   });
@@ -138,11 +144,11 @@ export default function LoadBalancerListPage() {
     startDate,
     endDate,
     search: controls.search.trim() || null,
-    account: controls.account.trim() || null,
-    region: controls.region.trim() || null,
-    type: controls.type.trim() || null,
-    scheme: controls.scheme.trim() || null,
-    state: controls.state.trim() || null,
+    account: normalizeFilterValue(controls.account) || null,
+    region: normalizeFilterValue(controls.region) || null,
+    type: normalizeFilterValue(controls.type) || null,
+    scheme: normalizeFilterValue(controls.scheme) || null,
+    state: normalizeFilterValue(controls.state) || null,
     tags: parseCsv(controls.tags),
     sortBy: controls.sortBy,
     sortDirection: controls.sortDirection,
