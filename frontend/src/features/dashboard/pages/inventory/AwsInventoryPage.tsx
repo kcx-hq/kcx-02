@@ -65,6 +65,12 @@ const serviceGroups: InventoryServiceGroup[] = [
         href: "/dashboard/inventory/aws/load-balancer/list",
         matchPrefixes: ["/dashboard/inventory/aws/load-balancer/list"],
       },
+      {
+        id: "load-balancer-optimization",
+        label: "Load Balancer Optimization",
+        href: "/dashboard/load-balancer/optimization",
+        matchPrefixes: ["/dashboard/load-balancer/optimization"],
+      },
     ],
   },
   {

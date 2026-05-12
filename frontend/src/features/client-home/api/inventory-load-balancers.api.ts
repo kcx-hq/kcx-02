@@ -8,6 +8,9 @@ export type InventoryLoadBalancerRow = {
   scheme: string | null;
   state: string | null;
   region: string | null;
+  vpcId: string | null;
+  dnsName: string | null;
+  createdAtAws: string | null;
   accountId: string | null;
   team: string | null;
   product: string | null;
@@ -29,6 +32,42 @@ export type InventoryLoadBalancersPagination = {
 export type InventoryLoadBalancersListResponse = {
   items: InventoryLoadBalancerRow[];
   pagination: InventoryLoadBalancersPagination;
+};
+
+export type InventoryLoadBalancerDetailTargetGroup = {
+  arn: string;
+  name: string | null;
+  protocol: string | null;
+  port: number | null;
+  targetType: string | null;
+  healthyTargetCount: number;
+  unhealthyTargetCount: number;
+};
+
+export type InventoryLoadBalancerDetailListener = {
+  arn: string;
+  protocol: string | null;
+  port: number | null;
+  sslPolicy: string | null;
+  defaultActions: unknown[] | Record<string, unknown> | null;
+};
+
+export type InventoryLoadBalancerDetailResponse = {
+  id: string;
+  arn: string | null;
+  name: string;
+  type: string | null;
+  scheme: string | null;
+  state: string | null;
+  region: string | null;
+  vpcId: string | null;
+  dnsName: string | null;
+  createdAtAws: string | null;
+  accountId: string | null;
+  cloudConnectionId: string | null;
+  tags: Record<string, unknown> | null;
+  targetGroups: InventoryLoadBalancerDetailTargetGroup[];
+  listeners: InventoryLoadBalancerDetailListener[];
 };
 
 export type InventoryLoadBalancersListParams = {
@@ -85,6 +124,9 @@ const normalizeRow = (value: unknown): InventoryLoadBalancerRow | null => {
     scheme: toStringOrNull(value.scheme),
     state: toStringOrNull(value.state),
     region: toStringOrNull(value.region),
+    vpcId: toStringOrNull(value.vpcId) ?? toStringOrNull(value.vpc_id),
+    dnsName: toStringOrNull(value.dnsName) ?? toStringOrNull(value.dns_name),
+    createdAtAws: toStringOrNull(value.createdAtAws) ?? toStringOrNull(value.created_at_aws) ?? toStringOrNull(value.createdAt),
     accountId: toStringOrNull(value.accountId),
     team: toStringOrNull(value.team),
     product: toStringOrNull(value.product),
@@ -165,3 +207,10 @@ export async function getInventoryLoadBalancers(
   }
 }
 
+export async function getInventoryLoadBalancerDetail(loadBalancerId: string): Promise<InventoryLoadBalancerDetailResponse> {
+  const normalizedId = loadBalancerId.trim();
+  if (!normalizedId) {
+    throw new Error("loadBalancerId is required");
+  }
+  return apiGet<InventoryLoadBalancerDetailResponse>(`/inventory/aws/load-balancers/${encodeURIComponent(normalizedId)}`);
+}

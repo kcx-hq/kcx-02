@@ -2,6 +2,9 @@ import { QueryTypes } from "sequelize";
 
 import { sequelize } from "../../../models/index.js";
 import type {
+  InventoryLoadBalancerDetailItem,
+  InventoryLoadBalancerDetailListener,
+  InventoryLoadBalancerDetailTargetGroup,
   InventoryLoadBalancersListItem,
   InventoryLoadBalancersListQuery,
   InventoryLoadBalancersListResponse,
@@ -17,6 +20,9 @@ type InventoryListRow = {
   scheme: string | null;
   state: string | null;
   region: string | null;
+  vpcId: string | null;
+  dnsName: string | null;
+  createdAtAws: Date | string | null;
   accountId: string | null;
   tags: Record<string, unknown> | null;
   totalCost: number | string | null;
@@ -26,6 +32,39 @@ type InventoryListRow = {
 };
 
 type InventoryCountRow = { total: number | string | null };
+type InventoryDetailRow = {
+  id: string;
+  cloudConnectionId: string | null;
+  arn: string | null;
+  name: string | null;
+  type: string | null;
+  scheme: string | null;
+  state: string | null;
+  region: string | null;
+  vpcId: string | null;
+  dnsName: string | null;
+  createdAtAws: Date | string | null;
+  accountId: string | null;
+  tags: Record<string, unknown> | null;
+};
+
+type InventoryDetailTargetGroupRow = {
+  arn: string | null;
+  name: string | null;
+  protocol: string | null;
+  port: number | string | null;
+  targetType: string | null;
+  healthyTargetCount: number | string | null;
+  unhealthyTargetCount: number | string | null;
+};
+
+type InventoryDetailListenerRow = {
+  arn: string | null;
+  protocol: string | null;
+  port: number | string | null;
+  sslPolicy: string | null;
+  defaultActions: unknown[] | Record<string, unknown> | null;
+};
 
 const toIsoDate = (value: Date): string => value.toISOString().slice(0, 10);
 const toNumber = (value: number | string | null | undefined): number => {
@@ -146,6 +185,9 @@ export class LoadBalancerInventoryListService {
           lb.scheme,
           lb.state,
           lb.region,
+          lb.vpc_id,
+          lb.dns_name,
+          lb.created_at_aws,
           lb.account_id,
           lb.tags,
           lb.updated_at
@@ -182,6 +224,9 @@ export class LoadBalancerInventoryListService {
         flb.scheme,
         flb.state,
         flb.region,
+        flb.vpc_id AS "vpcId",
+        flb.dns_name AS "dnsName",
+        flb.created_at_aws AS "createdAtAws",
         flb.account_id AS "accountId",
         flb.tags,
         COALESCE(cost.total_cost, 0)::double precision AS "totalCost",
@@ -223,6 +268,14 @@ export class LoadBalancerInventoryListService {
       scheme: row.scheme,
       state: row.state,
       region: row.region,
+      vpcId: row.vpcId,
+      dnsName: row.dnsName,
+      createdAtAws:
+        row.createdAtAws instanceof Date
+          ? row.createdAtAws.toISOString()
+          : typeof row.createdAtAws === "string"
+            ? row.createdAtAws
+            : null,
       accountId: row.accountId,
       team: (row.tags?.team as string | undefined) ?? (row.tags?.Team as string | undefined) ?? null,
       product: (row.tags?.product as string | undefined) ?? (row.tags?.Product as string | undefined) ?? null,
@@ -242,6 +295,153 @@ export class LoadBalancerInventoryListService {
         total,
         totalPages: total > 0 ? Math.ceil(total / pageSize) : 0,
       },
+    };
+  }
+
+  async getLoadBalancerDetail(input: {
+    tenantId: string;
+    loadBalancerId: string;
+  }): Promise<InventoryLoadBalancerDetailItem | null> {
+    const loadBalancerId = input.loadBalancerId.trim();
+    if (!loadBalancerId) return null;
+
+    const rows = await sequelize.query<InventoryDetailRow>(
+      `
+      SELECT
+        lb.id::text AS id,
+        lb.cloud_connection_id::text AS "cloudConnectionId",
+        lb.arn,
+        lb.name,
+        lb.type,
+        lb.scheme,
+        lb.state,
+        lb.region,
+        lb.vpc_id AS "vpcId",
+        lb.dns_name AS "dnsName",
+        lb.created_at_aws AS "createdAtAws",
+        lb.account_id AS "accountId",
+        lb.tags
+      FROM load_balancers lb
+      JOIN cloud_connections cc
+        ON lb.cloud_connection_id = cc.id
+      WHERE cc.tenant_id = CAST(:tenantId AS uuid)
+        AND (
+          lb.id::text = :loadBalancerId
+          OR lb.arn = :loadBalancerId
+          OR lb.name = :loadBalancerId
+        )
+      ORDER BY lb.updated_at DESC, lb.id DESC
+      LIMIT 1;
+      `,
+      {
+        replacements: {
+          tenantId: input.tenantId,
+          loadBalancerId,
+        },
+        type: QueryTypes.SELECT,
+      },
+    );
+
+    const row = rows[0];
+    if (!row) return null;
+
+    const targetGroupsRows = await sequelize.query<InventoryDetailTargetGroupRow>(
+      `
+      SELECT
+        tg.arn,
+        tg.name,
+        tg.protocol,
+        tg.port,
+        tg.target_type AS "targetType",
+        tg.healthy_target_count AS "healthyTargetCount",
+        tg.unhealthy_target_count AS "unhealthyTargetCount"
+      FROM load_balancer_target_groups tg
+      WHERE tg.cloud_connection_id::text IS NOT DISTINCT FROM :cloudConnectionId
+        AND tg.account_id IS NOT DISTINCT FROM :accountId
+        AND tg.region IS NOT DISTINCT FROM :region
+        AND tg.load_balancer_arn IS NOT DISTINCT FROM :loadBalancerArn
+      ORDER BY COALESCE(NULLIF(TRIM(tg.name), ''), tg.arn) ASC;
+      `,
+      {
+        replacements: {
+          cloudConnectionId: row.cloudConnectionId,
+          accountId: row.accountId,
+          region: row.region,
+          loadBalancerArn: row.arn,
+        },
+        type: QueryTypes.SELECT,
+      },
+    );
+
+    const listenerRows = await sequelize.query<InventoryDetailListenerRow>(
+      `
+      SELECT
+        li.arn,
+        li.protocol,
+        li.port,
+        li.ssl_policy AS "sslPolicy",
+        li.default_actions AS "defaultActions"
+      FROM load_balancer_listeners li
+      WHERE li.cloud_connection_id::text IS NOT DISTINCT FROM :cloudConnectionId
+        AND li.account_id IS NOT DISTINCT FROM :accountId
+        AND li.region IS NOT DISTINCT FROM :region
+        AND li.load_balancer_arn IS NOT DISTINCT FROM :loadBalancerArn
+      ORDER BY li.port ASC NULLS LAST, li.arn ASC;
+      `,
+      {
+        replacements: {
+          cloudConnectionId: row.cloudConnectionId,
+          accountId: row.accountId,
+          region: row.region,
+          loadBalancerArn: row.arn,
+        },
+        type: QueryTypes.SELECT,
+      },
+    );
+
+    const targetGroups: InventoryLoadBalancerDetailTargetGroup[] = targetGroupsRows
+      .filter((item) => Boolean(item.arn))
+      .map((item) => ({
+        arn: item.arn as string,
+        name: item.name,
+        protocol: item.protocol,
+        port: item.port === null ? null : Math.trunc(toNumber(item.port)),
+        targetType: item.targetType,
+        healthyTargetCount: Math.trunc(toNumber(item.healthyTargetCount)),
+        unhealthyTargetCount: Math.trunc(toNumber(item.unhealthyTargetCount)),
+      }));
+
+    const listeners: InventoryLoadBalancerDetailListener[] = listenerRows
+      .filter((item) => Boolean(item.arn))
+      .map((item) => ({
+        arn: item.arn as string,
+        protocol: item.protocol,
+        port: item.port === null ? null : Math.trunc(toNumber(item.port)),
+        sslPolicy: item.sslPolicy,
+        defaultActions: item.defaultActions,
+      }));
+
+    return {
+      id: row.id,
+      arn: row.arn,
+      name: (row.name && row.name.trim().length > 0 ? row.name : row.arn) ?? "Unknown Load Balancer",
+      type: row.type,
+      scheme: row.scheme,
+      state: row.state,
+      region: row.region,
+      vpcId: row.vpcId,
+      dnsName: row.dnsName,
+      createdAtAws:
+        row.createdAtAws instanceof Date
+          ? row.createdAtAws.toISOString()
+          : typeof row.createdAtAws === "string"
+            ? row.createdAtAws
+            : null,
+      accountId: row.accountId,
+      cloudConnectionId: row.cloudConnectionId,
+      tags: row.tags,
+      targetGroups,
+      listeners,
     };
   }
 }

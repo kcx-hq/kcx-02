@@ -1,4 +1,10 @@
-export type Ec2RecommendationCategory = "compute" | "storage" | "pricing" | "network";
+export type Ec2RecommendationCategory =
+  | "compute"
+  | "storage"
+  | "pricing"
+  | "network"
+  | "cost_optimization"
+  | "reliability";
 export type Ec2RecommendationType =
   | "idle_instance"
   | "underutilized_instance"
@@ -12,8 +18,13 @@ export type Ec2RecommendationType =
   | "high_inter_az_data_transfer"
   | "low_cpu_high_network"
   | "high_nat_gateway_cost"
-  | "unattached_elastic_ip";
-export type Ec2RecommendationResourceType = "instance" | "volume" | "snapshot" | "elastic_ip";
+  | "unattached_elastic_ip"
+  | "idle_load_balancer"
+  | "low_traffic_load_balancer"
+  | "unhealthy_targets"
+  | "high_error_rate"
+  | "high_data_processing_cost";
+export type Ec2RecommendationResourceType = "instance" | "volume" | "snapshot" | "elastic_ip" | "load_balancer";
 export type Ec2RecommendationRisk = "low" | "medium" | "high";
 export type Ec2RecommendationEffort = "low" | "medium" | "high";
 export type Ec2RecommendationStatus = "open" | "in_progress" | "snoozed" | "dismissed" | "completed";
@@ -32,6 +43,8 @@ export type Ec2RecommendationsQuery = {
   team: string | null;
   product: string | null;
   environment: string | null;
+  service: "ec2" | "load_balancer" | null;
+  resourceType: Ec2RecommendationResourceType | null;
   tags: string[];
 };
 
@@ -69,8 +82,8 @@ export type Ec2RecommendationRecord = {
 export type Ec2RecommendationsResponse = {
   overview: {
     totalPotentialMonthlySaving: number;
-    countByCategory: Record<Ec2RecommendationCategory, number>;
-    savingByCategory: Record<Ec2RecommendationCategory, number>;
+    countByCategory: Record<"compute" | "storage" | "pricing" | "network", number>;
+    savingByCategory: Record<"compute" | "storage" | "pricing" | "network", number>;
     countByType: Record<Ec2RecommendationType, number>;
   };
   recommendations: {

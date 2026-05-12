@@ -6,14 +6,18 @@ import {
   LOAD_BALANCER_GRANULARITY_OPTIONS,
   LOAD_BALANCER_GROUP_BY_OPTIONS,
   LOAD_BALANCER_METRIC_OPTIONS,
+  LOAD_BALANCER_USAGE_TYPE_OPTIONS,
+  getLoadBalancerGroupByOptionsForMetric,
+  getValidLoadBalancerGroupByForMetric,
   type LoadBalancerExplorerControlsState,
   type LoadBalancerGranularity,
   type LoadBalancerGroupBy,
   type LoadBalancerMetric,
   type LoadBalancerScopeFilters,
+  type LoadBalancerUsageType,
 } from "../loadBalancerExplorer.types";
 
-type PopoverKey = "metric" | "granularity" | "groupBy";
+type PopoverKey = "metric" | "usageType" | "granularity" | "groupBy";
 
 type Props = {
   value: LoadBalancerExplorerControlsState;
@@ -128,7 +132,10 @@ export function LoadBalancerExplorerTopControls({ value, onChange, onReset, chil
   const metricLabel = LOAD_BALANCER_METRIC_OPTIONS.find((item) => item.key === value.metric)?.label ?? "Cost";
   const granularityLabel =
     LOAD_BALANCER_GRANULARITY_OPTIONS.find((item) => item.key === value.granularity)?.label ?? "Daily";
+  const usageTypeLabel =
+    LOAD_BALANCER_USAGE_TYPE_OPTIONS.find((item) => item.key === value.usageType)?.label ?? "Requests";
   const groupByLabel = LOAD_BALANCER_GROUP_BY_OPTIONS.find((item) => item.key === value.groupBy)?.label ?? "Account";
+  const visibleGroupByOptions = useMemo(() => getLoadBalancerGroupByOptionsForMetric(value.metric), [value.metric]);
   const activeScopeCount = useMemo(
     () =>
       Object.values(value.scopeFilters).reduce((sum, entry) => sum + (Array.isArray(entry) ? entry.length : 0), 0),
@@ -175,10 +182,40 @@ export function LoadBalancerExplorerTopControls({ value, onChange, onReset, chil
               ? renderOptionList({
                   options: LOAD_BALANCER_METRIC_OPTIONS,
                   selected: value.metric,
-                  onSelect: (nextMetric: LoadBalancerMetric) => update({ metric: nextMetric }),
+                  onSelect: (nextMetric: LoadBalancerMetric) =>
+                    update({
+                      metric: nextMetric,
+                      groupBy: getValidLoadBalancerGroupByForMetric(nextMetric, value.groupBy),
+                      groupByValues: [],
+                    }),
                 })
               : null}
           </div>
+
+          {value.metric === "usage" ? (
+            <div className="cost-explorer-toolbar-item">
+              <button
+                type="button"
+                className={`cost-explorer-toolbar-trigger${activePopover === "usageType" ? " is-active" : ""}`}
+                onClick={() => togglePopover("usageType")}
+                aria-expanded={activePopover === "usageType"}
+                aria-haspopup="dialog"
+              >
+                <span className="cost-explorer-toolbar-trigger__label">Usage Type</span>
+                <span className="cost-explorer-toolbar-trigger__row">
+                  <span className="cost-explorer-toolbar-trigger__value">{usageTypeLabel}</span>
+                  <ChevronDown className="cost-explorer-toolbar-trigger__caret" size={14} aria-hidden="true" />
+                </span>
+              </button>
+              {activePopover === "usageType"
+                ? renderOptionList({
+                    options: LOAD_BALANCER_USAGE_TYPE_OPTIONS,
+                    selected: value.usageType,
+                    onSelect: (nextUsageType: LoadBalancerUsageType) => update({ usageType: nextUsageType }),
+                  })
+                : null}
+            </div>
+          ) : null}
 
           <div className="cost-explorer-toolbar-item">
             <button
@@ -219,7 +256,7 @@ export function LoadBalancerExplorerTopControls({ value, onChange, onReset, chil
             </button>
             {activePopover === "groupBy"
               ? renderOptionList({
-                  options: LOAD_BALANCER_GROUP_BY_OPTIONS,
+                  options: visibleGroupByOptions,
                   selected: value.groupBy,
                   onSelect: (nextGroupBy: LoadBalancerGroupBy) =>
                     update({
@@ -301,7 +338,7 @@ export function LoadBalancerExplorerTopControls({ value, onChange, onReset, chil
                     ...LOAD_BALANCER_DEFAULT_CONTROLS,
                     metric: value.metric,
                     granularity: value.granularity,
-                    groupBy: value.groupBy,
+                    groupBy: getValidLoadBalancerGroupByForMetric(value.metric, value.groupBy),
                     chartType: value.chartType,
                   });
                   setScopeFiltersOpen(false);
@@ -316,4 +353,3 @@ export function LoadBalancerExplorerTopControls({ value, onChange, onReset, chil
     </section>
   );
 }
-

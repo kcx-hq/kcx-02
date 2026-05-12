@@ -67,6 +67,11 @@ const typeLabel = (value: Ec2RecommendationType): string => {
   if (value === "high_inter_az_data_transfer") return "High Inter-AZ Data Transfer";
   if (value === "low_cpu_high_network") return "Low CPU / High Network";
   if (value === "high_nat_gateway_cost") return "High NAT Gateway Cost";
+  if (value === "idle_load_balancer") return "Idle Load Balancer";
+  if (value === "low_traffic_load_balancer") return "Low Traffic Load Balancer";
+  if (value === "unhealthy_targets") return "Unhealthy Targets";
+  if (value === "high_error_rate") return "High Error Rate";
+  if (value === "high_data_processing_cost") return "High Data Processing Cost";
   return "Unattached Elastic IP";
 };
 const truncateText = (value: string | null | undefined, max: number = 90): string => {
@@ -373,6 +378,7 @@ export default function EC2OptimizationPage() {
   const location = useLocation();
   const navigate = useNavigate();
   const { scope } = useDashboardScope();
+  const pageTitle = "EC2 Optimization";
   const defaults = getDefaultDateRange();
   const rootRef = useRef<HTMLDivElement | null>(null);
 
@@ -469,7 +475,7 @@ export default function EC2OptimizationPage() {
     }),
     [dateFrom, dateTo, searchParams],
   );
-  const query = useEc2RecommendationsQuery(recommendationsQueryFilters);
+  const query = useEc2RecommendationsQuery({ ...recommendationsQueryFilters, service: "ec2" });
   const orphanedRefreshKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -532,6 +538,8 @@ export default function EC2OptimizationPage() {
 
   const scopedRows = useMemo(() => {
     return allRows.filter((item) => {
+      const resourcePass = item.resourceType !== "load_balancer";
+      if (!resourcePass) return false;
       const regionPass =
         globalScopeFilters.region.length === 0 ||
         (item.region !== null && globalScopeFilters.region.includes(item.region));
@@ -827,7 +835,7 @@ export default function EC2OptimizationPage() {
   return (
     <div className="dashboard-page optimization-page" ref={rootRef}>
       <div className="optimization-header-shell">
-        <div className="optimization-header-tabs" role="tablist" aria-label="EC2 optimization sections">
+        <div className="optimization-header-tabs" role="tablist" aria-label={`${pageTitle} sections`}>
           {MAIN_TABS.map((tab) => (
             <button
               key={tab.key}
@@ -918,7 +926,10 @@ export default function EC2OptimizationPage() {
                 onClick={() => {
                   const nextParams = new URLSearchParams(searchParams.toString());
                   nextParams.set("tab", "recommendations");
-                  navigate({ pathname: "/ec2/optimization", search: nextParams.toString() });
+                  navigate({
+                    pathname: "/dashboard/ec2/optimization",
+                    search: nextParams.toString(),
+                  });
                 }}
               >
                 View All Recommendations 

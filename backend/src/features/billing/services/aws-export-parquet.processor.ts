@@ -32,6 +32,7 @@ import { syncLoadBalancerCostDailyForIngestionRun } from "../../load-balancer/co
 import { createTagDimensionCache, resolveFactPrimaryTagId, resolveFactTagIds } from "./dim-tag.service.js";
 import { assertTagDimensionSchemaReady } from "./ingestion-schema-guard.service.js";
 import { Ec2RecommendationsService } from "../../ec2/optimization/ec2-recommendations.service.js";
+import { LoadBalancerRecommendationsService } from "../../load-balancer/recommendations/load-balancer-recommendations.service.js";
 import { syncStorageLensFromClientAccount } from "./s3-storage-lens-sync.service.js";
 
 const STAGE_MESSAGE = {
@@ -59,6 +60,7 @@ const PROGRESS_BY_STAGE = {
 
 const now = () => new Date();
 const ec2RecommendationsService = new Ec2RecommendationsService();
+const loadBalancerRecommendationsService = new LoadBalancerRecommendationsService();
 
 function scheduleStorageLensSyncAfterIngestion({ tenantId, billingSourceId, ingestionRunId }) {
   const normalizedTenantId = String(tenantId ?? "").trim();
@@ -731,6 +733,24 @@ export async function processAwsExportParquetRun({ run }) {
           tenantId: source.tenantId ?? null,
           billingSourceId: source.id ?? null,
           reason: toErrorMessage(ec2V1Error),
+        });
+      }
+
+      try {
+        await loadBalancerRecommendationsService.refreshRecommendations({
+          tenantId: String(source.tenantId),
+          billingSourceId: Number(source.id),
+          cloudConnectionId: source.cloudConnectionId ? String(source.cloudConnectionId) : null,
+          dateFrom: String(run.periodStartDate).slice(0, 10),
+          dateTo: String(run.periodEndDate).slice(0, 10),
+        });
+      } catch (loadBalancerRecError) {
+        logger.warn("Load balancer recommendation refresh failed after AWS parquet ingestion", {
+          ingestionRunId: runId,
+          tenantId: source.tenantId ?? null,
+          billingSourceId: source.id ?? null,
+          cloudConnectionId: source.cloudConnectionId ?? null,
+          reason: toErrorMessage(loadBalancerRecError),
         });
       }
 

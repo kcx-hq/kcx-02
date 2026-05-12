@@ -57,6 +57,7 @@ const querySchema = z
     groupBy: z.enum(LOAD_BALANCER_EXPLORER_GROUP_BY),
     tagKey: z.string().trim().min(1).max(200).nullable(),
     cloudConnectionId: z.string().trim().min(1).max(100).nullable(),
+    loadBalancerArn: z.string().trim().min(1).max(1024).nullable(),
     accountId: z.string().trim().min(1).max(100).nullable(),
     regions: z.array(z.string().trim().min(1)).max(200),
     types: z.array(z.string().trim().min(1)).max(200),
@@ -118,6 +119,7 @@ export function buildLoadBalancerExplorerInput(req: Request, scope: DashboardSco
     groupBy,
     tagKey,
     cloudConnectionId: firstQueryValue(req.query.cloudConnectionId) ?? null,
+    loadBalancerArn: firstQueryValue(req.query.loadBalancerArn) ?? null,
     accountId: firstQueryValue(req.query.accountId) ?? null,
     regions: parseStringArray(req.query.region ?? req.query.regions),
     types: parseStringArray(req.query.type ?? req.query.types),
@@ -141,6 +143,7 @@ export function buildLoadBalancerExplorerInput(req: Request, scope: DashboardSco
     groupValues: parsed.groupValues,
     filters: {
       cloudConnectionId: parsed.cloudConnectionId,
+      loadBalancerArn: parsed.loadBalancerArn,
       accountId: parsed.accountId,
       regions: parsed.regions,
       types: parsed.types,

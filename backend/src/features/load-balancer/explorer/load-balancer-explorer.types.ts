@@ -1,6 +1,6 @@
 import type { DashboardScope } from "../../dashboard/dashboard.types.js";
 
-export const LOAD_BALANCER_EXPLORER_METRICS = ["cost", "load_balancers"] as const;
+export const LOAD_BALANCER_EXPLORER_METRICS = ["cost", "load_balancers", "usage"] as const;
 export type LoadBalancerExplorerMetric = (typeof LOAD_BALANCER_EXPLORER_METRICS)[number];
 
 export const LOAD_BALANCER_EXPLORER_GRANULARITIES = ["hourly", "daily", "monthly"] as const;
@@ -29,6 +29,7 @@ export type LoadBalancerExplorerTagFilter = {
 
 export type LoadBalancerExplorerFilters = {
   cloudConnectionId: string | null;
+  loadBalancerArn: string | null;
   accountId: string | null;
   regions: string[];
   types: string[];
@@ -68,11 +69,27 @@ export type LoadBalancerExplorerSummary = {
   internalCount: number;
   totalProcessedBytesGb: number;
   avgDailyCost: number;
+  requestCount?: number;
+  processedGB?: number;
+  activeConnections?: number;
+  newConnections?: number;
+  healthyHosts?: number;
+  unhealthyHosts?: number;
+  errorCount?: number;
 };
 
 export type LoadBalancerExplorerGraphPoint = {
   date: string;
   value: number;
+  group?: string;
+  loadBalancerCount?: number;
+  requestCount?: number;
+  processedGB?: number;
+  activeConnections?: number;
+  newConnections?: number;
+  healthyHosts?: number;
+  unhealthyHosts?: number;
+  errorCount?: number;
 };
 
 export type LoadBalancerExplorerGraphSeries = {

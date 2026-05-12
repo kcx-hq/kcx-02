@@ -1,6 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import {
+  getInventoryLoadBalancerDetail,
   getInventoryLoadBalancers,
+  type InventoryLoadBalancerDetailResponse,
   type InventoryLoadBalancersListParams,
   type InventoryLoadBalancersListResponse,
 } from "@/features/client-home/api/inventory-load-balancers.api";
@@ -33,3 +35,12 @@ export function useInventoryLoadBalancers(params: InventoryLoadBalancersListPara
   });
 }
 
+export function useInventoryLoadBalancerDetail(loadBalancerId: string | null) {
+  const normalizedId = String(loadBalancerId ?? "").trim();
+  return useQuery<InventoryLoadBalancerDetailResponse>({
+    queryKey: [...INVENTORY_LOAD_BALANCERS_QUERY_KEY, "detail", normalizedId || "none"],
+    queryFn: () => getInventoryLoadBalancerDetail(normalizedId),
+    enabled: normalizedId.length > 0,
+    placeholderData: (previous) => previous,
+  });
+}

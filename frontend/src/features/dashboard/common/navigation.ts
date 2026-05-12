@@ -111,6 +111,12 @@ export const dashboardNav: DashboardNavNode[] = [
             path: "/dashboard/inventory/aws/load-balancer/list",
             icon: "boxes",
           },
+          {
+            kind: "link",
+            label: "Optimization",
+            path: "/dashboard/load-balancer/optimization",
+            icon: "gauge",
+          },
         ],
       },
       {

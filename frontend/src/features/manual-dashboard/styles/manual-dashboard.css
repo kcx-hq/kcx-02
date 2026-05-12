@@ -1891,6 +1891,18 @@
   background: color-mix(in srgb, var(--dashboard-surface-card) 92%, var(--dashboard-surface-soft) 8%);
 }
 
+.lb-optimization-recommendation-drawer {
+  background: #ffffff !important;
+  backdrop-filter: none !important;
+  isolation: isolate;
+}
+
+.lb-optimization-recommendation-drawer .optimization-drawer-header,
+.lb-optimization-recommendation-drawer .optimization-drawer-body,
+.lb-optimization-recommendation-drawer .optimization-drawer-footer {
+  background: #ffffff;
+}
+
 .optimization-drawer-header {
   position: sticky;
   top: 0;

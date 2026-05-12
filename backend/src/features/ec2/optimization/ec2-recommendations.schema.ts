@@ -49,6 +49,11 @@ const querySchema = z.object({
     "low_cpu_high_network",
     "high_nat_gateway_cost",
     "unattached_elastic_ip",
+    "idle_load_balancer",
+    "low_traffic_load_balancer",
+    "unhealthy_targets",
+    "high_error_rate",
+    "high_data_processing_cost",
   ]).nullable(),
   status: z.enum(["open", "in_progress", "snoozed", "dismissed", "completed"]).nullable(),
   account: z.string().nullable(),
@@ -56,6 +61,8 @@ const querySchema = z.object({
   team: z.string().nullable(),
   product: z.string().nullable(),
   environment: z.string().nullable(),
+  service: z.enum(["ec2", "load_balancer"]).nullable(),
+  resourceType: z.enum(["instance", "volume", "snapshot", "elastic_ip", "load_balancer"]).nullable(),
   tags: z.array(z.string()).default([]),
 });
 
@@ -95,6 +102,14 @@ export function buildEc2RecommendationsQuery(req: Request): Ec2RecommendationsQu
     team: nullable(first(req.query.team)),
     product: nullable(first(req.query.product)),
     environment: nullable(first(req.query.environment) ?? first(req.query.env)),
+    service: nullable(first(req.query.service)) as "ec2" | "load_balancer" | null,
+    resourceType: nullable(first(req.query.resourceType) ?? first(req.query.resource_type)) as
+      | "instance"
+      | "volume"
+      | "snapshot"
+      | "elastic_ip"
+      | "load_balancer"
+      | null,
     tags: parseTags(first(req.query.tags)),
   });
 }

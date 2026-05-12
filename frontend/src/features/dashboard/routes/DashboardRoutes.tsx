@@ -32,6 +32,7 @@ import DatabaseAssetsPage from "../pages/database/db-assets-page";
 import LoadBalancerExplorerPage from "../pages/load-balancer/LoadBalancerExplorerPage";
 import LoadBalancerListPage from "../pages/load-balancer/LoadBalancerListPage";
 import LoadBalancerDetailPage from "../pages/load-balancer/LoadBalancerDetailPage";
+import LoadBalancerOptimizationPage from "../pages/load-balancer/LoadBalancerOptimizationPage";
 
 function DashboardOverviewRedirect() {
   const location = useLocation();
@@ -119,6 +120,7 @@ export default function DashboardRoutes() {
         <Route path="cost-explorer" element={<DashboardCostRedirect />} />
         <Route path="ec2/explorer" element={<EC2ExplorerPage />} />
         <Route path="load-balancer/explorer" element={<LoadBalancerExplorerPage />} />
+        <Route path="load-balancer/optimization" element={<LoadBalancerOptimizationPage />} />
         <Route path="ec2/volumes" element={<EC2VolumesPage />} />
         <Route path="ec2/optimization" element={<EC2OptimizationPage />} />
         <Route path="ec2/network/data-transfer" element={<DashboardEc2DataTransferRedirect />} />

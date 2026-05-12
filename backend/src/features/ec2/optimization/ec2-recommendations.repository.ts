@@ -1,4 +1,4 @@
-import { QueryTypes } from "sequelize";
+import { Op, QueryTypes } from "sequelize";
 
 import { FactRecommendations, sequelize } from "../../../models/index.js";
 import { classifyExplorerCostCategory } from "../classification/cost-category-classifier.js";
@@ -9,9 +9,13 @@ import type {
   Ec2RefreshRecommendationsInput,
 } from "./ec2-recommendations.types.js";
 
-const SOURCE_SYSTEMS = ["KCX_EC2_OPTIMIZATION_V1", "KCX_EC2_OPTIMIZATION"] as const;
+const SOURCE_SYSTEMS = [
+  "KCX_EC2_OPTIMIZATION_V1",
+  "KCX_EC2_OPTIMIZATION",
+  "KCX_LOAD_BALANCER_OPTIMIZATION_V1",
+] as const;
 
-type InstanceCandidateRow = {
+export type InstanceCandidateRow = {
   cloudConnectionId: string | null;
   billingSourceId: number | null;
   awsAccountId: string | null;
@@ -31,7 +35,7 @@ type InstanceCandidateRow = {
   tagsJson: Record<string, unknown> | null;
 };
 
-type VolumeCandidateRow = {
+export type VolumeCandidateRow = {
   cloudConnectionId: string | null;
   billingSourceId: number | null;
   awsAccountId: string | null;
@@ -57,7 +61,7 @@ type VolumeCandidateRow = {
   tagsJson: Record<string, unknown> | null;
 };
 
-type SnapshotCandidateRow = {
+export type SnapshotCandidateRow = {
   cloudConnectionId: string | null;
   billingSourceId: number | null;
   awsAccountId: string | null;
@@ -75,7 +79,7 @@ type SnapshotCandidateRow = {
   tagsJson: Record<string, unknown> | null;
 };
 
-type InstanceNetworkCostLineItemRow = {
+export type InstanceNetworkCostLineItemRow = {
   cloudConnectionId: string | null;
   billingSourceId: number | null;
   awsAccountId: string | null;
@@ -97,7 +101,7 @@ type InstanceNetworkCostLineItemRow = {
   usageQuantity: number | null;
 };
 
-type InstanceUsageSummaryRow = {
+export type InstanceUsageSummaryRow = {
   cloudConnectionId: string | null;
   billingSourceId: number | null;
   awsAccountId: string | null;
@@ -113,7 +117,7 @@ type InstanceUsageSummaryRow = {
   runningDays: number | null;
 };
 
-type EipCandidateRow = {
+export type EipCandidateRow = {
   cloudConnectionId: string | null;
   billingSourceId: number | null;
   awsAccountId: string | null;
@@ -609,7 +613,7 @@ export class Ec2RecommendationsRepository {
       SELECT
         fr.id::bigint AS id,
         CASE
-          WHEN LOWER(COALESCE(fr.category, '')) IN ('compute', 'storage', 'pricing', 'network')
+          WHEN LOWER(COALESCE(fr.category, '')) IN ('compute', 'storage', 'pricing', 'network', 'cost_optimization', 'reliability')
             THEN LOWER(fr.category)
           WHEN LOWER(COALESCE(fr.recommendation_type, '')) IN ('idle_instance', 'underutilized_instance', 'overutilized_instance')
             THEN 'compute'
@@ -619,6 +623,10 @@ export class Ec2RecommendationsRepository {
             THEN 'pricing'
           WHEN LOWER(COALESCE(fr.recommendation_type, '')) IN ('high_internet_data_transfer', 'high_inter_region_data_transfer', 'high_inter_az_data_transfer', 'low_cpu_high_network', 'high_nat_gateway_cost', 'unattached_elastic_ip')
             THEN 'network'
+          WHEN LOWER(COALESCE(fr.recommendation_type, '')) IN ('idle_load_balancer', 'low_traffic_load_balancer', 'high_data_processing_cost')
+            THEN 'cost_optimization'
+          WHEN LOWER(COALESCE(fr.recommendation_type, '')) IN ('unhealthy_targets', 'high_error_rate')
+            THEN 'reliability'
           ELSE LOWER(COALESCE(fr.category, ''))
         END::text AS category,
         CASE
@@ -630,6 +638,7 @@ export class Ec2RecommendationsRepository {
           WHEN fr.resource_type = 'ec2_instance' THEN 'instance'
           WHEN fr.resource_type = 'ebs_volume' THEN 'volume'
           WHEN fr.resource_type = 'elastic_ip' THEN 'elastic_ip'
+          WHEN fr.resource_type = 'load_balancer' THEN 'load_balancer'
           ELSE 'snapshot'
         END::text AS "resourceType",
         fr.resource_id::text AS "resourceId",
@@ -655,7 +664,7 @@ export class Ec2RecommendationsRepository {
         AND (:cloudConnectionId::uuid IS NULL OR fr.cloud_connection_id = :cloudConnectionId::uuid)
         AND (:billingSourceId::bigint IS NULL OR fr.billing_source_id = :billingSourceId::bigint)
         AND (:category::text IS NULL OR LOWER(fr.category) = :category::text)
-        AND (:type::text IS NULL OR fr.recommendation_type = :type::text)
+        AND (:type::text IS NULL OR LOWER(COALESCE(fr.recommendation_type, '')) = :type::text)
         AND (:status::text IS NULL OR (${effectiveStatusExpr}) = :status::text)
         AND (:account::text IS NULL OR LOWER(COALESCE(fr.aws_account_id, '')) = LOWER(:account::text))
         AND (:region::text IS NULL OR LOWER(COALESCE(fr.aws_region_code, dr.region_id, dr.region_name, '')) LIKE ('%' || LOWER(:region::text) || '%'))
@@ -671,6 +680,12 @@ export class Ec2RecommendationsRepository {
           :environment::text IS NULL
           OR LOWER(COALESCE(fr.metadata_json -> 'tags' ->> 'environment', fr.metadata_json -> 'tags' ->> 'env', '')) = LOWER(:environment::text)
         )
+        AND (
+          :service::text IS NULL
+          OR (:service::text = 'load_balancer' AND fr.resource_type = 'load_balancer')
+          OR (:service::text = 'ec2' AND COALESCE(fr.resource_type, '') <> 'load_balancer')
+        )
+        AND (:resourceType::text IS NULL OR fr.resource_type = :resourceType::text)
       ORDER BY fr.estimated_monthly_savings DESC NULLS LAST, fr.last_seen_at DESC NULLS LAST;
       `,
       {
@@ -828,7 +843,7 @@ export class Ec2RecommendationsRepository {
         where: {
           id: input.id,
           tenantId: input.tenantId,
-          sourceSystem: SOURCE_SYSTEMS[0],
+          sourceSystem: { [Op.in]: [...SOURCE_SYSTEMS] },
         },
       },
     );

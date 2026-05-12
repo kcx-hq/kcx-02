@@ -275,7 +275,13 @@ export type Ec2OverviewResponse = {
 };
 export type Ec2OptimizationInstancesFiltersQuery = Ec2OptimizationSummaryFiltersQuery;
 
-export type Ec2RecommendationCategory = "compute" | "storage" | "pricing" | "network";
+export type Ec2RecommendationCategory =
+  | "compute"
+  | "storage"
+  | "pricing"
+  | "network"
+  | "cost_optimization"
+  | "reliability";
 export type Ec2RecommendationType =
   | "idle_instance"
   | "underutilized_instance"
@@ -289,7 +295,12 @@ export type Ec2RecommendationType =
   | "high_inter_az_data_transfer"
   | "low_cpu_high_network"
   | "high_nat_gateway_cost"
-  | "unattached_elastic_ip";
+  | "unattached_elastic_ip"
+  | "idle_load_balancer"
+  | "low_traffic_load_balancer"
+  | "unhealthy_targets"
+  | "high_error_rate"
+  | "high_data_processing_cost";
 export type Ec2RecommendationStatus = "open" | "in_progress" | "snoozed" | "dismissed" | "completed";
 
 export type Ec2RecommendationsFiltersQuery = {
@@ -303,6 +314,8 @@ export type Ec2RecommendationsFiltersQuery = {
   team?: string;
   product?: string;
   environment?: string;
+  service?: "ec2" | "load_balancer";
+  resourceType?: "instance" | "volume" | "snapshot" | "elastic_ip" | "load_balancer";
   tags?: string[];
   dateFrom?: string;
   dateTo?: string;
@@ -312,7 +325,7 @@ export type Ec2RecommendationRecord = {
   id: number;
   category: Ec2RecommendationCategory;
   type: Ec2RecommendationType;
-  resourceType: "instance" | "volume" | "snapshot" | "elastic_ip";
+  resourceType: "instance" | "volume" | "snapshot" | "elastic_ip" | "load_balancer";
   resourceId: string;
   resourceName: string;
   accountId: string | null;
@@ -334,8 +347,8 @@ export type Ec2RecommendationRecord = {
 export type Ec2RecommendationsResponse = {
   overview: {
     totalPotentialMonthlySaving: number;
-    countByCategory: Record<Ec2RecommendationCategory, number>;
-    savingByCategory: Record<Ec2RecommendationCategory, number>;
+    countByCategory: Record<"compute" | "storage" | "pricing" | "network", number>;
+    savingByCategory: Record<"compute" | "storage" | "pricing" | "network", number>;
     countByType: Record<Ec2RecommendationType, number>;
   };
   recommendations: {
@@ -616,7 +629,7 @@ export type Ec2ElasticIpResponse = {
   };
 };
 
-export type LoadBalancerExplorerMetric = "cost" | "load_balancers";
+export type LoadBalancerExplorerMetric = "cost" | "load_balancers" | "usage";
 export type LoadBalancerExplorerGroupBy =
   | "cost_type"
   | "none"
@@ -636,9 +649,18 @@ export type LoadBalancerExplorerFiltersQuery = {
   startDate?: string;
   endDate?: string;
   metric: LoadBalancerExplorerMetric;
+  usageType?:
+    | "requests"
+    | "processed_gb"
+    | "active_connections"
+    | "new_connections"
+    | "healthy_hosts"
+    | "unhealthy_hosts"
+    | "errors";
   granularity?: LoadBalancerExplorerGranularity;
   groupBy: LoadBalancerExplorerGroupBy;
   tagKey?: string | null;
+  loadBalancerArn?: string | null;
   accountId?: string | null;
   regions?: string[];
   types?: string[];
@@ -668,6 +690,13 @@ export type LoadBalancerExplorerSummaryResponse = {
     internalCount: number;
     totalProcessedBytesGb: number;
     avgDailyCost: number;
+    requestCount?: number;
+    processedGB?: number;
+    activeConnections?: number;
+    newConnections?: number;
+    healthyHosts?: number;
+    unhealthyHosts?: number;
+    errorCount?: number;
   };
 };
 
@@ -681,6 +710,8 @@ export type LoadBalancerExplorerTrendResponse = {
       data: Array<{
         date: string;
         value: number;
+        group?: string;
+        loadBalancerCount?: number;
       }>;
     }>;
   };

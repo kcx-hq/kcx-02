@@ -435,6 +435,23 @@
   padding-top: 0;
 }
 
+.dashboard-global-header__breadcrumbs--load-balancer {
+  flex: 0 1 auto;
+  overflow: hidden;
+}
+
+.dashboard-global-header__breadcrumbs--load-balancer > span {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.dashboard-global-header__breadcrumbs--load-balancer .dashboard-breadcrumb--current {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: min(32ch, 34vw);
+}
+
 .kcx-dashboard .dashboard-breadcrumb {
   font-size: 16px;
   line-height: 1;
@@ -11082,6 +11099,163 @@
   color: #274340;
 }
 
+.load-balancer-detail-page .ec2-instance-detail {
+  gap: 18px;
+}
+
+.load-balancer-detail-page .ec2-instance-detail__layout {
+  grid-template-columns: minmax(0, 1fr) 220px;
+  gap: 18px;
+}
+
+.load-balancer-detail-page .ec2-instance-detail__content {
+  gap: 18px;
+}
+
+.load-balancer-detail-page .ec2-instance-detail__panel {
+  padding: 16px 18px;
+}
+
+.load-balancer-detail-page .ec2-instance-detail__panel > h3 {
+  margin: 0 0 12px;
+}
+
+.load-balancer-detail__header {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 10px;
+}
+
+.load-balancer-detail__title {
+  margin: 0;
+  font-size: 1.28rem;
+  line-height: 1.2;
+  color: #1f3734;
+}
+
+.load-balancer-detail__subtitle {
+  margin: 0;
+  font-size: 0.78rem;
+  color: #5f7774;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 600;
+}
+
+.load-balancer-detail__arn-wrap {
+  border: 1px solid #deebe8;
+  border-radius: 10px;
+  background: #f9fcfc;
+  padding: 10px 12px;
+  margin-bottom: 14px;
+}
+
+.load-balancer-detail__arn-label {
+  display: block;
+  color: #617774;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 6px;
+}
+
+.load-balancer-detail__arn {
+  display: block;
+  color: #21403b;
+  font-size: 0.78rem;
+  line-height: 1.35;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.load-balancer-detail-page .ec2-instance-detail__simple-table th,
+.load-balancer-detail-page .ec2-instance-detail__simple-table td {
+  padding: 10px 8px;
+}
+
+.load-balancer-detail-page .load-balancer-detail__truncate-cell {
+  max-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.load-balancer-detail-page .ec2-instance-detail__sticky-nav {
+  top: 16px;
+  padding: 12px;
+  gap: 8px;
+}
+
+.load-balancer-detail-page .ec2-instance-detail__sticky-nav a {
+  padding: 7px 10px;
+  line-height: 1.25;
+}
+
+.load-balancer-detail-page .ec2-overview-kpi-row.overview-kpi-row--report {
+  margin-top: 2px;
+}
+
+.load-balancer-detail-page .load-balancer-detail__chart-shell {
+  margin-top: 4px;
+}
+
+.load-balancer-detail-page .load-balancer-detail__chart-shell .dashboard-echart {
+  width: 100%;
+}
+
+.load-balancer-detail-page .load-balancer-detail__target-groups-table th,
+.load-balancer-detail-page .load-balancer-detail__target-groups-table td {
+  vertical-align: middle;
+}
+
+.load-balancer-detail-page .load-balancer-detail__target-groups-table td {
+  padding-top: 11px;
+  padding-bottom: 11px;
+}
+
+.load-balancer-detail-page .load-balancer-detail__tg-name-cell {
+  max-width: 280px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.load-balancer-detail-page .load-balancer-detail__count-cell {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.load-balancer-detail-page .load-balancer-detail__health-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 84px;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.load-balancer-detail-page .load-balancer-detail__health-pill--healthy {
+  color: #1f6d4f;
+  background: #e9f8f2;
+  border: 1px solid #bfe8d5;
+}
+
+.load-balancer-detail-page .load-balancer-detail__health-pill--warning {
+  color: #8a5a18;
+  background: #fff6ea;
+  border: 1px solid #f1d8ad;
+}
+
+.load-balancer-detail-page .load-balancer-detail__health-pill--unhealthy {
+  color: #8b3f3a;
+  background: #fff0ef;
+  border: 1px solid #f0c5c1;
+}
+
 @media (max-width: 1100px) {
   .ec2-instance-detail__layout {
     grid-template-columns: 1fr;
@@ -11116,6 +11290,10 @@
   }
   .ec2-instance-detail__meta-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .load-balancer-detail-page .ec2-instance-detail__layout {
+    grid-template-columns: 1fr;
   }
 }
 

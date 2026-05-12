@@ -5,11 +5,13 @@ import { handleEc2InventorySync } from "./handlers/ec2/ec2-inventory-sync.handle
 import { handleEc2MetricsSync } from "./handlers/ec2/ec2-metrics-sync.handler.js";
 import { handleLoadBalancerCostAggregation } from "./handlers/load-balancer/load-balancer-cost-aggregation.handler.js";
 import { handleLoadBalancerInventorySync } from "./handlers/load-balancer/load-balancer-inventory-sync.handler.js";
+import { handleLoadBalancerMetricsSync } from "./handlers/load-balancer/load-balancer-metrics-sync.handler.js";
 
 export type ScheduledJobType =
   | "ec2_inventory_sync"
   | "load_balancer_inventory_sync"
   | "load_balancer_cost_aggregation"
+  | "load_balancer_metrics_sync"
   | "ec2_metrics_sync"
   | "ec2_daily_rollup"
   | "ec2_hourly_retention_cleanup";
@@ -45,6 +47,13 @@ export const REGISTERED_SCHEDULED_JOBS: ReadonlyArray<RegisteredScheduledJobDefi
     key: "load-balancer-cost-aggregation",
     category: "rollup",
     handler: handleLoadBalancerCostAggregation,
+  },
+  {
+    type: "load_balancer_metrics_sync",
+    service: "load-balancer",
+    key: "load-balancer-metrics-sync",
+    category: "metrics_sync",
+    handler: handleLoadBalancerMetricsSync,
   },
   {
     type: "ec2_metrics_sync",

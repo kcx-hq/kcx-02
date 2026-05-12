@@ -409,6 +409,8 @@ function withEc2RecommendationsFilters(
   if (filters?.team) params.set("team", filters.team);
   if (filters?.product) params.set("product", filters.product);
   if (filters?.environment) params.set("environment", filters.environment);
+  if (filters?.service) params.set("service", filters.service);
+  if (filters?.resourceType) params.set("resourceType", filters.resourceType);
   if (Array.isArray(filters?.tags) && filters.tags.length > 0) params.set("tags", filters.tags.join(","));
   if (filters?.dateFrom) params.set("dateFrom", filters.dateFrom);
   if (filters?.dateTo) params.set("dateTo", filters.dateTo);
@@ -464,11 +466,13 @@ function withLoadBalancerExplorerFilters(
   };
 
   params.set("metric", filters.metric);
+  if (filters.usageType) params.set("usageType", filters.usageType);
   params.set("groupBy", filters.groupBy);
   if (filters.startDate) params.set("startDate", filters.startDate);
   if (filters.endDate) params.set("endDate", filters.endDate);
   if (filters.granularity) params.set("granularity", filters.granularity);
   if (filters.tagKey) params.set("tagKey", filters.tagKey);
+  if (filters.loadBalancerArn) params.set("loadBalancerArn", filters.loadBalancerArn);
   if (filters.accountId) params.set("accountId", filters.accountId);
   appendArray("regions", filters.regions);
   appendArray("types", filters.types);

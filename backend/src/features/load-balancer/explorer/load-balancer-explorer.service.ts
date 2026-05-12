@@ -65,13 +65,14 @@ const normalizeInput = (input: LoadBalancerExplorerInput): LoadBalancerExplorerI
     ...input,
     startDate,
     endDate,
-    metric: input.metric === "load_balancers" ? "load_balancers" : "cost",
+    metric: input.metric === "load_balancers" || input.metric === "usage" ? input.metric : "cost",
     granularity: input.granularity,
     groupBy: input.groupBy,
     tagKey,
     groupValues: normalizeList(input.groupValues),
     filters: {
       cloudConnectionId: normalizeTrim(input.filters.cloudConnectionId),
+      loadBalancerArn: normalizeTrim(input.filters.loadBalancerArn),
       accountId: normalizeTrim(input.filters.accountId),
       regions: normalizeList(input.filters.regions),
       types: normalizeList(input.filters.types),
@@ -97,6 +98,35 @@ export class LoadBalancerExplorerService {
   async getExplorerSummary(rawInput: LoadBalancerExplorerInput): Promise<LoadBalancerExplorerSummary> {
     const input = normalizeInput(rawInput);
     const durationDays = dateRangeDaysInclusive(input.startDate, input.endDate);
+    if (input.metric === "usage") {
+      const [usageSummary, lbSummary] = await Promise.all([
+        this.query.getUsageSummary(input),
+        this.query.getLoadBalancersSummary(input),
+      ]);
+
+      return {
+        totalCost: 0,
+        previousCost: 0,
+        trendPercent: 0,
+        loadBalancerCount: lbSummary.totalLoadBalancers,
+        totalLoadBalancers: lbSummary.totalLoadBalancers,
+        albCount: lbSummary.albCount,
+        nlbCount: lbSummary.nlbCount,
+        activeLoadBalancerCount: lbSummary.totalLoadBalancers,
+        internetFacingCount: lbSummary.internetFacingCount,
+        internalCount: lbSummary.internalCount,
+        totalProcessedBytesGb: toFixedNumber(usageSummary.processedGB, 6),
+        avgDailyCost: 0,
+        requestCount: Math.trunc(usageSummary.requestCount),
+        processedGB: toFixedNumber(usageSummary.processedGB, 6),
+        activeConnections: Math.trunc(usageSummary.activeConnections),
+        newConnections: Math.trunc(usageSummary.newConnections),
+        healthyHosts: toFixedNumber(usageSummary.healthyHosts, 4),
+        unhealthyHosts: toFixedNumber(usageSummary.unhealthyHosts, 4),
+        errorCount: Math.trunc(usageSummary.errorCount),
+      };
+    }
+
     const previousInput: LoadBalancerExplorerInput = {
       ...input,
       startDate: shiftDate(input.startDate, -durationDays),
@@ -140,12 +170,88 @@ export class LoadBalancerExplorerService {
 
   async getExplorerTrend(rawInput: LoadBalancerExplorerInput): Promise<LoadBalancerExplorerGraph> {
     const input = normalizeInput(rawInput);
+    if (input.metric === "usage") {
+      const groupedRows = await this.query.getUsageTrendGrouped(input);
+      const selected = new Set(input.groupValues.map((item) => item.toLowerCase()));
+      const filteredRows = selected.size > 0
+        ? groupedRows.filter((row) => selected.has(row.group.trim().toLowerCase()))
+        : groupedRows;
 
-    if (input.metric !== "cost") {
+      const byGroup = new Map<string, Array<{
+        date: string;
+        value: number;
+        group: string;
+        requestCount: number;
+        processedGB: number;
+        activeConnections: number;
+        newConnections: number;
+        healthyHosts: number;
+        unhealthyHosts: number;
+        errorCount: number;
+      }>>();
+
+      for (const row of filteredRows) {
+        const key = row.group;
+        const points = byGroup.get(key) ?? [];
+        points.push({
+          date: row.usageDate,
+          value: Math.trunc(row.requestCount),
+          group: key,
+          requestCount: Math.trunc(row.requestCount),
+          processedGB: toFixedNumber(row.processedGB, 6),
+          activeConnections: Math.trunc(row.activeConnections),
+          newConnections: Math.trunc(row.newConnections),
+          healthyHosts: toFixedNumber(row.healthyHosts, 4),
+          unhealthyHosts: toFixedNumber(row.unhealthyHosts, 4),
+          errorCount: Math.trunc(row.errorCount),
+        });
+        byGroup.set(key, points);
+      }
+
+      const series: LoadBalancerExplorerGraphSeries[] = [...byGroup.entries()].map(([key, data]) => ({
+        key,
+        label: key,
+        data,
+      }));
+
       return {
         type: "line",
         xKey: "date",
-        series: [],
+        series,
+      };
+    }
+
+    if (input.metric !== "cost") {
+      const groupedRows = await this.query.getLoadBalancersTrendGrouped(input);
+      const selected = new Set(input.groupValues.map((item) => item.toLowerCase()));
+      const filteredRows = selected.size > 0
+        ? groupedRows.filter((row) => selected.has(row.group.trim().toLowerCase()))
+        : groupedRows;
+
+      const byGroup = new Map<string, Array<{ date: string; value: number; group: string; loadBalancerCount: number }>>();
+      for (const row of filteredRows) {
+        const key = input.groupBy === "cost_type" || input.groupBy === "none" ? "Total" : row.group;
+        const points = byGroup.get(key) ?? [];
+        const loadBalancerCount = Math.trunc(row.loadBalancerCount);
+        points.push({
+          date: row.usageDate,
+          value: loadBalancerCount,
+          group: key,
+          loadBalancerCount,
+        });
+        byGroup.set(key, points);
+      }
+
+      const series: LoadBalancerExplorerGraphSeries[] = [...byGroup.entries()].map(([key, data]) => ({
+        key,
+        label: key,
+        data,
+      }));
+
+      return {
+        type: input.groupBy === "cost_type" || input.groupBy === "none" ? "bar" : "stacked_bar",
+        xKey: "date",
+        series,
       };
     }
 
@@ -212,8 +318,40 @@ export class LoadBalancerExplorerService {
     dataProcessingCost: number;
     loadBalancerCount: number;
     avgCost: number;
+    requestCount?: number;
+    processedGB?: number;
+    activeConnections?: number;
+    newConnections?: number;
+    healthyHosts?: number;
+    unhealthyHosts?: number;
+    errorCount?: number;
   }>> {
     const input = normalizeInput(rawInput);
+    if (input.metric === "usage") {
+      const rows = await this.query.getUsageGroupBy(input);
+      const selected = new Set(input.groupValues.map((item) => item.toLowerCase()));
+      const filtered = selected.size > 0
+        ? rows.filter((row) => selected.has(row.group.trim().toLowerCase()))
+        : rows;
+
+      return filtered.map((row) => ({
+        group: row.group,
+        label: metricLabel(row.group),
+        totalCost: 0,
+        fixedCost: 0,
+        lcuCost: 0,
+        dataProcessingCost: 0,
+        loadBalancerCount: 0,
+        avgCost: 0,
+        requestCount: Math.trunc(row.requestCount),
+        processedGB: toFixedNumber(row.processedGB, 6),
+        activeConnections: Math.trunc(row.activeConnections),
+        newConnections: Math.trunc(row.newConnections),
+        healthyHosts: toFixedNumber(row.healthyHosts, 4),
+        unhealthyHosts: toFixedNumber(row.unhealthyHosts, 4),
+        errorCount: Math.trunc(row.errorCount),
+      }));
+    }
 
     if (input.metric === "cost") {
       if (input.groupBy === "cost_type" || input.groupBy === "none") {

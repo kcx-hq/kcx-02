@@ -86,6 +86,27 @@ const parseCsv = (value: string): string[] =>
     .map((entry) => entry.trim())
     .filter((entry) => entry.length > 0);
 
+const FILTER_QUERY_KEYS = [
+  "startDate",
+  "endDate",
+  "search",
+  "loadBalancerId",
+  "loadBalancerArn",
+  "account",
+  "accountId",
+  "region",
+  "type",
+  "scheme",
+  "state",
+  "team",
+  "product",
+  "environment",
+  "tags",
+  "tag",
+  "sortBy",
+  "sortDirection",
+] as const;
+
 export default function LoadBalancerListPage() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -93,7 +114,22 @@ export default function LoadBalancerListPage() {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [controls, setControls] = useState<ListControls>({
     ...DEFAULT_CONTROLS,
-    search: params.get("search") ?? "",
+    search:
+      params.get("search") ??
+      params.get("loadBalancerId") ??
+      params.get("loadBalancerArn") ??
+      "",
+    account: params.get("account") ?? params.get("accountId") ?? "",
+    region: params.get("region") ?? "",
+    type: params.get("type") ?? "",
+    scheme: params.get("scheme") ?? "",
+    state: params.get("state") ?? "",
+    team: params.get("team") ?? "",
+    product: params.get("product") ?? "",
+    environment: params.get("environment") ?? "",
+    tags: params.get("tags") ?? params.get("tag") ?? "",
+    sortBy: (params.get("sortBy") as ListControls["sortBy"]) ?? DEFAULT_CONTROLS.sortBy,
+    sortDirection: (params.get("sortDirection") as ListControls["sortDirection"]) ?? DEFAULT_CONTROLS.sortDirection,
   });
 
   const startDate =
@@ -299,6 +335,9 @@ export default function LoadBalancerListPage() {
                 className="cost-explorer-chip-bar__clear cost-explorer-chip-bar__clear--inline"
                 onClick={() => {
                   setControls(DEFAULT_CONTROLS);
+                  const next = new URLSearchParams(location.search);
+                  FILTER_QUERY_KEYS.forEach((key) => next.delete(key));
+                  navigate({ pathname: LIST_PATH, search: next.toString() }, { replace: true });
                 }}
               >
                 Clear all

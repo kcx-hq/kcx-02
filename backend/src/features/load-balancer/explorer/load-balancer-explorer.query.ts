@@ -27,6 +27,11 @@ const toInventoryScopeWhereClauses = (input: LoadBalancerExplorerInput): {
     replacements.cloudConnectionId = input.filters.cloudConnectionId.trim();
   }
 
+  if (typeof input.filters.loadBalancerArn === "string" && input.filters.loadBalancerArn.trim().length > 0) {
+    whereClauses.push("lb.arn = :loadBalancerArn");
+    replacements.loadBalancerArn = input.filters.loadBalancerArn.trim();
+  }
+
   if (typeof input.filters.accountId === "string" && input.filters.accountId.trim().length > 0) {
     whereClauses.push("lb.account_id = :accountId");
     replacements.accountId = input.filters.accountId.trim();
@@ -146,6 +151,45 @@ type RawLoadBalancerGroupByRow = {
   dataProcessingCost: number | string | null;
 };
 
+type RawLoadBalancerTrendGroupRow = {
+  usageDate: string;
+  group: string | null;
+  loadBalancerCount: number | string | null;
+};
+
+type RawUsageSummaryRow = {
+  requestCount: number | string | null;
+  processedGB: number | string | null;
+  activeConnections: number | string | null;
+  newConnections: number | string | null;
+  healthyHosts: number | string | null;
+  unhealthyHosts: number | string | null;
+  errorCount: number | string | null;
+};
+
+type RawUsageTrendGroupRow = {
+  usageDate: string;
+  group: string | null;
+  requestCount: number | string | null;
+  processedGB: number | string | null;
+  activeConnections: number | string | null;
+  newConnections: number | string | null;
+  healthyHosts: number | string | null;
+  unhealthyHosts: number | string | null;
+  errorCount: number | string | null;
+};
+
+type RawUsageGroupByRow = {
+  group: string | null;
+  requestCount: number | string | null;
+  processedGB: number | string | null;
+  activeConnections: number | string | null;
+  newConnections: number | string | null;
+  healthyHosts: number | string | null;
+  unhealthyHosts: number | string | null;
+  errorCount: number | string | null;
+};
+
 const toNumber = (value: number | string | null | undefined): number => {
   if (typeof value === "number") return Number.isFinite(value) ? value : 0;
   if (typeof value === "string") {
@@ -173,6 +217,83 @@ const toGroupBySql = (input: LoadBalancerExplorerInput): string => {
 };
 
 export class LoadBalancerExplorerQuery {
+  async getUsageSummary(input: LoadBalancerExplorerInput): Promise<{
+    requestCount: number;
+    processedGB: number;
+    activeConnections: number;
+    newConnections: number;
+    healthyHosts: number;
+    unhealthyHosts: number;
+    errorCount: number;
+  }> {
+    const scoped = toInventoryScopeWhereClauses(input);
+
+    const rows = await sequelize.query<RawUsageSummaryRow>(
+      `
+        WITH filtered_lb AS (
+          SELECT
+            lb.cloud_connection_id,
+            lb.account_id,
+            lb.region,
+            lb.arn
+          FROM load_balancers lb
+          WHERE ${scoped.whereSql}
+        ),
+        metrics_by_lb AS (
+          SELECT
+            lmd.cloud_connection_id,
+            lmd.account_id,
+            lmd.region,
+            lmd.load_balancer_arn,
+            SUM(COALESCE(lmd.request_count, 0))::double precision AS request_count,
+            SUM(COALESCE(lmd.processed_gb, 0))::double precision AS processed_gb,
+            SUM(COALESCE(lmd.active_connection_count, 0) + COALESCE(lmd.active_flow_count, 0))::double precision AS active_connections,
+            SUM(COALESCE(lmd.new_connection_count, 0) + COALESCE(lmd.new_flow_count, 0))::double precision AS new_connections,
+            AVG(COALESCE(lmd.healthy_host_count, 0))::double precision AS healthy_hosts,
+            AVG(COALESCE(lmd.unhealthy_host_count, 0))::double precision AS unhealthy_hosts,
+            SUM(
+              COALESCE(lmd.elb_5xx_count, 0) +
+              COALESCE(lmd.target_5xx_count, 0) +
+              COALESCE(lmd.tcp_target_reset_count, 0)
+            )::double precision AS error_count
+          FROM load_balancer_metrics_daily lmd
+          WHERE lmd.metric_date BETWEEN :startDate::date AND :endDate::date
+          GROUP BY
+            lmd.cloud_connection_id,
+            lmd.account_id,
+            lmd.region,
+            lmd.load_balancer_arn
+        )
+        SELECT
+          COALESCE(SUM(COALESCE(mb.request_count, 0)), 0)::double precision AS "requestCount",
+          COALESCE(SUM(COALESCE(mb.processed_gb, 0)), 0)::double precision AS "processedGB",
+          COALESCE(SUM(COALESCE(mb.active_connections, 0)), 0)::double precision AS "activeConnections",
+          COALESCE(SUM(COALESCE(mb.new_connections, 0)), 0)::double precision AS "newConnections",
+          COALESCE(AVG(COALESCE(mb.healthy_hosts, 0)), 0)::double precision AS "healthyHosts",
+          COALESCE(AVG(COALESCE(mb.unhealthy_hosts, 0)), 0)::double precision AS "unhealthyHosts",
+          COALESCE(SUM(COALESCE(mb.error_count, 0)), 0)::double precision AS "errorCount"
+        FROM filtered_lb flb
+        LEFT JOIN metrics_by_lb mb
+          ON mb.cloud_connection_id IS NOT DISTINCT FROM flb.cloud_connection_id
+         AND mb.account_id = flb.account_id
+         AND mb.region = flb.region
+         AND mb.load_balancer_arn = flb.arn;
+      `,
+      { replacements: scoped.replacements, type: QueryTypes.SELECT },
+    );
+
+    const row = rows[0];
+    return {
+      requestCount: toNumber(row?.requestCount),
+      processedGB: toNumber(row?.processedGB),
+      activeConnections: toNumber(row?.activeConnections),
+      newConnections: toNumber(row?.newConnections),
+      healthyHosts: toNumber(row?.healthyHosts),
+      unhealthyHosts: toNumber(row?.unhealthyHosts),
+      errorCount: toNumber(row?.errorCount),
+    };
+  }
+
   async getCostSummary(input: LoadBalancerExplorerInput): Promise<{
     totalCost: number;
     fixedCost: number;
@@ -463,6 +584,213 @@ export class LoadBalancerExplorerQuery {
     }));
   }
 
+  async getUsageTrendGrouped(input: LoadBalancerExplorerInput): Promise<Array<{
+    usageDate: string;
+    group: string;
+    requestCount: number;
+    processedGB: number;
+    activeConnections: number;
+    newConnections: number;
+    healthyHosts: number;
+    unhealthyHosts: number;
+    errorCount: number;
+  }>> {
+    const scoped = toInventoryScopeWhereClauses(input);
+    const groupExpr = toGroupBySql(input).replaceAll("base.", "flb.");
+    const replacements: Record<string, unknown> = {
+      ...scoped.replacements,
+      ...(input.groupBy === "tag" ? { groupTagKey: input.tagKey } : {}),
+    };
+
+    const rows = await sequelize.query<RawUsageTrendGroupRow>(
+      `
+        WITH filtered_lb AS (
+          SELECT
+            lb.cloud_connection_id,
+            lb.account_id,
+            lb.region,
+            lb.arn,
+            COALESCE(NULLIF(TRIM(lb.name), ''), lb.arn)::text AS load_balancer,
+            COALESCE(NULLIF(TRIM(lb.type), ''), 'unknown')::text AS type,
+            COALESCE(NULLIF(TRIM(lb.scheme), ''), 'unknown')::text AS scheme,
+            COALESCE(NULLIF(TRIM(lb.state), ''), 'unknown')::text AS state,
+            COALESCE(NULLIF(TRIM(lb.tags ->> 'team'), ''), NULLIF(TRIM(lb.tags ->> 'Team'), ''), 'Unassigned')::text AS team,
+            COALESCE(NULLIF(TRIM(lb.tags ->> 'product'), ''), NULLIF(TRIM(lb.tags ->> 'Product'), ''), 'Unassigned')::text AS product,
+            COALESCE(NULLIF(TRIM(lb.tags ->> 'environment'), ''), NULLIF(TRIM(lb.tags ->> 'Environment'), ''), 'Unassigned')::text AS environment,
+            lb.tags AS tags_json
+          FROM load_balancers lb
+          WHERE ${scoped.whereSql}
+        ),
+        date_series AS (
+          SELECT generate_series(:startDate::date, :endDate::date, interval '1 day')::date AS usage_date
+        ),
+        groups AS (
+          SELECT DISTINCT ${groupExpr}::text AS group_value
+          FROM filtered_lb flb
+        ),
+        usage_base AS (
+          SELECT
+            lmd.metric_date::date AS usage_date,
+            ${groupExpr}::text AS group_value,
+            SUM(COALESCE(lmd.request_count, 0))::double precision AS request_count,
+            SUM(COALESCE(lmd.processed_gb, 0))::double precision AS processed_gb,
+            SUM(COALESCE(lmd.active_connection_count, 0) + COALESCE(lmd.active_flow_count, 0))::double precision AS active_connections,
+            SUM(COALESCE(lmd.new_connection_count, 0) + COALESCE(lmd.new_flow_count, 0))::double precision AS new_connections,
+            AVG(COALESCE(lmd.healthy_host_count, 0))::double precision AS healthy_hosts,
+            AVG(COALESCE(lmd.unhealthy_host_count, 0))::double precision AS unhealthy_hosts,
+            SUM(
+              COALESCE(lmd.elb_5xx_count, 0) +
+              COALESCE(lmd.target_5xx_count, 0) +
+              COALESCE(lmd.tcp_target_reset_count, 0)
+            )::double precision AS error_count
+          FROM load_balancer_metrics_daily lmd
+          INNER JOIN filtered_lb flb
+            ON lmd.cloud_connection_id IS NOT DISTINCT FROM flb.cloud_connection_id
+           AND lmd.account_id = flb.account_id
+           AND lmd.region = flb.region
+           AND lmd.load_balancer_arn = flb.arn
+          WHERE lmd.metric_date BETWEEN :startDate::date AND :endDate::date
+          GROUP BY lmd.metric_date::date, ${groupExpr}
+        )
+        SELECT
+          ds.usage_date::text AS "usageDate",
+          groups.group_value AS "group",
+          COALESCE(ub.request_count, 0)::double precision AS "requestCount",
+          COALESCE(ub.processed_gb, 0)::double precision AS "processedGB",
+          COALESCE(ub.active_connections, 0)::double precision AS "activeConnections",
+          COALESCE(ub.new_connections, 0)::double precision AS "newConnections",
+          COALESCE(ub.healthy_hosts, 0)::double precision AS "healthyHosts",
+          COALESCE(ub.unhealthy_hosts, 0)::double precision AS "unhealthyHosts",
+          COALESCE(ub.error_count, 0)::double precision AS "errorCount"
+        FROM date_series ds
+        CROSS JOIN groups
+        LEFT JOIN usage_base ub
+          ON ub.usage_date = ds.usage_date
+         AND ub.group_value = groups.group_value
+        ORDER BY ds.usage_date ASC, groups.group_value ASC;
+      `,
+      { replacements, type: QueryTypes.SELECT },
+    );
+
+    return rows.map((row) => ({
+      usageDate: row.usageDate,
+      group: (row.group ?? "Unknown").trim() || "Unknown",
+      requestCount: toNumber(row.requestCount),
+      processedGB: toNumber(row.processedGB),
+      activeConnections: toNumber(row.activeConnections),
+      newConnections: toNumber(row.newConnections),
+      healthyHosts: toNumber(row.healthyHosts),
+      unhealthyHosts: toNumber(row.unhealthyHosts),
+      errorCount: toNumber(row.errorCount),
+    }));
+  }
+
+  async getUsageGroupBy(input: LoadBalancerExplorerInput): Promise<Array<{
+    group: string;
+    requestCount: number;
+    processedGB: number;
+    activeConnections: number;
+    newConnections: number;
+    healthyHosts: number;
+    unhealthyHosts: number;
+    errorCount: number;
+  }>> {
+    const scoped = toInventoryScopeWhereClauses(input);
+    const groupExpr = toGroupBySql(input);
+    const replacements: Record<string, unknown> = {
+      ...scoped.replacements,
+      ...(input.groupBy === "tag" ? { groupTagKey: input.tagKey } : {}),
+    };
+
+    const rows = await sequelize.query<RawUsageGroupByRow>(
+      `
+        WITH filtered_lb AS (
+          SELECT
+            lb.cloud_connection_id,
+            lb.account_id,
+            lb.region,
+            lb.arn,
+            COALESCE(NULLIF(TRIM(lb.name), ''), lb.arn)::text AS load_balancer,
+            COALESCE(NULLIF(TRIM(lb.type), ''), 'unknown')::text AS type,
+            COALESCE(NULLIF(TRIM(lb.scheme), ''), 'unknown')::text AS scheme,
+            COALESCE(NULLIF(TRIM(lb.state), ''), 'unknown')::text AS state,
+            COALESCE(NULLIF(TRIM(lb.tags ->> 'team'), ''), NULLIF(TRIM(lb.tags ->> 'Team'), ''), 'Unassigned')::text AS team,
+            COALESCE(NULLIF(TRIM(lb.tags ->> 'product'), ''), NULLIF(TRIM(lb.tags ->> 'Product'), ''), 'Unassigned')::text AS product,
+            COALESCE(NULLIF(TRIM(lb.tags ->> 'environment'), ''), NULLIF(TRIM(lb.tags ->> 'Environment'), ''), 'Unassigned')::text AS environment,
+            lb.tags AS tags_json
+          FROM load_balancers lb
+          WHERE ${scoped.whereSql}
+        ),
+        usage_by_lb AS (
+          SELECT
+            lmd.cloud_connection_id,
+            lmd.account_id,
+            lmd.region,
+            lmd.load_balancer_arn,
+            SUM(COALESCE(lmd.request_count, 0))::double precision AS request_count,
+            SUM(COALESCE(lmd.processed_gb, 0))::double precision AS processed_gb,
+            SUM(COALESCE(lmd.active_connection_count, 0) + COALESCE(lmd.active_flow_count, 0))::double precision AS active_connections,
+            SUM(COALESCE(lmd.new_connection_count, 0) + COALESCE(lmd.new_flow_count, 0))::double precision AS new_connections,
+            AVG(COALESCE(lmd.healthy_host_count, 0))::double precision AS healthy_hosts,
+            AVG(COALESCE(lmd.unhealthy_host_count, 0))::double precision AS unhealthy_hosts,
+            SUM(
+              COALESCE(lmd.elb_5xx_count, 0) +
+              COALESCE(lmd.target_5xx_count, 0) +
+              COALESCE(lmd.tcp_target_reset_count, 0)
+            )::double precision AS error_count
+          FROM load_balancer_metrics_daily lmd
+          WHERE lmd.metric_date BETWEEN :startDate::date AND :endDate::date
+          GROUP BY
+            lmd.cloud_connection_id,
+            lmd.account_id,
+            lmd.region,
+            lmd.load_balancer_arn
+        ),
+        base AS (
+          SELECT
+            flb.*,
+            COALESCE(ub.request_count, 0)::double precision AS request_count,
+            COALESCE(ub.processed_gb, 0)::double precision AS processed_gb,
+            COALESCE(ub.active_connections, 0)::double precision AS active_connections,
+            COALESCE(ub.new_connections, 0)::double precision AS new_connections,
+            COALESCE(ub.healthy_hosts, 0)::double precision AS healthy_hosts,
+            COALESCE(ub.unhealthy_hosts, 0)::double precision AS unhealthy_hosts,
+            COALESCE(ub.error_count, 0)::double precision AS error_count
+          FROM filtered_lb flb
+          LEFT JOIN usage_by_lb ub
+            ON ub.cloud_connection_id IS NOT DISTINCT FROM flb.cloud_connection_id
+           AND ub.account_id = flb.account_id
+           AND ub.region = flb.region
+           AND ub.load_balancer_arn = flb.arn
+        )
+        SELECT
+          ${groupExpr}::text AS "group",
+          SUM(base.request_count)::double precision AS "requestCount",
+          SUM(base.processed_gb)::double precision AS "processedGB",
+          SUM(base.active_connections)::double precision AS "activeConnections",
+          SUM(base.new_connections)::double precision AS "newConnections",
+          AVG(base.healthy_hosts)::double precision AS "healthyHosts",
+          AVG(base.unhealthy_hosts)::double precision AS "unhealthyHosts",
+          SUM(base.error_count)::double precision AS "errorCount"
+        FROM base
+        GROUP BY ${groupExpr}
+        ORDER BY "requestCount" DESC, "group" ASC;
+      `,
+      { replacements, type: QueryTypes.SELECT },
+    );
+
+    return rows.map((row) => ({
+      group: (row.group ?? "Unknown").trim() || "Unknown",
+      requestCount: toNumber(row.requestCount),
+      processedGB: toNumber(row.processedGB),
+      activeConnections: toNumber(row.activeConnections),
+      newConnections: toNumber(row.newConnections),
+      healthyHosts: toNumber(row.healthyHosts),
+      unhealthyHosts: toNumber(row.unhealthyHosts),
+      errorCount: toNumber(row.errorCount),
+    }));
+  }
+
   async getLoadBalancersSummary(input: LoadBalancerExplorerInput): Promise<{
     totalLoadBalancers: number;
     albCount: number;
@@ -586,6 +914,69 @@ export class LoadBalancerExplorerQuery {
       fixedCost: toNumber(row.fixedCost),
       lcuCost: toNumber(row.lcuCost),
       dataProcessingCost: toNumber(row.dataProcessingCost),
+    }));
+  }
+
+  async getLoadBalancersTrendGrouped(input: LoadBalancerExplorerInput): Promise<Array<{
+    usageDate: string;
+    group: string;
+    loadBalancerCount: number;
+  }>> {
+    const scoped = toInventoryScopeWhereClauses(input);
+    const groupExpr = toGroupBySql(input).replaceAll("base.", "flb.");
+    const replacements: Record<string, unknown> = {
+      ...scoped.replacements,
+      ...(input.groupBy === "tag" ? { groupTagKey: input.tagKey } : {}),
+    };
+
+    const rows = await sequelize.query<RawLoadBalancerTrendGroupRow>(
+      `
+        WITH filtered_lb AS (
+          SELECT
+            lb.cloud_connection_id,
+            lb.account_id,
+            lb.region,
+            lb.arn,
+            COALESCE(NULLIF(TRIM(lb.name), ''), lb.arn)::text AS load_balancer,
+            COALESCE(NULLIF(TRIM(lb.type), ''), 'unknown')::text AS type,
+            COALESCE(NULLIF(TRIM(lb.scheme), ''), 'unknown')::text AS scheme,
+            COALESCE(NULLIF(TRIM(lb.state), ''), 'unknown')::text AS state,
+            COALESCE(NULLIF(TRIM(lb.tags ->> 'team'), ''), NULLIF(TRIM(lb.tags ->> 'Team'), ''), 'Unassigned')::text AS team,
+            COALESCE(NULLIF(TRIM(lb.tags ->> 'product'), ''), NULLIF(TRIM(lb.tags ->> 'Product'), ''), 'Unassigned')::text AS product,
+            COALESCE(NULLIF(TRIM(lb.tags ->> 'environment'), ''), NULLIF(TRIM(lb.tags ->> 'Environment'), ''), 'Unassigned')::text AS environment,
+            lb.created_at_aws,
+            lb.tags AS tags_json
+          FROM load_balancers lb
+          WHERE ${scoped.whereSql}
+        ),
+        date_series AS (
+          SELECT generate_series(:startDate::date, :endDate::date, interval '1 day')::date AS usage_date
+        ),
+        groups AS (
+          SELECT DISTINCT ${groupExpr}::text AS group_value
+          FROM filtered_lb flb
+        )
+        SELECT
+          ds.usage_date::text AS "usageDate",
+          groups.group_value AS "group",
+          COUNT(flb.arn) FILTER (
+            WHERE flb.created_at_aws IS NULL
+               OR flb.created_at_aws::date <= ds.usage_date
+          )::int AS "loadBalancerCount"
+        FROM date_series ds
+        CROSS JOIN groups
+        LEFT JOIN filtered_lb flb
+          ON ${groupExpr}::text = groups.group_value
+        GROUP BY ds.usage_date, groups.group_value
+        ORDER BY ds.usage_date ASC, "loadBalancerCount" DESC, groups.group_value ASC;
+      `,
+      { replacements, type: QueryTypes.SELECT },
+    );
+
+    return rows.map((row) => ({
+      usageDate: row.usageDate,
+      group: (row.group ?? "Unknown").trim() || "Unknown",
+      loadBalancerCount: Math.trunc(toNumber(row.loadBalancerCount)),
     }));
   }
 }
