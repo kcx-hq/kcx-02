@@ -66,6 +66,16 @@ type FactMetricsRow = {
   latestDailyCost: number;
 };
 
+type DataTransferBreakdownRow = {
+  cloudConnectionKey: string;
+  instanceId: string;
+  internetGb: number | string | null;
+  interAzGb: number | string | null;
+  regionalGb: number | string | null;
+  totalGb: number | string | null;
+  totalCost: number | string | null;
+};
+
 type AttachedVolumeSummaryRow = {
   cloudConnectionKey: string;
   instanceId: string;
@@ -87,7 +97,11 @@ type RecommendationRow = {
   action: string | null;
   saving: number | string | null;
   risk: string | null;
+  severity: string | null;
   status: string | null;
+  createdAt: Date | string | null;
+  updatedAt: Date | string | null;
+  detectedAt: Date | string | null;
 };
 
 type DateRange = {
@@ -268,10 +282,31 @@ const resolvePerformanceDateRange = (query: InventoryEc2InstancePerformanceQuery
 };
 
 export class InstancesInventoryService {
+  private factRecommendationsColumnsCache: Set<string> | null = null;
+
+  private async getFactRecommendationsColumns(): Promise<Set<string>> {
+    if (this.factRecommendationsColumnsCache) return this.factRecommendationsColumnsCache;
+    const rows = await sequelize.query<{ column_name: string }>(
+      `
+      SELECT column_name
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = 'fact_recommendations';
+      `,
+      { type: QueryTypes.SELECT },
+    );
+    this.factRecommendationsColumnsCache = new Set(rows.map((row) => row.column_name));
+    return this.factRecommendationsColumnsCache;
+  }
+
   async getInstanceDetails(input: {
     tenantId: string;
     query: InventoryEc2InstanceDetailQuery;
   }): Promise<InventoryEc2InstanceDetailResponse> {
+    const normalizedCloudConnectionId =
+      typeof input.query.cloudConnectionId === "string" && input.query.cloudConnectionId.trim().length > 0
+        ? input.query.cloudConnectionId.trim()
+        : null;
     const dateRange = resolveDateRange({
       ...input.query,
       page: 1,
@@ -336,7 +371,7 @@ export class InstancesInventoryService {
         AND fed.usage_date <= $5::date
       ORDER BY fed.usage_date ASC;
       `,
-      { bind: [input.tenantId, input.query.instanceId, input.query.cloudConnectionId, dateRange.startDate, dateRange.endDate], type: QueryTypes.SELECT },
+      { bind: [input.tenantId, input.query.instanceId, normalizedCloudConnectionId, dateRange.startDate, dateRange.endDate], type: QueryTypes.SELECT },
     );
 
     const volumeRows = await sequelize.query<{
@@ -365,6 +400,7 @@ export class InstancesInventoryService {
       LEFT JOIN fact_ebs_volume_daily fvd
         ON fvd.tenant_id = inv.tenant_id
         AND fvd.volume_id = inv.volume_id
+        AND fvd.cloud_connection_id IS NOT DISTINCT FROM inv.cloud_connection_id
         AND ($3::uuid IS NULL OR fvd.cloud_connection_id = $3::uuid)
         AND fvd.usage_date >= $4::date
         AND fvd.usage_date <= $5::date
@@ -377,8 +413,14 @@ export class InstancesInventoryService {
       GROUP BY inv.volume_id, inv.size_gb, inv.volume_type, inv.state, inv.iops, inv.throughput, inv.discovered_at
       ORDER BY inv.volume_id ASC;
       `,
-      { bind: [input.tenantId, input.query.instanceId, input.query.cloudConnectionId, dateRange.startDate, dateRange.endDate], type: QueryTypes.SELECT },
+      { bind: [input.tenantId, input.query.instanceId, normalizedCloudConnectionId, dateRange.startDate, dateRange.endDate], type: QueryTypes.SELECT },
     );
+
+    const recommendationColumns = await this.getFactRecommendationsColumns();
+    const hasSeverityColumn = recommendationColumns.has("severity");
+    const hasCreatedAtColumn = recommendationColumns.has("created_at");
+    const hasUpdatedAtColumn = recommendationColumns.has("updated_at");
+    const hasDetectedAtColumn = recommendationColumns.has("detected_at");
 
     const recRows = await sequelize.query<RecommendationRow>(
       `
@@ -391,24 +433,38 @@ export class InstancesInventoryService {
         COALESCE(fr.idle_observation_value, '')::text AS action,
         COALESCE(fr.estimated_monthly_savings, 0)::double precision AS saving,
         LOWER(COALESCE(fr.risk_level, 'medium'))::text AS risk,
-        LOWER(COALESCE(fr.status, 'open'))::text AS status
+        ${hasSeverityColumn ? "LOWER(NULLIF(TRIM(fr.severity), ''))::text" : "NULL::text"} AS severity,
+        LOWER(COALESCE(fr.status, 'open'))::text AS status,
+        ${hasCreatedAtColumn ? "fr.created_at" : "NULL::timestamp"} AS "createdAt",
+        ${hasUpdatedAtColumn ? "fr.updated_at" : "NULL::timestamp"} AS "updatedAt",
+        ${hasDetectedAtColumn ? "fr.detected_at" : "NULL::timestamp"} AS "detectedAt"
       FROM fact_recommendations fr
       WHERE fr.tenant_id = $1::uuid
         AND fr.source_system = 'KCX_EC2_OPTIMIZATION_V1'
         AND fr.resource_type = 'ec2_instance'
         AND fr.resource_id = $2
         AND ($3::uuid IS NULL OR fr.cloud_connection_id = $3::uuid)
-      ORDER BY fr.estimated_monthly_savings DESC NULLS LAST, fr.updated_at DESC;
+      ORDER BY
+        fr.estimated_monthly_savings DESC NULLS LAST,
+        ${hasSeverityColumn ? `
+        CASE LOWER(COALESCE(fr.severity, ''))
+          WHEN 'critical' THEN 5
+          WHEN 'high' THEN 4
+          WHEN 'medium' THEN 3
+          WHEN 'low' THEN 2
+          WHEN 'informational' THEN 1
+          ELSE 0
+        END DESC,` : ""}
+        ${hasDetectedAtColumn ? "fr.detected_at DESC NULLS LAST," : ""}
+        fr.id DESC;
       `,
-      { bind: [input.tenantId, input.query.instanceId, input.query.cloudConnectionId], type: QueryTypes.SELECT },
+      { bind: [input.tenantId, input.query.instanceId, normalizedCloudConnectionId], type: QueryTypes.SELECT },
     );
 
     const totalCost = costUsageRows.reduce((sum, row) => sum + toNumberOrZero(row.totalCost), 0);
     const computeCost = costUsageRows.reduce((sum, row) => sum + toNumberOrZero(row.computeCost), 0);
     const ebsCostFromFact = costUsageRows.reduce((sum, row) => sum + toNumberOrZero(row.ebsCost), 0);
     const ebsCost = ebsCostFromFact > 0 ? ebsCostFromFact : volumeRows.reduce((sum, row) => sum + toNumberOrZero(row.cost), 0);
-    const networkCost = costUsageRows.reduce((sum, row) => sum + toNumberOrZero(row.networkCost), 0);
-    const otherCost = Math.max(0, totalCost - computeCost - ebsCost - networkCost);
 
     const avgCpuValues = costUsageRows.map((row) => toNullableNumber(row.cpuAvg)).filter((v): v is number => v !== null);
     const maxCpuValues = costUsageRows.map((row) => toNullableNumber(row.cpuMax)).filter((v): v is number => v !== null);
@@ -421,20 +477,6 @@ export class InstancesInventoryService {
     const latestPricingType =
       [...costUsageRows].reverse().map((row) => row.pricingType).find((value) => value && value.length > 0) ?? null;
 
-    const costTrend = costUsageRows.map((row) => {
-      const rowTotal = toNumberOrZero(row.totalCost);
-      const rowCompute = toNumberOrZero(row.computeCost);
-      const rowEbs = toNumberOrZero(row.ebsCost);
-      const rowNetwork = toNumberOrZero(row.networkCost);
-      return {
-        date: row.usageDate,
-        totalCost: rowTotal,
-        computeCost: rowCompute,
-        ebsCost: rowEbs,
-        networkCost: rowNetwork,
-        otherCost: Math.max(0, rowTotal - rowCompute - rowEbs - rowNetwork),
-      };
-    });
     const cpuTrend = costUsageRows
       .map((row) => {
         const avg = toNullableNumber(row.cpuAvg);
@@ -450,6 +492,7 @@ export class InstancesInventoryService {
     }));
 
     const networkLineItems = await sequelize.query<{
+      usageDate: string;
       usageType: string | null;
       productUsageType: string | null;
       productFamily: string | null;
@@ -465,6 +508,7 @@ export class InstancesInventoryService {
     }>(
       `
       SELECT
+        COALESCE(dd.full_date, DATE(COALESCE(fcli.usage_start_time, fcli.usage_end_time)))::text AS "usageDate",
         fcli.usage_type AS "usageType",
         fcli.product_usage_type AS "productUsageType",
         fcli.product_family AS "productFamily",
@@ -476,17 +520,26 @@ export class InstancesInventoryService {
         fcli.to_region_code AS "toRegionCode",
         SUM(COALESCE(fcli.effective_cost, fcli.billed_cost, 0))::double precision AS cost,
         SUM(COALESCE(fcli.consumed_quantity, fcli.pricing_quantity, 0))::double precision AS "usageQuantity",
-        MAX(NULLIF(TRIM(dsku.pricing_unit), '')) AS "pricingUnitSample"
+        NULL::text AS "pricingUnitSample"
       FROM fact_cost_line_items fcli
       INNER JOIN dim_resource dr
         ON dr.id = fcli.resource_key
        AND dr.tenant_id = fcli.tenant_id
-      LEFT JOIN dim_sku dsku
-        ON dsku.id = fcli.sku_key
       LEFT JOIN dim_date dd
         ON dd.id = fcli.usage_date_key
       WHERE fcli.tenant_id = $1::uuid
         AND dr.resource_id = $2
+        AND (
+          $5::uuid IS NULL
+          OR EXISTS (
+            SELECT 1
+            FROM fact_ec2_instance_daily fed_conn
+            WHERE fed_conn.tenant_id = fcli.tenant_id
+              AND fed_conn.instance_id = dr.resource_id
+              AND fed_conn.usage_date = COALESCE(dd.full_date, DATE(COALESCE(fcli.usage_start_time, fcli.usage_end_time)))
+              AND fed_conn.cloud_connection_id = $5::uuid
+          )
+        )
         AND COALESCE(dd.full_date, DATE(COALESCE(fcli.usage_start_time, fcli.usage_end_time)))
             BETWEEN $3::date AND $4::date
         AND (
@@ -510,7 +563,8 @@ export class InstancesInventoryService {
         fcli.from_location,
         fcli.to_location,
         fcli.from_region_code,
-        fcli.to_region_code;
+        fcli.to_region_code,
+        COALESCE(dd.full_date, DATE(COALESCE(fcli.usage_start_time, fcli.usage_end_time)))::text;
       `,
       {
         bind: [
@@ -518,12 +572,14 @@ export class InstancesInventoryService {
           input.query.instanceId,
           dateRange.startDate,
           dateRange.endDate,
+          normalizedCloudConnectionId,
         ],
         type: QueryTypes.SELECT,
       },
     );
 
     const breakdownAccumulator = new Map<string, { cost: number; usageGb: number }>();
+    const dailyNetworkCost = new Map<string, number>();
     let totalNetworkCostFromLineItems = 0;
     let totalNetworkUsageGbFromLineItems = 0;
     const networkBreakdownDebugRows: Array<{
@@ -548,6 +604,7 @@ export class InstancesInventoryService {
 
       totalNetworkCostFromLineItems += costValue;
       totalNetworkUsageGbFromLineItems += usageGb;
+      dailyNetworkCost.set(row.usageDate, (dailyNetworkCost.get(row.usageDate) ?? 0) + costValue);
       const current = breakdownAccumulator.get(type) ?? { cost: 0, usageGb: 0 };
       current.cost += costValue;
       current.usageGb += usageGb;
@@ -585,6 +642,23 @@ export class InstancesInventoryService {
       }))
       .filter((item) => item.cost > 0)
       .sort((a, b) => b.cost - a.cost);
+
+    const networkCost = totalNetworkCostFromLineItems;
+    const otherCost = Math.max(0, totalCost - computeCost - ebsCost - networkCost);
+    const costTrend = costUsageRows.map((row) => {
+      const rowTotal = toNumberOrZero(row.totalCost);
+      const rowCompute = toNumberOrZero(row.computeCost);
+      const rowEbs = toNumberOrZero(row.ebsCost);
+      const rowNetwork = dailyNetworkCost.get(row.usageDate) ?? 0;
+      return {
+        date: row.usageDate,
+        totalCost: rowTotal,
+        computeCost: rowCompute,
+        ebsCost: rowEbs,
+        networkCost: rowNetwork,
+        otherCost: Math.max(0, rowTotal - rowCompute - rowEbs - rowNetwork),
+      };
+    });
 
     return {
       identity: {
@@ -643,7 +717,11 @@ export class InstancesInventoryService {
         action: row.action ?? "",
         saving: toNumberOrZero(row.saving),
         risk: row.risk ?? "medium",
+        severity: row.severity,
         status: row.status ?? "open",
+        createdAt: toIsoOrNull(row.createdAt),
+        updatedAt: toIsoOrNull(row.updatedAt),
+        detectedAt: toIsoOrNull(row.detectedAt),
       })),
       trends: { costTrend, cpuTrend, networkTrend },
       networkInsight: {
@@ -689,6 +767,11 @@ export class InstancesInventoryService {
       tenantId: input.tenantId,
       rows,
     });
+    const dataTransferLookup = await this.loadDataTransferBreakdownLookup({
+      tenantId: input.tenantId,
+      rows,
+      dateRange,
+    });
 
     const items: InventoryEc2InstancesListItem[] = rows.map((row) => {
       const metrics =
@@ -699,6 +782,10 @@ export class InstancesInventoryService {
         attachedVolumesLookup.byConnectionInstance.get(
           toConnectionInstanceKey(row.cloudConnectionId, row.instanceId),
         ) ?? attachedVolumesLookup.byInstance.get(row.instanceId);
+      const dataTransfer =
+        dataTransferLookup.byConnectionInstance.get(
+          toConnectionInstanceKey(row.cloudConnectionId, row.instanceId),
+        ) ?? dataTransferLookup.byInstance.get(row.instanceId);
       const classified = classifyInstanceSignals({
         isIdleCandidate: metrics?.isIdleCandidate === true ? true : null,
         isUnderutilizedCandidate: metrics?.isUnderutilizedCandidate === true ? true : null,
@@ -760,6 +847,13 @@ export class InstancesInventoryService {
         computeCost: toNumberOrZero(metrics?.computeCost),
         monthToDateCost: toNumberOrZero(metrics?.monthToDateCost),
         dataTransferCost: toNumberOrZero(metrics?.dataTransferCost),
+        dataTransfer: {
+          totalGb: toNumberOrZero(dataTransfer?.totalGb),
+          internetGb: toNumberOrZero(dataTransfer?.internetGb),
+          interAzGb: toNumberOrZero(dataTransfer?.interAzGb),
+          regionalGb: toNumberOrZero(dataTransfer?.regionalGb),
+          cost: toNumberOrZero(dataTransfer?.totalCost),
+        },
         networkUsageBytes: toNumberOrZero(metrics?.networkUsageBytes),
         coveredHours: toNumberOrZero(metrics?.coveredHours),
         uncoveredHours: toNumberOrZero(metrics?.uncoveredHours),
@@ -1035,11 +1129,7 @@ export class InstancesInventoryService {
         FROM fact_ec2_instance_daily fed
         WHERE fed.tenant_id = inv.tenant_id
           AND fed.instance_id = inv.instance_id
-          AND (
-            inv.cloud_connection_id IS NULL
-            OR fed.cloud_connection_id IS NULL
-            OR fed.cloud_connection_id = inv.cloud_connection_id
-          )
+          AND fed.cloud_connection_id IS NOT DISTINCT FROM inv.cloud_connection_id
           AND fed.usage_date >= $${dateStartIndex}::date
           AND fed.usage_date <= $${dateEndIndex}::date
       )
@@ -1055,6 +1145,7 @@ export class InstancesInventoryService {
             ON dd.id = fcli.usage_date_key
           LEFT JOIN dim_resource dres
             ON dres.id = fcli.resource_key
+           AND dres.tenant_id = fcli.tenant_id
           WHERE fcli.tenant_id = inv.tenant_id
             AND COALESCE(dd.full_date, DATE(COALESCE(fcli.usage_start_time, fcli.usage_end_time)))
               >= $${dateStartIndex}::date
@@ -1074,6 +1165,7 @@ export class InstancesInventoryService {
             )
             AND (
               dres.resource_id = inv.instance_id
+              -- Fallback pattern match is unavoidable for CUR rows with composite resource strings.
               OR dres.resource_id ILIKE ('%' || inv.instance_id || '%')
             )
             AND (
@@ -1153,6 +1245,7 @@ export class InstancesInventoryService {
             ON dd.id = fcli.usage_date_key
           LEFT JOIN dim_resource dres
             ON dres.id = fcli.resource_key
+           AND dres.tenant_id = fcli.tenant_id
           WHERE fcli.tenant_id = inv.tenant_id
             AND COALESCE(dd.full_date, DATE(COALESCE(fcli.usage_start_time, fcli.usage_end_time)))
               >= $${dateStartIndex}::date
@@ -1160,6 +1253,7 @@ export class InstancesInventoryService {
               <= $${dateEndIndex}::date
             AND (
               dres.resource_id = inv.instance_id
+              -- Fallback pattern match is unavoidable for CUR rows with composite resource strings.
               OR dres.resource_id ILIKE ('%' || inv.instance_id || '%')
             )
             AND (
@@ -1250,15 +1344,11 @@ export class InstancesInventoryService {
         EXISTS (
           SELECT 1
           FROM fact_ec2_instance_daily fedp
-          WHERE fedp.tenant_id = inv.tenant_id
-            AND fedp.instance_id = inv.instance_id
-            AND (
-              inv.cloud_connection_id IS NULL
-              OR fedp.cloud_connection_id IS NULL
-              OR fedp.cloud_connection_id = inv.cloud_connection_id
-            )
-            AND fedp.usage_date >= $${dateStartIndex}::date
-            AND fedp.usage_date <= $${dateEndIndex}::date
+        WHERE fedp.tenant_id = inv.tenant_id
+          AND fedp.instance_id = inv.instance_id
+          AND fedp.cloud_connection_id IS NOT DISTINCT FROM inv.cloud_connection_id
+          AND fedp.usage_date >= $${dateStartIndex}::date
+          AND fedp.usage_date <= $${dateEndIndex}::date
             AND LOWER(
               COALESCE(
                 NULLIF(TRIM(fedp.reservation_type), ''),
@@ -1288,11 +1378,7 @@ export class InstancesInventoryService {
             FROM fact_ec2_instance_daily fedc
             WHERE fedc.tenant_id = inv.tenant_id
               AND fedc.instance_id = inv.instance_id
-              AND (
-                inv.cloud_connection_id IS NULL
-                OR fedc.cloud_connection_id IS NULL
-                OR fedc.cloud_connection_id = inv.cloud_connection_id
-              )
+              AND fedc.cloud_connection_id IS NOT DISTINCT FROM inv.cloud_connection_id
               AND fedc.usage_date >= $${dateStartIndex}::date
               AND fedc.usage_date <= $${dateEndIndex}::date
           )
@@ -1598,8 +1684,129 @@ export class InstancesInventoryService {
 
     return { byConnectionInstance, byInstance };
   }
+
+  private async loadDataTransferBreakdownLookup(input: {
+    tenantId: string;
+    rows: InventoryRow[];
+    dateRange: DateRange;
+  }): Promise<{
+    byConnectionInstance: Map<string, DataTransferBreakdownRow>;
+    byInstance: Map<string, DataTransferBreakdownRow>;
+  }> {
+    const instanceIds = Array.from(new Set(input.rows.map((row) => row.instanceId)));
+    if (instanceIds.length === 0) {
+      return {
+        byConnectionInstance: new Map(),
+        byInstance: new Map(),
+      };
+    }
+
+    const rows = await sequelize.query<DataTransferBreakdownRow>(
+      `
+        WITH classified AS (
+          SELECT
+            COALESCE(fed.cloud_connection_id::text, '') AS cloud_connection_key,
+            fed.instance_id AS instance_id,
+            CASE
+              WHEN (
+                LOWER(COALESCE(fcli.to_location, '')) LIKE '%internet%'
+                OR LOWER(COALESCE(fcli.to_location, '')) LIKE '%external%'
+                OR LOWER(COALESCE(fcli.from_location, '')) LIKE '%internet%'
+                OR LOWER(COALESCE(fcli.from_location, '')) LIKE '%external%'
+                OR LOWER(COALESCE(fcli.usage_type, '') || ' ' || COALESCE(fcli.product_usage_type, '') || ' ' || COALESCE(fcli.line_item_description, '')) LIKE '%datatransfer-out%'
+                OR LOWER(COALESCE(fcli.usage_type, '') || ' ' || COALESCE(fcli.product_usage_type, '') || ' ' || COALESCE(fcli.line_item_description, '')) LIKE '%aws-out-bytes%'
+              ) THEN 'internet'
+              WHEN (
+                LENGTH(COALESCE(fcli.from_region_code, '')) > 0
+                AND LENGTH(COALESCE(fcli.to_region_code, '')) > 0
+                AND LOWER(COALESCE(fcli.from_region_code, '')) <> LOWER(COALESCE(fcli.to_region_code, ''))
+              ) THEN 'inter_region'
+              WHEN (
+                LOWER(COALESCE(fcli.usage_type, '') || ' ' || COALESCE(fcli.product_usage_type, '') || ' ' || COALESCE(fcli.line_item_description, '') || ' ' || COALESCE(fcli.operation, ''))
+                  LIKE '%datatransfer-regional%'
+                OR LOWER(COALESCE(fcli.usage_type, '') || ' ' || COALESCE(fcli.product_usage_type, '') || ' ' || COALESCE(fcli.line_item_description, '') || ' ' || COALESCE(fcli.operation, ''))
+                  LIKE '%regional-bytes%'
+                OR LOWER(COALESCE(fcli.usage_type, '') || ' ' || COALESCE(fcli.product_usage_type, '') || ' ' || COALESCE(fcli.line_item_description, '') || ' ' || COALESCE(fcli.operation, ''))
+                  LIKE '%same-region%'
+              ) THEN 'regional'
+              WHEN (
+                LENGTH(COALESCE(fcli.from_region_code, '')) > 0
+                AND LENGTH(COALESCE(fcli.to_region_code, '')) > 0
+                AND LOWER(COALESCE(fcli.from_region_code, '')) = LOWER(COALESCE(fcli.to_region_code, ''))
+              ) THEN 'inter_az'
+              ELSE 'unknown'
+            END AS transfer_type,
+            SUM(COALESCE(fcli.effective_cost, fcli.billed_cost, 0))::double precision AS total_cost,
+            SUM(
+              CASE
+                WHEN LOWER(COALESCE(dsku.pricing_unit, '')) LIKE '%byte%'
+                  THEN COALESCE(fcli.consumed_quantity, fcli.pricing_quantity, 0) / ${BYTES_TO_GB_DIVISOR}
+                ELSE COALESCE(fcli.consumed_quantity, fcli.pricing_quantity, 0)
+              END
+            )::double precision AS usage_gb
+          FROM fact_cost_line_items fcli
+          INNER JOIN dim_resource dr
+            ON dr.id = fcli.resource_key
+           AND dr.tenant_id = fcli.tenant_id
+          INNER JOIN fact_ec2_instance_daily fed
+            ON fed.tenant_id = fcli.tenant_id
+           AND fed.instance_id = dr.resource_id
+           AND fed.usage_date = COALESCE(
+              (SELECT dd2.full_date FROM dim_date dd2 WHERE dd2.id = fcli.usage_date_key),
+              DATE(COALESCE(fcli.usage_start_time, fcli.usage_end_time))
+           )
+          LEFT JOIN dim_sku dsku
+            ON dsku.id = fcli.sku_key
+          LEFT JOIN dim_date dd
+            ON dd.id = fcli.usage_date_key
+          WHERE fcli.tenant_id = $1::uuid
+            AND fed.instance_id = ANY($2::text[])
+            AND fed.usage_date >= $3::date
+            AND fed.usage_date <= $4::date
+            AND (
+              LOWER(COALESCE(fcli.usage_type, '')) LIKE '%datatransfer%'
+              OR LOWER(COALESCE(fcli.product_usage_type, '')) LIKE '%datatransfer%'
+              OR LOWER(COALESCE(fcli.product_family, '')) LIKE '%data transfer%'
+              OR LOWER(COALESCE(fcli.line_item_description, '')) LIKE '%data transfer%'
+            )
+          GROUP BY
+            cloud_connection_key,
+            instance_id,
+            transfer_type
+        )
+        SELECT
+          classified.cloud_connection_key AS "cloudConnectionKey",
+          classified.instance_id AS "instanceId",
+          SUM(CASE WHEN classified.transfer_type = 'internet' THEN classified.usage_gb ELSE 0 END)::double precision AS "internetGb",
+          SUM(CASE WHEN classified.transfer_type = 'inter_az' THEN classified.usage_gb ELSE 0 END)::double precision AS "interAzGb",
+          SUM(CASE WHEN classified.transfer_type = 'regional' THEN classified.usage_gb ELSE 0 END)::double precision AS "regionalGb",
+          SUM(classified.usage_gb)::double precision AS "totalGb",
+          SUM(classified.total_cost)::double precision AS "totalCost"
+        FROM classified
+        GROUP BY
+          classified.cloud_connection_key,
+          classified.instance_id;
+      `,
+      {
+        bind: [input.tenantId, instanceIds, input.dateRange.startDate, input.dateRange.endDate],
+        type: QueryTypes.SELECT,
+      },
+    );
+
+    const byConnectionInstance = new Map<string, DataTransferBreakdownRow>();
+    const byInstance = new Map<string, DataTransferBreakdownRow>();
+
+    for (const row of rows) {
+      byConnectionInstance.set(
+        toConnectionInstanceKey(row.cloudConnectionKey || null, row.instanceId),
+        row,
+      );
+      if (!byInstance.has(row.instanceId)) {
+        byInstance.set(row.instanceId, row);
+      }
+    }
+
+    return { byConnectionInstance, byInstance };
+  }
 }
-
-
-
 

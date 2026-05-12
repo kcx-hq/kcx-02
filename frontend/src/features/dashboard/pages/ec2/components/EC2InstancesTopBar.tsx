@@ -24,7 +24,6 @@ const NETWORK_TYPE_OPTIONS: Array<{ key: EC2InstancesNetworkType; label: string 
   { key: "Inter-AZ Data Transfer", label: "Inter-AZ Data Transfer" },
   { key: "NAT Gateway", label: "NAT Gateway" },
   { key: "Elastic IP", label: "Elastic IP" },
-  { key: "Load Balancer", label: "Load Balancer" },
   { key: "Other Network", label: "Other Network" },
 ];
 

@@ -110,6 +110,37 @@ const toNumber = (value: number | string | null | undefined): number => {
   }
   return 0;
 };
+
+const isLoadBalancerLineItem = (row: {
+  usageType?: string | null;
+  productUsageType?: string | null;
+  productFamily?: string | null;
+  operation?: string | null;
+  lineItemDescription?: string | null;
+  serviceName?: string | null;
+}): boolean => {
+  const blob = [
+    row.usageType ?? "",
+    row.productUsageType ?? "",
+    row.productFamily ?? "",
+    row.operation ?? "",
+    row.lineItemDescription ?? "",
+    row.serviceName ?? "",
+  ].join(" ").toLowerCase();
+  return [
+    "loadbalancer",
+    "load balancer",
+    "loadbalancing",
+    "loadbalancerusage",
+    "loadbalancerusage:application",
+    "loadbalancerusage:network",
+    "elasticloadbalancing",
+    "lcu",
+    "applicationloadbalancer",
+    "networkloadbalancer",
+    "classicloadbalancer",
+  ].some((token) => blob.includes(token));
+};
 const toNullableNumber = (value: number | string | null | undefined): number | null => {
   if (value === null || typeof value === "undefined") return null;
   if (typeof value === "number") return Number.isFinite(value) ? value : null;
@@ -306,7 +337,6 @@ export class Ec2ExplorerQuery {
         snapshotCost: 0,
         natGatewayCost: 0,
         eipCost: 0,
-        loadBalancerCost: 0,
       };
       const blob = [
         (row.usageType ?? "").toLowerCase(),
@@ -323,8 +353,6 @@ export class Ec2ExplorerQuery {
         item.natGatewayCost += cost;
       } else if (blob.includes("elasticip") || blob.includes("elastic ip") || blob.includes("idleaddress") || blob.includes("inuseaddress")) {
         item.eipCost += cost;
-      } else if (blob.includes("loadbalancer") || blob.includes("load balancer") || blob.includes("loadbalancing") || blob.includes("lcu")) {
-        item.loadBalancerCost += cost;
       }
       bucket.set(key, item);
     }
@@ -334,13 +362,12 @@ export class Ec2ExplorerQuery {
       snapshotCost: Number(item.snapshotCost.toFixed(2)),
       natGatewayCost: Number(item.natGatewayCost.toFixed(2)),
       eipCost: Number(item.eipCost.toFixed(2)),
-      loadBalancerCost: Number(item.loadBalancerCost.toFixed(2)),
     }));
   }
 
   async getCurCostRows(input: Ec2ExplorerInput): Promise<Array<{
     date: string;
-    category: "compute" | "ebs" | "snapshot" | "data_transfer" | "nat_gateway" | "elastic_ip" | "load_balancer" | "other";
+    category: "compute" | "ebs" | "snapshot" | "data_transfer" | "nat_gateway" | "elastic_ip" | "other";
     cost: number;
     usageQuantity: number;
     usageType: string | null;
@@ -523,7 +550,9 @@ export class Ec2ExplorerQuery {
       { replacements: scoped.replacements, type: QueryTypes.SELECT },
     );
 
-    return rows.map((row) => ({
+    return rows
+      .filter((row) => !isLoadBalancerLineItem(row))
+      .map((row) => ({
       date: row.date,
       category: classifyExplorerCostCategory(row),
       cost: Math.max(0, toNumber(row.cost)),
@@ -550,7 +579,7 @@ export class Ec2ExplorerQuery {
       instanceId: row.instanceId ? row.instanceId.trim() : null,
       attachedInstanceId: row.attachedInstanceId ? row.attachedInstanceId.trim() : null,
       tagsJson: row.tagsJson,
-    }));
+      }));
   }
 
   async getNetworkBreakdown(input: Ec2ExplorerInput): Promise<{
@@ -655,6 +684,7 @@ export class Ec2ExplorerQuery {
     let totalBilledUsage = 0;
     let totalUsageBytes = 0;
     for (const row of rows) {
+      if (isLoadBalancerLineItem(row)) continue;
       const category = classifyNetworkCostType(row);
       const cost = Math.max(0, toNumber(row.cost));
       const usage = Math.max(0, toNumber(row.usageQuantity));
@@ -676,7 +706,6 @@ export class Ec2ExplorerQuery {
       "Inter-AZ Data Transfer",
       "NAT Gateway",
       "Elastic IP",
-      "Load Balancer",
       "Other Network",
     ] as const;
     const categories: Ec2NetworkBreakdownCategory[] = orderedTypes.map((type) => {
@@ -1117,6 +1146,7 @@ export class Ec2ExplorerQuery {
     );
     const out = new Map<string, { cost: number; billedUsage: number }>();
     for (const row of rows) {
+      if (isLoadBalancerLineItem(row)) continue;
       const category = classifyNetworkCostType(row);
       const date = row.date;
       const key = `${date}::${category}`;

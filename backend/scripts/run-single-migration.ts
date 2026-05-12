@@ -1,4 +1,5 @@
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { pathToFileURL } from "node:url";
 import { Sequelize } from "sequelize";
 
@@ -8,6 +9,7 @@ type MigrationModule = {
   default?: {
     up?: (queryInterface: ReturnType<typeof sequelize.getQueryInterface>, SequelizeLib: typeof Sequelize) => Promise<void>;
   };
+  up?: (queryInterface: ReturnType<typeof sequelize.getQueryInterface>, SequelizeLib: typeof Sequelize) => Promise<void>;
 };
 
 const parseMigrationName = (argv: string[]): string | null => {
@@ -23,6 +25,15 @@ const parseMigrationName = (argv: string[]): string | null => {
     if (arg.startsWith("--migration=")) {
       const value = arg.slice("--migration=".length).trim();
       return value || null;
+    }
+
+    if (arg === "--help" || arg === "-h") {
+      return null;
+    }
+
+    // Support positional usage: npm run db:migrate:single -- 2026....ts
+    if (!arg.startsWith("--")) {
+      return arg;
     }
   }
 
@@ -51,16 +62,19 @@ async function main(): Promise<void> {
     throw new Error("Invalid migration name. Provide filename only from src/migrations.");
   }
 
-  const migrationPath = path.resolve(process.cwd(), "src", "migrations", migrationName);
+  const scriptDir = path.dirname(fileURLToPath(import.meta.url));
+  const migrationsDir = path.resolve(scriptDir, "..", "src", "migrations");
+  const migrationPath = path.resolve(migrationsDir, migrationName);
   const migrationUrl = pathToFileURL(migrationPath).href;
   const migrationModule = (await import(migrationUrl)) as MigrationModule;
-  const migration = migrationModule.default;
+  const migrationUp =
+    migrationModule.default?.up ?? migrationModule.up;
 
-  if (!migration || typeof migration.up !== "function") {
-    throw new Error(`Migration ${migrationName} does not export default.up`);
+  if (typeof migrationUp !== "function") {
+    throw new Error(`Migration ${migrationName} does not export an up() migration function`);
   }
 
-  await migration.up(sequelize.getQueryInterface(), Sequelize);
+  await migrationUp(sequelize.getQueryInterface(), Sequelize);
   console.info(`Migration executed successfully: ${migrationName}`);
 }
 

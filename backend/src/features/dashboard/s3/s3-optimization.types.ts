@@ -169,3 +169,100 @@ export type S3PolicyActionHistoryResponse = {
   message: string;
   items: S3PolicyActionHistoryItem[];
 };
+
+export type S3ReplicationStatus = "present" | "absent" | "unknown";
+
+export type S3ReplicationActionType = "setup_replication" | "view" | "edit" | "remove" | "fix_permission" | "view_setup_guide";
+
+export type S3BucketReplicationRow = {
+  bucketName: string;
+  accountId: string;
+  region: string | null;
+  replicationStatus: S3ReplicationStatus;
+  rulesCount: number;
+  destinationBucket: string | null;
+  destinationRegion: string | null;
+  replicationType: "same_account" | "cross_account" | "unknown";
+  status: "enabled" | "disabled" | "mixed" | "unknown";
+  lastChecked: string;
+  recommendation: string | null;
+  actions: S3ReplicationActionType[];
+};
+
+export type S3ReplicationVisibilityResponse = {
+  section: "s3-replication";
+  title: "S3 Replication";
+  message: string;
+  buckets: S3BucketReplicationRow[];
+};
+
+export type S3ReplicationDestinationBucketOption = {
+  bucketName: string;
+  region: string | null;
+};
+
+export type S3ReplicationDestinationBucketsResponse = {
+  section: "s3-replication-destination-buckets";
+  title: "S3 Replication Destination Buckets";
+  message: string;
+  sourceBucketName: string;
+  buckets: S3ReplicationDestinationBucketOption[];
+};
+
+export type S3ReplicationSetupRequest = {
+  sourceBucketName: string;
+  destinationBucketName: string;
+  destinationRegion: string;
+  replicationType: "same_account" | "cross_account";
+  destinationAccountId?: string | null;
+  replicationRoleArn: string;
+  ruleName: string;
+  prefix?: string | null;
+  replicateDeleteMarkers?: boolean;
+  autoEnableSourceVersioning?: boolean;
+  autoEnableDestinationVersioning?: boolean;
+};
+
+export type S3ReplicationSetupCheck = {
+  key:
+    | "source_versioning"
+    | "destination_bucket_access"
+    | "destination_region_match"
+    | "destination_versioning"
+    | "replication_role";
+  title: string;
+  status: "pass" | "warn" | "fail";
+  detail: string;
+};
+
+export type S3ReplicationSetupPreviewResponse = {
+  section: "s3-replication-setup-preview";
+  title: "S3 Replication Setup Preview";
+  message: string;
+  canApply: boolean;
+  checks: S3ReplicationSetupCheck[];
+};
+
+export type S3ReplicationSetupApplyResponse = {
+  section: "s3-replication-setup-apply";
+  title: "S3 Replication Setup Apply";
+  message: string;
+  sourceBucketName: string;
+  destinationBucketName: string;
+  destinationRegion: string;
+  replicationStatus: "configured";
+};
+
+export type S3ReplicationRoleAutoCreateRequest = {
+  sourceBucketName: string;
+  destinationBucketName: string;
+  roleName?: string | null;
+};
+
+export type S3ReplicationRoleAutoCreateResponse = {
+  section: "s3-replication-role-auto-create";
+  title: "S3 Replication Role Auto Create";
+  message: string;
+  roleName: string;
+  roleArn: string;
+};

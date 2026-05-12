@@ -50,6 +50,10 @@ type S3BucketBreakdownRow = {
   savings: number | string | null;
   retrieval: number | string | null;
   other: number | string | null;
+  replication_status: string | null;
+  versioning_status: string | null;
+  encryption_status: string | null;
+  public_access_status: string | null;
 };
 
 type S3FeatureTrendRow = {
@@ -103,6 +107,23 @@ type S3StorageLensRow = {
 
 type S3OptionRow = {
   value: string | null;
+};
+
+type S3StorageDailyTrendRow = {
+  usage_date: string | null;
+  bytes_standard: number | string | null;
+  bytes_standard_ia: number | string | null;
+  bytes_glacier: number | string | null;
+  bytes_deep_archive: number | string | null;
+};
+
+type S3StorageLatestBucketRow = {
+  bucket_name: string | null;
+  usage_date: string | null;
+  bytes_standard: number | string | null;
+  bytes_standard_ia: number | string | null;
+  bytes_glacier: number | string | null;
+  bytes_deep_archive: number | string | null;
 };
 
 const S3_FILTER_SQL = `
@@ -262,7 +283,7 @@ const S3_COST_CATEGORY_OPTIONS: S3CostCategory[] = [
 ];
 
 const S3_COST_BY_OPTIONS: S3CostChartBy[] = ["date", "bucket", "region", "account"];
-const S3_SERIES_BY_OPTIONS: S3CostSeriesBy[] = ["bucket", "usage_type", "cost_category", "operation", "product_family", "storage_class"];
+const S3_SERIES_BY_OPTIONS: S3CostSeriesBy[] = ["none", "bucket", "usage_type", "cost_category", "operation", "product_family", "storage_class"];
 const S3_Y_AXIS_METRIC_OPTIONS: S3CostYAxisMetric[] = ["billed_cost", "effective_cost", "amortized_cost", "usage_quantity"];
 
 const OWNER_TAG_KEYS_SQL = `
@@ -295,7 +316,233 @@ const toNumber = (value: number | string | null | undefined): number => {
   return 0;
 };
 
+const STORAGE_COST_PER_GIB_MONTH = {
+  STANDARD: 0.023,
+  STANDARD_IA: 0.0125,
+  GLACIER: 0.004,
+  DEEP_ARCHIVE: 0.00099,
+} as const;
+
+const bytesToGib = (bytes: number): number => bytes / (1024 ** 3);
+
 export class S3CostInsightsRepository {
+  async getStorageCostDashboard(scope: DashboardScope): Promise<{
+    latestUsageDate: string | null;
+    totalStorageByClass: Array<{
+      storageClass: "STANDARD" | "STANDARD_IA" | "GLACIER" | "DEEP_ARCHIVE";
+      bytes: number;
+      gib: number;
+      estimatedMonthlyCost: number;
+    }>;
+    dailyStorageGrowth: {
+      fromDate: string | null;
+      toDate: string | null;
+      bytesGrowth: number;
+      gibGrowth: number;
+      growthPct: number | null;
+    };
+    estimatedMonthlyCost: {
+      total: number;
+      byClass: Record<"STANDARD" | "STANDARD_IA" | "GLACIER" | "DEEP_ARCHIVE", number>;
+    };
+    costTrend: Array<{
+      usageDate: string;
+      estimatedMonthlyCost: number;
+      totalBytes: number;
+    }>;
+    expensiveBuckets: Array<{
+      bucketName: string;
+      estimatedMonthlyCost: number;
+      totalBytes: number;
+      usageDate: string;
+    }>;
+  }> {
+    if (scope.scopeType !== "global") {
+      return {
+        latestUsageDate: null,
+        totalStorageByClass: [
+          { storageClass: "STANDARD", bytes: 0, gib: 0, estimatedMonthlyCost: 0 },
+          { storageClass: "STANDARD_IA", bytes: 0, gib: 0, estimatedMonthlyCost: 0 },
+          { storageClass: "GLACIER", bytes: 0, gib: 0, estimatedMonthlyCost: 0 },
+          { storageClass: "DEEP_ARCHIVE", bytes: 0, gib: 0, estimatedMonthlyCost: 0 },
+        ],
+        dailyStorageGrowth: { fromDate: null, toDate: null, bytesGrowth: 0, gibGrowth: 0, growthPct: null },
+        estimatedMonthlyCost: { total: 0, byClass: { STANDARD: 0, STANDARD_IA: 0, GLACIER: 0, DEEP_ARCHIVE: 0 } },
+        costTrend: [],
+        expensiveBuckets: [],
+      };
+    }
+
+    const binds: unknown[] = [scope.tenantId, scope.from, scope.to];
+    const conditions: string[] = [
+      "tenant_id = $1::uuid",
+      "usage_date >= $2::date",
+      "usage_date <= $3::date",
+    ];
+
+    if (typeof scope.providerId === "number") {
+      binds.push(scope.providerId);
+      conditions.push(`provider_id = $${binds.length}`);
+    }
+    if (Array.isArray(scope.billingSourceIds) && scope.billingSourceIds.length > 0) {
+      binds.push(scope.billingSourceIds);
+      conditions.push(`billing_source_id = ANY($${binds.length}::bigint[])`);
+    }
+    if (typeof scope.regionKey === "number") {
+      binds.push(scope.regionKey);
+      conditions.push(`region_key = $${binds.length}`);
+    }
+    if (typeof scope.subAccountKey === "number") {
+      binds.push(scope.subAccountKey);
+      conditions.push(`sub_account_key = $${binds.length}`);
+    }
+
+    const trendRows = await sequelize.query<S3StorageDailyTrendRow>(
+      `
+      SELECT
+        usage_date::text AS usage_date,
+        COALESCE(SUM(COALESCE(bytes_standard, 0)), 0)::double precision AS bytes_standard,
+        COALESCE(SUM(COALESCE(bytes_standard_ia, 0)), 0)::double precision AS bytes_standard_ia,
+        COALESCE(SUM(COALESCE(bytes_glacier, 0)), 0)::double precision AS bytes_glacier,
+        COALESCE(SUM(COALESCE(bytes_deep_archive, 0)), 0)::double precision AS bytes_deep_archive
+      FROM s3_storage_lens_daily
+      WHERE ${conditions.join("\n        AND ")}
+      GROUP BY usage_date
+      ORDER BY usage_date ASC
+      `,
+      { bind: binds, type: QueryTypes.SELECT },
+    );
+
+    const latestBucketRows = await sequelize.query<S3StorageLatestBucketRow>(
+      `
+      SELECT DISTINCT ON (bucket_name)
+        bucket_name,
+        usage_date::text AS usage_date,
+        COALESCE(bytes_standard, 0)::double precision AS bytes_standard,
+        COALESCE(bytes_standard_ia, 0)::double precision AS bytes_standard_ia,
+        COALESCE(bytes_glacier, 0)::double precision AS bytes_glacier,
+        COALESCE(bytes_deep_archive, 0)::double precision AS bytes_deep_archive
+      FROM s3_storage_lens_daily
+      WHERE ${conditions.join("\n        AND ")}
+      ORDER BY bucket_name ASC, usage_date DESC
+      `,
+      { bind: binds, type: QueryTypes.SELECT },
+    );
+
+    const trend = trendRows.map((row) => {
+      const standard = toNumber(row.bytes_standard);
+      const standardIa = toNumber(row.bytes_standard_ia);
+      const glacier = toNumber(row.bytes_glacier);
+      const deepArchive = toNumber(row.bytes_deep_archive);
+      const totalBytes = standard + standardIa + glacier + deepArchive;
+      const estimatedMonthlyCost =
+        bytesToGib(standard) * STORAGE_COST_PER_GIB_MONTH.STANDARD +
+        bytesToGib(standardIa) * STORAGE_COST_PER_GIB_MONTH.STANDARD_IA +
+        bytesToGib(glacier) * STORAGE_COST_PER_GIB_MONTH.GLACIER +
+        bytesToGib(deepArchive) * STORAGE_COST_PER_GIB_MONTH.DEEP_ARCHIVE;
+      return {
+        usageDate: String(row.usage_date ?? ""),
+        estimatedMonthlyCost,
+        totalBytes,
+        byClass: { standard, standardIa, glacier, deepArchive },
+      };
+    });
+
+    const latest = trend[trend.length - 1] ?? null;
+    const first = trend[0] ?? null;
+    const latestUsageDate = latest?.usageDate ?? null;
+
+    const byClassBytes = {
+      STANDARD: latest?.byClass.standard ?? 0,
+      STANDARD_IA: latest?.byClass.standardIa ?? 0,
+      GLACIER: latest?.byClass.glacier ?? 0,
+      DEEP_ARCHIVE: latest?.byClass.deepArchive ?? 0,
+    };
+
+    const byClassCost = {
+      STANDARD: bytesToGib(byClassBytes.STANDARD) * STORAGE_COST_PER_GIB_MONTH.STANDARD,
+      STANDARD_IA: bytesToGib(byClassBytes.STANDARD_IA) * STORAGE_COST_PER_GIB_MONTH.STANDARD_IA,
+      GLACIER: bytesToGib(byClassBytes.GLACIER) * STORAGE_COST_PER_GIB_MONTH.GLACIER,
+      DEEP_ARCHIVE: bytesToGib(byClassBytes.DEEP_ARCHIVE) * STORAGE_COST_PER_GIB_MONTH.DEEP_ARCHIVE,
+    };
+
+    const expensiveBuckets = latestBucketRows
+      .map((row) => {
+        const standard = toNumber(row.bytes_standard);
+        const standardIa = toNumber(row.bytes_standard_ia);
+        const glacier = toNumber(row.bytes_glacier);
+        const deepArchive = toNumber(row.bytes_deep_archive);
+        const totalBytes = standard + standardIa + glacier + deepArchive;
+        const estimatedMonthlyCost =
+          bytesToGib(standard) * STORAGE_COST_PER_GIB_MONTH.STANDARD +
+          bytesToGib(standardIa) * STORAGE_COST_PER_GIB_MONTH.STANDARD_IA +
+          bytesToGib(glacier) * STORAGE_COST_PER_GIB_MONTH.GLACIER +
+          bytesToGib(deepArchive) * STORAGE_COST_PER_GIB_MONTH.DEEP_ARCHIVE;
+        return {
+          bucketName: String(row.bucket_name ?? "").trim(),
+          usageDate: String(row.usage_date ?? ""),
+          totalBytes,
+          estimatedMonthlyCost,
+        };
+      })
+      .filter((row) => row.bucketName.length > 0)
+      .sort((a, b) => b.estimatedMonthlyCost - a.estimatedMonthlyCost)
+      .slice(0, 10);
+
+    const firstTotal = first?.totalBytes ?? 0;
+    const latestTotal = latest?.totalBytes ?? 0;
+    const bytesGrowth = latestTotal - firstTotal;
+    const growthPct = firstTotal > 0 ? (bytesGrowth / firstTotal) * 100 : null;
+
+    return {
+      latestUsageDate,
+      totalStorageByClass: [
+        {
+          storageClass: "STANDARD",
+          bytes: byClassBytes.STANDARD,
+          gib: bytesToGib(byClassBytes.STANDARD),
+          estimatedMonthlyCost: byClassCost.STANDARD,
+        },
+        {
+          storageClass: "STANDARD_IA",
+          bytes: byClassBytes.STANDARD_IA,
+          gib: bytesToGib(byClassBytes.STANDARD_IA),
+          estimatedMonthlyCost: byClassCost.STANDARD_IA,
+        },
+        {
+          storageClass: "GLACIER",
+          bytes: byClassBytes.GLACIER,
+          gib: bytesToGib(byClassBytes.GLACIER),
+          estimatedMonthlyCost: byClassCost.GLACIER,
+        },
+        {
+          storageClass: "DEEP_ARCHIVE",
+          bytes: byClassBytes.DEEP_ARCHIVE,
+          gib: bytesToGib(byClassBytes.DEEP_ARCHIVE),
+          estimatedMonthlyCost: byClassCost.DEEP_ARCHIVE,
+        },
+      ],
+      dailyStorageGrowth: {
+        fromDate: first?.usageDate ?? null,
+        toDate: latest?.usageDate ?? null,
+        bytesGrowth,
+        gibGrowth: bytesToGib(bytesGrowth),
+        growthPct,
+      },
+      estimatedMonthlyCost: {
+        total:
+          byClassCost.STANDARD + byClassCost.STANDARD_IA + byClassCost.GLACIER + byClassCost.DEEP_ARCHIVE,
+        byClass: byClassCost,
+      },
+      costTrend: trend.map((item) => ({
+        usageDate: item.usageDate,
+        estimatedMonthlyCost: item.estimatedMonthlyCost,
+        totalBytes: item.totalBytes,
+      })),
+      expensiveBuckets,
+    };
+  }
+
   async getBucketStorageLens(
     scope: DashboardScope,
     buckets: string[],
@@ -497,6 +744,8 @@ export class S3CostInsightsRepository {
 
   private getSeriesExpression(seriesBy: S3CostSeriesBy): string {
     switch (seriesBy) {
+      case "none":
+        return "'Billed Cost ($)'";
       case "usage_type":
         return "COALESCE(NULLIF(usage_type, ''), 'Unspecified')";
       case "operation":
@@ -632,7 +881,6 @@ export class S3CostInsightsRepository {
 
     const byX = new Map<string, Map<string, number>>();
     const totalsByX = new Map<string, number>();
-    const totalsBySeries = new Map<string, number>();
 
     for (const row of rows) {
       const x = String(row.x_value ?? "Unspecified");
@@ -644,7 +892,6 @@ export class S3CostInsightsRepository {
       const seriesMap = byX.get(x)!;
       seriesMap.set(series, (seriesMap.get(series) ?? 0) + cost);
       totalsByX.set(x, (totalsByX.get(x) ?? 0) + cost);
-      totalsBySeries.set(series, (totalsBySeries.get(series) ?? 0) + cost);
     }
 
     const labels = [...byX.keys()];
@@ -654,22 +901,33 @@ export class S3CostInsightsRepository {
       labels.sort((a, b) => (totalsByX.get(b) ?? 0) - (totalsByX.get(a) ?? 0));
     }
 
-    const topSeries = [...totalsBySeries.entries()]
+    const chartLabels = labels;
+
+    const chartTotalsBySeries = new Map<string, number>();
+    for (const label of chartLabels) {
+      const seriesMap = byX.get(label);
+      if (!seriesMap) continue;
+      for (const [seriesName, value] of seriesMap.entries()) {
+        chartTotalsBySeries.set(seriesName, (chartTotalsBySeries.get(seriesName) ?? 0) + value);
+      }
+    }
+
+    const topSeries = [...chartTotalsBySeries.entries()]
       .sort((a, b) => b[1] - a[1])
       .slice(0, 8)
       .map(([name]) => name);
     const topSeriesSet = new Set(topSeries);
-    const includeOther = [...totalsBySeries.keys()].some((name) => !topSeriesSet.has(name));
+    const includeOther = [...chartTotalsBySeries.keys()].some((name) => !topSeriesSet.has(name));
 
     const series = topSeries.map((name) => ({
       name,
-      values: labels.map((label) => byX.get(label)?.get(name) ?? 0),
+      values: chartLabels.map((label) => byX.get(label)?.get(name) ?? 0),
     }));
 
     if (includeOther) {
       series.push({
         name: "Other",
-        values: labels.map((label) => {
+        values: chartLabels.map((label) => {
           const items = byX.get(label) ?? new Map<string, number>();
           let sum = 0;
           for (const [name, value] of items.entries()) {
@@ -682,7 +940,7 @@ export class S3CostInsightsRepository {
       });
     }
 
-    return { labels, series };
+    return { labels: chartLabels, series };
   }
 
   async getBreakdownFilterOptions(scope: DashboardScope): Promise<{
@@ -1154,12 +1412,15 @@ export class S3CostInsightsRepository {
     scope: DashboardScope,
     filters: S3CostInsightsFilters,
     limit: number = 5000,
+    options?: { includeAttributionTags?: boolean },
   ): Promise<Omit<S3CostBucketTableInsight, "trendPct">[]> {
     const filter = buildDashboardFilter(scope);
     const filterPredicates = this.buildS3FilterPredicates(filters, filter.params.length + 1);
     const limitPlaceholder = filter.params.length + filterPredicates.params.length + 1;
+    const includeAttributionTags = options?.includeAttributionTags ?? true;
     const rows = await sequelize.query<S3BucketBreakdownRow>(
-      `
+      includeAttributionTags
+        ? `
       WITH filtered AS (
         SELECT
           COALESCE(NULLIF(${S3_BUCKET_NAME_SQL}, ''), 'unattributed') AS bucket_name,
@@ -1353,6 +1614,119 @@ export class S3CostInsightsRepository {
        AND drank.rn = 1
       ORDER BY ba.cost DESC
       LIMIT $${limitPlaceholder};
+      `
+        : `
+      WITH filtered AS (
+        SELECT
+          COALESCE(NULLIF(${S3_BUCKET_NAME_SQL}, ''), 'unattributed') AS bucket_name,
+          COALESCE(NULLIF(dr.region_name, ''), NULLIF(dr.region_id, ''), 'global') AS region_name,
+          COALESCE(dsa.sub_account_name, dsa.sub_account_id, 'Unspecified') AS account_name,
+          COALESCE(fcli.billed_cost, 0)::double precision AS billed_cost,
+          COALESCE(fcli.effective_cost, 0)::double precision AS effective_cost,
+          COALESCE(fcli.list_cost, 0)::double precision AS list_cost,
+          COALESCE(fcli.product_family, '') AS product_family,
+          COALESCE(fcli.usage_type, '') AS usage_type,
+          COALESCE(fcli.product_usage_type, '') AS product_usage_type,
+          COALESCE(fcli.operation, '') AS operation,
+          COALESCE(fcli.line_item_description, '') AS line_item_description
+        FROM fact_cost_line_items fcli
+        LEFT JOIN dim_date dd ON dd.id = fcli.usage_date_key
+        LEFT JOIN dim_service ds ON ds.id = fcli.service_key
+        LEFT JOIN dim_resource dres ON dres.id = fcli.resource_key
+        LEFT JOIN dim_region dr ON dr.id = fcli.region_key
+        LEFT JOIN dim_sub_account dsa ON dsa.id = fcli.sub_account_key
+        WHERE ${filter.whereClause}
+          AND ${S3_SERVICE_NAME_FILTER_SQL}
+      ),
+      scoped_data AS (
+        SELECT
+          filtered.*,
+          ${S3_STORAGE_CLASS_LABEL_SQL} AS storage_class,
+          ${S3_COST_CATEGORY_SQL} AS cost_category
+        FROM filtered
+      ),
+      filtered_with_filters AS (
+        SELECT *
+        FROM scoped_data
+        WHERE ${filterPredicates.clause}
+      ),
+      bucket_agg AS (
+        SELECT
+          bucket_name,
+          COALESCE(SUM(billed_cost), 0)::double precision AS cost,
+          COALESCE(SUM(CASE WHEN ${S3_STORAGE_COST_CONDITION_SQL} THEN billed_cost ELSE 0 END), 0)::double precision AS storage,
+          COALESCE(SUM(CASE WHEN ${S3_REQUEST_COST_CONDITION_SQL} THEN billed_cost ELSE 0 END), 0)::double precision AS requests,
+          COALESCE(SUM(CASE WHEN ${S3_TRANSFER_COST_CONDITION_SQL} THEN billed_cost ELSE 0 END), 0)::double precision AS transfer,
+          COALESCE(SUM(CASE WHEN ${S3_RETRIEVAL_COST_CONDITION_SQL} THEN billed_cost ELSE 0 END), 0)::double precision AS retrieval,
+          COALESCE(
+            SUM(
+              CASE
+                WHEN ${S3_STORAGE_COST_CONDITION_SQL}
+                  OR ${S3_REQUEST_COST_CONDITION_SQL}
+                  OR ${S3_TRANSFER_COST_CONDITION_SQL}
+                  OR ${S3_RETRIEVAL_COST_CONDITION_SQL}
+                THEN 0
+                ELSE billed_cost
+              END
+            ),
+            0
+          )::double precision AS other,
+          GREATEST(COALESCE(SUM(list_cost - effective_cost), 0), 0)::double precision AS savings
+        FROM filtered_with_filters
+        GROUP BY bucket_name
+      ),
+      region_rank AS (
+        SELECT
+          bucket_name,
+          region_name,
+          SUM(billed_cost)::double precision AS billed_cost,
+          ROW_NUMBER() OVER (
+            PARTITION BY bucket_name
+            ORDER BY SUM(billed_cost) DESC, region_name ASC
+          ) AS rn
+        FROM filtered_with_filters
+        GROUP BY bucket_name, region_name
+      ),
+      account_rank AS (
+        SELECT
+          bucket_name,
+          account_name,
+          SUM(billed_cost)::double precision AS billed_cost,
+          ROW_NUMBER() OVER (
+            PARTITION BY bucket_name
+            ORDER BY SUM(billed_cost) DESC, account_name ASC
+          ) AS rn
+        FROM filtered_with_filters
+        GROUP BY bucket_name, account_name
+      )
+      SELECT
+        ba.bucket_name,
+        COALESCE(ar.account_name, 'Unspecified') AS account,
+        ba.cost,
+        ba.storage,
+        ba.requests,
+        ba.transfer,
+        ba.retrieval,
+        ba.other,
+        ba.savings,
+        COALESCE(rr.region_name, 'global') AS region,
+        'Unassigned' AS owner,
+        CASE
+          WHEN GREATEST(ba.storage, ba.requests, ba.transfer, ba.retrieval, ba.other) = ba.storage THEN 'Storage'
+          WHEN GREATEST(ba.storage, ba.requests, ba.transfer, ba.retrieval, ba.other) = ba.requests THEN 'Request'
+          WHEN GREATEST(ba.storage, ba.requests, ba.transfer, ba.retrieval, ba.other) = ba.transfer THEN 'Transfer'
+          WHEN GREATEST(ba.storage, ba.requests, ba.transfer, ba.retrieval, ba.other) = ba.retrieval THEN 'Retrieval'
+          ELSE 'Other'
+        END AS driver
+      FROM bucket_agg ba
+      LEFT JOIN region_rank rr
+        ON rr.bucket_name = ba.bucket_name
+       AND rr.rn = 1
+      LEFT JOIN account_rank ar
+        ON ar.bucket_name = ba.bucket_name
+       AND ar.rn = 1
+      ORDER BY ba.cost DESC
+      LIMIT $${limitPlaceholder};
       `,
       { bind: [...filter.params, ...filterPredicates.params, limit], type: QueryTypes.SELECT },
     );
@@ -1370,6 +1744,15 @@ export class S3CostInsightsRepository {
       savings: toNumber(row.savings),
       retrieval: toNumber(row.retrieval),
       other: toNumber(row.other),
+      replicationStatus: row.replication_status ? String(row.replication_status) : null,
+      versioningStatus: row.versioning_status ? String(row.versioning_status) : null,
+      encryptionStatus: row.encryption_status ? String(row.encryption_status) : null,
+      publicAccessStatus:
+        String(row.public_access_status ?? "").trim().toLowerCase() === "public"
+          ? "Public"
+          : String(row.public_access_status ?? "").trim().toLowerCase() === "private"
+            ? "Private"
+            : "Unknown",
     }));
   }
 }

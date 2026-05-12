@@ -6,6 +6,31 @@ import { dashboardNav, dashboardNavLinks } from "../common/navigation";
 import type { DashboardNavGroup, DashboardNavLink } from "../common/navigation";
 import { DashboardIcon } from "./DashboardIcon";
 
+const formatAsQueryDate = (date: Date): string => {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+};
+
+const buildS3ExplorerDefaultSearch = (search: string): string => {
+  const params = new URLSearchParams(search);
+  const end = new Date();
+  const start = new Date(end);
+  start.setDate(start.getDate() - 29);
+
+  const from = formatAsQueryDate(start);
+  const to = formatAsQueryDate(end);
+
+  params.set("billingPeriodStart", from);
+  params.set("billingPeriodEnd", to);
+  params.set("from", from);
+  params.set("to", to);
+  params.set("granularity", "daily");
+
+  return params.toString();
+};
+
 function getGroupKey(label: string, parentPath?: string): string {
   return parentPath ? `${parentPath}::${label}` : label;
 }
@@ -123,6 +148,16 @@ export function DashboardSidebar() {
     return match?.label ?? "Overview Dashboard";
   }, [location.pathname]);
 
+  const resolveSearchForPath = (targetPath: string): string => {
+    if (
+      targetPath === "/dashboard/s3/cost" &&
+      !location.pathname.startsWith("/dashboard/s3")
+    ) {
+      return buildS3ExplorerDefaultSearch(location.search);
+    }
+    return location.search;
+  };
+
   return (
     <aside
       ref={sidebarRef}
@@ -202,7 +237,7 @@ export function DashboardSidebar() {
                     {node.items.map((item) => (
                       <NavLink
                         key={item.path}
-                        to={{ pathname: item.path, search: location.search }}
+                        to={{ pathname: item.path, search: resolveSearchForPath(item.path) }}
                         className={({ isActive }) =>
                           `dashboard-nav-item dashboard-nav-item--sub ${isActive || isNavItemActive(location.pathname, item) ? "dashboard-nav-item--active" : ""}`
                         }
@@ -247,7 +282,7 @@ export function DashboardSidebar() {
                     }
                     const isExactNodePath = location.pathname === node.path;
                     if (!isExactNodePath) {
-                      navigate({ pathname: node.path, search: location.search });
+                      navigate({ pathname: node.path, search: resolveSearchForPath(node.path) });
                       setOpenGroups((current) => ({
                         ...current,
                         [nodeKey]: true,
@@ -301,11 +336,11 @@ export function DashboardSidebar() {
                                 return;
                               }
                               if (group.path && !hasSubmenuItems) {
-                                navigate({ pathname: group.path, search: location.search });
+                                navigate({ pathname: group.path, search: resolveSearchForPath(group.path) });
                                 return;
                               }
                               if (group.path && location.pathname !== group.path) {
-                                navigate({ pathname: group.path, search: location.search });
+                                navigate({ pathname: group.path, search: resolveSearchForPath(group.path) });
                                 if (hasSubmenuItems) {
                                   setOpenGroups((current) => ({
                                     ...current,
@@ -337,7 +372,7 @@ export function DashboardSidebar() {
                               {group.items.map((item) => (
                                 <NavLink
                                   key={item.path}
-                                  to={{ pathname: item.path, search: location.search }}
+                                  to={{ pathname: item.path, search: resolveSearchForPath(item.path) }}
                                   className={({ isActive }) =>
                                     `dashboard-nav-item dashboard-nav-item--sub ${isActive || isNavItemActive(location.pathname, item) ? "dashboard-nav-item--active" : ""}`
                                   }
@@ -362,7 +397,7 @@ export function DashboardSidebar() {
           return (
             <NavLink
               key={node.path}
-              to={{ pathname: node.path, search: location.search }}
+              to={{ pathname: node.path, search: resolveSearchForPath(node.path) }}
               className={({ isActive }) =>
                 `dashboard-nav-item ${isActive ? "dashboard-nav-item--active" : ""}`
               }

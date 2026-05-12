@@ -179,7 +179,17 @@ export function extractStorageLensSnapshotFromRow({
   if (!bucketName) return null;
 
   const usageDate =
-    parseDateOnly(lookupByAliases(rawRow, ["usage_date", "UsageDate", "report_time", "RecordValueDate", "record_value_date"])) ??
+    parseDateOnly(
+      lookupByAliases(rawRow, [
+        "usage_date",
+        "UsageDate",
+        "report_date",
+        "ReportDate",
+        "report_time",
+        "RecordValueDate",
+        "record_value_date",
+      ]),
+    ) ??
     parseDateOnly(normalizedRow?.usage_start_time) ??
     parseDateOnly(normalizedRow?.ChargePeriodStart);
   if (!usageDate) return null;

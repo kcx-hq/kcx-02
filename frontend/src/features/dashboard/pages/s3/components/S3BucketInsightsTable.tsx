@@ -29,6 +29,10 @@ export type S3BucketTableRow = {
   driver: string;
   retrieval: number;
   other: number;
+  replicationStatus?: string | null;
+  versioningStatus?: string | null;
+  encryptionStatus?: string | null;
+  publicAccessStatus?: "Public" | "Private" | "Unknown";
   trendPct: number;
   storageLens?: {
     usageDate: string;
@@ -124,49 +128,45 @@ export function S3BucketInsightsTable({
         },
       },
       {
-        headerName: "Account",
-        field: "account",
-        minWidth: 170,
-      },
-      {
-        headerName: "Region",
-        field: "region",
-        minWidth: 160,
-      },
-      {
         headerName: "Total Cost",
         field: "cost",
         minWidth: 150,
+        cellClass: "s3-analytics-number-cell",
         valueFormatter: (params) => currencyFormatter.format(Number(params.value ?? 0)),
       },
       {
         headerName: "Storage Cost",
         field: "storage",
         minWidth: 150,
+        cellClass: "s3-analytics-number-cell",
         valueFormatter: (params) => currencyFormatter.format(Number(params.value ?? 0)),
       },
       {
         headerName: "Request Cost",
         field: "requests",
         minWidth: 150,
+        cellClass: "s3-analytics-number-cell",
         valueFormatter: (params) => currencyFormatter.format(Number(params.value ?? 0)),
       },
       {
         headerName: "Retrieval Cost",
         field: "retrieval",
         minWidth: 150,
+        cellClass: "s3-analytics-number-cell",
         valueFormatter: (params) => currencyFormatter.format(Number(params.value ?? 0)),
       },
       {
         headerName: "Transfer Cost",
         field: "transfer",
         minWidth: 190,
+        cellClass: "s3-analytics-number-cell",
         cellRenderer: TransferCostCell,
       },
       {
         headerName: "% of S3 Cost",
         colId: "shareOfS3Cost",
         minWidth: 140,
+        cellClass: "s3-analytics-number-cell",
         valueGetter: (params) => {
           const rowCost = Number(params.data?.cost ?? 0);
           if (totalS3Cost <= 0) return 0;
@@ -184,6 +184,7 @@ export function S3BucketInsightsTable({
         headerName: "Trend",
         field: "trendPct",
         minWidth: 190,
+        cellClass: "s3-analytics-number-cell",
         cellRenderer: TrendCell,
       },
     ],
@@ -202,3 +203,4 @@ export function S3BucketInsightsTable({
     />
   );
 }
+

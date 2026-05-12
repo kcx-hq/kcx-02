@@ -14,7 +14,20 @@ export const compactCurrencyFormatter = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 2,
 });
 
+const axisCurrencyFormatter = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "USD",
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 5,
+});
+
 export const percentFormatter = new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 });
+
+export const formatAxisCost = (value: number): string =>
+  axisCurrencyFormatter.format(Object.is(value, -0) ? 0 : value);
+
+export const formatTooltipCost = (value: number): string =>
+  axisCurrencyFormatter.format(Object.is(value, -0) ? 0 : value);
 
 export const formatInputDate = (date: Date): string => {
   const year = date.getFullYear();

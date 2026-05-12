@@ -15,7 +15,7 @@ export type InventoryEc2InstancesListQuery = {
     | "Other Network"
     | null;
   status: "all" | "idle" | "underutilized" | "overutilized" | "uncovered" | "healthy";
-  transferType: "internet" | "inter_region" | "inter_az" | "unknown" | null;
+  transferType: "internet" | "inter_region" | "inter_az" | "regional" | "unknown" | null;
   search: string | null;
   startDate: string | null;
   endDate: string | null;
@@ -54,6 +54,13 @@ export type InventoryEc2InstancesListItem = {
   uncoveredHours: number;
   monthToDateCost: number;
   dataTransferCost: number;
+  dataTransfer: {
+    totalGb: number;
+    internetGb: number;
+    interAzGb: number;
+    regionalGb: number;
+    cost: number;
+  };
   networkUsageBytes: number;
   otherUnallocatedCost: number;
   latestDailyCost: number;
@@ -204,7 +211,11 @@ export type InventoryEc2InstanceDetailResponse = {
     action: string;
     saving: number;
     risk: string;
+    severity?: string | null;
     status: string;
+    createdAt?: string | null;
+    updatedAt?: string | null;
+    detectedAt?: string | null;
   }>;
   trends: {
     costTrend: Array<{

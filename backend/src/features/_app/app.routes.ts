@@ -27,6 +27,8 @@ import ec2OptimizationRoutes from "../ec2/optimization/ec2-optimization.routes.j
 import ec2ExplorerRoutes from "../ec2/explorer/ec2-explorer.routes.js";
 import ec2DataTransferRoutes from "../ec2/data-transfer/ec2-data-transfer.routes.js";
 import ec2ElasticIpRoutes from "../ec2/eip/ec2-eip.routes.js";
+import loadBalancerExplorerRoutes from "../load-balancer/explorer/load-balancer-explorer.routes.js";
+import loadBalancerInventoryRoutes from "../load-balancer/inventory/load-balancer-inventory.routes.js";
 const router = Router();
 
 router.use(scheduleDemoRoutes);
@@ -58,6 +60,8 @@ router.use(ec2OptimizationRoutes);
 router.use(ec2ExplorerRoutes);
 router.use(ec2DataTransferRoutes);
 router.use(ec2ElasticIpRoutes);
+router.use(loadBalancerExplorerRoutes);
+router.use(loadBalancerInventoryRoutes);
 
 export default router;
 

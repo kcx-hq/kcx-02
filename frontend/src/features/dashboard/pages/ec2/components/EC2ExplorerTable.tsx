@@ -7,6 +7,8 @@ import { EmptyStateBlock } from "../../../common/components/EmptyStateBlock";
 type EC2ExplorerTableRow = { id: string; [key: string]: string | number | null };
 
 type EC2ExplorerTableProps = {
+  metric: "cost" | "usage" | "instances" | "volumes" | "data-transfer";
+  groupBy: string;
   loading: boolean;
   error: Error | null;
   table: {
@@ -27,7 +29,26 @@ const formatCellValue = (value: string | number | null): string => {
   return value;
 };
 
+const CURRENCY_FORMATTER = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "USD",
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
+const formatCost = (value: string | number | null): string => {
+  const numeric = typeof value === "number" ? value : Number(value ?? 0);
+  return CURRENCY_FORMATTER.format(Number.isFinite(numeric) ? numeric : 0);
+};
+
+const formatGb = (value: string | number | null): string => {
+  const numeric = typeof value === "number" ? value : Number(value ?? 0);
+  return `${(Number.isFinite(numeric) ? numeric : 0).toFixed(2)} GB`;
+};
+
 export function EC2ExplorerTable({
+  metric,
+  groupBy,
   loading,
   error,
   table,
@@ -37,7 +58,11 @@ export function EC2ExplorerTable({
 }: EC2ExplorerTableProps) {
   const columnDefs = useMemo<ColDef<EC2ExplorerTableRow>[]>(() => {
     if (!table) return [];
-    return table.columns.map((column) => {
+    const isDataTransferMetric = metric === "data-transfer";
+    const isTransferTypeGrouping = groupBy === "transfer-type" || groupBy === "transfer_type";
+    const gbColumns = new Set(["internetGb", "interAzGb", "regionalGb", "totalGb", "usageGb"]);
+    const costColumns = new Set(["cost", "dataTransferCost"]);
+    const defs = table.columns.map((column) => {
       const isRecommendationColumn = /recommendation/i.test(column.key) || /recommendation/i.test(column.label);
       return {
         headerName: column.label,
@@ -51,6 +76,16 @@ export function EC2ExplorerTable({
             && Number(row?.unmappedResourceCount ?? 0) > 0
           ) {
             return "Unmapped";
+          }
+          if (isDataTransferMetric && costColumns.has(column.key)) {
+            return formatCost(params.value as string | number | null);
+          }
+          if (isDataTransferMetric && gbColumns.has(column.key)) {
+            return formatGb(params.value as string | number | null);
+          }
+          if (isDataTransferMetric && isTransferTypeGrouping && column.key === "pct") {
+            const numeric = Number(params.value ?? 0);
+            return `${(Number.isFinite(numeric) ? numeric : 0).toFixed(2)}%`;
           }
           return formatCellValue(params.value as string | number | null);
         },
@@ -70,7 +105,13 @@ export function EC2ExplorerTable({
           : undefined,
       } satisfies ColDef<EC2ExplorerTableRow>;
     });
-  }, [onRecommendationClick, table]);
+    return defs.map((columnDef) => {
+      if (table.columns.some((column) => column.key === "dataTransferCost") && columnDef.field === "dataTransferCost") {
+        return { ...columnDef, sort: "desc" as const };
+      }
+      return columnDef;
+    });
+  }, [groupBy, metric, onRecommendationClick, table]);
 
   if (loading) {
     return <div className="ec2-explorer-table__skeleton" aria-hidden="true" />;

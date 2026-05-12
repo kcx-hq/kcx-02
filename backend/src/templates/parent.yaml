@@ -87,6 +87,11 @@ Parameters:
     AllowedValues: ['true', 'false']
     Default: 'true'
 
+  EnableLoadBalancerModule:
+    Type: String
+    AllowedValues: ['true', 'false']
+    Default: 'true'
+
   UseTagScopedAccess:
     Type: String
     AllowedValues: ['true', 'false']
@@ -120,6 +125,10 @@ Parameters:
     Type: String
     Description: S3 URL of cloudwatch-module.yaml
 
+  LoadBalancerModuleTemplateUrl:
+    Type: String
+    Description: S3 URL of load-balancer-module.yaml
+
 Conditions:
   CreateBillingExport: !Equals [!Ref EnableBillingExport, 'true']
   CreateCloudTrail: !Equals [!Ref EnableCloudTrail, 'true']
@@ -130,6 +139,9 @@ Conditions:
   CreateCloudWatchModule: !And
     - !Equals [!Ref EnableActionRole, 'true']
     - !Equals [!Ref EnableCloudWatchModule, 'true']
+  CreateLoadBalancerModule: !And
+    - !Equals [!Ref EnableActionRole, 'true']
+    - !Equals [!Ref EnableLoadBalancerModule, 'true']
 
 Resources:
   ActionRoleStack:
@@ -162,6 +174,16 @@ Resources:
     DependsOn: ActionRoleStack
     Properties:
       TemplateURL: !Ref CloudwatchModuleTemplateUrl
+      Parameters:
+        ConnectionName: !Ref ConnectionName
+        ActionRoleName: !GetAtt ActionRoleStack.Outputs.ActionRoleName
+
+  LoadBalancerModuleStack:
+    Type: AWS::CloudFormation::Stack
+    Condition: CreateLoadBalancerModule
+    DependsOn: ActionRoleStack
+    Properties:
+      TemplateURL: !Ref LoadBalancerModuleTemplateUrl
       Parameters:
         ConnectionName: !Ref ConnectionName
         ActionRoleName: !GetAtt ActionRoleStack.Outputs.ActionRoleName

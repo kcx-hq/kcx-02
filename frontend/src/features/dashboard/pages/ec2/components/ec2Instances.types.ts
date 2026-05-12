@@ -10,7 +10,6 @@ export type EC2InstancesNetworkType =
   | "Inter-AZ Data Transfer"
   | "NAT Gateway"
   | "Elastic IP"
-  | "Load Balancer"
   | "Other Network";
 
 export type EC2InstancesControlsState = {

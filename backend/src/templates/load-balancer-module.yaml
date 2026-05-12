@@ -1,0 +1,42 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: KCX Load Balancer (ALB/NLB) action permissions module
+
+Parameters:
+  ConnectionName:
+    Type: String
+    Description: Friendly connection name from KCX
+    AllowedPattern: '^[a-z0-9-]+$'
+    ConstraintDescription: ConnectionName must contain only lowercase letters, numbers, and hyphens.
+
+  ActionRoleName:
+    Type: String
+    Description: Name of the IAM role to attach ELBv2 permissions to
+
+Resources:
+  KCXLoadBalancerModulePolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: !Sub kcx-load-balancer-module-${ConnectionName}
+      Roles:
+        - !Ref ActionRoleName
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: ELBv2ReadAccess
+            Effect: Allow
+            Action:
+              - elasticloadbalancing:DescribeLoadBalancers
+              - elasticloadbalancing:DescribeTargetGroups
+              - elasticloadbalancing:DescribeListeners
+              - elasticloadbalancing:DescribeTags
+              - elasticloadbalancing:DescribeTargetHealth
+            Resource: "*"
+
+Outputs:
+  ModuleName:
+    Description: Name of the enabled module
+    Value: load-balancer
+
+  AttachedRoleName:
+    Description: Name of the IAM role this module attached to
+    Value: !Ref ActionRoleName

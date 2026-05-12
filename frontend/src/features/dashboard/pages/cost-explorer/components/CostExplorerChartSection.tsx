@@ -12,6 +12,7 @@ type CostExplorerChartSectionProps = {
   errorMessage?: string;
   isFetching: boolean;
   chartReady: boolean;
+  onPointClick?: (params: unknown) => void;
   chartMode: "line" | "bar";
   onChartModeChange: (mode: "line" | "bar") => void;
   kpis: Array<{
@@ -52,6 +53,7 @@ export function CostExplorerChartSection({
   errorMessage,
   isFetching,
   chartReady,
+  onPointClick,
   chartMode,
   onChartModeChange,
   kpis,
@@ -68,7 +70,7 @@ export function CostExplorerChartSection({
   const rowsMenuRef = useRef<HTMLDivElement | null>(null);
   const [modeMenuOpen, setModeMenuOpen] = useState(false);
   const [rowsMenuOpen, setRowsMenuOpen] = useState(false);
-  const showRefreshSkeleton = (showApplySkeleton || isFetching) && !isLoading && chartReady;
+  const showFetchStatus = isFetching && !isLoading && chartReady;
 
   useEffect(() => {
     const handlePointerDown = (event: MouseEvent) => {
@@ -147,7 +149,7 @@ export function CostExplorerChartSection({
               </div>
             ) : null}
           </div>
-          {showRefreshSkeleton ? (
+          {showFetchStatus ? (
             <span className="cost-explorer-chart-panel__status">
               {showApplySkeleton ? "Applying filters..." : "Refreshing data..."}
             </span>
@@ -180,9 +182,9 @@ export function CostExplorerChartSection({
           />
         ) : null}
         {!isLoading && !isError && chartReady ? (
-          <div className={`cost-explorer-chart-stack${showRefreshSkeleton ? " is-fetching" : ""}`}>
+          <div className="cost-explorer-chart-stack">
             <div key={chartMode} className="cost-explorer-chart-canvas">
-              <BaseEChart option={option} height={420} />
+              <BaseEChart option={option} height={420} onPointClick={onPointClick} />
             </div>
             {topBreakdowns.length ? (
               <div className={`cost-explorer-breakdown-grid${topBreakdowns.length === 1 ? " is-single" : ""}`} aria-label="Cost breakdowns">
@@ -283,21 +285,6 @@ export function CostExplorerChartSection({
                     ) : null}
                   </div>
                 ))}
-              </div>
-            ) : null}
-            {showRefreshSkeleton ? (
-              <div className="cost-explorer-refresh-skeleton" aria-hidden="true">
-                <div className="cost-explorer-refresh-skeleton__chips">
-                  <span className="cost-explorer-refresh-skeleton__chip" />
-                  <span className="cost-explorer-refresh-skeleton__chip" />
-                  <span className="cost-explorer-refresh-skeleton__chip" />
-                </div>
-                <div className="cost-explorer-refresh-skeleton__chart" />
-                <div className="cost-explorer-refresh-skeleton__table">
-                  <span className="cost-explorer-refresh-skeleton__row" />
-                  <span className="cost-explorer-refresh-skeleton__row" />
-                  <span className="cost-explorer-refresh-skeleton__row" />
-                </div>
               </div>
             ) : null}
           </div>

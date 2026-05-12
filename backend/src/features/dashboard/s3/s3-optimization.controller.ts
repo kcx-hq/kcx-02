@@ -27,6 +27,150 @@ export async function handleGetS3Optimization(req: Request, res: Response): Prom
   });
 }
 
+export async function handleGetS3Replication(req: Request, res: Response): Promise<void> {
+  const dashboardRequest = buildDashboardRequest(req);
+  validateDashboardRequest(dashboardRequest);
+
+  const scope = await scopeResolver.resolve(dashboardRequest);
+  const data = await s3OptimizationService.getReplicationVisibility(scope);
+
+  sendSuccess({
+    res,
+    req,
+    statusCode: HTTP_STATUS.OK,
+    message: "S3 replication visibility fetched successfully",
+    data,
+  });
+}
+
+export async function handleGetS3ReplicationDestinationBuckets(req: Request, res: Response): Promise<void> {
+  const dashboardRequest = buildDashboardRequest(req);
+  validateDashboardRequest(dashboardRequest);
+
+  const sourceBucketName = typeof req.query.sourceBucketName === "string" ? req.query.sourceBucketName.trim() : "";
+  if (!sourceBucketName) {
+    throw new BadRequestError("sourceBucketName query parameter is required");
+  }
+
+  const scope = await scopeResolver.resolve(dashboardRequest);
+  const data = await s3OptimizationService.getReplicationDestinationBuckets(scope, sourceBucketName);
+
+  sendSuccess({
+    res,
+    req,
+    statusCode: HTTP_STATUS.OK,
+    message: "S3 replication destination buckets fetched successfully",
+    data,
+  });
+}
+
+export async function handlePreviewS3ReplicationSetup(req: Request, res: Response): Promise<void> {
+  const dashboardRequest = buildDashboardRequest(req);
+  validateDashboardRequest(dashboardRequest);
+  const scope = await scopeResolver.resolve(dashboardRequest);
+  const payload = req.body as {
+    sourceBucketName?: string;
+    destinationBucketName?: string;
+    destinationRegion?: string;
+    replicationType?: "same_account" | "cross_account";
+    destinationAccountId?: string | null;
+    replicationRoleArn?: string;
+    ruleName?: string;
+    prefix?: string | null;
+    replicateDeleteMarkers?: boolean;
+    autoEnableSourceVersioning?: boolean;
+    autoEnableDestinationVersioning?: boolean;
+  };
+
+  const data = await s3OptimizationService.previewReplicationSetup(scope, {
+    sourceBucketName: String(payload.sourceBucketName ?? "").trim(),
+    destinationBucketName: String(payload.destinationBucketName ?? "").trim(),
+    destinationRegion: String(payload.destinationRegion ?? "").trim(),
+    replicationType: payload.replicationType === "cross_account" ? "cross_account" : "same_account",
+    destinationAccountId: payload.destinationAccountId ?? null,
+    replicationRoleArn: String(payload.replicationRoleArn ?? "").trim(),
+    ruleName: String(payload.ruleName ?? "").trim(),
+    prefix: payload.prefix ?? null,
+    replicateDeleteMarkers: payload.replicateDeleteMarkers === true,
+    autoEnableSourceVersioning: payload.autoEnableSourceVersioning === true,
+    autoEnableDestinationVersioning: payload.autoEnableDestinationVersioning === true,
+  });
+
+  sendSuccess({
+    res,
+    req,
+    statusCode: HTTP_STATUS.OK,
+    message: "S3 replication setup preview generated successfully",
+    data,
+  });
+}
+
+export async function handleAutoCreateS3ReplicationRole(req: Request, res: Response): Promise<void> {
+  const dashboardRequest = buildDashboardRequest(req);
+  validateDashboardRequest(dashboardRequest);
+  const scope = await scopeResolver.resolve(dashboardRequest);
+  const payload = req.body as {
+    sourceBucketName?: string;
+    destinationBucketName?: string;
+    roleName?: string | null;
+  };
+
+  const data = await s3OptimizationService.createReplicationRoleAutomatically(scope, {
+    sourceBucketName: String(payload.sourceBucketName ?? "").trim(),
+    destinationBucketName: String(payload.destinationBucketName ?? "").trim(),
+    roleName: payload.roleName ?? null,
+  });
+
+  sendSuccess({
+    res,
+    req,
+    statusCode: HTTP_STATUS.OK,
+    message: "S3 replication role created successfully",
+    data,
+  });
+}
+
+export async function handleApplyS3ReplicationSetup(req: Request, res: Response): Promise<void> {
+  const dashboardRequest = buildDashboardRequest(req);
+  validateDashboardRequest(dashboardRequest);
+  const scope = await scopeResolver.resolve(dashboardRequest);
+  const payload = req.body as {
+    sourceBucketName?: string;
+    destinationBucketName?: string;
+    destinationRegion?: string;
+    replicationType?: "same_account" | "cross_account";
+    destinationAccountId?: string | null;
+    replicationRoleArn?: string;
+    ruleName?: string;
+    prefix?: string | null;
+    replicateDeleteMarkers?: boolean;
+    autoEnableSourceVersioning?: boolean;
+    autoEnableDestinationVersioning?: boolean;
+  };
+
+  const data = await s3OptimizationService.applyReplicationSetup(scope, {
+    sourceBucketName: String(payload.sourceBucketName ?? "").trim(),
+    destinationBucketName: String(payload.destinationBucketName ?? "").trim(),
+    destinationRegion: String(payload.destinationRegion ?? "").trim(),
+    replicationType: payload.replicationType === "cross_account" ? "cross_account" : "same_account",
+    destinationAccountId: payload.destinationAccountId ?? null,
+    replicationRoleArn: String(payload.replicationRoleArn ?? "").trim(),
+    ruleName: String(payload.ruleName ?? "").trim(),
+    prefix: payload.prefix ?? null,
+    replicateDeleteMarkers: payload.replicateDeleteMarkers === true,
+    autoEnableSourceVersioning: payload.autoEnableSourceVersioning === true,
+    autoEnableDestinationVersioning: payload.autoEnableDestinationVersioning === true,
+  });
+
+  sendSuccess({
+    res,
+    req,
+    statusCode: HTTP_STATUS.OK,
+    message: "S3 replication configured successfully",
+    data,
+  });
+}
+
 export async function handleGetS3BucketLifecycleInsight(req: Request, res: Response): Promise<void> {
   const dashboardRequest = buildDashboardRequest(req);
   validateDashboardRequest(dashboardRequest);

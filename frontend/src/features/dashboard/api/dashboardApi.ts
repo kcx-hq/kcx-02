@@ -33,6 +33,10 @@ import type {
   Ec2DataTransferResponse,
   Ec2ElasticIpFiltersQuery,
   Ec2ElasticIpResponse,
+  LoadBalancerExplorerFiltersQuery,
+  LoadBalancerExplorerSummaryResponse,
+  LoadBalancerExplorerTrendResponse,
+  LoadBalancerExplorerGroupByResponse,
   DatabaseExplorerFilters,
   DatabaseExplorerResponse,
   DatabaseAssetsFilters,
@@ -48,6 +52,13 @@ import type {
   S3LifecyclePolicyDeleteResponse,
   S3PolicyActionHistoryResponse,
   S3OptimizationResponse,
+  S3ReplicationDestinationBucketsResponse,
+  S3ReplicationResponse,
+  S3ReplicationRoleAutoCreateRequest,
+  S3ReplicationRoleAutoCreateResponse,
+  S3ReplicationSetupApplyResponse,
+  S3ReplicationSetupPreviewResponse,
+  S3ReplicationSetupRequest,
   OptimizationIdleOverview,
   OptimizationCommitmentOverview,
   OptimizationIdleRecommendationsResponse,
@@ -422,6 +433,8 @@ function withEc2RecommendationsFilters(
   if (filters?.team) params.set("team", filters.team);
   if (filters?.product) params.set("product", filters.product);
   if (filters?.environment) params.set("environment", filters.environment);
+  if (filters?.service) params.set("service", filters.service);
+  if (filters?.resourceType) params.set("resourceType", filters.resourceType);
   if (Array.isArray(filters?.tags) && filters.tags.length > 0) params.set("tags", filters.tags.join(","));
   if (filters?.dateFrom) params.set("dateFrom", filters.dateFrom);
   if (filters?.dateTo) params.set("dateTo", filters.dateTo);
@@ -465,6 +478,40 @@ function withEc2ElasticIpFilters(
   return query.length > 0 ? `${path}?${query}` : path;
 }
 
+function withLoadBalancerExplorerFilters(
+  path: string,
+  scope: DashboardResolvedScope,
+  filters: LoadBalancerExplorerFiltersQuery,
+): string {
+  const params = new URLSearchParams(buildDashboardQueryParams(scope));
+  const appendArray = (key: string, values?: Array<string | number>) => {
+    if (!Array.isArray(values) || values.length === 0) return;
+    params.set(key, values.join(","));
+  };
+
+  params.set("metric", filters.metric);
+  if (filters.usageType) params.set("usageType", filters.usageType);
+  params.set("groupBy", filters.groupBy);
+  if (filters.startDate) params.set("startDate", filters.startDate);
+  if (filters.endDate) params.set("endDate", filters.endDate);
+  if (filters.granularity) params.set("granularity", filters.granularity);
+  if (filters.tagKey) params.set("tagKey", filters.tagKey);
+  if (filters.loadBalancerArn) params.set("loadBalancerArn", filters.loadBalancerArn);
+  if (filters.accountId) params.set("accountId", filters.accountId);
+  appendArray("regions", filters.regions);
+  appendArray("types", filters.types);
+  appendArray("schemes", filters.schemes);
+  appendArray("states", filters.states);
+  appendArray("teams", filters.teams);
+  appendArray("products", filters.products);
+  appendArray("environments", filters.environments);
+  appendArray("tags", filters.tags);
+  appendArray("groupValues", filters.groupValues);
+
+  const query = params.toString();
+  return query.length > 0 ? `${path}?${query}` : path;
+}
+
 function withS3CostInsightsFilters(
   path: string,
   scope: DashboardResolvedScope,
@@ -492,6 +539,9 @@ function withS3CostInsightsFilters(
   }
   if (filters?.yAxisMetric) {
     params.set("yAxisMetric", filters.yAxisMetric);
+  }
+  if (filters?.responseMode) {
+    params.set("responseMode", filters.responseMode);
   }
 
   const query = params.toString();
@@ -751,10 +801,14 @@ export const dashboardApi = {
       payload ?? {},
     );
   },
-  updateEc2RecommendationStatus(scope: DashboardResolvedScope, recommendationId: number, status: Ec2RecommendationStatus) {
-    return apiPatch<{ id: number; status: Ec2RecommendationStatus }>(
+  updateEc2RecommendationStatus(
+    scope: DashboardResolvedScope,
+    recommendationId: number,
+    payload: { status: Ec2RecommendationStatus; reason?: string | null; snoozed_until?: string | null },
+  ) {
+    return apiPatch<{ id: number; status: Ec2RecommendationStatus; statusReason?: string | null; snoozedUntil?: string | null }>(
       withDashboardQuery(`/dashboard/ec2/recommendations/${recommendationId}/status`, scope),
-      { status },
+      payload,
     );
   },
   getEc2Explorer(scope: DashboardResolvedScope, filters: Ec2ExplorerFiltersQuery) {
@@ -769,11 +823,37 @@ export const dashboardApi = {
   getEc2ElasticIps(scope: DashboardResolvedScope, filters?: Ec2ElasticIpFiltersQuery) {
     return apiGet<Ec2ElasticIpResponse>(withEc2ElasticIpFilters("/dashboard/ec2/elastic-ips", scope, filters));
   },
-  getS3CostInsights(scope: DashboardResolvedScope, filters?: S3CostInsightsFiltersQuery) {
-    return apiGet<S3CostInsightsResponse>(withS3CostInsightsFilters("/dashboard/s3/cost-insights", scope, filters));
+  getS3CostInsights(scope: DashboardResolvedScope, filters?: S3CostInsightsFiltersQuery, init?: RequestInit) {
+    return apiGet<S3CostInsightsResponse>(withS3CostInsightsFilters("/dashboard/s3/cost-insights", scope, filters), init);
   },
   getS3Optimization(scope: DashboardResolvedScope) {
     return apiGet<S3OptimizationResponse>(withDashboardQuery("/dashboard/s3/optimization", scope));
+  },
+  getS3Replication(scope: DashboardResolvedScope) {
+    return apiGet<S3ReplicationResponse>(withDashboardQuery("/dashboard/s3/replication", scope));
+  },
+  getS3ReplicationDestinationBuckets(scope: DashboardResolvedScope, sourceBucketName: string) {
+    const params = new URLSearchParams(buildDashboardQueryParams(scope));
+    params.set("sourceBucketName", sourceBucketName);
+    return apiGet<S3ReplicationDestinationBucketsResponse>(`/dashboard/s3/replication/destination-buckets?${params.toString()}`);
+  },
+  previewS3ReplicationSetup(scope: DashboardResolvedScope, payload: S3ReplicationSetupRequest) {
+    return apiPost<S3ReplicationSetupPreviewResponse>(
+      withDashboardQuery("/dashboard/s3/replication/setup/preview", scope),
+      payload,
+    );
+  },
+  applyS3ReplicationSetup(scope: DashboardResolvedScope, payload: S3ReplicationSetupRequest) {
+    return apiPost<S3ReplicationSetupApplyResponse>(
+      withDashboardQuery("/dashboard/s3/replication/setup/apply", scope),
+      payload,
+    );
+  },
+  autoCreateS3ReplicationRole(scope: DashboardResolvedScope, payload: S3ReplicationRoleAutoCreateRequest) {
+    return apiPost<S3ReplicationRoleAutoCreateResponse>(
+      withDashboardQuery("/dashboard/s3/replication/role/auto-create", scope),
+      payload,
+    );
   },
 
   getS3BucketLifecycleInsight(scope: DashboardResolvedScope, bucketName: string) {
@@ -856,10 +936,24 @@ export type {
   Ec2DataTransferResponse,
   Ec2ElasticIpFiltersQuery,
   Ec2ElasticIpResponse,
+  LoadBalancerExplorerMetric,
+  LoadBalancerExplorerGroupBy,
+  LoadBalancerExplorerGranularity,
+  LoadBalancerExplorerFiltersQuery,
+  LoadBalancerExplorerSummaryResponse,
+  LoadBalancerExplorerTrendResponse,
+  LoadBalancerExplorerGroupByResponse,
   S3CostInsightsFiltersQuery,
   S3CostInsightsResponse,
   S3BucketLifecycleInsightResponse,
   S3OptimizationResponse,
+  S3ReplicationDestinationBucketsResponse,
+  S3ReplicationResponse,
+  S3ReplicationRoleAutoCreateRequest,
+  S3ReplicationRoleAutoCreateResponse,
+  S3ReplicationSetupApplyResponse,
+  S3ReplicationSetupPreviewResponse,
+  S3ReplicationSetupRequest,
   S3LifecyclePolicyApplyRequest,
   S3LifecyclePolicyApplyResponse,
   S3LifecyclePolicyDeleteRequest,

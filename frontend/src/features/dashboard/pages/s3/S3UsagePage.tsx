@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 
 import type { S3CostInsightsFiltersQuery } from "../../api/dashboardApi";
 import { useS3CostInsightsQuery } from "../../hooks/useDashboardQueries";
+import { useDebouncedValue } from "../../hooks/useDebouncedValue";
 import { S3UsageFilters } from "./usage/components/S3UsageFilters";
 import { S3UsageChartPanel } from "./usage/components/S3UsageChartPanel";
 import {
@@ -75,6 +76,7 @@ export default function S3UsagePage() {
   const location = useLocation();
   const navigate = useNavigate();
   const filters = useMemo(() => normalizeUsageView(parseFiltersFromSearch(location.search)), [location.search]);
+  const debouncedFilters = useDebouncedValue(filters, 220);
 
   const applyFilters = (next: S3UsageFilterValue) => {
     const normalizedNext = normalizeUsageView(next);
@@ -104,51 +106,60 @@ export default function S3UsagePage() {
 
   const queryFilters = useMemo<S3CostInsightsFiltersQuery>(
     () => ({
-      ...(filters.seriesValue ? { seriesValues: [filters.seriesValue] } : {}),
-      ...(filters.category
+      ...(debouncedFilters.seriesValue ? { seriesValues: [debouncedFilters.seriesValue] } : {}),
+      ...(debouncedFilters.category
         ? {
             costCategory: [
-              filters.category === "storage"
+              debouncedFilters.category === "storage"
                 ? "Storage"
-                : filters.category === "data_transfer"
+                : debouncedFilters.category === "data_transfer"
                   ? "Transfer"
                   : "Request",
             ],
           }
-        : filters.seriesBy === "cost_category" && filters.seriesValue
-          ? { costCategory: [filters.seriesValue] }
+        : debouncedFilters.seriesBy === "cost_category" && debouncedFilters.seriesValue
+          ? { costCategory: [debouncedFilters.seriesValue] }
           : {}),
-      ...(filters.region ? { region: [filters.region] } : {}),
-      ...(filters.storageClass ? { storageClass: [filters.storageClass] } : {}),
-      seriesBy: filters.seriesBy,
-      costBy: filters.xAxis,
-      yAxisMetric: filters.yAxisMetric,
+      ...(debouncedFilters.region ? { region: [debouncedFilters.region] } : {}),
+      ...(debouncedFilters.storageClass ? { storageClass: [debouncedFilters.storageClass] } : {}),
+      seriesBy: debouncedFilters.seriesBy,
+      costBy: debouncedFilters.xAxis,
+      yAxisMetric: debouncedFilters.yAxisMetric,
+      responseMode: "overview",
     }),
-    [filters],
+    [debouncedFilters],
   );
 
-  const query = useS3CostInsightsQuery(queryFilters);
+  const query = useS3CostInsightsQuery(queryFilters, { staleTime: 120_000 });
+  const shouldLoadUsageBreakdowns = !query.isLoading && !query.isError && (query.data?.bucketTable?.length ?? 0) > 0;
+  const shouldLoadStorageBreakdown = shouldLoadUsageBreakdowns && (filters.category === "" || filters.category === "storage");
+  const shouldLoadTransferBreakdown = shouldLoadUsageBreakdowns && (filters.category === "" || filters.category === "data_transfer");
+  const shouldLoadRequestBreakdown = shouldLoadUsageBreakdowns && (filters.category === "" || filters.category === "request");
+
   const storageBreakdownQuery = useS3CostInsightsQuery({
     ...queryFilters,
     costCategory: ["Storage"],
     seriesBy: "bucket",
     costBy: "date",
     yAxisMetric: "usage_quantity",
-  });
+    responseMode: "quick",
+  }, { enabled: shouldLoadStorageBreakdown, staleTime: 120_000 });
   const transferBreakdownQuery = useS3CostInsightsQuery({
     ...queryFilters,
     costCategory: ["Transfer"],
     seriesBy: "bucket",
     costBy: "date",
     yAxisMetric: "usage_quantity",
-  });
+    responseMode: "quick",
+  }, { enabled: shouldLoadTransferBreakdown, staleTime: 120_000 });
   const requestBreakdownQuery = useS3CostInsightsQuery({
     ...queryFilters,
     costCategory: ["Request"],
     seriesBy: "bucket",
     costBy: "date",
     yAxisMetric: "usage_quantity",
-  });
+    responseMode: "quick",
+  }, { enabled: shouldLoadRequestBreakdown, staleTime: 120_000 });
   const usageRows = useMemo(() => (query.data?.usageOperationTable ?? []) as S3UsageInsightsRow[], [query.data?.usageOperationTable]);
   const bucketUsageRows = useMemo<S3BucketUsageRow[]>(() => {
     const bucketRows = query.data?.bucketTable ?? [];
@@ -229,6 +240,14 @@ export default function S3UsagePage() {
         isLoading={isInitialLoading}
         isError={hasBlockingError}
         errorMessage={query.error?.message}
+        onBucketClick={(bucketName) => {
+          const searchParams = new URLSearchParams(location.search);
+          searchParams.set("s3Section", "usage");
+          navigate({
+            pathname: `/dashboard/s3/bucket/${encodeURIComponent(bucketName)}`,
+            search: searchParams.toString(),
+          });
+        }}
       />
 
       {!hasBlockingError ? (
@@ -251,12 +270,14 @@ export default function S3UsagePage() {
               bucketQuantityLabel="Usage"
               usageCategory={filters.category}
               showAllCategoryBreakdown={showAllCategoryBreakdown}
-              onBucketClick={(bucketName) =>
+              onBucketClick={(bucketName) => {
+                const searchParams = new URLSearchParams(location.search);
+                searchParams.set("s3Section", "usage");
                 navigate({
-                  pathname: `/dashboard/s3/usage/bucket/${encodeURIComponent(bucketName)}`,
-                  search: location.search,
-                })
-              }
+                  pathname: `/dashboard/s3/bucket/${encodeURIComponent(bucketName)}`,
+                  search: searchParams.toString(),
+                });
+              }}
             />
           )}
         </section>

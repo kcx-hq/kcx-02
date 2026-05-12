@@ -39,7 +39,6 @@ import { assumeRole } from "../infrastructure/aws-sts.service.js";
 import {
   type AwsBillingConnectionCallbackPayload,
   type AwsCloudTrailConnectionCallbackPayload,
-  type AwsConnectionCallbackPayload,
   type GenerateAwsCloudFormationSetupPayload,
   awsConnectionCallbackSchema,
   createCloudConnectionSchema,
@@ -1194,8 +1193,11 @@ export async function handleGetAwsCloudFormationSetupUrl(req: Request, res: Resp
   const enableCloudTrail = postPayload?.enableCloudTrail ?? false;
   const enableEC2Module = postPayload?.enableEC2Module ?? true;
   const enableCloudWatchModule = postPayload?.enableCloudWatchModule ?? true;
+  const enableLoadBalancerModule = postPayload?.enableLoadBalancerModule ?? true;
   const enableActionRole =
-    enableEC2Module || enableCloudWatchModule ? true : (postPayload?.enableActionRole ?? false);
+    enableEC2Module || enableCloudWatchModule || enableLoadBalancerModule
+      ? true
+      : (postPayload?.enableActionRole ?? false);
   const useTagScopedAccess = postPayload?.useTagScopedAccess ?? false;
 
   const exportPrefix = normalizeOptional(postPayload?.exportPrefix) ?? DEFAULT_AWS_EXPORT_PREFIX;
@@ -1265,6 +1267,7 @@ export async function handleGetAwsCloudFormationSetupUrl(req: Request, res: Resp
     enableActionRole,
     enableEC2Module,
     enableCloudWatchModule,
+    enableLoadBalancerModule,
     useTagScopedAccess,
     resourceTagKey,
     resourceTagValue,

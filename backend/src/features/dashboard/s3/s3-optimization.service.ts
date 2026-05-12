@@ -8,15 +8,28 @@ import type {
   S3LifecyclePolicyDeleteRequest,
   S3LifecyclePolicyDeleteResponse,
   S3OptimizationResponse,
+  S3ReplicationDestinationBucketsResponse,
+  S3ReplicationVisibilityResponse,
+  S3ReplicationSetupApplyResponse,
+  S3ReplicationRoleAutoCreateResponse,
+  S3ReplicationRoleAutoCreateRequest,
+  S3ReplicationSetupPreviewResponse,
+  S3ReplicationSetupRequest,
 } from "./s3-optimization.types.js";
 import { BadRequestError, ForbiddenError, NotFoundError } from "../../../errors/http-errors.js";
-import { CloudConnectionV2, S3BucketConfigSnapshot } from "../../../models/index.js";
+import { BillingSource, CloudConnectionV2, CloudProvider, S3BucketConfigSnapshot } from "../../../models/index.js";
 import { logger } from "../../../utils/logger.js";
 import { assumeRole } from "../../cloud-connections/aws/infrastructure/aws-sts.service.js";
+import { collectS3BucketConfigSnapshotsForBillingSource } from "../../billing/services/s3-bucket-config-snapshot.service.js";
 import {
   DeleteBucketLifecycleCommand,
+  GetBucketLocationCommand,
+  GetBucketReplicationCommand,
   GetBucketLifecycleConfigurationCommand,
   GetBucketVersioningCommand,
+  HeadBucketCommand,
+  PutBucketReplicationCommand,
+  PutBucketVersioningCommand,
   PutBucketLifecycleConfigurationCommand,
   S3Client,
   type BucketLifecycleConfiguration,
@@ -25,6 +38,7 @@ import {
   type TransitionStorageClass,
 } from "@aws-sdk/client-s3";
 import { GetCallerIdentityCommand, STSClient } from "@aws-sdk/client-sts";
+import { CreateRoleCommand, GetRoleCommand, IAMClient, PutRolePolicyCommand } from "@aws-sdk/client-iam";
 
 export class S3OptimizationService {
   constructor(private readonly repository: S3OptimizationRepository = new S3OptimizationRepository()) {}
@@ -528,6 +542,554 @@ export class S3OptimizationService {
       message: "Policy action history loaded",
       items,
     };
+  }
+
+  async getReplicationVisibility(scope: DashboardScope): Promise<S3ReplicationVisibilityResponse> {
+    await this.refreshReplicationSnapshotsForScope(scope);
+    const buckets = await this.repository.getReplicationVisibilityRows(scope);
+    return {
+      section: "s3-replication",
+      title: "S3 Replication",
+      message: "S3 replication visibility loaded",
+      buckets,
+    };
+  }
+
+  async getReplicationDestinationBuckets(
+    scope: DashboardScope,
+    sourceBucketName: string,
+  ): Promise<S3ReplicationDestinationBucketsResponse> {
+    const normalizedSourceBucketName = String(sourceBucketName ?? "").trim();
+    if (!normalizedSourceBucketName) {
+      throw new BadRequestError("sourceBucketName is required");
+    }
+
+    const snapshotBuckets = await this.repository.getReplicationVisibilityRows(scope);
+    const destinationBuckets = Array.from(
+      new Map(
+        snapshotBuckets
+          .map((row) => ({
+            bucketName: String(row.bucketName ?? "").trim(),
+            region: row.region ? String(row.region).trim() : null,
+          }))
+          .filter((row) => row.bucketName.length > 0 && row.bucketName !== normalizedSourceBucketName)
+          .map((row) => [row.bucketName.toLowerCase(), row] as const),
+      ).values(),
+    ).sort((a, b) => a.bucketName.localeCompare(b.bucketName));
+
+    return {
+      section: "s3-replication-destination-buckets",
+      title: "S3 Replication Destination Buckets",
+      message: "Destination bucket options loaded from dashboard snapshots",
+      sourceBucketName: normalizedSourceBucketName,
+      buckets: destinationBuckets,
+    };
+  }
+
+  async previewReplicationSetup(
+    scope: DashboardScope,
+    payload: S3ReplicationSetupRequest,
+  ): Promise<S3ReplicationSetupPreviewResponse> {
+    const prepared = await this.prepareReplicationSetupContext(scope, payload);
+    const checks = await this.buildReplicationSetupChecks(prepared, payload);
+    const canApply = checks.every((check) => check.status !== "fail");
+    return {
+      section: "s3-replication-setup-preview",
+      title: "S3 Replication Setup Preview",
+      message: canApply ? "Replication setup checks passed" : "Fix failed checks before applying replication",
+      canApply,
+      checks,
+    };
+  }
+
+  async applyReplicationSetup(
+    scope: DashboardScope,
+    payload: S3ReplicationSetupRequest,
+  ): Promise<S3ReplicationSetupApplyResponse> {
+    const prepared = await this.prepareReplicationSetupContext(scope, payload);
+    const checks = await this.buildReplicationSetupChecks(prepared, payload);
+    const failedChecks = checks.filter((check) => check.status === "fail");
+    if (failedChecks.length > 0) {
+      throw new BadRequestError(
+        `Replication setup blocked: ${failedChecks.map((item) => item.title).join(", ")}`,
+      );
+    }
+
+    const sourceVersioning = await prepared.sourceClient.send(
+      new GetBucketVersioningCommand({ Bucket: prepared.sourceBucketName }),
+    );
+    if (sourceVersioning.Status !== "Enabled") {
+      if (payload.autoEnableSourceVersioning) {
+        await prepared.sourceClient.send(
+          new PutBucketVersioningCommand({
+            Bucket: prepared.sourceBucketName,
+            VersioningConfiguration: { Status: "Enabled" },
+          }),
+        );
+      } else {
+        throw new BadRequestError("Source bucket versioning is not enabled");
+      }
+    }
+
+    const destinationClient = new S3Client({
+      region: payload.destinationRegion,
+      credentials: prepared.credentials,
+    });
+    try {
+      const destinationVersioning = await destinationClient.send(
+        new GetBucketVersioningCommand({ Bucket: payload.destinationBucketName }),
+      );
+      if (destinationVersioning.Status !== "Enabled") {
+        if (payload.autoEnableDestinationVersioning) {
+          await destinationClient.send(
+            new PutBucketVersioningCommand({
+              Bucket: payload.destinationBucketName,
+              VersioningConfiguration: { Status: "Enabled" },
+            }),
+          );
+        } else {
+          throw new BadRequestError("Destination bucket versioning is not enabled");
+        }
+      }
+    } catch (error) {
+      const code =
+        error && typeof error === "object" && "name" in error
+          ? String((error as { name?: string }).name ?? "")
+          : "";
+      if (code.toLowerCase().includes("accessdenied")) {
+        throw new BadRequestError("Destination versioning cannot be verified due to permissions");
+      }
+      throw error;
+    }
+
+    const existing = await prepared.sourceClient.send(
+      new GetBucketReplicationCommand({ Bucket: prepared.sourceBucketName }),
+    ).catch(() => null);
+    const existingRules = Array.isArray(existing?.ReplicationConfiguration?.Rules)
+      ? existing?.ReplicationConfiguration?.Rules
+      : [];
+    const normalizedRuleName = String(payload.ruleName ?? "").trim();
+    const filteredRules = existingRules.filter((rule) => String(rule.ID ?? "").trim() !== normalizedRuleName);
+
+    const destinationArn = `arn:aws:s3:::${payload.destinationBucketName}`;
+    const mergedRules = [
+      ...filteredRules,
+      {
+        ID: normalizedRuleName,
+        Status: "Enabled" as const,
+        Priority: 1,
+        DeleteMarkerReplication: {
+          Status: payload.replicateDeleteMarkers === true ? ("Enabled" as const) : ("Disabled" as const),
+        },
+        Filter: payload.prefix ? { Prefix: payload.prefix } : { Prefix: "" },
+        Destination: {
+          Bucket: destinationArn,
+          ...(payload.destinationAccountId ? { Account: payload.destinationAccountId } : {}),
+        },
+      },
+    ];
+
+    await prepared.sourceClient.send(
+      new PutBucketReplicationCommand({
+        Bucket: prepared.sourceBucketName,
+        ReplicationConfiguration: {
+          Role: payload.replicationRoleArn,
+          Rules: mergedRules,
+        },
+      }),
+    );
+
+    await S3BucketConfigSnapshot.create({
+      tenantId: scope.tenantId,
+      cloudConnectionId: prepared.connection.id,
+      providerId: prepared.connection.providerId ? Number(prepared.connection.providerId) : null,
+      accountId: prepared.context.accountId,
+      bucketName: prepared.sourceBucketName,
+      region: prepared.region,
+      scanTime: new Date(),
+      replicationStatus: "present",
+      replicationRulesCount: mergedRules.length,
+      replicationConfigJson: {
+        Role: payload.replicationRoleArn,
+        Rules: mergedRules,
+      },
+      createdAt: new Date(),
+    });
+
+    return {
+      section: "s3-replication-setup-apply",
+      title: "S3 Replication Setup Apply",
+      message: "Replication configured successfully",
+      sourceBucketName: prepared.sourceBucketName,
+      destinationBucketName: payload.destinationBucketName,
+      destinationRegion: payload.destinationRegion,
+      replicationStatus: "configured",
+    };
+  }
+
+  async createReplicationRoleAutomatically(
+    scope: DashboardScope,
+    payload: S3ReplicationRoleAutoCreateRequest,
+  ): Promise<S3ReplicationRoleAutoCreateResponse> {
+    const toAwsErrorCode = (error: unknown): string => {
+      if (!error || typeof error !== "object") return "";
+      const named = "name" in error ? String((error as { name?: string }).name ?? "") : "";
+      const coded = "Code" in error ? String((error as { Code?: string }).Code ?? "") : "";
+      const code = "code" in error ? String((error as { code?: string }).code ?? "") : "";
+      return named || coded || code;
+    };
+
+    const sourceBucketName = String(payload.sourceBucketName ?? "").trim();
+    const destinationBucketName = String(payload.destinationBucketName ?? "").trim();
+    if (!sourceBucketName || !destinationBucketName) {
+      throw new BadRequestError("sourceBucketName and destinationBucketName are required");
+    }
+    if (sourceBucketName === destinationBucketName) {
+      throw new BadRequestError("sourceBucketName and destinationBucketName must be different");
+    }
+
+    const context = await this.repository.getBucketLifecycleExecutionContext(scope, sourceBucketName);
+    const connection = await CloudConnectionV2.findOne({
+      where: {
+        id: context.cloudConnectionId,
+        tenantId: scope.tenantId,
+      },
+    });
+    if (!connection) throw new NotFoundError("Cloud connection not found for selected bucket");
+
+    const assumeRoleArn = String(connection.actionRoleArn ?? "").trim();
+    const externalId = String(connection.externalId ?? "").trim() || null;
+    if (!assumeRoleArn) throw new BadRequestError("Cloud connection missing ActionRoleArn");
+
+    const credentialsRaw = await assumeRole(assumeRoleArn, externalId);
+    const credentials = {
+      accessKeyId: credentialsRaw.accessKeyId,
+      secretAccessKey: credentialsRaw.secretAccessKey,
+      sessionToken: credentialsRaw.sessionToken,
+    };
+    const region = String(context.region ?? connection.region ?? "us-east-1").trim();
+    const iamClient = new IAMClient({ region, credentials });
+
+    const normalizedRoleName = String(payload.roleName ?? "").trim() || `kcx-s3-replication-${sourceBucketName.slice(0, 30).replace(/[^a-zA-Z0-9+=,.@_-]/g, "-")}`;
+    const trustPolicy = {
+      Version: "2012-10-17",
+      Statement: [
+        {
+          Effect: "Allow",
+          Principal: { Service: "s3.amazonaws.com" },
+          Action: "sts:AssumeRole",
+        },
+      ],
+    };
+
+    let roleArn = "";
+    try {
+      const existingRole = await iamClient.send(new GetRoleCommand({ RoleName: normalizedRoleName }));
+      console.log(existingRole);
+      roleArn = String(existingRole.Role?.Arn ?? "").trim();
+    } catch (getRoleError) {
+      const getRoleCode = toAwsErrorCode(getRoleError);
+      const normalizedGetRoleCode = getRoleCode.toLowerCase();
+      const isRoleMissing =
+        normalizedGetRoleCode === "nosuchentity" ||
+        normalizedGetRoleCode === "nosuchentityexception";
+      if (getRoleCode && !isRoleMissing) {
+        logger.error("S3 replication role auto-create: GetRole failed", {
+          tenantId: scope.tenantId,
+          roleName: normalizedRoleName,
+          errorCode: getRoleCode,
+          errorMessage: getRoleError instanceof Error ? getRoleError.message : String(getRoleError),
+        });
+        throw new ForbiddenError(
+          `Unable to read IAM role in client account (GetRole failed: ${getRoleCode || "unknown"}). Check iam:GetRole permission.`,
+        );
+      }
+      try {
+        const createdRole = await iamClient.send(
+          new CreateRoleCommand({
+            RoleName: normalizedRoleName,
+            AssumeRolePolicyDocument: JSON.stringify(trustPolicy),
+            Description: "KCX-managed S3 replication role",
+          }),
+        );
+        roleArn = String(createdRole.Role?.Arn ?? "").trim();
+      } catch (createRoleError) {
+        const createRoleCode = toAwsErrorCode(createRoleError);
+        if (createRoleCode === "EntityAlreadyExists") {
+          const existingRole = await iamClient.send(new GetRoleCommand({ RoleName: normalizedRoleName }));
+          roleArn = String(existingRole.Role?.Arn ?? "").trim();
+        } else {
+          logger.error("S3 replication role auto-create: CreateRole failed", {
+            tenantId: scope.tenantId,
+            roleName: normalizedRoleName,
+            errorCode: createRoleCode,
+            errorMessage: createRoleError instanceof Error ? createRoleError.message : String(createRoleError),
+          });
+          throw new ForbiddenError(
+            `Unable to create IAM role in client account (CreateRole failed: ${createRoleCode || "unknown"}). Check iam:CreateRole permission and IAM role creation guardrails.`,
+          );
+        }
+      }
+    }
+
+    const policyName = "kcx-s3-replication-policy";
+    const sourceBucketArn = `arn:aws:s3:::${sourceBucketName}`;
+    const destinationBucketArn = `arn:aws:s3:::${destinationBucketName}`;
+    const inlinePolicy = {
+      Version: "2012-10-17",
+      Statement: [
+        {
+          Sid: "SourceBucketRead",
+          Effect: "Allow",
+          Action: [
+            "s3:GetReplicationConfiguration",
+            "s3:ListBucket",
+          ],
+          Resource: [sourceBucketArn],
+        },
+        {
+          Sid: "SourceObjectRead",
+          Effect: "Allow",
+          Action: [
+            "s3:GetObjectVersionForReplication",
+            "s3:GetObjectVersionAcl",
+            "s3:GetObjectVersionTagging",
+          ],
+          Resource: [`${sourceBucketArn}/*`],
+        },
+        {
+          Sid: "DestinationWrite",
+          Effect: "Allow",
+          Action: [
+            "s3:ReplicateObject",
+            "s3:ReplicateDelete",
+            "s3:ReplicateTags",
+            "s3:ObjectOwnerOverrideToBucketOwner",
+          ],
+          Resource: [`${destinationBucketArn}/*`],
+        },
+      ],
+    };
+    try {
+      await iamClient.send(
+        new PutRolePolicyCommand({
+          RoleName: normalizedRoleName,
+          PolicyName: policyName,
+          PolicyDocument: JSON.stringify(inlinePolicy),
+        }),
+      );
+    } catch (putPolicyError) {
+      const putPolicyCode = toAwsErrorCode(putPolicyError);
+      logger.error("S3 replication role auto-create: PutRolePolicy failed", {
+        tenantId: scope.tenantId,
+        roleName: normalizedRoleName,
+        errorCode: putPolicyCode,
+        errorMessage: putPolicyError instanceof Error ? putPolicyError.message : String(putPolicyError),
+      });
+      throw new ForbiddenError(
+        `Unable to attach IAM inline policy in client account (PutRolePolicy failed: ${putPolicyCode || "unknown"}). Check iam:PutRolePolicy permission.`,
+      );
+    }
+
+    if (!roleArn) {
+      throw new BadRequestError("Failed to resolve replication role ARN");
+    }
+    return {
+      section: "s3-replication-role-auto-create",
+      title: "S3 Replication Role Auto Create",
+      message: "Replication IAM role created/updated successfully",
+      roleName: normalizedRoleName,
+      roleArn,
+    };
+  }
+
+  private async prepareReplicationSetupContext(scope: DashboardScope, payload: S3ReplicationSetupRequest): Promise<{
+    sourceBucketName: string;
+    region: string;
+    sourceClient: S3Client;
+    credentials: { accessKeyId: string; secretAccessKey: string; sessionToken: string | undefined };
+    context: Awaited<ReturnType<S3OptimizationRepository["getBucketLifecycleExecutionContext"]>>;
+    connection: InstanceType<typeof CloudConnectionV2>;
+  }> {
+    const sourceBucketName = String(payload.sourceBucketName ?? "").trim();
+    const destinationBucketName = String(payload.destinationBucketName ?? "").trim();
+    const destinationRegion = String(payload.destinationRegion ?? "").trim();
+    const replicationRoleArn = String(payload.replicationRoleArn ?? "").trim();
+    const ruleName = String(payload.ruleName ?? "").trim();
+    if (!sourceBucketName || !destinationBucketName || !destinationRegion || !replicationRoleArn || !ruleName) {
+      throw new BadRequestError("sourceBucketName, destinationBucketName, destinationRegion, replicationRoleArn and ruleName are required");
+    }
+
+    const context = await this.repository.getBucketLifecycleExecutionContext(scope, sourceBucketName);
+    const connection = await CloudConnectionV2.findOne({
+      where: {
+        id: context.cloudConnectionId,
+        tenantId: scope.tenantId,
+      },
+    });
+    if (!connection) throw new NotFoundError("Cloud connection not found for selected bucket");
+
+    const assumeRoleArn = String(connection.actionRoleArn ?? "").trim();
+    const externalId = String(connection.externalId ?? "").trim() || null;
+    if (!assumeRoleArn) throw new BadRequestError("Cloud connection missing ActionRoleArn");
+
+    const credentialsRaw = await assumeRole(assumeRoleArn, externalId);
+    const credentials = {
+      accessKeyId: credentialsRaw.accessKeyId,
+      secretAccessKey: credentialsRaw.secretAccessKey,
+      sessionToken: credentialsRaw.sessionToken,
+    };
+    const region = String(context.region ?? connection.region ?? "us-east-1").trim();
+    const sourceClient = new S3Client({ region, credentials });
+    return { sourceBucketName, region, sourceClient, credentials, context, connection };
+  }
+
+  private async buildReplicationSetupChecks(
+    prepared: {
+      sourceBucketName: string;
+      region: string;
+      sourceClient: S3Client;
+      credentials: { accessKeyId: string; secretAccessKey: string; sessionToken: string | undefined };
+      context: Awaited<ReturnType<S3OptimizationRepository["getBucketLifecycleExecutionContext"]>>;
+    },
+    payload: S3ReplicationSetupRequest,
+  ): Promise<S3ReplicationSetupPreviewResponse["checks"]> {
+    const checks: S3ReplicationSetupPreviewResponse["checks"] = [];
+    const sourceVersioning = await prepared.sourceClient.send(
+      new GetBucketVersioningCommand({ Bucket: prepared.sourceBucketName }),
+    );
+    checks.push({
+      key: "source_versioning",
+      title: "Source bucket versioning",
+      status: sourceVersioning.Status === "Enabled" ? "pass" : "warn",
+      detail: sourceVersioning.Status === "Enabled"
+        ? "Source bucket versioning is enabled"
+        : "Source bucket versioning is not enabled; enable before apply",
+    });
+
+    const destinationClient = new S3Client({
+      region: payload.destinationRegion,
+      credentials: prepared.credentials,
+    });
+
+    try {
+      await destinationClient.send(new HeadBucketCommand({ Bucket: payload.destinationBucketName }));
+      checks.push({
+        key: "destination_bucket_access",
+        title: "Destination bucket access",
+        status: "pass",
+        detail: "Destination bucket is reachable",
+      });
+    } catch (error) {
+      const errorCode =
+        error && typeof error === "object" && "name" in error
+          ? String((error as { name?: string }).name ?? "")
+          : "";
+      checks.push({
+        key: "destination_bucket_access",
+        title: "Destination bucket access",
+        status: "warn",
+        detail: `Direct head access check failed (${errorCode || "unknown"}). Continuing with region/versioning checks.`,
+      });
+    }
+
+    try {
+      const destinationLocation = await destinationClient.send(
+        new GetBucketLocationCommand({ Bucket: payload.destinationBucketName }),
+      );
+      const resolvedRegion = destinationLocation.LocationConstraint === "EU"
+        ? "eu-west-1"
+        : String(destinationLocation.LocationConstraint ?? "us-east-1");
+      checks.push({
+        key: "destination_region_match",
+        title: "Destination region check",
+        status: resolvedRegion === payload.destinationRegion ? "pass" : "warn",
+        detail: resolvedRegion === payload.destinationRegion
+          ? `Destination bucket region matches (${resolvedRegion})`
+          : `Destination bucket region is ${resolvedRegion}; requested ${payload.destinationRegion}`,
+      });
+    } catch {
+      checks.push({
+        key: "destination_region_match",
+        title: "Destination region check",
+        status: "warn",
+        detail: "Could not verify destination bucket region",
+      });
+    }
+
+    try {
+      const destinationVersioning = await destinationClient.send(
+        new GetBucketVersioningCommand({ Bucket: payload.destinationBucketName }),
+      );
+      checks.push({
+        key: "destination_versioning",
+        title: "Destination bucket versioning",
+        status: destinationVersioning.Status === "Enabled" ? "pass" : "warn",
+        detail: destinationVersioning.Status === "Enabled"
+          ? "Destination bucket versioning is enabled"
+          : "Destination bucket versioning is not enabled; enable before apply",
+      });
+    } catch {
+      checks.push({
+        key: "destination_versioning",
+        title: "Destination bucket versioning",
+        status: "warn",
+        detail: "Could not verify destination bucket versioning",
+      });
+    }
+
+    const roleArn = String(payload.replicationRoleArn ?? "").trim();
+    checks.push({
+      key: "replication_role",
+      title: "Replication IAM role",
+      status: roleArn.startsWith("arn:aws:iam::") ? "pass" : "fail",
+      detail: roleArn.startsWith("arn:aws:iam::")
+        ? "Replication IAM role ARN provided"
+        : "Valid replication IAM role ARN is required",
+    });
+    return checks;
+  }
+
+  private async refreshReplicationSnapshotsForScope(scope: DashboardScope): Promise<void> {
+    try {
+      const awsProvider = await CloudProvider.findOne({ where: { code: "aws" } });
+      if (!awsProvider) return;
+
+      let targetBillingSourceIds: string[] = [];
+      if (scope.scopeType === "global" && Array.isArray(scope.billingSourceIds) && scope.billingSourceIds.length > 0) {
+        targetBillingSourceIds = scope.billingSourceIds.map((id) => String(id));
+      } else if (scope.scopeType === "global") {
+        const sources = await BillingSource.findAll({
+          where: {
+            tenantId: scope.tenantId,
+            cloudProviderId: String(awsProvider.id),
+            status: "active",
+          },
+          attributes: ["id"],
+        });
+        targetBillingSourceIds = sources.map((source) => String(source.id));
+      }
+
+      for (const billingSourceId of targetBillingSourceIds) {
+        try {
+          await collectS3BucketConfigSnapshotsForBillingSource({
+            tenantId: scope.tenantId,
+            billingSourceId,
+          });
+        } catch (error) {
+          logger.warn("S3 replication refresh failed for billing source", {
+            tenantId: scope.tenantId,
+            billingSourceId,
+            reason: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
+    } catch (error) {
+      logger.warn("S3 replication refresh skipped due to pre-read failure", {
+        tenantId: scope.tenantId,
+        reason: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   async deleteBucketLifecyclePolicy(

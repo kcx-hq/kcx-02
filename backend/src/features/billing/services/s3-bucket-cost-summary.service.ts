@@ -64,7 +64,7 @@ export async function refreshS3BucketCostSummaryForBillingSource({
 
   const snapshotDateRows = await sequelize.query<{ snapshot_date: string }>(
     `
-    SELECT COALESCE(MAX(dd.full_date), CURRENT_DATE::text) AS snapshot_date
+    SELECT COALESCE(MAX(dd.full_date), CURRENT_DATE) AS snapshot_date
     FROM fact_cost_line_items fcli
     LEFT JOIN dim_date dd ON dd.id = fcli.usage_date_key
     WHERE fcli.tenant_id = $1

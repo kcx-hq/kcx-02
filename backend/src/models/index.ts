@@ -19,6 +19,8 @@ import createBillingSourceModel from "./billing-source.js";
 import createBillingIngestionRunModel from "./billing-ingestion-run.js";
 import createBillingIngestionRunFileModel from "./billing-ingestion-run-file.js";
 import createAnomalyDetectionRunModel from "./anomaly-detection-run.js";
+import createStorageLensRawFileModel from "./storage-lens-raw-file.js";
+import createStorageLensIngestionRunModel from "./storage-lens-ingestion-run.js";
 import createManualCloudConnectionModel from "./manual-cloud-connection.js";
 import createS3UploadConnectionModel from "./s3-upload-connection.js";
 import createSupportTicketModel from "./support-ticket.js";
@@ -64,6 +66,11 @@ import createEc2EipInventorySnapshotModel from "./ec2/ec2_eip_inventory_snapshot
 import createEc2AmiInventorySnapshotModel from "./ec2/ec2_ami_inventory_snapshots.js";
 import createEc2LoadBalancerInventorySnapshotModel from "./ec2/ec2_load_balancer_inventory_snapshots.js";
 import createEc2TargetGroupInventorySnapshotModel from "./ec2/ec2_target_group_inventory_snapshots.js";
+import createLoadBalancerModel from "./load_balancers/load_balancers.js";
+import createLoadBalancerTargetGroupModel from "./load_balancers/load_balancer_target_groups.js";
+import createLoadBalancerListenerModel from "./load_balancers/load_balancer_listeners.js";
+import createLoadBalancerCostDailyModel from "./load_balancers/load_balancer_cost_daily.js";
+import createLoadBalancerMetricsDailyModel from "./load_balancers/load_balancer_metrics_daily.js";
 import createEc2InstanceUtilizationHourlyModel from "./ec2/ec2_instance_utilization_hourly.js";
 import createEc2InstanceUtilizationDailyModel from "./ec2/ec2_instance_utilization_daily.js";
 import createDbResourceInventorySnapshotModel from "./db/db_resource_inventory_snapshots.js";
@@ -113,6 +120,8 @@ const BillingSource = createBillingSourceModel(sequelize);
 const BillingIngestionRun = createBillingIngestionRunModel(sequelize);
 const BillingIngestionRunFile = createBillingIngestionRunFileModel(sequelize);
 const AnomalyDetectionRun = createAnomalyDetectionRunModel(sequelize);
+const StorageLensRawFile = createStorageLensRawFileModel(sequelize);
+const StorageLensIngestionRun = createStorageLensIngestionRunModel(sequelize);
 const ManualCloudConnection = createManualCloudConnectionModel(sequelize);
 const S3UploadConnection = createS3UploadConnectionModel(sequelize);
 const SupportTicket = createSupportTicketModel(sequelize);
@@ -158,6 +167,11 @@ const Ec2EipInventorySnapshot = createEc2EipInventorySnapshotModel(sequelize);
 const Ec2AmiInventorySnapshot = createEc2AmiInventorySnapshotModel(sequelize);
 const Ec2LoadBalancerInventorySnapshot = createEc2LoadBalancerInventorySnapshotModel(sequelize);
 const Ec2TargetGroupInventorySnapshot = createEc2TargetGroupInventorySnapshotModel(sequelize);
+const LoadBalancer = createLoadBalancerModel(sequelize);
+const LoadBalancerTargetGroup = createLoadBalancerTargetGroupModel(sequelize);
+const LoadBalancerListener = createLoadBalancerListenerModel(sequelize);
+const LoadBalancerCostDaily = createLoadBalancerCostDailyModel(sequelize);
+const LoadBalancerMetricsDaily = createLoadBalancerMetricsDailyModel(sequelize);
 const Ec2InstanceUtilizationHourly = createEc2InstanceUtilizationHourlyModel(sequelize);
 const Ec2InstanceUtilizationDaily = createEc2InstanceUtilizationDailyModel(sequelize);
 const DbResourceInventorySnapshot = createDbResourceInventorySnapshotModel(sequelize);
@@ -219,6 +233,12 @@ BillingIngestionRun.hasMany(AnomalyDetectionRun, { foreignKey: "ingestionRunId" 
 AnomalyDetectionRun.belongsTo(BillingIngestionRun, { foreignKey: "ingestionRunId" });
 RawBillingFile.hasMany(BillingIngestionRunFile, { foreignKey: "rawBillingFileId" });
 BillingIngestionRunFile.belongsTo(RawBillingFile, { foreignKey: "rawBillingFileId" });
+BillingSource.hasMany(StorageLensIngestionRun, { foreignKey: "billingSourceId" });
+StorageLensIngestionRun.belongsTo(BillingSource, { foreignKey: "billingSourceId" });
+BillingSource.hasMany(StorageLensRawFile, { foreignKey: "billingSourceId" });
+StorageLensRawFile.belongsTo(BillingSource, { foreignKey: "billingSourceId" });
+StorageLensIngestionRun.hasMany(StorageLensRawFile, { foreignKey: "ingestionRunId" });
+StorageLensRawFile.belongsTo(StorageLensIngestionRun, { foreignKey: "ingestionRunId" });
 Tenant.hasMany(ManualCloudConnection, { foreignKey: "tenantId" });
 ManualCloudConnection.belongsTo(Tenant, { foreignKey: "tenantId" });
 User.hasMany(ManualCloudConnection, { foreignKey: "createdBy" });
@@ -707,6 +727,8 @@ export {
   BillingIngestionRun,
   BillingIngestionRunFile,
   AnomalyDetectionRun,
+  StorageLensRawFile,
+  StorageLensIngestionRun,
   ManualCloudConnection,
   S3UploadConnection,
   SupportTicket,
@@ -752,6 +774,11 @@ export {
   Ec2AmiInventorySnapshot,
   Ec2LoadBalancerInventorySnapshot,
   Ec2TargetGroupInventorySnapshot,
+  LoadBalancer,
+  LoadBalancerTargetGroup,
+  LoadBalancerListener,
+  LoadBalancerCostDaily,
+  LoadBalancerMetricsDaily,
   Ec2InstanceUtilizationHourly,
   Ec2InstanceUtilizationDaily,
   DbResourceInventorySnapshot,

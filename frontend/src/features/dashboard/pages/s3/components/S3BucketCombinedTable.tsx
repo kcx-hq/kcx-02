@@ -5,31 +5,50 @@ import { BaseDataTable } from "../../../common/tables/BaseDataTable";
 const currencyFormatter = new Intl.NumberFormat("en-US", {
   style: "currency",
   currency: "USD",
-  minimumFractionDigits: 4,
+  minimumFractionDigits: 5,
   maximumFractionDigits: 5,
 });
 
 const decimalFormatter = new Intl.NumberFormat("en-US", {
-  minimumFractionDigits: 4,
-  maximumFractionDigits: 5,
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
 });
 
-const integerFormatter = new Intl.NumberFormat("en-US", {
-  maximumFractionDigits: 0,
+const percentFormatter = new Intl.NumberFormat("en-US", {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
 });
+
+const bytesToReadable = (value: number | null): string => {
+  if (value == null || Number.isNaN(value) || value <= 0) return "--";
+  const tebibytes = value / 1024 ** 4;
+  if (tebibytes >= 1) return `${decimalFormatter.format(tebibytes)} TB`;
+  const gibibytes = value / 1024 ** 3;
+  return `${decimalFormatter.format(gibibytes)} GB`;
+};
 
 export type S3BucketCombinedRow = {
   bucketName: string;
   account: string;
   region: string;
-  totalCost: number;
-  storageCost: number;
+  totalMonthlyCost: number;
+  storageSizeBytes: number | null;
+  objectCount: number | null;
+  storageClassMix: string;
   requestCost: number;
   transferCost: number;
-  storageGb: number;
-  requestCount: number;
-  transferGb: number;
-  usageInfo: string;
+  monthlyGrowthPct: number | null;
+  lastAccessLabel: string;
+  lifecycleStatus: string;
+  governanceStatus: string;
+  publicAccess: string;
+  versioning: string;
+  encryption: string;
+  optimizationScore: number | null;
+  potentialSavings: number;
+  publicRiskScore: number;
+  lastAccessOrder: number;
+  lastAccessEpoch: number | null;
 };
 
 type Props = {
@@ -51,71 +70,62 @@ export function S3BucketCombinedTable({ rows, height = 520, onBucketClick }: Pro
           const bucketName = String(params.value ?? "");
           if (!bucketName) return <span>-</span>;
           return (
-            <button
-              type="button"
-              title={`Open details for ${bucketName}`}
-              onClick={() => onBucketClick?.(bucketName)}
-              style={{
-                border: 0,
-                background: "transparent",
-                padding: 0,
-                color: "#1f5c86",
-                textDecoration: "underline",
-                fontWeight: 600,
-                cursor: "pointer",
-                textAlign: "left",
-              }}
-            >
-              {bucketName}
-            </button>
+            <div className="s3-bucket-name-scroll" title={bucketName}>
+              <button
+                type="button"
+                title={`Open details for ${bucketName}`}
+                onClick={() => onBucketClick?.(bucketName)}
+                className="s3-bucket-name-scroll__btn"
+              >
+                {bucketName}
+              </button>
+            </div>
           );
         },
       },
-      { headerName: "Account", field: "account", minWidth: 170 },
-      { headerName: "Region", field: "region", minWidth: 150 },
       {
-        headerName: "Total Cost",
-        field: "totalCost",
-        minWidth: 145,
+        headerName: "Total Monthly Cost",
+        field: "totalMonthlyCost",
+        minWidth: 165,
         valueFormatter: (params) => currencyFormatter.format(Number(params.value ?? 0)),
       },
       {
-        headerName: "Storage Cost",
-        field: "storageCost",
+        headerName: "Storage Size",
+        field: "storageSizeBytes",
+        minWidth: 150,
+        valueFormatter: (params) => bytesToReadable(params.value == null ? null : Number(params.value)),
+      },
+      {
+        headerName: "Monthly Growth",
+        field: "monthlyGrowthPct",
         minWidth: 145,
+        valueFormatter: (params) => {
+          const value = params.value;
+          if (value === null || typeof value === "undefined") return "--";
+          const numeric = Number(value);
+          const sign = numeric > 0 ? "+" : "";
+          return `${sign}${percentFormatter.format(numeric)}%`;
+        },
+      },
+      { headerName: "Last Access", field: "lastAccessLabel", minWidth: 220 },
+      { headerName: "Lifecycle Status", field: "lifecycleStatus", minWidth: 150 },
+      { headerName: "Governance Status", field: "governanceStatus", minWidth: 170 },
+      {
+        headerName: "Optimization Score",
+        field: "optimizationScore",
+        minWidth: 155,
+        valueFormatter: (params) => {
+          const value = params.value;
+          if (value === null || typeof value === "undefined") return "--";
+          return decimalFormatter.format(Number(value));
+        },
+      },
+      {
+        headerName: "Potential Savings",
+        field: "potentialSavings",
+        minWidth: 150,
         valueFormatter: (params) => currencyFormatter.format(Number(params.value ?? 0)),
       },
-      {
-        headerName: "Request Cost",
-        field: "requestCost",
-        minWidth: 145,
-        valueFormatter: (params) => currencyFormatter.format(Number(params.value ?? 0)),
-      },
-      {
-        headerName: "Transfer Cost",
-        field: "transferCost",
-        minWidth: 145,
-        valueFormatter: (params) => currencyFormatter.format(Number(params.value ?? 0)),
-      },
-      {
-        headerName: "Storage Usage (GB avg/day)",
-        field: "storageGb",
-        minWidth: 190,
-        valueFormatter: (params) => decimalFormatter.format(Number(params.value ?? 0)),
-      },
-      {
-        headerName: "Request Usage (count)",
-        field: "requestCount",
-        minWidth: 170,
-        valueFormatter: (params) => integerFormatter.format(Number(params.value ?? 0)),
-      },
-      {
-        headerName: "Transfer Usage (GB)",
-        field: "transferGb",
-        minWidth: 160,
-        valueFormatter: (params) => decimalFormatter.format(Number(params.value ?? 0)),
-      },
-      { headerName: "Usage Info", field: "usageInfo", minWidth: 220 },
     ],
     [onBucketClick],
   );

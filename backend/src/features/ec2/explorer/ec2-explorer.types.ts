@@ -210,7 +210,6 @@ export const EC2_NETWORK_BREAKDOWN_TYPES = [
   "Inter-AZ Data Transfer",
   "NAT Gateway",
   "Elastic IP",
-  "Load Balancer",
   "Other Network",
 ] as const;
 export type Ec2NetworkBreakdownType = (typeof EC2_NETWORK_BREAKDOWN_TYPES)[number];
@@ -266,7 +265,6 @@ export type Ec2ExplorerAdditionalDailyCosts = {
   snapshotCost: number;
   natGatewayCost: number;
   eipCost: number;
-  loadBalancerCost: number;
 };
 
 export type Ec2ExplorerVolumeRow = {

@@ -17,6 +17,7 @@ export type AwsCloudFormationUrlInput = {
   enableActionRole?: boolean;
   enableEC2Module?: boolean;
   enableCloudWatchModule?: boolean;
+  enableLoadBalancerModule?: boolean;
   useTagScopedAccess?: boolean;
   resourceTagKey?: string;
   resourceTagValue?: string;
@@ -36,13 +37,14 @@ export function buildAwsCloudFormationCreateStackUrl({
   storageLensConfigId,
   callbackUrl,
   callbackToken,
-  enableBillingExport = true,
+  enableBillingExport: _enableBillingExport = true,
   enableCloudTrail = false,
   cloudTrailPrefix,
   cloudTrailName,
   enableActionRole = true,
   enableEC2Module = true,
   enableCloudWatchModule = true,
+  enableLoadBalancerModule = true,
   useTagScopedAccess = false,
   resourceTagKey,
   resourceTagValue,
@@ -56,12 +58,14 @@ export function buildAwsCloudFormationCreateStackUrl({
   const actionRoleTemplateUrl = process.env.AWS_ACTION_ROLE_TEMPLATE_URL?.trim();
   const ec2ModuleTemplateUrl = process.env.AWS_EC2_MODULE_TEMPLATE_URL?.trim();
   const cloudWatchModuleTemplateUrl = process.env.AWS_CLOUDWATCH_MODULE_TEMPLATE_URL?.trim();
+  const loadBalancerModuleTemplateUrl = process.env.AWS_LOAD_BALANCER_MODULE_TEMPLATE_URL?.trim();
   const fileEventCallbackUrl =  process.env.AWS_FILE_EVENT_CALLBACK_URL?.trim();
   const kcxPrincipalArn =
     process.env.AWS_KCX_PRINCIPAL_ARN?.trim() ||
     "arn:aws:iam::275017715736:root";
   const effectiveEnableBillingExport = true;
-  const effectiveEnableActionRole = enableActionRole || enableEC2Module || enableCloudWatchModule;
+  const effectiveEnableActionRole =
+    enableActionRole || enableEC2Module || enableCloudWatchModule || enableLoadBalancerModule;
   const requiresCallbacks = effectiveEnableBillingExport || enableCloudTrail;
 
   if (!parentTemplateUrl) {
@@ -88,6 +92,10 @@ export function buildAwsCloudFormationCreateStackUrl({
     throw new Error("AWS_CLOUDWATCH_MODULE_TEMPLATE_URL is not configured");
   }
 
+  if (enableLoadBalancerModule && !loadBalancerModuleTemplateUrl) {
+    throw new Error("AWS_LOAD_BALANCER_MODULE_TEMPLATE_URL is not configured");
+  }
+
   if (requiresCallbacks && !callbackUrl?.trim()) {
     throw new Error("callbackUrl is required when billing export or cloudtrail is enabled");
   }
@@ -111,6 +119,7 @@ export function buildAwsCloudFormationCreateStackUrl({
     ["param_EnableActionRole", effectiveEnableActionRole ? "true" : "false"],
     ["param_EnableEC2Module", enableEC2Module ? "true" : "false"],
     ["param_EnableCloudWatchModule", enableCloudWatchModule ? "true" : "false"],
+    ["param_EnableLoadBalancerModule", enableLoadBalancerModule ? "true" : "false"],
     ["param_UseTagScopedAccess", useTagScopedAccess ? "true" : "false"],
     ["region", region],
   ];
@@ -133,6 +142,10 @@ export function buildAwsCloudFormationCreateStackUrl({
 
   if (cloudWatchModuleTemplateUrl) {
     queryItems.push(["param_CloudwatchModuleTemplateUrl", cloudWatchModuleTemplateUrl]);
+  }
+
+  if (loadBalancerModuleTemplateUrl) {
+    queryItems.push(["param_LoadBalancerModuleTemplateUrl", loadBalancerModuleTemplateUrl]);
   }
 
   if (requiresCallbacks && callbackUrl?.trim()) {

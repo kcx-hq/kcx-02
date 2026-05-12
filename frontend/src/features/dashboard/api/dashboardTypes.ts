@@ -493,7 +493,13 @@ export type Ec2OverviewResponse = {
 };
 export type Ec2OptimizationInstancesFiltersQuery = Ec2OptimizationSummaryFiltersQuery;
 
-export type Ec2RecommendationCategory = "compute" | "storage" | "pricing" | "network";
+export type Ec2RecommendationCategory =
+  | "compute"
+  | "storage"
+  | "pricing"
+  | "network"
+  | "cost_optimization"
+  | "reliability";
 export type Ec2RecommendationType =
   | "idle_instance"
   | "underutilized_instance"
@@ -507,8 +513,13 @@ export type Ec2RecommendationType =
   | "high_inter_az_data_transfer"
   | "low_cpu_high_network"
   | "high_nat_gateway_cost"
-  | "unattached_elastic_ip";
-export type Ec2RecommendationStatus = "open" | "accepted" | "ignored" | "snoozed" | "completed";
+  | "unattached_elastic_ip"
+  | "idle_load_balancer"
+  | "low_traffic_load_balancer"
+  | "unhealthy_targets"
+  | "high_error_rate"
+  | "high_data_processing_cost";
+export type Ec2RecommendationStatus = "open" | "in_progress" | "snoozed" | "dismissed" | "completed";
 
 export type Ec2RecommendationsFiltersQuery = {
   cloudConnectionId?: string;
@@ -521,6 +532,8 @@ export type Ec2RecommendationsFiltersQuery = {
   team?: string;
   product?: string;
   environment?: string;
+  service?: "ec2" | "load_balancer";
+  resourceType?: "instance" | "volume" | "snapshot" | "elastic_ip" | "load_balancer";
   tags?: string[];
   dateFrom?: string;
   dateTo?: string;
@@ -530,7 +543,7 @@ export type Ec2RecommendationRecord = {
   id: number;
   category: Ec2RecommendationCategory;
   type: Ec2RecommendationType;
-  resourceType: "instance" | "volume" | "snapshot" | "elastic_ip";
+  resourceType: "instance" | "volume" | "snapshot" | "elastic_ip" | "load_balancer";
   resourceId: string;
   resourceName: string;
   accountId: string | null;
@@ -542,6 +555,8 @@ export type Ec2RecommendationRecord = {
   risk: "low" | "medium" | "high";
   effort: "low" | "medium" | "high";
   status: Ec2RecommendationStatus;
+  statusReason: string | null;
+  snoozedUntil: string | null;
   detectedAt: string | null;
   lastSeenAt: string | null;
   metadata: Record<string, unknown> | null;
@@ -550,8 +565,8 @@ export type Ec2RecommendationRecord = {
 export type Ec2RecommendationsResponse = {
   overview: {
     totalPotentialMonthlySaving: number;
-    countByCategory: Record<Ec2RecommendationCategory, number>;
-    savingByCategory: Record<Ec2RecommendationCategory, number>;
+    countByCategory: Record<"compute" | "storage" | "pricing" | "network", number>;
+    savingByCategory: Record<"compute" | "storage" | "pricing" | "network", number>;
     countByType: Record<Ec2RecommendationType, number>;
   };
   recommendations: {
@@ -724,7 +739,6 @@ export type Ec2NetworkBreakdownType =
   | "Inter-AZ Data Transfer"
   | "NAT Gateway"
   | "Elastic IP"
-  | "Load Balancer"
   | "Other Network";
 
 export type Ec2NetworkBreakdownResponse = {
@@ -830,6 +844,101 @@ export type Ec2ElasticIpResponse = {
     page: number;
     pageSize: number;
     total: number;
+  };
+};
+
+export type LoadBalancerExplorerMetric = "cost" | "load_balancers" | "usage";
+export type LoadBalancerExplorerGroupBy =
+  | "cost_type"
+  | "none"
+  | "account"
+  | "region"
+  | "type"
+  | "scheme"
+  | "state"
+  | "team"
+  | "product"
+  | "environment"
+  | "tag"
+  | "load_balancer";
+export type LoadBalancerExplorerGranularity = "hourly" | "daily" | "monthly";
+
+export type LoadBalancerExplorerFiltersQuery = {
+  startDate?: string;
+  endDate?: string;
+  metric: LoadBalancerExplorerMetric;
+  usageType?:
+    | "requests"
+    | "processed_gb"
+    | "active_connections"
+    | "new_connections"
+    | "healthy_hosts"
+    | "unhealthy_hosts"
+    | "errors";
+  granularity?: LoadBalancerExplorerGranularity;
+  groupBy: LoadBalancerExplorerGroupBy;
+  tagKey?: string | null;
+  loadBalancerArn?: string | null;
+  accountId?: string | null;
+  regions?: string[];
+  types?: string[];
+  schemes?: string[];
+  states?: string[];
+  teams?: string[];
+  products?: string[];
+  environments?: string[];
+  tags?: string[];
+  groupValues?: string[];
+};
+
+export type LoadBalancerExplorerSummaryResponse = {
+  summary: {
+    totalCost: number;
+    fixedCost?: number;
+    lcuCost?: number;
+    dataProcessingCost?: number;
+    previousCost: number;
+    trendPercent: number;
+    loadBalancerCount: number;
+    totalLoadBalancers?: number;
+    albCount?: number;
+    nlbCount?: number;
+    activeLoadBalancerCount: number;
+    internetFacingCount: number;
+    internalCount: number;
+    totalProcessedBytesGb: number;
+    avgDailyCost: number;
+    requestCount?: number;
+    processedGB?: number;
+    activeConnections?: number;
+    newConnections?: number;
+    healthyHosts?: number;
+    unhealthyHosts?: number;
+    errorCount?: number;
+  };
+};
+
+export type LoadBalancerExplorerTrendResponse = {
+  graph: {
+    type: "bar" | "stacked_bar" | "line" | "area" | "stacked_area";
+    xKey: "date";
+    series: Array<{
+      key: string;
+      label: string;
+      data: Array<{
+        date: string;
+        value: number;
+        group?: string;
+        loadBalancerCount?: number;
+      }>;
+    }>;
+  };
+};
+
+export type LoadBalancerExplorerGroupByResponse = {
+  table: {
+    columns: Array<{ key: string; label: string }>;
+    rows: Array<{ id: string; [key: string]: string | number | null }>;
   };
 };
 
@@ -1397,7 +1506,7 @@ export type S3CostInsightsResponse = {
       region: string[];
         account: string[];
         costBy: "date" | "bucket" | "region" | "account";
-        seriesBy: "cost_category" | "usage_type" | "operation" | "product_family" | "bucket" | "storage_class";
+        seriesBy: "none" | "cost_category" | "usage_type" | "operation" | "product_family" | "bucket" | "storage_class";
         yAxisMetric: "billed_cost" | "effective_cost" | "amortized_cost" | "usage_quantity";
       };
   };
@@ -1421,6 +1530,38 @@ export type S3CostInsightsResponse = {
     monthToDateCost: number;
     effectiveCost: number;
   };
+  storageCostDashboard: {
+    currency: "USD";
+    latestUsageDate: string | null;
+    totalStorageByClass: Array<{
+      storageClass: "STANDARD" | "STANDARD_IA" | "GLACIER" | "DEEP_ARCHIVE";
+      bytes: number;
+      gib: number;
+      estimatedMonthlyCost: number;
+    }>;
+    dailyStorageGrowth: {
+      fromDate: string | null;
+      toDate: string | null;
+      bytesGrowth: number;
+      gibGrowth: number;
+      growthPct: number | null;
+    };
+    estimatedMonthlyCost: {
+      total: number;
+      byClass: Record<"STANDARD" | "STANDARD_IA" | "GLACIER" | "DEEP_ARCHIVE", number>;
+    };
+    costTrend: Array<{
+      usageDate: string;
+      estimatedMonthlyCost: number;
+      totalBytes: number;
+    }>;
+    expensiveBuckets: Array<{
+      bucketName: string;
+      estimatedMonthlyCost: number;
+      totalBytes: number;
+      usageDate: string;
+    }>;
+  };
   bucketTable: Array<{
     bucketName: string;
     account: string;
@@ -1434,6 +1575,10 @@ export type S3CostInsightsResponse = {
     savings: number;
     retrieval: number;
     other: number;
+    replicationStatus: string | null;
+    versioningStatus: string | null;
+    encryptionStatus: string | null;
+    publicAccessStatus: "Public" | "Private" | "Unknown";
     trendPct: number;
     storageLens?: {
       usageDate: string;
@@ -1503,9 +1648,182 @@ export type S3CostInsightsResponse = {
     region: string[];
       account: string[];
       costBy: Array<"date" | "bucket" | "region" | "account">;
-      seriesBy: Array<"cost_category" | "usage_type" | "operation" | "product_family" | "bucket" | "storage_class">;
+      seriesBy: Array<"none" | "cost_category" | "usage_type" | "operation" | "product_family" | "bucket" | "storage_class">;
       yAxisMetric: Array<"billed_cost" | "effective_cost" | "amortized_cost" | "usage_quantity">;
     };
+  storageAnomalies: {
+    items: Array<{
+      bucketName: string;
+      accountId: string;
+      region: string | null;
+      reportDate: string;
+      storageGibCurrent: number;
+      storageGib7dAgo: number | null;
+      growthGib: number;
+      growthPercentage: number | null;
+      estimatedMonthlyCostImpact: number;
+      anomalyType: string;
+      severity: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW";
+      confidence: "HIGH" | "MEDIUM" | "LOW";
+      reason: string;
+      recommendedAction: string;
+    }>;
+    total: number;
+  };
+  bucketOptimizationScores: {
+    items: Array<{
+      bucketName: string;
+      accountId: string;
+      region: string | null;
+      score: number;
+      priorityLevel: "P0" | "P1" | "P2" | "P3" | "P4";
+      primaryReason: string;
+      top3Issues: string[];
+      recommendedNextAction: string;
+      estimatedMonthlySaving: number;
+      estimatedAnnualSaving: number;
+    }>;
+    total: number;
+  };
+  bucketHealthScores: {
+    items: Array<{
+      bucketName: string;
+      accountId: string;
+      region: string | null;
+      score: number;
+      healthLabel: "Optimized" | "Healthy" | "Needs Review" | "Risky" | "High Waste / High Risk";
+      dimensions: Record<string, number>;
+    }>;
+    total: number;
+  };
+  lifecycleRecommendations: {
+    items: Array<{
+      recommendationId: string;
+      bucketName: string;
+      category: string;
+      recommendation: string;
+      reason: string;
+      estimatedMonthlySaving: number;
+      estimatedAnnualSaving: number;
+      confidence: "HIGH" | "MEDIUM" | "LOW";
+      implementationComplexity: "LOW" | "MEDIUM" | "HIGH";
+      riskLevel: "LOW" | "MEDIUM" | "HIGH";
+      requiredOwnerAction: string;
+      signalsUsed: string[];
+    }>;
+    total: number;
+  };
+  estimatedSavings: {
+    items: Array<{
+      bucketName: string;
+      savingsType: string;
+      estimatedMonthlySaving: number;
+      estimatedAnnualSaving: number;
+      confidence: "HIGH" | "MEDIUM" | "LOW";
+      assumptions: string[];
+      limitations: string[];
+      currency: "USD";
+    }>;
+    totalMonthlySaving: number;
+    totalAnnualSaving: number;
+  };
+  finopsActionBacklog: {
+    items: Array<{
+      actionId: string;
+      bucketName: string;
+      accountId: string;
+      region: string | null;
+      ownerTeam: string;
+      applicationName: string;
+      businessUnit: string;
+      category: string;
+      severity: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW";
+      priority: "P0" | "P1" | "P2" | "P3" | "P4";
+      recommendation: string;
+      estimatedMonthlySaving: number;
+      estimatedAnnualSaving: number;
+      confidence: "HIGH" | "MEDIUM" | "LOW";
+      status: "NEW" | "ACCEPTED" | "IN_PROGRESS" | "IMPLEMENTED" | "DISMISSED" | "FALSE_POSITIVE";
+      assignedTo: string | null;
+      createdAt: string;
+      updatedAt: string;
+      resolvedAt: string | null;
+      dismissedReason: string | null;
+      sourceSignal: string;
+    }>;
+    summary: {
+      open: number;
+      inProgress: number;
+      implemented: number;
+      slaBreached: number;
+    };
+  };
+  ownerInsights: {
+    items: Array<{
+      ownerTeam: string;
+      applicationName: string;
+      businessUnit: string;
+      environment: string;
+      costCenter: string;
+      technicalOwner: string | null;
+      financeOwner: string | null;
+      criticality: string;
+      supportChannel: string | null;
+      totalMonthlyCost: number;
+      totalMonthlySavingsOpportunity: number;
+      openActionItems: number;
+      slaBreaches: number;
+    }>;
+    unownedExpensiveBuckets: number;
+  };
+  requestCostIntelligence: {
+    items: Array<{
+      bucketName: string;
+      operation: string;
+      requestCount: number;
+      requestCost: number;
+      requestCostPercentage: number;
+      costPer1kRequests: number;
+      costPerGb: number | null;
+      anomalyFlag: boolean;
+      recommendation: string;
+    }>;
+    totalRequestCost: number;
+  };
+  storageClassEfficiency: {
+    items: Array<{
+      bucketName: string;
+      standardGib: number;
+      standardPct: number;
+      standardIaGib: number;
+      standardIaPct: number;
+      glacierGib: number;
+      glacierPct: number;
+      deepArchiveGib: number;
+      deepArchivePct: number;
+      intelligentTieringGib: number;
+      intelligentTieringPct: number;
+      archiveRetrievalRisk: "LOW" | "MEDIUM" | "HIGH";
+      optimizationPotential: "LOW" | "MEDIUM" | "HIGH";
+      storageClassImbalanceScore: number;
+      insight: string;
+    }>;
+  };
+  executiveSummary: {
+    cards: Array<{
+      key: string;
+      label: string;
+      value: string | number;
+      trend: {
+        direction: "up" | "down" | "flat";
+        valuePct: number | null;
+      };
+      confidence: "HIGH" | "MEDIUM" | "LOW";
+      formula: string;
+      dataSource: string[];
+      drilldownTarget: string;
+    }>;
+  };
   };
 
 export type S3CostInsightsFiltersQuery = {
@@ -1515,8 +1833,9 @@ export type S3CostInsightsFiltersQuery = {
   storageClass?: string[];
   region?: string[];
   account?: string[];
+  responseMode?: "full" | "core" | "quick" | "overview";
   costBy?: "date" | "bucket" | "region" | "account";
-  seriesBy?: "cost_category" | "usage_type" | "operation" | "product_family" | "bucket" | "storage_class";
+  seriesBy?: "none" | "cost_category" | "usage_type" | "operation" | "product_family" | "bucket" | "storage_class";
   yAxisMetric?: "billed_cost" | "effective_cost" | "amortized_cost" | "usage_quantity";
 };
 
@@ -1553,6 +1872,99 @@ export type S3OptimizationResponse = {
   title: "S3 Optimization";
   message: string;
   buckets: S3OptimizationBucketRow[];
+};
+
+export type S3ReplicationStatus = "present" | "absent" | "unknown";
+export type S3ReplicationType = "same_account" | "cross_account" | "unknown";
+export type S3ReplicationRuleStatus = "enabled" | "disabled" | "mixed" | "unknown";
+export type S3ReplicationActionType = "setup_replication" | "view" | "edit" | "remove" | "fix_permission" | "view_setup_guide";
+
+export type S3ReplicationBucketRow = {
+  bucketName: string;
+  accountId: string;
+  region: string | null;
+  replicationStatus: S3ReplicationStatus;
+  rulesCount: number;
+  destinationBucket: string | null;
+  destinationRegion: string | null;
+  replicationType: S3ReplicationType;
+  status: S3ReplicationRuleStatus;
+  lastChecked: string;
+  recommendation: string | null;
+  actions: S3ReplicationActionType[];
+};
+
+export type S3ReplicationResponse = {
+  section: "s3-replication";
+  title: "S3 Replication";
+  message: string;
+  buckets: S3ReplicationBucketRow[];
+};
+
+export type S3ReplicationDestinationBucketOption = {
+  bucketName: string;
+  region: string | null;
+};
+
+export type S3ReplicationDestinationBucketsResponse = {
+  section: "s3-replication-destination-buckets";
+  title: "S3 Replication Destination Buckets";
+  message: string;
+  sourceBucketName: string;
+  buckets: S3ReplicationDestinationBucketOption[];
+};
+
+export type S3ReplicationSetupRequest = {
+  sourceBucketName: string;
+  destinationBucketName: string;
+  destinationRegion: string;
+  replicationType: "same_account" | "cross_account";
+  destinationAccountId?: string | null;
+  replicationRoleArn: string;
+  ruleName: string;
+  prefix?: string | null;
+  replicateDeleteMarkers?: boolean;
+  autoEnableSourceVersioning?: boolean;
+  autoEnableDestinationVersioning?: boolean;
+};
+
+export type S3ReplicationSetupCheck = {
+  key: string;
+  title: string;
+  status: "pass" | "warn" | "fail";
+  detail: string;
+};
+
+export type S3ReplicationSetupPreviewResponse = {
+  section: "s3-replication-setup-preview";
+  title: "S3 Replication Setup Preview";
+  message: string;
+  canApply: boolean;
+  checks: S3ReplicationSetupCheck[];
+};
+
+export type S3ReplicationSetupApplyResponse = {
+  section: "s3-replication-setup-apply";
+  title: "S3 Replication Setup Apply";
+  message: string;
+  sourceBucketName: string;
+  destinationBucketName: string;
+  destinationRegion: string;
+  replicationStatus: "configured";
+};
+
+export type S3ReplicationRoleAutoCreateRequest = {
+  sourceBucketName: string;
+  destinationBucketName: string;
+  roleName?: string | null;
+};
+
+export type S3ReplicationRoleAutoCreateResponse = {
+  section: "s3-replication-role-auto-create";
+  title: "S3 Replication Role Auto Create";
+  message: string;
+  roleName: string;
+  roleArn: string;
 };
 
 export type S3BucketLifecycleRuleSummary = {

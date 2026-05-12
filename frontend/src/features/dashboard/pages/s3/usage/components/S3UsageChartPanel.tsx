@@ -52,6 +52,7 @@ type Props = {
   isLoading?: boolean;
   isError?: boolean;
   errorMessage?: string;
+  onBucketClick?: (bucketName: string) => void;
 };
 
 const getYAxisLabel = (metric: S3UsageFilterValue["yAxisMetric"]) => {
@@ -74,6 +75,7 @@ export function S3UsageChartPanel({
   isLoading = false,
   isError = false,
   errorMessage,
+  onBucketClick,
 }: Props) {
   const chartTypeMenuRef = useRef<HTMLDivElement | null>(null);
   const [isChartTypeMenuOpen, setIsChartTypeMenuOpen] = useState(false);
@@ -240,6 +242,27 @@ export function S3UsageChartPanel({
     yAxisMetric,
   ]);
 
+  const handleChartPointClick = (params: unknown) => {
+    if (!onBucketClick) return;
+    if (!params || typeof params !== "object") return;
+
+    const payload = params as { componentType?: string; name?: unknown; seriesName?: unknown };
+    if (payload.componentType !== "series") return;
+
+    const rawBucketName =
+      xAxis === "bucket"
+        ? String(payload.name ?? "").trim()
+        : seriesBy === "bucket"
+          ? String(payload.seriesName ?? "").trim()
+          : "";
+    if (!rawBucketName) return;
+
+    const normalized = rawBucketName.toLowerCase();
+    if (normalized === "others" || normalized === "unattributed") return;
+
+    onBucketClick(rawBucketName);
+  };
+
   return (
     <section className="cost-explorer-chart-panel s3-overview-chart-panel s3-usage-chart-panel" aria-label="S3 usage chart">
       <div className="cost-explorer-chart-panel__header">
@@ -297,7 +320,7 @@ export function S3UsageChartPanel({
             ) : null}
           </div>
         ) : chartReady ? (
-          <BaseEChart option={option} height={chartHeight} />
+          <BaseEChart option={option} height={chartHeight} onPointClick={handleChartPointClick} />
         ) : (
           <div className="dashboard-empty-state-block">
             <p className="dashboard-empty-state-block__title">No S3 usage data for this selection</p>

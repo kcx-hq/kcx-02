@@ -49,13 +49,20 @@ const querySchema = z.object({
     "low_cpu_high_network",
     "high_nat_gateway_cost",
     "unattached_elastic_ip",
+    "idle_load_balancer",
+    "low_traffic_load_balancer",
+    "unhealthy_targets",
+    "high_error_rate",
+    "high_data_processing_cost",
   ]).nullable(),
-  status: z.enum(["open", "accepted", "ignored", "snoozed", "completed"]).nullable(),
+  status: z.enum(["open", "in_progress", "snoozed", "dismissed", "completed"]).nullable(),
   account: z.string().nullable(),
   region: z.string().nullable(),
   team: z.string().nullable(),
   product: z.string().nullable(),
   environment: z.string().nullable(),
+  service: z.enum(["ec2", "load_balancer"]).nullable(),
+  resourceType: z.enum(["instance", "volume", "snapshot", "elastic_ip", "load_balancer"]).nullable(),
   tags: z.array(z.string()).default([]),
 });
 
@@ -68,7 +75,9 @@ const refreshSchema = z.object({
 });
 
 const statusSchema = z.object({
-  status: z.enum(["open", "accepted", "ignored", "snoozed", "completed"]),
+  status: z.enum(["open", "in_progress", "snoozed", "dismissed", "completed"]),
+  reason: z.string().trim().max(1000).nullable().optional(),
+  snoozed_until: z.string().regex(DATE_ONLY_REGEX).nullable().optional(),
 });
 
 const parseTags = (value: string | undefined): string[] =>
@@ -93,6 +102,14 @@ export function buildEc2RecommendationsQuery(req: Request): Ec2RecommendationsQu
     team: nullable(first(req.query.team)),
     product: nullable(first(req.query.product)),
     environment: nullable(first(req.query.environment) ?? first(req.query.env)),
+    service: nullable(first(req.query.service)) as "ec2" | "load_balancer" | null,
+    resourceType: nullable(first(req.query.resourceType) ?? first(req.query.resource_type)) as
+      | "instance"
+      | "volume"
+      | "snapshot"
+      | "elastic_ip"
+      | "load_balancer"
+      | null,
     tags: parseTags(first(req.query.tags)),
   });
 }
@@ -108,9 +125,24 @@ export function buildEc2RefreshInput(req: Request): Ec2RefreshRecommendationsInp
   });
 }
 
-export function buildEc2RecommendationStatusPatch(req: Request): { id: number; status: Ec2RecommendationStatus } {
+export function buildEc2RecommendationStatusPatch(req: Request): {
+  id: number;
+  status: Ec2RecommendationStatus;
+  reason: string | null;
+  snoozedUntil: string | null;
+} {
   const id = Number(req.params.id);
   if (!Number.isInteger(id) || id <= 0) throw new Error("Invalid recommendation id");
   const parsed = parseWithSchema(statusSchema, req.body ?? {});
-  return { id, status: parsed.status };
+  const reason = typeof parsed.reason === "string" && parsed.reason.trim().length > 0 ? parsed.reason.trim() : null;
+  const snoozedUntil = typeof parsed.snoozed_until === "string" && parsed.snoozed_until.trim().length > 0
+    ? parsed.snoozed_until.trim()
+    : null;
+  if (parsed.status === "snoozed" && !snoozedUntil) {
+    throw new Error("snoozed_until is required when status is snoozed");
+  }
+  if (parsed.status !== "snoozed" && snoozedUntil) {
+    throw new Error("snoozed_until is only allowed when status is snoozed");
+  }
+  return { id, status: parsed.status, reason, snoozedUntil };
 }
