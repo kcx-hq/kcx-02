@@ -10,6 +10,18 @@ type DailyTotalCostSpikeFingerprintInput = {
   detectorScope: string;
 };
 
+type Ec2InstanceCostSpikeFingerprintInput = {
+  tenantId: string | null;
+  billingSourceId: string;
+  cloudConnectionId: string | null;
+  usageDate: string;
+  instanceId: string;
+  anomalyType: string;
+  sourceGranularity: string;
+  sourceTable: string;
+  anomalyScope: string;
+};
+
 const normalize = (value: string | null | undefined): string => String(value ?? "").trim().toLowerCase();
 
 export function buildDailyTotalCostSpikeFingerprint(input: DailyTotalCostSpikeFingerprintInput): string {
@@ -22,6 +34,23 @@ export function buildDailyTotalCostSpikeFingerprint(input: DailyTotalCostSpikeFi
     `granularity:${normalize(input.sourceGranularity)}`,
     `source_table:${normalize(input.sourceTable)}`,
     `scope:${normalize(input.detectorScope)}`,
+  ].join("|");
+
+  return createHash("sha256").update(stableIdentity).digest("hex");
+}
+
+export function buildEc2InstanceCostSpikeFingerprint(input: Ec2InstanceCostSpikeFingerprintInput): string {
+  const stableIdentity = [
+    "ec2_instance_cost_spike",
+    `tenant:${normalize(input.tenantId) || "none"}`,
+    `billing_source:${normalize(input.billingSourceId)}`,
+    `cloud_connection:${normalize(input.cloudConnectionId)}`,
+    `usage_date:${normalize(input.usageDate)}`,
+    `instance_id:${normalize(input.instanceId)}`,
+    `anomaly_type:${normalize(input.anomalyType)}`,
+    `granularity:${normalize(input.sourceGranularity)}`,
+    `source_table:${normalize(input.sourceTable)}`,
+    `scope:${normalize(input.anomalyScope)}`,
   ].join("|");
 
   return createHash("sha256").update(stableIdentity).digest("hex");

@@ -1,6 +1,6 @@
 import type { DashboardScope } from "../dashboard.types.js";
 import { CostExplorerRepository, computeEffectiveGranularity } from "./cost-explorer.repository.js";
-import type { CostExplorerFilters, CostExplorerResponse } from "./cost-explorer.types.js";
+import type { CostExplorerFilters, CostExplorerGroupOptionsResponse, CostExplorerResponse } from "./cost-explorer.types.js";
 
 export class CostExplorerService {
   private readonly repository: CostExplorerRepository;
@@ -19,7 +19,7 @@ export class CostExplorerService {
       to: scope.to,
     };
 
-    const [chartData, topServices, topServiceCategories, topResources, topAccounts, topRegions] = await Promise.all([
+    const [chartData, topServices, topServiceCategories, topResources, topAccounts, topRegions, serviceDetails] = await Promise.all([
       this.repository.getChartData(scope, effectiveFilters),
       this.repository.getBreakdownByDimension(scope, effectiveFilters, "service", CostExplorerService.BREAKDOWN_MAX_ROWS),
       this.repository.getBreakdownByDimension(
@@ -31,6 +31,7 @@ export class CostExplorerService {
       this.repository.getBreakdownByDimension(scope, effectiveFilters, "resource", CostExplorerService.BREAKDOWN_MAX_ROWS),
       this.repository.getBreakdownByDimension(scope, effectiveFilters, "account", CostExplorerService.BREAKDOWN_MAX_ROWS),
       this.repository.getBreakdownByDimension(scope, effectiveFilters, "region", CostExplorerService.BREAKDOWN_MAX_ROWS),
+      this.repository.getServiceDetailRows(scope, effectiveFilters, CostExplorerService.BREAKDOWN_MAX_ROWS),
     ]);
 
     const trendPct =
@@ -50,6 +51,9 @@ export class CostExplorerService {
         groupBy: filters.groupBy,
         metric: filters.metric,
         compareKey: filters.compareKey,
+        tagKey: filters.tagKey,
+        tagValue: filters.tagValue,
+        groupValues: filters.groupValues,
         scopeType: scope.scopeType,
       },
       kpis: {
@@ -69,6 +73,15 @@ export class CostExplorerService {
         account: topAccounts,
         region: topRegions,
       },
+      serviceDetails,
     };
+  }
+
+  async getGroupOptions(
+    scope: DashboardScope,
+    groupBy: CostExplorerFilters["groupBy"],
+    tagKey: string | null,
+  ): Promise<CostExplorerGroupOptionsResponse> {
+    return this.repository.getGroupOptions(scope, scope.from, scope.to, groupBy, tagKey);
   }
 }

@@ -39,6 +39,10 @@ class FactRecommendations extends Model<
   declare performanceRiskLevel: CreationOptional<string | null>;
   declare sourceSystem: CreationOptional<string>;
   declare status: CreationOptional<string>;
+  declare statusReason: CreationOptional<string | null>;
+  declare snoozedUntil: CreationOptional<Date | null>;
+  declare statusUpdatedAt: CreationOptional<Date | null>;
+  declare statusUpdatedBy: CreationOptional<string | null>;
   declare effortLevel: CreationOptional<string | null>;
   declare riskLevel: CreationOptional<string | null>;
   declare recommendationTitle: CreationOptional<string | null>;
@@ -48,6 +52,9 @@ class FactRecommendations extends Model<
   declare observationStart: CreationOptional<Date | null>;
   declare observationEnd: CreationOptional<Date | null>;
   declare rawPayloadJson: CreationOptional<string | null>;
+  declare metadataJson: CreationOptional<Record<string, unknown> | null>;
+  declare detectedAt: CreationOptional<Date | null>;
+  declare lastSeenAt: CreationOptional<Date | null>;
   declare createdAt: CreationOptional<Date>;
   declare updatedAt: CreationOptional<Date>;
 }
@@ -83,6 +90,10 @@ const createFactRecommendationsModel = (sequelize: Sequelize): typeof FactRecomm
       performanceRiskLevel: { type: DataTypes.STRING(20), allowNull: true, field: "performance_risk_level" },
       sourceSystem: { type: DataTypes.STRING(50), allowNull: false, defaultValue: "AWS_SAVINGS_PLANS_API", field: "source_system" },
       status: { type: DataTypes.STRING(20), allowNull: false, defaultValue: "OPEN" },
+      statusReason: { type: DataTypes.TEXT, allowNull: true, field: "status_reason" },
+      snoozedUntil: { type: DataTypes.DATE, allowNull: true, field: "snoozed_until" },
+      statusUpdatedAt: { type: DataTypes.DATE, allowNull: true, field: "status_updated_at" },
+      statusUpdatedBy: { type: DataTypes.STRING(255), allowNull: true, field: "status_updated_by" },
       effortLevel: { type: DataTypes.STRING(20), allowNull: true, field: "effort_level" },
       riskLevel: { type: DataTypes.STRING(20), allowNull: true, field: "risk_level" },
       recommendationTitle: { type: DataTypes.STRING(255), allowNull: true, field: "recommendation_title" },
@@ -92,6 +103,9 @@ const createFactRecommendationsModel = (sequelize: Sequelize): typeof FactRecomm
       observationStart: { type: DataTypes.DATE, allowNull: true, field: "observation_start" },
       observationEnd: { type: DataTypes.DATE, allowNull: true, field: "observation_end" },
       rawPayloadJson: { type: DataTypes.TEXT, allowNull: true, field: "raw_payload_json" },
+      metadataJson: { type: DataTypes.JSONB, allowNull: true, field: "metadata_json" },
+      detectedAt: { type: DataTypes.DATE, allowNull: true, field: "detected_at" },
+      lastSeenAt: { type: DataTypes.DATE, allowNull: true, field: "last_seen_at" },
       createdAt: { type: DataTypes.DATE, allowNull: false, defaultValue: sequelize.literal("NOW()"), field: "created_at" },
       updatedAt: { type: DataTypes.DATE, allowNull: false, defaultValue: sequelize.literal("NOW()"), field: "updated_at" },
     },

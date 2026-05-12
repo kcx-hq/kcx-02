@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   useOptimizationRightsizingOverviewQuery,
@@ -45,10 +45,12 @@ export function OptimizationRightsizingSection() {
   const [region, setRegion] = useState<string>("all");
   const [page, setPage] = useState<number>(1);
   const [selectedRecommendationId, setSelectedRecommendationId] = useState<string | null>(null);
+  const [openFilter, setOpenFilter] = useState<"status" | "effort" | "risk" | "region" | null>(null);
   const [applyingRecommendationId, setApplyingRecommendationId] = useState<string | null>(null);
   const [ignoringRecommendationId, setIgnoringRecommendationId] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const filtersRef = useRef<HTMLDivElement | null>(null);
 
   const overviewQuery = useOptimizationRightsizingOverviewQuery();
   const recommendationsQuery = useOptimizationRightsizingRecommendationsQuery({
@@ -94,6 +96,7 @@ export function OptimizationRightsizingSection() {
     setter(value);
     setPage(1);
     setSelectedRecommendationId(null);
+    setOpenFilter(null);
   };
 
   const hasPrev = Boolean(pagination && pagination.page > 1);
@@ -197,6 +200,51 @@ export function OptimizationRightsizingSection() {
     return executeMutation.isPending || ignoreMutation.isPending;
   };
 
+  useEffect(() => {
+    const onDocumentPointerDown = (event: MouseEvent) => {
+      if (!filtersRef.current) return;
+      if (filtersRef.current.contains(event.target as Node)) return;
+      setOpenFilter(null);
+    };
+
+    const onEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setOpenFilter(null);
+    };
+
+    document.addEventListener("mousedown", onDocumentPointerDown);
+    document.addEventListener("keydown", onEscape);
+
+    return () => {
+      document.removeEventListener("mousedown", onDocumentPointerDown);
+      document.removeEventListener("keydown", onEscape);
+    };
+  }, []);
+
+  const statusLabel = status === "all" ? "All status" : toTitleCase(status);
+  const effortLabel = effort === "all" ? "All effort" : toTitleCase(effort);
+  const riskLabel = risk === "all" ? "All risk" : toTitleCase(risk);
+  const regionLabel = region === "all" ? "All regions" : region;
+
+  useEffect(() => {
+    if (!selectedRecommendationId) return;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    const onEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setSelectedRecommendationId(null);
+    };
+
+    document.addEventListener("keydown", onEscape);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", onEscape);
+    };
+  }, [selectedRecommendationId]);
+
   return (
     <div className="optimization-rightsizing-shell">
       {overviewQuery.isLoading ? <p className="dashboard-note">Loading rightsizing overview...</p> : null}
@@ -230,66 +278,138 @@ export function OptimizationRightsizingSection() {
       <section className="optimization-rightsizing-panel">
         {actionMessage ? <p className="dashboard-note">{actionMessage}</p> : null}
         {actionError ? <p className="dashboard-note">Action failed: {actionError}</p> : null}
-        <div className="optimization-rightsizing-filters">
+        <div className="optimization-rightsizing-filters" ref={filtersRef}>
           <div className="optimization-rightsizing-filter-field">
             <p className="optimization-rightsizing-filter-label">Status</p>
-            <select
-              className="optimization-rightsizing-filter-control"
-              value={status}
-              onChange={(event) => onFilterChange(setStatus, event.target.value)}
+            <button
+              type="button"
+              className={`optimization-rightsizing-filter-control optimization-rightsizing-filter-trigger${openFilter === "status" ? " is-open" : ""}`}
+              onClick={() => setOpenFilter((current) => (current === "status" ? null : "status"))}
+              aria-haspopup="listbox"
+              aria-expanded={openFilter === "status"}
             >
-              <option value="all">All status</option>
-              {filterOptions.status.map((option) => (
-                <option key={option} value={option}>
-                  {toTitleCase(option)}
-                </option>
-              ))}
-            </select>
+              <span>{statusLabel}</span>
+            </button>
+            {openFilter === "status" ? (
+              <div className="optimization-rightsizing-filter-menu" role="listbox" aria-label="Status">
+                <button
+                  type="button"
+                  className={`optimization-rightsizing-filter-option${status === "all" ? " is-active" : ""}`}
+                  onClick={() => onFilterChange(setStatus, "all")}
+                >
+                  All status
+                </button>
+                {filterOptions.status.map((option) => (
+                  <button
+                    type="button"
+                    key={option}
+                    className={`optimization-rightsizing-filter-option${status === option ? " is-active" : ""}`}
+                    onClick={() => onFilterChange(setStatus, option)}
+                  >
+                    {toTitleCase(option)}
+                  </button>
+                ))}
+              </div>
+            ) : null}
           </div>
           <div className="optimization-rightsizing-filter-field">
             <p className="optimization-rightsizing-filter-label">Effort</p>
-            <select
-              className="optimization-rightsizing-filter-control"
-              value={effort}
-              onChange={(event) => onFilterChange(setEffort, event.target.value)}
+            <button
+              type="button"
+              className={`optimization-rightsizing-filter-control optimization-rightsizing-filter-trigger${openFilter === "effort" ? " is-open" : ""}`}
+              onClick={() => setOpenFilter((current) => (current === "effort" ? null : "effort"))}
+              aria-haspopup="listbox"
+              aria-expanded={openFilter === "effort"}
             >
-              <option value="all">All effort</option>
-              {filterOptions.effort.map((option) => (
-                <option key={option} value={option}>
-                  {toTitleCase(option)}
-                </option>
-              ))}
-            </select>
+              <span>{effortLabel}</span>
+            </button>
+            {openFilter === "effort" ? (
+              <div className="optimization-rightsizing-filter-menu" role="listbox" aria-label="Effort">
+                <button
+                  type="button"
+                  className={`optimization-rightsizing-filter-option${effort === "all" ? " is-active" : ""}`}
+                  onClick={() => onFilterChange(setEffort, "all")}
+                >
+                  All effort
+                </button>
+                {filterOptions.effort.map((option) => (
+                  <button
+                    type="button"
+                    key={option}
+                    className={`optimization-rightsizing-filter-option${effort === option ? " is-active" : ""}`}
+                    onClick={() => onFilterChange(setEffort, option)}
+                  >
+                    {toTitleCase(option)}
+                  </button>
+                ))}
+              </div>
+            ) : null}
           </div>
           <div className="optimization-rightsizing-filter-field">
             <p className="optimization-rightsizing-filter-label">Risk</p>
-            <select
-              className="optimization-rightsizing-filter-control"
-              value={risk}
-              onChange={(event) => onFilterChange(setRisk, event.target.value)}
+            <button
+              type="button"
+              className={`optimization-rightsizing-filter-control optimization-rightsizing-filter-trigger${openFilter === "risk" ? " is-open" : ""}`}
+              onClick={() => setOpenFilter((current) => (current === "risk" ? null : "risk"))}
+              aria-haspopup="listbox"
+              aria-expanded={openFilter === "risk"}
             >
-              <option value="all">All risk</option>
-              {filterOptions.risk.map((option) => (
-                <option key={option} value={option}>
-                  {toTitleCase(option)}
-                </option>
-              ))}
-            </select>
+              <span>{riskLabel}</span>
+            </button>
+            {openFilter === "risk" ? (
+              <div className="optimization-rightsizing-filter-menu" role="listbox" aria-label="Risk">
+                <button
+                  type="button"
+                  className={`optimization-rightsizing-filter-option${risk === "all" ? " is-active" : ""}`}
+                  onClick={() => onFilterChange(setRisk, "all")}
+                >
+                  All risk
+                </button>
+                {filterOptions.risk.map((option) => (
+                  <button
+                    type="button"
+                    key={option}
+                    className={`optimization-rightsizing-filter-option${risk === option ? " is-active" : ""}`}
+                    onClick={() => onFilterChange(setRisk, option)}
+                  >
+                    {toTitleCase(option)}
+                  </button>
+                ))}
+              </div>
+            ) : null}
           </div>
           <div className="optimization-rightsizing-filter-field">
             <p className="optimization-rightsizing-filter-label">Region</p>
-            <select
-              className="optimization-rightsizing-filter-control"
-              value={region}
-              onChange={(event) => onFilterChange(setRegion, event.target.value)}
+            <button
+              type="button"
+              className={`optimization-rightsizing-filter-control optimization-rightsizing-filter-trigger${openFilter === "region" ? " is-open" : ""}`}
+              onClick={() => setOpenFilter((current) => (current === "region" ? null : "region"))}
+              aria-haspopup="listbox"
+              aria-expanded={openFilter === "region"}
             >
-              <option value="all">All regions</option>
-              {filterOptions.region.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
+              <span>{regionLabel}</span>
+            </button>
+            {openFilter === "region" ? (
+              <div className="optimization-rightsizing-filter-menu" role="listbox" aria-label="Region">
+                <button
+                  type="button"
+                  className={`optimization-rightsizing-filter-option${region === "all" ? " is-active" : ""}`}
+                  onClick={() => onFilterChange(setRegion, "all")}
+                >
+                  All regions
+                </button>
+                {filterOptions.region.map((option) => (
+                  <button
+                    type="button"
+                    key={option}
+                    className={`optimization-rightsizing-filter-option${region === option ? " is-active" : ""}`}
+                    onClick={() => onFilterChange(setRegion, option)}
+                  >
+                    {option}
+                  </button>
+                ))}
+              </div>
+            ) : null}
           </div>
         </div>
 
@@ -408,55 +528,68 @@ export function OptimizationRightsizingSection() {
       </section>
 
       {selectedRecommendationId ? (
-        <section className="optimization-rightsizing-detail">
-          <div className="optimization-rightsizing-detail__head">
-            <p className="optimization-rightsizing-detail__title">Recommendation Detail</p>
-            <button
-              type="button"
-              className="optimization-rightsizing-view-btn"
-              onClick={() => setSelectedRecommendationId(null)}
-            >
-              Close
-            </button>
-          </div>
-          {detailQuery.isLoading ? <p>Loading recommendation detail...</p> : null}
-          {detailQuery.isError ? <p>Failed to load recommendation detail: {detailQuery.error.message}</p> : null}
-          {detailQuery.data ? (
-            <div className="optimization-rightsizing-detail__grid">
-              <p>
-                <strong>Title:</strong> {detailQuery.data.recommendationTitle ?? detailQuery.data.recommendationType}
-              </p>
-              <p>
-                <strong>Category:</strong> {toTitleCase(detailQuery.data.category)}
-              </p>
-              <p>
-                <strong>Resource:</strong> {detailQuery.data.resourceId}
-                {detailQuery.data.resourceName ? ` / ${detailQuery.data.resourceName}` : ""}
-              </p>
-              <p>
-                <strong>Region:</strong> {detailQuery.data.awsRegionCode}
-              </p>
-              <p>
-                <strong>Current Cost:</strong> {compactCurrencyFormatter.format(detailQuery.data.currentMonthlyCost)}
-              </p>
-              <p>
-                <strong>Projected Cost:</strong> {compactCurrencyFormatter.format(detailQuery.data.projectedMonthlyCost)}
-              </p>
-              <p>
-                <strong>Estimated Savings:</strong> {compactCurrencyFormatter.format(detailQuery.data.estimatedMonthlySavings)}
-              </p>
-              <p>
-                <strong>Performance Risk:</strong> {toTitleCase(detailQuery.data.performanceRiskLevel)}
-              </p>
-              <p className="optimization-rightsizing-detail__full">
-                <strong>Description:</strong> {detailQuery.data.recommendationText ?? "No recommendation text available."}
-              </p>
-              <p>
-                <strong>Last Updated:</strong> {new Date(detailQuery.data.updatedAt).toLocaleString()}
-              </p>
+        <>
+          <button
+            type="button"
+            aria-label="Close rightsizing detail panel"
+            className="optimization-commitment-detail-overlay"
+            onClick={() => setSelectedRecommendationId(null)}
+          />
+          <aside
+            className="optimization-commitment-detail-drawer"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Rightsizing recommendation detail"
+          >
+            <div className="optimization-rightsizing-detail__head">
+              <p className="optimization-rightsizing-detail__title">Recommendation Detail</p>
+              <button
+                type="button"
+                className="optimization-rightsizing-view-btn"
+                onClick={() => setSelectedRecommendationId(null)}
+              >
+                Close
+              </button>
             </div>
-          ) : null}
-        </section>
+            {detailQuery.isLoading ? <p>Loading recommendation detail...</p> : null}
+            {detailQuery.isError ? <p>Failed to load recommendation detail: {detailQuery.error.message}</p> : null}
+            {detailQuery.data ? (
+              <div className="optimization-rightsizing-detail__grid">
+                <p>
+                  <strong>Title:</strong> {detailQuery.data.recommendationTitle ?? detailQuery.data.recommendationType}
+                </p>
+                <p>
+                  <strong>Category:</strong> {toTitleCase(detailQuery.data.category)}
+                </p>
+                <p>
+                  <strong>Resource:</strong> {detailQuery.data.resourceId}
+                  {detailQuery.data.resourceName ? ` / ${detailQuery.data.resourceName}` : ""}
+                </p>
+                <p>
+                  <strong>Region:</strong> {detailQuery.data.awsRegionCode}
+                </p>
+                <p>
+                  <strong>Current Cost:</strong> {compactCurrencyFormatter.format(detailQuery.data.currentMonthlyCost)}
+                </p>
+                <p>
+                  <strong>Projected Cost:</strong> {compactCurrencyFormatter.format(detailQuery.data.projectedMonthlyCost)}
+                </p>
+                <p>
+                  <strong>Estimated Savings:</strong> {compactCurrencyFormatter.format(detailQuery.data.estimatedMonthlySavings)}
+                </p>
+                <p>
+                  <strong>Performance Risk:</strong> {toTitleCase(detailQuery.data.performanceRiskLevel)}
+                </p>
+                <p className="optimization-rightsizing-detail__full">
+                  <strong>Description:</strong> {detailQuery.data.recommendationText ?? "No recommendation text available."}
+                </p>
+                <p>
+                  <strong>Last Updated:</strong> {new Date(detailQuery.data.updatedAt).toLocaleString()}
+                </p>
+              </div>
+            ) : null}
+          </aside>
+        </>
       ) : null}
     </div>
   );

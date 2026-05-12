@@ -1,0 +1,381 @@
+import { useDeferredValue, useEffect, useMemo, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
+
+import type { InventoryEc2InstanceRow } from "@/features/client-home/api/inventory-instances.api";
+import { useInventoryEc2Instances } from "@/features/client-home/hooks/useInventoryEc2Instances";
+import { useInventoryEc2Volumes } from "@/features/client-home/hooks/useInventoryEc2Volumes";
+
+import { EC2InstancesContextChips } from "./components/EC2InstancesContextChips";
+import { EC2InstancesTable } from "./components/EC2InstancesTable";
+import { EC2InstancesTopBar } from "./components/EC2InstancesTopBar";
+import {
+  EC2_INSTANCES_RESERVATION_OPTIONS,
+  EC2_INSTANCES_DEFAULT_CONTROLS,
+  EC2_INSTANCES_STATUS_OPTIONS,
+  EC2_INSTANCES_STATE_OPTIONS,
+  type EC2InstancesStatus,
+  type EC2InstancesControlsState,
+} from "./components/ec2Instances.types";
+
+const PAGE_SIZE = 25;
+const VOLUMES_PAGE_PATH = "/dashboard/inventory/aws/ec2/volumes";
+const INSTANCES_PAGE_PATH = "/dashboard/inventory/aws/ec2/instances";
+
+const toIsoDate = (value: Date): string => value.toISOString().slice(0, 10);
+
+const getDefaultDateRange = (): { start: string; end: string } => {
+  const today = new Date();
+  const startOfMonth = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1));
+  return {
+    start: toIsoDate(startOfMonth),
+    end: toIsoDate(today),
+  };
+};
+
+const parseThreshold = (value: string): number | null => {
+  const normalized = value.trim();
+  if (normalized.length === 0) return null;
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const toTitle = (value: string): string =>
+  value
+    .replaceAll("_", " ")
+    .replaceAll("-", " ")
+    .split(" ")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(" ");
+
+const parseCsvParam = (value: string | null): string[] => {
+  if (!value) return [];
+  return value
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
+};
+
+const isValidStatus = (value: string | null): value is EC2InstancesStatus =>
+  Boolean(value) && EC2_INSTANCES_STATUS_OPTIONS.some((option) => option.key === value);
+
+const isValidState = (value: string | null): value is EC2InstancesControlsState["state"] =>
+  Boolean(value) && EC2_INSTANCES_STATE_OPTIONS.some((option) => option.key === value);
+
+const isValidReservationType = (value: string | null): value is EC2InstancesControlsState["reservationType"] =>
+  Boolean(value) && EC2_INSTANCES_RESERVATION_OPTIONS.some((option) => option.key === value);
+
+const matchesState = (instance: InventoryEc2InstanceRow, state: EC2InstancesControlsState["state"]): boolean => {
+  if (state === "all") return true;
+  return (instance.state ?? "").toLowerCase() === state;
+};
+
+const matchesRegion = (instance: InventoryEc2InstanceRow, regions: string[]): boolean => {
+  if (regions.length === 0) return true;
+  const normalizedRegions = regions.map((region) => region.toLowerCase());
+  const candidates = [instance.regionKey, instance.regionId, instance.regionName]
+    .filter((value): value is string => Boolean(value))
+    .map((value) => value.toLowerCase());
+  return candidates.some((candidate) => normalizedRegions.includes(candidate));
+};
+
+const matchesThresholds = (instance: InventoryEc2InstanceRow, thresholds: EC2InstancesControlsState["thresholds"]): boolean => {
+  const minCost = parseThreshold(thresholds.costMin);
+  const maxCost = parseThreshold(thresholds.costMax);
+  const minCpu = parseThreshold(thresholds.cpuMin);
+  const maxCpu = parseThreshold(thresholds.cpuMax);
+
+  const cost = instance.monthToDateCost;
+  const cpu = instance.cpuAvg;
+
+  if (minCost !== null && cost < minCost) return false;
+  if (maxCost !== null && cost > maxCost) return false;
+  if (minCpu !== null && (cpu === null || cpu < minCpu)) return false;
+  if (maxCpu !== null && (cpu === null || cpu > maxCpu)) return false;
+  return true;
+};
+
+export default function EC2InstancesPage() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const queryParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
+
+  const defaults = getDefaultDateRange();
+  const startDateFromParams = queryParams.get("startDate") ?? queryParams.get("from") ?? queryParams.get("billingPeriodStart") ?? defaults.start;
+  const endDateFromParams = queryParams.get("endDate") ?? queryParams.get("to") ?? queryParams.get("billingPeriodEnd") ?? defaults.end;
+  const source = queryParams.get("source");
+  const isExplorerNavigation = source === "explorer-graph" || source === "explorer-table";
+  const querySearch = isExplorerNavigation ? queryParams.get("search") ?? "" : "";
+
+  const explorerRegions = isExplorerNavigation ? parseCsvParam(queryParams.get("region")) : [];
+  const explorerTags = isExplorerNavigation ? parseCsvParam(queryParams.get("tags")) : [];
+  const queryStatus = isExplorerNavigation ? queryParams.get("status") ?? queryParams.get("condition") : null;
+  const queryState = isExplorerNavigation ? queryParams.get("state") : null;
+  const queryInstanceType = isExplorerNavigation ? queryParams.get("instanceType") : null;
+  const queryReservationType = isExplorerNavigation ? queryParams.get("reservationType") : null;
+  const queryTransferType = queryParams.get("transferType");
+
+  const initialControls = useMemo<EC2InstancesControlsState>(() => ({
+    ...EC2_INSTANCES_DEFAULT_CONTROLS,
+    status: isValidStatus(queryStatus) ? queryStatus : EC2_INSTANCES_DEFAULT_CONTROLS.status,
+    state: isValidState(queryState) ? queryState : EC2_INSTANCES_DEFAULT_CONTROLS.state,
+    instanceType: queryInstanceType && queryInstanceType.trim().length > 0 ? queryInstanceType : EC2_INSTANCES_DEFAULT_CONTROLS.instanceType,
+    reservationType: isValidReservationType(queryReservationType)
+      ? queryReservationType
+      : EC2_INSTANCES_DEFAULT_CONTROLS.reservationType,
+    search: querySearch,
+    scopeFilters: {
+      region: [...explorerRegions],
+      tags: [...explorerTags],
+    },
+  }), [explorerRegions, explorerTags, queryStatus, queryInstanceType, queryReservationType, querySearch, queryState]);
+
+  const [controls, setControls] = useState<EC2InstancesControlsState>(initialControls);
+  const [page, setPage] = useState(1);
+  const deferredSearch = useDeferredValue(controls.search.trim());
+
+  const instancesQuery = useInventoryEc2Instances({
+    state: controls.state === "all" ? null : controls.state,
+    instanceType: controls.instanceType === "all" ? null : controls.instanceType,
+    pricingType: controls.reservationType === "all" ? null : controls.reservationType,
+    status: controls.status,
+    search: deferredSearch.length > 0 ? deferredSearch : null,
+    transferType:
+      queryTransferType === "internet" ||
+      queryTransferType === "inter_region" ||
+      queryTransferType === "inter_az" ||
+      queryTransferType === "regional" ||
+      queryTransferType === "unknown"
+        ? queryTransferType
+        : null,
+    startDate: startDateFromParams,
+    endDate: endDateFromParams,
+    page,
+    pageSize: PAGE_SIZE,
+  });
+
+  const volumesQuery = useInventoryEc2Volumes({
+    attachedInstanceId: null,
+    startDate: startDateFromParams,
+    endDate: endDateFromParams,
+    page: 1,
+    pageSize: 500,
+  });
+
+  const allItems = instancesQuery.data?.items ?? [];
+  const volumeCostByInstanceId = useMemo(() => {
+    const grouped = new Map<string, number>();
+    for (const volume of volumesQuery.data?.items ?? []) {
+      const instanceId = volume.attachedInstanceId;
+      if (!instanceId) continue;
+      grouped.set(instanceId, (grouped.get(instanceId) ?? 0) + volume.mtdCost);
+    }
+    return grouped;
+  }, [volumesQuery.data?.items]);
+
+  const filteredRows = useMemo(
+    () =>
+      allItems.filter((instance) => {
+        if (!matchesState(instance, controls.state)) return false;
+        if (!matchesRegion(instance, controls.scopeFilters.region)) return false;
+        if (!matchesThresholds(instance, controls.thresholds)) return false;
+        return true;
+      }),
+    [allItems, controls.scopeFilters.region, controls.state, controls.thresholds],
+  );
+
+  useEffect(() => {
+    const next = new URLSearchParams(location.search);
+    if (controls.status === "all") {
+      next.delete("status");
+    } else {
+      next.set("status", controls.status);
+    }
+    if (next.has("condition")) {
+      next.delete("condition");
+    }
+    if (next.toString() !== queryParams.toString()) {
+      navigate({ pathname: location.pathname, search: next.toString() }, { replace: true });
+    }
+  }, [controls.status, location.pathname, location.search, navigate, queryParams]);
+
+  const instanceTypeOptions = useMemo(() => {
+    const unique = Array.from(
+      new Set(
+        allItems
+          .map((item) => item.instanceType)
+          .filter((value): value is string => Boolean(value))
+          .sort((a, b) => a.localeCompare(b)),
+      ),
+    );
+
+    if (controls.instanceType !== "all" && !unique.includes(controls.instanceType)) {
+      unique.unshift(controls.instanceType);
+    }
+
+    return [{ key: "all", label: "All" }, ...unique.map((entry) => ({ key: entry, label: entry }))];
+  }, [allItems, controls.instanceType]);
+
+  const activeChips = useMemo(() => {
+    const chips: Array<{ id: string; label: string; onRemove?: () => void }> = [];
+
+    if (controls.scopeFilters.region.length > 0) {
+      controls.scopeFilters.region.forEach((region) => {
+        chips.push({
+          id: `region-${region}`,
+          label: `Region: ${region}`,
+          onRemove: () =>
+            setControls((current) => ({
+              ...current,
+              scopeFilters: {
+                ...current.scopeFilters,
+                region: current.scopeFilters.region.filter((item) => item !== region),
+              },
+            })),
+        });
+      });
+    }
+
+    if (controls.scopeFilters.tags.length > 0) {
+      controls.scopeFilters.tags.forEach((tag) => {
+        chips.push({
+          id: `tag-${tag}`,
+          label: `Tag: ${tag}`,
+          onRemove: () =>
+            setControls((current) => ({
+              ...current,
+              scopeFilters: {
+                ...current.scopeFilters,
+                tags: current.scopeFilters.tags.filter((item) => item !== tag),
+              },
+            })),
+        });
+      });
+    }
+
+    if (controls.state !== "all") {
+      chips.push({
+        id: "state",
+        label: `State: ${toTitle(controls.state)}`,
+        onRemove: () => setControls((current) => ({ ...current, state: "all" })),
+      });
+    }
+
+    if (controls.instanceType !== "all") {
+      chips.push({
+        id: "instance-type",
+        label: `Instance Type: ${controls.instanceType}`,
+        onRemove: () => setControls((current) => ({ ...current, instanceType: "all" })),
+      });
+    }
+
+    if (
+      queryTransferType === "internet" ||
+      queryTransferType === "inter_region" ||
+      queryTransferType === "inter_az" ||
+      queryTransferType === "regional" ||
+      queryTransferType === "unknown"
+    ) {
+      const transferLabel =
+        queryTransferType === "inter_region"
+          ? "Inter-Region"
+          : queryTransferType === "inter_az"
+            ? "Inter-AZ"
+            : queryTransferType === "regional"
+              ? "Regional"
+            : queryTransferType.charAt(0).toUpperCase() + queryTransferType.slice(1);
+      chips.push({
+        id: "transfer-type",
+        label: `Transfer Type: ${transferLabel}`,
+        onRemove: () => {
+          const next = new URLSearchParams(location.search);
+          next.delete("transferType");
+          navigate({ pathname: location.pathname, search: next.toString() }, { replace: true });
+        },
+      });
+    }
+
+    return chips;
+  }, [controls.instanceType, controls.scopeFilters.region, controls.scopeFilters.tags, controls.state, location.pathname, location.search, navigate, queryTransferType]);
+
+  const openInstanceDetail = (instanceId: string) => {
+    const next = new URLSearchParams(location.search);
+    next.set("instanceId", instanceId);
+    next.set("search", instanceId);
+    navigate({ pathname: `${INSTANCES_PAGE_PATH}/${instanceId}`, search: next.toString() });
+  };
+
+  return (
+    <div className="dashboard-page cost-explorer-page">
+      <section aria-label="EC2 instances list">
+        <EC2InstancesTopBar
+          value={controls}
+          instanceTypeOptions={instanceTypeOptions}
+          visibleControls={[
+            "filters",
+            "status",
+            "state",
+            "instanceType",
+            "reservationType",
+            "search",
+            "thresholds",
+            "reset",
+          ]}
+          onChange={(next) => {
+            setControls(next);
+            setPage(1);
+          }}
+          onReset={() => {
+            setControls({ ...EC2_INSTANCES_DEFAULT_CONTROLS });
+            setPage(1);
+          }}
+        >
+          <EC2InstancesContextChips
+            chips={activeChips}
+            onClearAll={() => {
+              const next = new URLSearchParams(location.search);
+              next.delete("transferType");
+              navigate({ pathname: location.pathname, search: next.toString() }, { replace: true });
+              setControls((current) => ({
+                ...current,
+                status: "all",
+                state: "all",
+                instanceType: "all",
+                reservationType: "all",
+                scopeFilters: { region: [], tags: [] },
+                thresholds: {
+                  cpuMin: "",
+                  cpuMax: "",
+                  costMin: "",
+                  costMax: "",
+                  networkMin: "",
+                  networkMax: "",
+                },
+              }));
+              setPage(1);
+            }}
+          />
+        </EC2InstancesTopBar>
+
+        <EC2InstancesTable
+          rows={filteredRows}
+          volumeCostByInstanceId={volumeCostByInstanceId}
+          loading={instancesQuery.isLoading}
+          error={instancesQuery.isError ? instancesQuery.error : null}
+          onRetry={() => {
+            void instancesQuery.refetch();
+          }}
+          onOpenVolumesForInstance={(instanceId) => {
+            const next = new URLSearchParams(location.search);
+            next.set("source", "instances-volume-link");
+            next.set("attachedInstanceId", instanceId);
+            next.set("search", instanceId);
+            navigate({ pathname: VOLUMES_PAGE_PATH, search: next.toString() });
+          }}
+          onOpenInstance={openInstanceDetail}
+        />
+      </section>
+    </div>
+  );
+}
+

@@ -27,11 +27,14 @@ const sharedConfig: DialectSslConfig = {
   },
 };
 
-const config: Record<"development" | "test" | "production", DialectSslConfig> =
-  {
-    development: sharedConfig,
-    test: sharedConfig,
-    production: sharedConfig,
-  };
+const config: Record<
+  "development" | "test" | "production" | "demo",
+  DialectSslConfig
+> = {
+  development: sharedConfig,
+  test: sharedConfig,
+  production: sharedConfig,
+  demo: sharedConfig,
+};
 
 export default config;

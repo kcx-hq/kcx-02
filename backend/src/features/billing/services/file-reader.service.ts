@@ -35,7 +35,7 @@ function withTimeout(promise, timeoutMs, label) {
 function detectFileFormatFromKey(key) {
   const normalizedKey = String(key ?? "").trim().toLowerCase();
   if (normalizedKey.endsWith(".csv")) return "csv";
-  if (normalizedKey.endsWith(".parquet")) return "parquet";
+  if (normalizedKey.endsWith(".parquet") || normalizedKey.endsWith(".par")) return "parquet";
   return null;
 }
 

@@ -45,6 +45,7 @@ type ListS3ScopeParams = {
   credentials: AwsTempCredentials;
   bucket: string;
   prefix: string;
+  resolvedRegion?: string;
 };
 
 type ValidateSelectedObjectKeysParams = {
@@ -52,6 +53,7 @@ type ValidateSelectedObjectKeysParams = {
   bucket: string;
   basePrefix: string;
   objectKeys: string[];
+  resolvedRegion?: string;
   tenantId?: string | null;
   userId?: string | null;
   sessionId?: string | null;
@@ -69,6 +71,7 @@ export type SourceS3ObjectStream = {
   contentLength: number | null;
   lastModified: Date | null;
 };
+const S3_HEAD_OBJECT_CONCURRENCY = 8;
 
 const normalizeBucket = (value: string): string => String(value ?? "").trim();
 
@@ -260,7 +263,7 @@ export async function listS3Scope(params: ListS3ScopeParams): Promise<{
     throw new BadRequestError("bucket is required");
   }
 
-  const resolvedRegion = await resolveBucketRegion(bucket, params.credentials, env.awsRegion);
+  const resolvedRegion = params.resolvedRegion || (await resolveBucketRegion(bucket, params.credentials, env.awsRegion));
   const s3Client = createScopedS3Client(resolvedRegion, params.credentials);
 
   try {
@@ -347,11 +350,10 @@ export async function validateSelectedObjectKeys(
     });
   }
 
-  const resolvedRegion = await resolveBucketRegion(bucket, params.credentials, env.awsRegion);
+  const resolvedRegion = params.resolvedRegion || (await resolveBucketRegion(bucket, params.credentials, env.awsRegion));
   const s3Client = createScopedS3Client(resolvedRegion, params.credentials);
 
-  const validatedObjects: ValidatedS3Object[] = [];
-  for (const key of objectKeys) {
+  const validateSingleKey = async (key: string): Promise<ValidatedS3Object> => {
     console.log("[S3-UPLOAD-DEBUG][IMPORT][HEAD_OBJECT]", {
       tenantId: params.tenantId ?? null,
       userId: params.userId ?? null,
@@ -368,11 +370,11 @@ export async function validateSelectedObjectKeys(
         }),
       );
 
-      validatedObjects.push({
+      return {
         key,
         sizeBytes: Number(headResult.ContentLength ?? 0),
         lastModified: headResult.LastModified ?? null,
-      });
+      };
     } catch (error) {
       console.error("[S3-UPLOAD-DEBUG][IMPORT][HEAD_OBJECT_FAILED]", {
         tenantId: params.tenantId ?? null,
@@ -388,6 +390,13 @@ export async function validateSelectedObjectKeys(
         reason: toAwsErrorMessage(error),
       });
     }
+  };
+
+  const validatedObjects: ValidatedS3Object[] = [];
+  for (let i = 0; i < objectKeys.length; i += S3_HEAD_OBJECT_CONCURRENCY) {
+    const chunk = objectKeys.slice(i, i + S3_HEAD_OBJECT_CONCURRENCY);
+    const chunkResults = await Promise.all(chunk.map((key) => validateSingleKey(key)));
+    validatedObjects.push(...chunkResults);
   }
 
   return validatedObjects;
@@ -397,6 +406,7 @@ export async function getSourceS3ObjectStream(params: {
   credentials: AwsTempCredentials;
   bucket: string;
   key: string;
+  resolvedRegion?: string;
 }): Promise<SourceS3ObjectStream> {
   const bucket = normalizeBucket(params.bucket);
   const key = normalizeObjectKey(params.key);
@@ -404,7 +414,7 @@ export async function getSourceS3ObjectStream(params: {
     throw new BadRequestError("bucket and key are required");
   }
 
-  const resolvedRegion = await resolveBucketRegion(bucket, params.credentials, env.awsRegion);
+  const resolvedRegion = params.resolvedRegion || (await resolveBucketRegion(bucket, params.credentials, env.awsRegion));
   const s3Client = createScopedS3Client(resolvedRegion, params.credentials);
 
   try {

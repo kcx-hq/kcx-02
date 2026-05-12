@@ -135,6 +135,8 @@ const env = {
     optionalEnv(process.env.AWS_VALIDATION_SESSION_TOKEN) ?? optionalEnv(process.env.AWS_SESSION_TOKEN),
   resetTokenTtlMinutes: optionalPositiveNumber(process.env.RESET_TOKEN_TTL_MINUTES, 60),
   sessionTtlHours: optionalPositiveNumber(process.env.SESSION_TTL_HOURS, 168),
+  jwtSecret: optionalEnv(process.env.JWT_SECRET),
+  jwtIssuer: optionalEnv(process.env.JWT_ISSUER) ?? "kcx-backend",
   awsRegion: optionalEnv(process.env.AWS_REGION) ?? "us-east-1",
   awsAccessKeyId: optionalEnv(process.env.AWS_ACCESS_KEY_ID),
   awsSecretAccessKey: optionalEnv(process.env.AWS_SECRET_ACCESS_KEY),
@@ -182,6 +184,35 @@ const env = {
     optionalPositiveInteger(process.env.OPTIMIZATION_COMMITMENT_SCHEDULER_STARTUP_DELAY_MS) ?? 45_000,
   optimizationCommitmentSyncFreshnessMinutes:
     optionalPositiveInteger(process.env.OPTIMIZATION_COMMITMENT_SYNC_FRESHNESS_MINUTES) ?? 360,
+  ec2ScheduledJobsSchedulerEnabled:
+    optionalBoolean(process.env.EC2_SCHEDULED_JOBS_SCHEDULER_ENABLED) ?? true,
+  ec2ScheduledJobsPollIntervalMs:
+    optionalPositiveInteger(process.env.EC2_SCHEDULED_JOBS_POLL_INTERVAL_MS) ?? 60_000,
+  ec2ScheduledJobsRunningStaleAfterMs:
+    optionalPositiveInteger(process.env.EC2_SCHEDULED_JOBS_RUNNING_STALE_AFTER_MS) ??
+    6 * 60 * 60 * 1000,
+  ec2ScheduledJobsBatchSize:
+    optionalPositiveInteger(process.env.EC2_SCHEDULED_JOBS_BATCH_SIZE) ?? 10,
+  ec2ScheduledJobsMaxBatchesPerPoll:
+    optionalPositiveInteger(process.env.EC2_SCHEDULED_JOBS_MAX_BATCHES_PER_POLL) ?? 5,
+  ec2HourlyRetentionDays:
+    optionalPositiveInteger(process.env.EC2_HOURLY_RETENTION_DAYS) ?? 30,
+  s3BucketConfigSchedulerEnabled:
+    optionalBoolean(process.env.S3_BUCKET_CONFIG_SCHEDULER_ENABLED) ?? true,
+  s3BucketConfigSchedulerIntervalMs:
+    optionalPositiveInteger(process.env.S3_BUCKET_CONFIG_SCHEDULER_INTERVAL_MS) ?? 24 * 60 * 60 * 1000,
+  s3BucketConfigSchedulerStartupDelayMs:
+    optionalPositiveInteger(process.env.S3_BUCKET_CONFIG_SCHEDULER_STARTUP_DELAY_MS) ?? 60_000,
+  storageLensSchedulerEnabled:
+    optionalBoolean(process.env.STORAGE_LENS_SCHEDULER_ENABLED) ?? true,
+  storageLensSchedulerIntervalMs:
+    optionalPositiveInteger(process.env.STORAGE_LENS_SCHEDULER_INTERVAL_MS) ?? 24 * 60 * 60 * 1000,
+  storageLensSchedulerStartupDelayMs:
+    optionalPositiveInteger(process.env.STORAGE_LENS_SCHEDULER_STARTUP_DELAY_MS) ?? 120_000,
+  storageLensDefaultExportPrefix:
+    optionalEnv(process.env.STORAGE_LENS_DEFAULT_EXPORT_PREFIX) ?? "kcx/storage-lens",
+  storageLensSchedulerMaxFilesPerRun:
+    optionalPositiveInteger(process.env.STORAGE_LENS_SCHEDULER_MAX_FILES_PER_RUN) ?? 20,
 };
 
 export default env;

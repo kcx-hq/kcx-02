@@ -1,10 +1,49 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   dashboardApi,
   type AnomaliesFiltersQuery,
   type AnomaliesListResponse,
   type CostExplorerFiltersQuery,
   type DashboardResolvedScope,
+  type Ec2OptimizationSummaryFiltersQuery,
+  type Ec2OptimizationInstancesFiltersQuery,
+  type Ec2OptimizationSummaryResponse,
+  type Ec2OptimizationInstancesResponse,
+  type Ec2RecommendationsFiltersQuery,
+  type Ec2RecommendationsResponse,
+  type Ec2ExplorerFiltersQuery,
+  type Ec2ExplorerResponse,
+  type Ec2NetworkBreakdownResponse,
+  type Ec2DataTransferFiltersQuery,
+  type Ec2DataTransferResponse,
+  type Ec2ElasticIpFiltersQuery,
+  type Ec2ElasticIpResponse,
+  type LoadBalancerExplorerFiltersQuery,
+  type LoadBalancerExplorerSummaryResponse,
+  type LoadBalancerExplorerTrendResponse,
+  type LoadBalancerExplorerGroupByResponse,
+  type DatabaseExplorerFilters,
+  type DatabaseExplorerResponse,
+  type DatabaseAssetsFilters,
+  type DatabaseAssetsResponse,
+  type DatabaseAssetDetail,
+
+  type S3CostInsightsFiltersQuery,
+  type S3CostInsightsResponse,
+  type S3BucketLifecycleInsightResponse,
+  type S3LifecyclePolicyApplyRequest,
+  type S3LifecyclePolicyApplyResponse,
+  type S3LifecyclePolicyDeleteRequest,
+  type S3LifecyclePolicyDeleteResponse,
+  type S3PolicyActionHistoryResponse,
+  type S3OptimizationResponse,
+  type S3ReplicationDestinationBucketsResponse,
+  type S3ReplicationResponse,
+  type S3ReplicationRoleAutoCreateRequest,
+  type S3ReplicationRoleAutoCreateResponse,
+  type S3ReplicationSetupApplyResponse,
+  type S3ReplicationSetupPreviewResponse,
+  type S3ReplicationSetupRequest,
   type OptimizationIdleOverview,
   type OptimizationCommitmentOverview,
   type OptimizationIdleRecommendationDetail,
@@ -71,6 +110,57 @@ export function useCostExplorerQuery(filters?: CostExplorerFiltersQuery, enabled
     queryKey: ["dashboard", "cost-explorer", scope, filters],
     queryFn: () => dashboardApi.getCostExplorer(assertScope(scope), filters),
     enabled: Boolean(scope) && enabledOverride,
+  });
+}
+
+export function useCostExplorerGroupOptionsQuery(groupBy?: CostExplorerFiltersQuery["groupBy"], tagKey?: string | null) {
+  const { scope } = useDashboardScope();
+  return useQuery({
+    queryKey: ["dashboard", "cost-explorer", "group-options", scope, groupBy ?? null, tagKey ?? null],
+    queryFn: () => dashboardApi.getCostExplorerGroupOptions(assertScope(scope), groupBy, tagKey ?? null),
+    enabled: Boolean(scope),
+    staleTime: 30_000,
+    placeholderData: (previousData) => previousData,
+  });
+}
+
+export function useDatabaseExplorerQuery(filters: DatabaseExplorerFilters) {
+  const { scope } = useDashboardScope();
+  return useQuery<DatabaseExplorerResponse, Error>({
+    queryKey: ["dashboard", "services", "database", "explorer", scope, filters],
+    queryFn: () => dashboardApi.getDatabaseExplorer(assertScope(scope), filters),
+    enabled: Boolean(scope?.from && scope?.to),
+    placeholderData: (previousData) => previousData,
+    staleTime: 30_000,
+  });
+}
+
+export function useDatabaseAssetsQuery(filters: DatabaseAssetsFilters) {
+  const { scope } = useDashboardScope();
+  return useQuery<DatabaseAssetsResponse, Error>({
+    queryKey: ["dashboard", "services", "database", "assets", scope, filters],
+    queryFn: () => dashboardApi.getDatabaseAssets(assertScope(scope), filters),
+    enabled: Boolean(scope?.from && scope?.to),
+    placeholderData: (previousData) => previousData,
+    staleTime: 30_000,
+  });
+}
+
+export function useDatabaseAssetDetailQuery(
+  resourceId: string | null,
+  params: { cloudConnectionId: string | null; startDate?: string | null; endDate?: string | null },
+) {
+  const { scope } = useDashboardScope();
+  return useQuery<DatabaseAssetDetail, Error>({
+    queryKey: ["dashboard", "services", "database", "asset-detail", scope, resourceId, params],
+    queryFn: () => dashboardApi.getDatabaseAssetDetail(assertScope(scope), resourceId as string, {
+      cloudConnectionId: params.cloudConnectionId as string,
+      startDate: params.startDate ?? undefined,
+      endDate: params.endDate ?? undefined,
+    }),
+    enabled: Boolean(scope?.from && scope?.to && resourceId && params.cloudConnectionId),
+    placeholderData: (previousData) => previousData,
+    staleTime: 30_000,
   });
 }
 
@@ -216,6 +306,15 @@ export function useAnomaliesQuery(filters?: AnomaliesFiltersQuery) {
   });
 }
 
+export function useAnomaliesAlertsQuery(filters?: AnomaliesFiltersQuery) {
+  const { scope } = useDashboardScope();
+  return useQuery<AnomaliesListResponse, Error>({
+    queryKey: ["dashboard", "anomalies-alerts", scope, filters],
+    queryFn: () => dashboardApi.getAnomaliesAlerts(assertScope(scope), filters),
+    enabled: Boolean(scope),
+  });
+}
+
 export function useBudgetQuery() {
   const { scope } = useDashboardScope();
   return useQuery({
@@ -231,5 +330,283 @@ export function useReportQuery() {
     queryKey: ["dashboard", "report", scope],
     queryFn: () => dashboardApi.getReport(assertScope(scope)),
     enabled: Boolean(scope),
+  });
+}
+
+export function useEc2OptimizationSummaryQuery(filters?: Ec2OptimizationSummaryFiltersQuery) {
+  const { scope } = useDashboardScope();
+  return useQuery<Ec2OptimizationSummaryResponse, Error>({
+    queryKey: ["dashboard", "ec2", "optimization", "summary", scope, filters],
+    queryFn: () => dashboardApi.getEc2OptimizationSummary(assertScope(scope), filters),
+    enabled: Boolean(scope),
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
+    placeholderData: (previous) => previous,
+  });
+}
+
+export function useEc2OptimizationInstancesQuery(filters?: Ec2OptimizationInstancesFiltersQuery) {
+  const { scope } = useDashboardScope();
+  return useQuery<Ec2OptimizationInstancesResponse, Error>({
+    queryKey: ["dashboard", "ec2", "optimization", "instances", scope, filters],
+    queryFn: () => dashboardApi.getEc2OptimizationInstances(assertScope(scope), filters),
+    enabled: Boolean(scope),
+    placeholderData: (previous) => previous,
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
+  });
+}
+
+export function useEc2RecommendationsQuery(filters?: Ec2RecommendationsFiltersQuery) {
+  const { scope } = useDashboardScope();
+  return useQuery<Ec2RecommendationsResponse, Error>({
+    queryKey: ["dashboard", "ec2", "recommendations", scope, filters],
+    queryFn: () => dashboardApi.getEc2Recommendations(assertScope(scope), filters),
+    enabled: Boolean(scope),
+    placeholderData: (previous) => previous,
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
+  });
+}
+
+export function useEc2ExplorerQuery(filters: Ec2ExplorerFiltersQuery, enabledOverride: boolean = true) {
+  const { scope } = useDashboardScope();
+  return useQuery<Ec2ExplorerResponse, Error>({
+    queryKey: ["dashboard", "ec2", "explorer", scope, filters],
+    queryFn: () => dashboardApi.getEc2Explorer(assertScope(scope), filters),
+    enabled: Boolean(scope) && enabledOverride,
+    placeholderData: (previous) => previous,
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
+  });
+}
+
+export function useEc2ExplorerNetworkBreakdownQuery(
+  filters: Ec2ExplorerFiltersQuery,
+  enabledOverride: boolean = true,
+) {
+  const { scope } = useDashboardScope();
+  return useQuery<Ec2NetworkBreakdownResponse, Error>({
+    queryKey: ["dashboard", "ec2", "explorer", "network-breakdown", scope, filters],
+    queryFn: () => dashboardApi.getEc2ExplorerNetworkBreakdown(assertScope(scope), filters),
+    enabled: Boolean(scope) && enabledOverride,
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
+    placeholderData: (previous) => previous,
+  });
+}
+
+export function useEc2DataTransferQuery(filters?: Ec2DataTransferFiltersQuery, enabledOverride: boolean = true) {
+  const { scope } = useDashboardScope();
+  return useQuery<Ec2DataTransferResponse, Error>({
+    queryKey: ["dashboard", "ec2", "data-transfer", scope, filters],
+    queryFn: () => dashboardApi.getEc2DataTransfer(assertScope(scope), filters),
+    enabled: Boolean(scope) && enabledOverride,
+    placeholderData: (previous) => previous,
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
+  });
+}
+
+export function useEc2ElasticIpsQuery(filters?: Ec2ElasticIpFiltersQuery, enabledOverride: boolean = true) {
+  const { scope } = useDashboardScope();
+  return useQuery<Ec2ElasticIpResponse, Error>({
+    queryKey: ["dashboard", "ec2", "elastic-ips", scope, filters],
+    queryFn: () => dashboardApi.getEc2ElasticIps(assertScope(scope), filters),
+    enabled: Boolean(scope) && enabledOverride,
+    placeholderData: (previous) => previous,
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
+  });
+}
+
+export function useLoadBalancerExplorerSummaryQuery(filters: LoadBalancerExplorerFiltersQuery, enabledOverride: boolean = true) {
+  const { scope } = useDashboardScope();
+  return useQuery<LoadBalancerExplorerSummaryResponse, Error>({
+    queryKey: ["dashboard", "load-balancer", "explorer", "summary", scope, filters],
+    queryFn: () => dashboardApi.getLoadBalancerExplorerSummary(assertScope(scope), filters),
+    enabled: Boolean(scope) && enabledOverride,
+    placeholderData: (previous) => previous,
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
+  });
+}
+
+export function useLoadBalancerExplorerTrendQuery(filters: LoadBalancerExplorerFiltersQuery, enabledOverride: boolean = true) {
+  const { scope } = useDashboardScope();
+  return useQuery<LoadBalancerExplorerTrendResponse, Error>({
+    queryKey: ["dashboard", "load-balancer", "explorer", "trend", scope, filters],
+    queryFn: () => dashboardApi.getLoadBalancerExplorerTrend(assertScope(scope), filters),
+    enabled: Boolean(scope) && enabledOverride,
+    placeholderData: (previous) => previous,
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
+  });
+}
+
+export function useLoadBalancerExplorerGroupByQuery(filters: LoadBalancerExplorerFiltersQuery, enabledOverride: boolean = true) {
+  const { scope } = useDashboardScope();
+  return useQuery<LoadBalancerExplorerGroupByResponse, Error>({
+    queryKey: ["dashboard", "load-balancer", "explorer", "group-by", scope, filters],
+    queryFn: () => dashboardApi.getLoadBalancerExplorerGroupBy(assertScope(scope), filters),
+    enabled: Boolean(scope) && enabledOverride,
+    placeholderData: (previous) => previous,
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
+  });
+}
+
+export function useS3CostInsightsQuery(
+  filters?: S3CostInsightsFiltersQuery,
+  options?: {
+    enabled?: boolean;
+    staleTime?: number;
+    refetchInterval?: number | false;
+  },
+) {
+  const { scope } = useDashboardScope();
+  return useQuery<S3CostInsightsResponse, Error>({
+    queryKey: ["dashboard", "s3", "cost-insights", scope, filters],
+    queryFn: ({ signal }) => dashboardApi.getS3CostInsights(assertScope(scope), filters, { signal }),
+    enabled: Boolean(scope) && (options?.enabled ?? true),
+    placeholderData: (previous) => previous,
+    staleTime: options?.staleTime ?? 90_000,
+    refetchOnWindowFocus: false,
+    refetchInterval: options?.refetchInterval ?? false,
+  });
+}
+
+export function useS3OptimizationQuery(enabledOverride: boolean = true) {
+  const { scope } = useDashboardScope();
+  return useQuery<S3OptimizationResponse, Error>({
+    queryKey: ["dashboard", "s3", "optimization", scope],
+    queryFn: () => dashboardApi.getS3Optimization(assertScope(scope)),
+    enabled: Boolean(scope) && enabledOverride,
+    placeholderData: (previous) => previous,
+    staleTime: 90_000,
+    refetchOnWindowFocus: false,
+  });
+}
+
+export function useS3BucketLifecycleInsightQuery(bucketName: string | null) {
+  const { scope } = useDashboardScope();
+  return useQuery<S3BucketLifecycleInsightResponse, Error>({
+    queryKey: ["dashboard", "s3", "lifecycle-insight", scope, bucketName],
+    queryFn: () => dashboardApi.getS3BucketLifecycleInsight(assertScope(scope), bucketName as string),
+    enabled: Boolean(scope) && Boolean(bucketName && bucketName.trim().length > 0),
+    placeholderData: (previous) => previous,
+    staleTime: 90_000,
+    refetchOnWindowFocus: false,
+  });
+}
+
+export function useApplyS3LifecyclePolicyMutation() {
+  const { scope } = useDashboardScope();
+  const queryClient = useQueryClient();
+  return useMutation<S3LifecyclePolicyApplyResponse, Error, S3LifecyclePolicyApplyRequest>({
+    mutationFn: (payload) => {
+      if (!scope) {
+        throw new Error("Dashboard scope is not resolved yet");
+      }
+      return dashboardApi.applyS3LifecyclePolicy(scope, payload);
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: ["dashboard", "policy", "actions"],
+      });
+    },
+  });
+}
+
+export function useS3ReplicationQuery(
+  enabledOverride: boolean = true,
+  options?: {
+    staleTime?: number;
+    retry?: number | boolean;
+  },
+) {
+  const { scope } = useDashboardScope();
+  return useQuery<S3ReplicationResponse, Error>({
+    queryKey: ["dashboard", "s3", "replication", scope],
+    queryFn: () => dashboardApi.getS3Replication(assertScope(scope)),
+    enabled: Boolean(scope) && enabledOverride,
+    placeholderData: (previous) => previous,
+    staleTime: options?.staleTime ?? 90_000,
+    retry: options?.retry ?? 1,
+    refetchOnWindowFocus: false,
+  });
+}
+
+export function useS3ReplicationDestinationBucketsQuery(sourceBucketName: string | null, enabledOverride: boolean = true) {
+  const { scope } = useDashboardScope();
+  const normalizedSourceBucketName = String(sourceBucketName ?? "").trim();
+  return useQuery<S3ReplicationDestinationBucketsResponse, Error>({
+    queryKey: ["dashboard", "s3", "replication", "destination-buckets", scope, normalizedSourceBucketName],
+    queryFn: () => dashboardApi.getS3ReplicationDestinationBuckets(assertScope(scope), normalizedSourceBucketName),
+    enabled: Boolean(scope) && Boolean(normalizedSourceBucketName) && enabledOverride,
+    placeholderData: (previous) => previous,
+    staleTime: 90_000,
+    refetchOnWindowFocus: false,
+  });
+}
+
+export function usePreviewS3ReplicationSetupMutation() {
+  const { scope } = useDashboardScope();
+  return useMutation<S3ReplicationSetupPreviewResponse, Error, S3ReplicationSetupRequest>({
+    mutationFn: (payload) => {
+      if (!scope) throw new Error("Dashboard scope is not resolved yet");
+      return dashboardApi.previewS3ReplicationSetup(scope, payload);
+    },
+  });
+}
+
+export function useApplyS3ReplicationSetupMutation() {
+  const { scope } = useDashboardScope();
+  const queryClient = useQueryClient();
+  return useMutation<S3ReplicationSetupApplyResponse, Error, S3ReplicationSetupRequest>({
+    mutationFn: (payload) => {
+      if (!scope) throw new Error("Dashboard scope is not resolved yet");
+      return dashboardApi.applyS3ReplicationSetup(scope, payload);
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["dashboard", "s3", "replication"] });
+    },
+  });
+}
+
+export function useAutoCreateS3ReplicationRoleMutation() {
+  const { scope } = useDashboardScope();
+  return useMutation<S3ReplicationRoleAutoCreateResponse, Error, S3ReplicationRoleAutoCreateRequest>({
+    mutationFn: (payload) => {
+      if (!scope) throw new Error("Dashboard scope is not resolved yet");
+      return dashboardApi.autoCreateS3ReplicationRole(scope, payload);
+    },
+  });
+}
+
+export function usePolicyActionHistoryQuery() {
+  const { scope } = useDashboardScope();
+  return useQuery<S3PolicyActionHistoryResponse, Error>({
+    queryKey: ["dashboard", "policy", "actions", scope],
+    queryFn: () => dashboardApi.getPolicyActionHistory(assertScope(scope)),
+    enabled: Boolean(scope),
+  });
+}
+
+export function useDeleteS3LifecyclePolicyMutation() {
+  const { scope } = useDashboardScope();
+  const queryClient = useQueryClient();
+  return useMutation<S3LifecyclePolicyDeleteResponse, Error, S3LifecyclePolicyDeleteRequest>({
+    mutationFn: (payload) => {
+      if (!scope) {
+        throw new Error("Dashboard scope is not resolved yet");
+      }
+      return dashboardApi.deleteS3LifecyclePolicy(scope, payload);
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: ["dashboard", "policy", "actions"],
+      });
+    },
   });
 }

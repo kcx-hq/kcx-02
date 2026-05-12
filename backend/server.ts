@@ -6,6 +6,9 @@ import { startIdleActionProcessor } from "./src/features/dashboard/optimization/
 import { startIdleRecommendationScheduler } from "./src/features/dashboard/optimization/recommendation-sync/idle-scheduler.service.js";
 import { startRightsizingActionProcessor } from "./src/features/dashboard/optimization/recommendation-sync/rightsizing-action-processor.service.js";
 import { startRightsizingRecommendationScheduler } from "./src/features/dashboard/optimization/recommendation-sync/rightsizing-scheduler.service.js";
+import { startEc2ScheduledJobsScheduler } from "./src/features/scheduled-jobs/scheduled-jobs.scheduler.service.js";
+import { startS3BucketConfigSnapshotScheduler } from "./src/features/billing/services/s3-bucket-config-snapshot-scheduler.service.js";
+import { startStorageLensScheduler } from "./src/features/billing/services/s3-storage-lens-scheduler.service.js";
 import { sequelize } from "./src/models/index.js";
 import { logger } from "./src/utils/logger.js";
 
@@ -19,6 +22,9 @@ let stopIdleActionProcessor: (() => void) | null = null;
 let stopRightsizingScheduler: (() => void) | null = null;
 let stopCommitmentScheduler: (() => void) | null = null;
 let stopRightsizingActionProcessor: (() => void) | null = null;
+let stopEc2ScheduledJobsScheduler: (() => void) | null = null;
+let stopS3BucketConfigScheduler: (() => void) | null = null;
+let stopStorageLensScheduler: (() => void) | null = null;
 
 const shutdown = (signal: string): void => {
   if (isShuttingDown) {
@@ -41,6 +47,18 @@ const shutdown = (signal: string): void => {
       stopCommitmentScheduler();
       stopCommitmentScheduler = null;
     }
+    if (stopEc2ScheduledJobsScheduler) {
+      stopEc2ScheduledJobsScheduler();
+      stopEc2ScheduledJobsScheduler = null;
+    }
+    if (stopS3BucketConfigScheduler) {
+      stopS3BucketConfigScheduler();
+      stopS3BucketConfigScheduler = null;
+    }
+    if (stopStorageLensScheduler) {
+      stopStorageLensScheduler();
+      stopStorageLensScheduler = null;
+    }
     if (stopIdleScheduler) {
       stopIdleScheduler();
       stopIdleScheduler = null;
@@ -61,27 +79,39 @@ const shutdown = (signal: string): void => {
   }, SHUTDOWN_TIMEOUT_MS);
 
   server.close((error) => {
-    if (stopRightsizingActionProcessor) {
-      stopRightsizingActionProcessor();
-      stopRightsizingActionProcessor = null;
+    // if (stopRightsizingActionProcessor) {
+    //   stopRightsizingActionProcessor();
+    //   stopRightsizingActionProcessor = null;
+    // }
+    // if (stopIdleActionProcessor) {
+    //   stopIdleActionProcessor();
+    //   stopIdleActionProcessor = null;
+    // }
+    // if (stopCommitmentScheduler) {
+    //   stopCommitmentScheduler();
+    //   stopCommitmentScheduler = null;
+    // }
+    if (stopEc2ScheduledJobsScheduler) {
+      stopEc2ScheduledJobsScheduler();
+      stopEc2ScheduledJobsScheduler = null;
     }
-    if (stopIdleActionProcessor) {
-      stopIdleActionProcessor();
-      stopIdleActionProcessor = null;
+    if (stopS3BucketConfigScheduler) {
+      stopS3BucketConfigScheduler();
+      stopS3BucketConfigScheduler = null;
     }
-    if (stopCommitmentScheduler) {
-      stopCommitmentScheduler();
-      stopCommitmentScheduler = null;
+    if (stopStorageLensScheduler) {
+      stopStorageLensScheduler();
+      stopStorageLensScheduler = null;
     }
     clearTimeout(forceExitTimer);
-    if (stopIdleScheduler) {
-      stopIdleScheduler();
-      stopIdleScheduler = null;
-    }
-    if (stopRightsizingScheduler) {
-      stopRightsizingScheduler();
-      stopRightsizingScheduler = null;
-    }
+    // if (stopIdleScheduler) {
+    //   stopIdleScheduler();
+    //   stopIdleScheduler = null;
+    // }
+    // if (stopRightsizingScheduler) {
+    //   stopRightsizingScheduler();
+    //   stopRightsizingScheduler = null;
+    // }
 
     if (error) {
       logger.error("Error while shutting down server", {
@@ -108,11 +138,14 @@ const startServer = async (): Promise<void> => {
   }
 
   server = createServer(app);
-  stopRightsizingActionProcessor = startRightsizingActionProcessor();
-  stopIdleActionProcessor = startIdleActionProcessor();
-  stopCommitmentScheduler = startCommitmentRecommendationScheduler();
-  stopIdleScheduler = startIdleRecommendationScheduler();
-  stopRightsizingScheduler = startRightsizingRecommendationScheduler();
+  // stopRightsizingActionProcessor = startRightsizingActionProcessor();
+  // stopIdleActionProcessor = startIdleActionProcessor();
+  // stopCommitmentScheduler = startCommitmentRecommendationScheduler();
+  // stopIdleScheduler = startIdleRecommendationScheduler();
+  // stopRightsizingScheduler = startRightsizingRecommendationScheduler();
+  stopEc2ScheduledJobsScheduler = startEc2ScheduledJobsScheduler();
+  stopS3BucketConfigScheduler = startS3BucketConfigSnapshotScheduler();
+  stopStorageLensScheduler = startStorageLensScheduler();
 
   server.listen(PORT, () => {
     logger.info("Server running", {

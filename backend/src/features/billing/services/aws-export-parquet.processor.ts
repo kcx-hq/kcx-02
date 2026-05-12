@@ -5,7 +5,7 @@ import env from "../../../config/env.js";
 import { logger } from "../../../utils/logger.js";
 import { downloadExportFile } from "../../cloud-connections/aws/infrastructure/aws-export-reader.service.js";
 import type { AwsParquetSchemaValidationResult } from "../../cloud-connections/aws/exports/aws-export-ingestion.types.js";
-import { mapFactCostLineItem } from "../mappers/raw_focus_to_dimensions.mapper.js";
+import { RAW_COLUMNS, mapFactCostLineItem } from "../mappers/raw_focus_to_dimensions.mapper.js";
 import {
   createIngestionDimensionCache,
   primeDimensionCacheForChunk,
@@ -26,6 +26,14 @@ import {
   syncAwsIdleRecommendationsAfterIngestion,
   syncAwsRightsizingRecommendationsAfterIngestion,
 } from "../../dashboard/optimization/recommendation-sync/sync.service.js";
+import { syncEc2CostHistoryForIngestionRun } from "./ec2-cost-history.service.js";
+import { syncDbCostHistoryForIngestionRun } from "./db-cost-history.service.js";
+import { syncLoadBalancerCostDailyForIngestionRun } from "../../load-balancer/cost/load-balancer-cost-daily.service.js";
+import { createTagDimensionCache, resolveFactPrimaryTagId, resolveFactTagIds } from "./dim-tag.service.js";
+import { assertTagDimensionSchemaReady } from "./ingestion-schema-guard.service.js";
+import { Ec2RecommendationsService } from "../../ec2/optimization/ec2-recommendations.service.js";
+import { LoadBalancerRecommendationsService } from "../../load-balancer/recommendations/load-balancer-recommendations.service.js";
+import { syncStorageLensFromClientAccount } from "./s3-storage-lens-sync.service.js";
 
 const STAGE_MESSAGE = {
   validating_schema: "Validating manifest and parquet schema",
@@ -51,6 +59,80 @@ const PROGRESS_BY_STAGE = {
 };
 
 const now = () => new Date();
+const ec2RecommendationsService = new Ec2RecommendationsService();
+const loadBalancerRecommendationsService = new LoadBalancerRecommendationsService();
+
+function scheduleStorageLensSyncAfterIngestion({ tenantId, billingSourceId, ingestionRunId }) {
+  const normalizedTenantId = String(tenantId ?? "").trim();
+  const normalizedBillingSourceId = String(billingSourceId ?? "").trim();
+  if (!normalizedTenantId || !normalizedBillingSourceId) {
+    return;
+  }
+
+  setImmediate(() => {
+    void syncStorageLensFromClientAccount({
+      tenantId: normalizedTenantId,
+      billingSourceId: normalizedBillingSourceId,
+    })
+      .then((result) => {
+        logger.info("Storage Lens auto-sync completed after AWS parquet ingestion", {
+          ingestionRunId: String(ingestionRunId),
+          tenantId: normalizedTenantId,
+          billingSourceId: normalizedBillingSourceId,
+          snapshotsUpserted: result.snapshotsUpserted,
+          objectsProcessed: result.objectsProcessed,
+        });
+      })
+      .catch((error) => {
+        logger.warn("Storage Lens auto-sync failed after AWS parquet ingestion", {
+          ingestionRunId: String(ingestionRunId),
+          tenantId: normalizedTenantId,
+          billingSourceId: normalizedBillingSourceId,
+          reason: error instanceof Error ? error.message : String(error),
+        });
+      });
+  });
+}
+
+function scheduleLoadBalancerCostAggregationAfterIngestion({
+  ingestionRunId,
+  cloudConnectionId,
+}: {
+  ingestionRunId: string | number;
+  cloudConnectionId?: string | null;
+}): void {
+  setImmediate(() => {
+    void syncLoadBalancerCostDailyForIngestionRun({
+      ingestionRunId: String(ingestionRunId),
+      cloudConnectionId: cloudConnectionId ?? null,
+    })
+      .then((result) => {
+        logger.info("Load balancer cost aggregation completed after AWS parquet ingestion", {
+          triggerSource: "ingestion",
+          ingestionRunId: String(ingestionRunId),
+          cloudConnectionId: cloudConnectionId ?? null,
+          skipped: result.skipped,
+          reason: result.reason ?? null,
+          rowsScanned: result.rowsScanned ?? 0,
+          lbRowsMatched:
+            typeof result.rowsClassified === "number" && typeof result.rowsUnmatched === "number"
+              ? Math.max(result.rowsClassified - result.rowsUnmatched, 0)
+              : 0,
+          unmatchedRows: result.rowsUnmatched ?? 0,
+          dailyRowsWritten: result.rowsUpserted ?? 0,
+          rowsDeleted: result.rowsDeleted ?? 0,
+        });
+      })
+      .catch((error) => {
+        logger.warn("Load balancer cost aggregation failed after AWS parquet ingestion", {
+          triggerSource: "ingestion",
+          ingestionRunId: String(ingestionRunId),
+          cloudConnectionId: cloudConnectionId ?? null,
+          reason: error instanceof Error ? error.message : String(error),
+        });
+      });
+  });
+}
 
 const toErrorMessage = (error) => {
   if (error instanceof Error && error.message.trim().length > 0) {
@@ -58,6 +140,35 @@ const toErrorMessage = (error) => {
   }
   return "Unknown AWS parquet ingestion error";
 };
+
+const toSerializableErrorValue = (value) => {
+  if (value == null) return value;
+  if (value instanceof Error) {
+    return {
+      name: value.name,
+      message: value.message,
+      stack: value.stack,
+    };
+  }
+  if (typeof value === "object") {
+    try {
+      return JSON.parse(JSON.stringify(value));
+    } catch {
+      return String(value);
+    }
+  }
+  return value;
+};
+
+const buildNestedErrorDetails = (error) => ({
+  errorName: error && typeof error === "object" && "name" in error ? String(error.name ?? "") : null,
+  errorMessage: error && typeof error === "object" && "message" in error ? String(error.message ?? "") : null,
+  errorErrors: error && typeof error === "object" && "errors" in error ? toSerializableErrorValue(error.errors) : null,
+  errorFields: error && typeof error === "object" && "fields" in error ? toSerializableErrorValue(error.fields) : null,
+  errorParent: error && typeof error === "object" && "parent" in error ? toSerializableErrorValue(error.parent) : null,
+  errorOriginal: error && typeof error === "object" && "original" in error ? toSerializableErrorValue(error.original) : null,
+  generatedSql: error && typeof error === "object" && "sql" in error ? toSerializableErrorValue(error.sql) : null,
+});
 
 const setRunState = async (runId, patch) => {
   await updateIngestionRunStatus(runId, {
@@ -102,6 +213,8 @@ const buildSchemaResult = ({ rawBillingFileId, key, validation }) => ({
 });
 
 export async function processAwsExportParquetRun({ run }) {
+  await assertTagDimensionSchemaReady();
+
   const runId = String(run.id);
   const batchSize = env.billingIngestionBatchSize;
   const rowConcurrency = Math.max(1, env.billingIngestionRowConcurrency);
@@ -212,6 +325,7 @@ export async function processAwsExportParquetRun({ run }) {
     });
 
     const dimensionCache = createIngestionDimensionCache();
+    const tagCache = createTagDimensionCache();
     const failedReasonCounts = {};
     const allRowErrors = [];
 
@@ -300,9 +414,22 @@ export async function processAwsExportParquetRun({ run }) {
                   cache: dimensionCache,
                 });
 
+                const tagIds = await resolveFactTagIds({
+                  tenantId: rawFile.tenantId,
+                  providerId: rawFile.cloudProviderId,
+                  rawTags: normalizedRow[RAW_COLUMNS.tags],
+                  tagCache,
+                });
+                const primaryTagId = await resolveFactPrimaryTagId({
+                  tenantId: rawFile.tenantId,
+                  providerId: rawFile.cloudProviderId,
+                  rawTags: normalizedRow[RAW_COLUMNS.tags],
+                  tagCache,
+                });
+
                 const factPayload = mapFactCostLineItem({
                   tenant_id: rawFile.tenantId,
-                  billing_source_id: rawFile.billingSourceId,
+                  billing_source_id: source.id,
                   ingestion_run_id: runId,
                   provider_id: rawFile.cloudProviderId,
                   billing_account_key: dimensions.billingAccountKey,
@@ -312,6 +439,7 @@ export async function processAwsExportParquetRun({ run }) {
                   resource_key: dimensions.resourceKey,
                   sku_key: dimensions.skuKey,
                   charge_key: dimensions.chargeKey,
+                  tag_id: primaryTagId,
                   usage_date_key: dimensions.usageDateKey,
                   billing_period_start_date_key: dimensions.billingPeriodStartDateKey,
                   billing_period_end_date_key: dimensions.billingPeriodEndDateKey,
@@ -342,17 +470,35 @@ export async function processAwsExportParquetRun({ run }) {
                     listCost: factPayload.list_cost,
                     usageStartTime: factPayload.usage_start_time,
                     usageEndTime: factPayload.usage_end_time,
+                    usageType: factPayload.usage_type,
+                    productUsageType: factPayload.product_usage_type,
+                    productFamily: factPayload.product_family,
+                    fromLocation: factPayload.from_location,
+                    toLocation: factPayload.to_location,
+                    fromRegionCode: factPayload.from_region_code,
+                    toRegionCode: factPayload.to_region_code,
+                    billType: factPayload.bill_type,
+                    lineItemDescription: factPayload.line_item_description,
+                    legalEntity: factPayload.legal_entity,
+                    operation: factPayload.operation,
                     lineItemType: factPayload.line_item_type,
                     pricingTerm: factPayload.pricing_term,
+                    purchaseOption: factPayload.purchase_option,
                     publicOnDemandCost: factPayload.public_on_demand_cost,
+                    publicOnDemandRate: factPayload.public_on_demand_rate,
                     discountAmount: factPayload.discount_amount,
+                    bundledDiscount: factPayload.bundled_discount,
                     creditAmount: factPayload.credit_amount,
                     refundAmount: factPayload.refund_amount,
                     taxCost: factPayload.tax_cost,
+                    reservationArn: factPayload.reservation_arn,
+                    savingsPlanArn: factPayload.savings_plan_arn,
+                    savingsPlanType: factPayload.savings_plan_type,
                     consumedQuantity: factPayload.consumed_quantity,
                     pricingQuantity: factPayload.pricing_quantity,
-                    tagsJson: factPayload.tags_json,
+                    tagId: factPayload.tag_id,
                   },
+                  tagIds,
                 };
               } catch (error) {
                 return {
@@ -371,6 +517,7 @@ export async function processAwsExportParquetRun({ run }) {
                 rowNumber: result.rowNumber,
                 rawRow: result.rawRow,
                 createPayload: result.createPayload,
+                tagIds: result.tagIds,
               });
               continue;
             }
@@ -520,27 +667,6 @@ export async function processAwsExportParquetRun({ run }) {
       .map(([reason, count]) => `${reason} (${count})`)
       .join(", ");
 
-    const finalStatus = rowsFailed > 0 ? "completed_with_warnings" : "completed";
-
-    await setRunState(runId, {
-      status: finalStatus,
-      current_step: finalStatus,
-      progress_percent: PROGRESS_BY_STAGE[finalStatus],
-      status_message: STAGE_MESSAGE[finalStatus],
-      rows_read: rowsRead,
-      rows_loaded: rowsLoaded,
-      rows_failed: rowsFailed,
-      total_rows_estimated: rowsRead,
-      error_message: rowsFailed > 0 ? `Rows failed: ${rowsFailed}${topReasons ? `. Top reasons: ${topReasons}` : ""}` : null,
-      finished_at: now(),
-      last_heartbeat_at: now(),
-    });
-
-    await source.update({
-      lastIngestedAt: now(),
-      status: "active",
-    });
-
     if (rowsLoaded > 0) {
       await upsertCostAggregationsForRun({
         ingestionRunId: runId,
@@ -549,6 +675,84 @@ export async function processAwsExportParquetRun({ run }) {
         billingSourceId: source.id,
         uploadedBy: connection.createdBy ?? null,
       });
+      await syncEc2CostHistoryForIngestionRun({
+        ingestionRunId: runId,
+        tenantId: source.tenantId,
+        providerId: source.cloudProviderId,
+        billingSourceId: source.id,
+      });
+      logger.info("AWS parquet processor: step=db_sync:start", {
+        runId,
+        tenantId: source.tenantId,
+        providerId: source.cloudProviderId,
+        billingSourceId: source.id,
+        rowsLoaded,
+      });
+      try {
+        await syncDbCostHistoryForIngestionRun({
+          ingestionRunId: runId,
+          tenantId: source.tenantId,
+          providerId: source.cloudProviderId,
+          billingSourceId: source.id,
+        });
+      } catch (dbSyncError) {
+        logger.error("AWS parquet processor: step=db_sync:failed", {
+          runId,
+          tenantId: source.tenantId,
+          providerId: source.cloudProviderId,
+          billingSourceId: source.id,
+          rowsLoaded,
+          reason: toErrorMessage(dbSyncError),
+          ...buildNestedErrorDetails(dbSyncError),
+        });
+        throw dbSyncError;
+      }
+      logger.info("AWS parquet processor: step=db_sync:done", {
+        runId,
+        tenantId: source.tenantId,
+        providerId: source.cloudProviderId,
+        billingSourceId: source.id,
+        rowsLoaded,
+      });
+      scheduleLoadBalancerCostAggregationAfterIngestion({
+        ingestionRunId: runId,
+        cloudConnectionId: source.cloudConnectionId ? String(source.cloudConnectionId) : null,
+      });
+
+      try {
+        await ec2RecommendationsService.refreshRecommendations({
+          tenantId: String(source.tenantId),
+          billingSourceId: Number(source.id),
+          cloudConnectionId: source.cloudConnectionId ? String(source.cloudConnectionId) : null,
+          dateFrom: String(run.periodStartDate).slice(0, 10),
+          dateTo: String(run.periodEndDate).slice(0, 10),
+        });
+      } catch (ec2V1Error) {
+        logger.warn("EC2 V1 recommendation refresh failed after AWS parquet ingestion", {
+          ingestionRunId: runId,
+          tenantId: source.tenantId ?? null,
+          billingSourceId: source.id ?? null,
+          reason: toErrorMessage(ec2V1Error),
+        });
+      }
+
+      try {
+        await loadBalancerRecommendationsService.refreshRecommendations({
+          tenantId: String(source.tenantId),
+          billingSourceId: Number(source.id),
+          cloudConnectionId: source.cloudConnectionId ? String(source.cloudConnectionId) : null,
+          dateFrom: String(run.periodStartDate).slice(0, 10),
+          dateTo: String(run.periodEndDate).slice(0, 10),
+        });
+      } catch (loadBalancerRecError) {
+        logger.warn("Load balancer recommendation refresh failed after AWS parquet ingestion", {
+          ingestionRunId: runId,
+          tenantId: source.tenantId ?? null,
+          billingSourceId: source.id ?? null,
+          cloudConnectionId: source.cloudConnectionId ?? null,
+          reason: toErrorMessage(loadBalancerRecError),
+        });
+      }
 
       try {
         await syncAwsRightsizingRecommendationsAfterIngestion({
@@ -580,6 +784,32 @@ export async function processAwsExportParquetRun({ run }) {
         });
       }
     }
+
+    const finalStatus = rowsFailed > 0 ? "completed_with_warnings" : "completed";
+
+    await setRunState(runId, {
+      status: finalStatus,
+      current_step: finalStatus,
+      progress_percent: PROGRESS_BY_STAGE[finalStatus],
+      status_message: STAGE_MESSAGE[finalStatus],
+      rows_read: rowsRead,
+      rows_loaded: rowsLoaded,
+      rows_failed: rowsFailed,
+      total_rows_estimated: rowsRead,
+      error_message: rowsFailed > 0 ? `Rows failed: ${rowsFailed}${topReasons ? `. Top reasons: ${topReasons}` : ""}` : null,
+      finished_at: now(),
+      last_heartbeat_at: now(),
+    });
+
+    await source.update({
+      lastIngestedAt: now(),
+      status: "active",
+    });
+    scheduleStorageLensSyncAfterIngestion({
+      tenantId: source.tenantId,
+      billingSourceId: source.id,
+      ingestionRunId: runId,
+    });
 
     logger.info("AWS parquet ingestion completed", {
       ingestionRunId: runId,

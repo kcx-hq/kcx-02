@@ -1,11 +1,11 @@
 import { Op } from "sequelize";
 
-import { FactAnomalies } from "../../../models/index.js";
+import { AnomalyContributor, FactAnomalies } from "../../../models/index.js";
 
 import { buildDailyTotalCostSpikeFingerprint } from "./anomaly-fingerprint.js";
 import type { DailyTotalCostSpikeCandidate } from "./daily-total-cost-spike.detector.js";
 
-const ANOMALY_TYPE = "spike";
+const ANOMALY_TYPE = "sudden_cost_spike";
 const BASELINE_TYPE = "rolling_7d";
 const SOURCE_GRANULARITY = "daily";
 const SOURCE_TABLE = "agg_cost_daily";
@@ -29,6 +29,8 @@ export type DailySpikeLifecycleResult = {
 };
 
 const toFixedString = (value: number, scale: number): string => value.toFixed(scale);
+const toConfidenceScore = (severity: "low" | "medium" | "high"): string =>
+  severity === "high" ? "95.00" : severity === "medium" ? "80.00" : "65.00";
 
 const toRootCauseHint = (candidate: DailyTotalCostSpikeCandidate): string =>
   `Daily total billed cost spiked by ${Math.round(candidate.deltaPercent * 100)}% versus rolling 7-day median baseline`;
@@ -59,6 +61,81 @@ const buildLegacyFingerprint = ({
   billingSourceId: string;
   usageDate: string;
 }): string => `daily_total_spike:${billingSourceId}:${usageDate}`;
+
+type ContributorInput = {
+  dimensionType: string;
+  dimensionKey?: string | null;
+  dimensionValue?: string | null;
+  contributionCost?: number | null;
+  contributionPercent?: number | null;
+  rank?: number | null;
+};
+
+async function replaceContributorsForAnomaly({
+  anomalyId,
+  contributors,
+}: {
+  anomalyId: string;
+  contributors: ContributorInput[];
+}): Promise<void> {
+  await AnomalyContributor.destroy({
+    where: {
+      anomalyId,
+    },
+  });
+
+  if (contributors.length === 0) {
+    return;
+  }
+
+  await AnomalyContributor.bulkCreate(
+    contributors.map((entry) => ({
+      anomalyId,
+      dimensionType: entry.dimensionType,
+      dimensionKey: entry.dimensionKey ?? null,
+      dimensionValue: entry.dimensionValue ?? null,
+      contributionCost:
+        entry.contributionCost === undefined || entry.contributionCost === null
+          ? null
+          : toFixedString(entry.contributionCost, 6),
+      contributionPercent:
+        entry.contributionPercent === undefined || entry.contributionPercent === null
+          ? null
+          : toFixedString(entry.contributionPercent, 4),
+      rank: entry.rank ?? null,
+    })),
+  );
+}
+
+const buildContributors = ({
+  billingSourceId,
+  cloudConnectionId,
+  candidate,
+}: {
+  billingSourceId: string;
+  cloudConnectionId: string | null;
+  candidate: DailyTotalCostSpikeCandidate;
+}): ContributorInput[] => {
+  const contributors: ContributorInput[] = [
+    {
+      dimensionType: "billing_source",
+      dimensionKey: billingSourceId,
+      contributionCost: candidate.deltaCost,
+      contributionPercent: 100,
+      rank: 1,
+    },
+  ];
+
+  if (cloudConnectionId) {
+    contributors.push({
+      dimensionType: "cloud_connection",
+      dimensionValue: cloudConnectionId,
+      rank: 2,
+    });
+  }
+
+  return contributors;
+};
 
 async function upsertDetectedCandidates(input: DailySpikeLifecycleInput): Promise<{
   created: number;
@@ -124,6 +201,7 @@ async function upsertDetectedCandidates(input: DailySpikeLifecycleInput): Promis
       actualCost: toFixedString(candidate.actualCost, 6),
       deltaCost: toFixedString(candidate.deltaCost, 6),
       deltaPercent: toFixedString(candidate.deltaPercent * 100, 4),
+      confidenceScore: toConfidenceScore(candidate.severity),
       anomalyType: ANOMALY_TYPE,
       baselineType: BASELINE_TYPE,
       sourceGranularity: SOURCE_GRANULARITY,
@@ -146,11 +224,22 @@ async function upsertDetectedCandidates(input: DailySpikeLifecycleInput): Promis
     };
 
     if (!existing) {
-      await FactAnomalies.create({
+      const firstSeenAt = now;
+      const lastSeenAt = now;
+      const createdRow = await FactAnomalies.create({
         ...patch,
         status: "open",
-        firstSeenAt: now,
+        firstSeenAt,
+        lastSeenAt,
         resolvedAt: null,
+      });
+      await replaceContributorsForAnomaly({
+        anomalyId: String(createdRow.id),
+        contributors: buildContributors({
+          billingSourceId: input.billingSourceId,
+          cloudConnectionId: input.cloudConnectionId ?? null,
+          candidate,
+        }),
       });
       created += 1;
       continue;
@@ -163,12 +252,23 @@ async function upsertDetectedCandidates(input: DailySpikeLifecycleInput): Promis
     const existingStatus = String(existing.status ?? "open");
     const shouldReopen = existingStatus === "resolved";
     const shouldKeepIgnored = existingStatus === "ignored";
+    const firstSeenAt = existing.firstSeenAt ?? now;
+    const lastSeenAt = now;
 
     await existing.update({
       ...patch,
-      firstSeenAt: existing.firstSeenAt ?? now,
+      firstSeenAt,
+      lastSeenAt,
       status: shouldKeepIgnored ? "ignored" : shouldReopen ? "open" : existingStatus,
       resolvedAt: shouldReopen ? null : existing.resolvedAt,
+    });
+    await replaceContributorsForAnomaly({
+      anomalyId: String(existing.id),
+      contributors: buildContributors({
+        billingSourceId: input.billingSourceId,
+        cloudConnectionId: input.cloudConnectionId ?? null,
+        candidate,
+      }),
     });
 
     updated += 1;

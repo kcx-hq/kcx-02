@@ -1,7 +1,9 @@
 import type { DashboardScope } from "../dashboard.types.js";
 
 export type CostExplorerGranularity = "hourly" | "daily" | "monthly";
-export type CostExplorerGroupBy = "none" | "service" | "service-category" | "resource" | "region" | "account";
+export type CostExplorerBaseGroupBy = "none" | "service" | "service-category" | "resource" | "region" | "account";
+export type CostExplorerTagGroupBy = `tag:${string}`;
+export type CostExplorerGroupBy = CostExplorerBaseGroupBy | CostExplorerTagGroupBy;
 export type CostExplorerMetric = "billed" | "effective" | "list";
 export type CostExplorerCompareKey = "previous-month" | "budget" | "forecast";
 
@@ -10,6 +12,9 @@ export type CostExplorerFilters = {
   groupBy: CostExplorerGroupBy;
   metric: CostExplorerMetric;
   compareKey: CostExplorerCompareKey | null;
+  tagKey: string | null;
+  tagValue: string | null;
+  groupValues: string[];
 };
 
 export type CostExplorerEffectiveFilters = CostExplorerFilters & {
@@ -42,6 +47,18 @@ export type CostExplorerBreakdownRow = {
   relatedResourceTypes?: string[];
 };
 
+export type CostExplorerServiceDetailRow = {
+  serviceName: string;
+  resourceName: string;
+  usageType: string;
+  region: string;
+  usageQuantity: number;
+  unit: string;
+  totalCost: number;
+  date: string;
+  percentageOfTotalServiceCost: number;
+};
+
 export type CostExplorerResponse = {
   section: "cost-explorer";
   title: "Cost Explorer";
@@ -54,6 +71,9 @@ export type CostExplorerResponse = {
     groupBy: CostExplorerGroupBy;
     metric: CostExplorerMetric;
     compareKey: CostExplorerCompareKey | null;
+    tagKey: string | null;
+    tagValue: string | null;
+    groupValues: string[];
     scopeType: DashboardScope["scopeType"];
   };
   kpis: {
@@ -73,4 +93,30 @@ export type CostExplorerResponse = {
     account: CostExplorerBreakdownRow[];
     region: CostExplorerBreakdownRow[];
   };
+  serviceDetails: CostExplorerServiceDetailRow[];
+};
+
+export type CostExplorerTagGroupKeyOption = {
+  key: string;
+  normalizedKey: string;
+  count: number;
+};
+
+export type CostExplorerTagValueOption = {
+  key: string;
+  normalizedValue: string;
+  count: number;
+};
+
+export type CostExplorerGroupValueOption = {
+  key: string;
+  label: string;
+  count: number;
+};
+
+export type CostExplorerGroupOptionsResponse = {
+  baseOptions: Array<{ key: CostExplorerBaseGroupBy; label: string }>;
+  tagKeyOptions: CostExplorerTagGroupKeyOption[];
+  tagValueOptions: CostExplorerTagValueOption[];
+  groupValueOptions: CostExplorerGroupValueOption[];
 };

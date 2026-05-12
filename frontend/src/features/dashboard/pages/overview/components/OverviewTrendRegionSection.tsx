@@ -86,7 +86,6 @@ export function OverviewTrendRegionSection({ trendData, anomalies }: OverviewTre
                         );
                       })}
                     </div>
-                    <span className="overview-threat-row__total">{threat.total}</span>
                   </div>
                 ))
               ) : (

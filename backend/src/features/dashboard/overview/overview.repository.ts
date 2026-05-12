@@ -582,7 +582,7 @@ export class OverviewRepository {
       month: row.month,
       budget: toNumber(row.budget),
       actual: actualByMonth.get(row.month) ?? 0,
-      forecast: toNumber(row.forecast),
+      forecast: filters.forecastingEnabled ? toNumber(row.forecast) : 0,
     }));
   }
 

@@ -39,7 +39,6 @@ import { assumeRole } from "../infrastructure/aws-sts.service.js";
 import {
   type AwsBillingConnectionCallbackPayload,
   type AwsCloudTrailConnectionCallbackPayload,
-  type AwsConnectionCallbackPayload,
   type GenerateAwsCloudFormationSetupPayload,
   awsConnectionCallbackSchema,
   createCloudConnectionSchema,
@@ -71,6 +70,7 @@ const PROVIDER_NAME_BY_CODE: Record<string, string> = {
 };
 
 const DEFAULT_AWS_EXPORT_PREFIX = "kcx/data-exports/cur2";
+const DEFAULT_STORAGE_LENS_EXPORT_PREFIX = "kcx/storage-lens";
 const DEFAULT_AWS_CLOUDTRAIL_PREFIX = "kcx/cloudtrail";
 const DEFAULT_AWS_CALLBACK_CADENCE = "hourly";
 const DEFAULT_AWS_CLOUDTRAIL_CADENCE = "event_driven";
@@ -1192,11 +1192,21 @@ export async function handleGetAwsCloudFormationSetupUrl(req: Request, res: Resp
   const enableBillingExport = true;
   const enableCloudTrail = postPayload?.enableCloudTrail ?? false;
   const enableEC2Module = postPayload?.enableEC2Module ?? true;
-  const enableActionRole = enableEC2Module ? true : (postPayload?.enableActionRole ?? false);
+  const enableCloudWatchModule = postPayload?.enableCloudWatchModule ?? true;
+  const enableLoadBalancerModule = postPayload?.enableLoadBalancerModule ?? true;
+  const enableActionRole =
+    enableEC2Module || enableCloudWatchModule || enableLoadBalancerModule
+      ? true
+      : (postPayload?.enableActionRole ?? false);
   const useTagScopedAccess = postPayload?.useTagScopedAccess ?? false;
 
   const exportPrefix = normalizeOptional(postPayload?.exportPrefix) ?? DEFAULT_AWS_EXPORT_PREFIX;
   const exportName = normalizeOptional(postPayload?.exportName) ?? buildDefaultAwsExportName(connection.id);
+  const storageLensExportPrefix =
+    normalizeOptional(postPayload?.storageLensExportPrefix) ?? DEFAULT_STORAGE_LENS_EXPORT_PREFIX;
+  const storageLensConfigId =
+    normalizeOptional(postPayload?.storageLensConfigId) ??
+    `kcx-storage-lens-${connection.id.replace(/-/g, "").slice(0, 8)}`;
   const callbackUrl = env.awsCallbackUrl ?? undefined;
   const fileEventCallbackUrl =
     normalizeOptional(postPayload?.fileEventCallbackUrl) ?? env.awsFileEventCallbackUrl ?? undefined;
@@ -1246,6 +1256,8 @@ export async function handleGetAwsCloudFormationSetupUrl(req: Request, res: Resp
     fileEventCallbackUrl,
     exportPrefix,
     exportName,
+    storageLensExportPrefix,
+    storageLensConfigId,
     callbackUrl,
     callbackToken,
     enableBillingExport,
@@ -1254,6 +1266,8 @@ export async function handleGetAwsCloudFormationSetupUrl(req: Request, res: Resp
     cloudTrailName,
     enableActionRole,
     enableEC2Module,
+    enableCloudWatchModule,
+    enableLoadBalancerModule,
     useTagScopedAccess,
     resourceTagKey,
     resourceTagValue,

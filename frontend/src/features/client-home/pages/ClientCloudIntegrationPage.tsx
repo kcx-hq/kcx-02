@@ -92,7 +92,6 @@ export function ClientCloudIntegrationPage() {
     <>
       <AddCloudConnectionSection
         onOpenProviderSetup={handleOpenProviderSetup}
-        onOpenS3Connection={() => navigateTo("/client/billing/import-s3")}
         cloudOverviewRows={cloudOverviewRows}
         filteredCloudOverviewRows={filteredCloudOverviewRows}
         isCloudIntegrationsLoading={isCloudIntegrationsLoading}

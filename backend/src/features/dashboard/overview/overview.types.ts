@@ -5,6 +5,7 @@ export type OverviewFilters = {
   billingSourceIds?: number[];
   billingPeriodStart: string;
   billingPeriodEnd: string;
+  forecastingEnabled: boolean;
   accountKeys?: number[];
   serviceKeys?: number[];
   regionKeys?: number[];

@@ -1,11 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { EChartsOption } from "echarts";
 
-import { useCostExplorerQuery } from "../../hooks/useDashboardQueries";
+import { useCostExplorerGroupOptionsQuery, useCostExplorerQuery } from "../../hooks/useDashboardQueries";
 import { useDashboardScope } from "../../hooks/useDashboardScope";
 import {
   COMPARE_OPTIONS,
-  GROUP_BY_OPTIONS,
   METRIC_OPTIONS,
   type ChartSeries,
   type CompareKey,
@@ -17,7 +16,8 @@ import {
 import {
   calculateDeltaPercent,
   compactCurrencyFormatter,
-  currencyFormatter,
+  formatAxisCost,
+  formatTooltipCost,
   percentFormatter,
   parseInputDate,
 } from "./costExplorer.utils";
@@ -50,31 +50,107 @@ const COMPARISON_SERIES_COLORS: Record<CompareKey, string> = {
   forecast: "#7e22ce",
 };
 
+type AllowedGroupId =
+  | "env"
+  | "app"
+  | "team"
+  | "cost-center"
+  | "project"
+  | "service"
+  | "region"
+  | "charge-type"
+  | "usage-type";
+
+const ALLOWED_GROUP_DIMENSIONS: Array<{ id: AllowedGroupId; label: string }> = [
+  { id: "env", label: "Env" },
+  { id: "app", label: "App" },
+  { id: "team", label: "Team" },
+  { id: "cost-center", label: "Cost Center" },
+  { id: "project", label: "Project" },
+  { id: "service", label: "Service" },
+  { id: "region", label: "Region" },
+  { id: "charge-type", label: "Charge Type" },
+  { id: "usage-type", label: "Usage Type" },
+];
+
+const detectAllowedGroupFromTagKey = (rawValue: string): AllowedGroupId | null => {
+  const raw = rawValue.trim().toLowerCase().replace(/^tag:/, "");
+  const stripped = raw
+    .replace(/^resourcetagsuser/, "")
+    .replace(/^resource_tags_user/, "")
+    .replace(/^resourcetags/, "")
+    .replace(/^resource_tags/, "")
+    .replace(/^tagsuser/, "")
+    .replace(/^taguser/, "")
+    .replace(/^tags/, "")
+    .replace(/^tag/, "")
+    .replace(/^user/, "");
+  const compact = (stripped.length > 0 ? stripped : raw).replace(/[^a-z0-9]/g, "");
+
+  if (!compact) return null;
+  if (compact.includes("costcenter") || compact.includes("costcentre")) return "cost-center";
+  if (compact.includes("usagetype") || compact === "usage") return "usage-type";
+  if (compact.includes("chargetype") || compact.includes("costtype") || compact.includes("lineitemtype")) {
+    return "charge-type";
+  }
+  if (compact.includes("environment") || compact === "env") return "env";
+  if (compact.includes("application") || compact === "app") return "app";
+  if (compact.includes("team")) return "team";
+  if (compact.includes("project")) return "project";
+  if (compact.includes("service")) return "service";
+  if (compact.includes("region")) return "region";
+  return null;
+};
+
 export default function CostExplorerPage() {
   const { scope } = useDashboardScope();
 
-  const [groupBy, setGroupBy] = useState<GroupBy>("none");
+  const [groupBy, setGroupBy] = useState<GroupBy>("service");
   const [selectedMetrics, setSelectedMetrics] = useState<Metric[]>(["billed"]);
   const [compare, setCompare] = useState<CompareKey[]>([]);
   const [granularity, setGranularity] = useState<Granularity>("daily");
-  const [chartMode, setChartMode] = useState<ChartMode>("line");
+  const [chartMode, setChartMode] = useState<ChartMode>("bar");
+  const [selectedTagValue, setSelectedTagValue] = useState<string | null>(null);
   const [rowsPerPage, setRowsPerPage] = useState<RowsPerPage>(5);
   const [breakdownPage, setBreakdownPage] = useState(1);
+  const activeTagKey = groupBy.startsWith("tag:") ? groupBy.slice(4) : null;
+  const groupOptionsQuery = useCostExplorerGroupOptionsQuery(activeTagKey);
 
   const multiMetricMode = selectedMetrics.length > 1;
   const activeGroupBy: GroupBy = multiMetricMode ? "none" : groupBy;
   const activeCompareKey: CompareKey | null = multiMetricMode ? null : (compare[0] ?? null);
 
   const billedQuery = useCostExplorerQuery(
-    { granularity, groupBy: activeGroupBy, metric: "billed", compareKey: activeCompareKey },
+    {
+      granularity,
+      groupBy: activeGroupBy,
+      metric: "billed",
+      compareKey: activeCompareKey,
+      tagKey: activeTagKey,
+      tagValue: activeTagKey ? selectedTagValue : null,
+    },
     selectedMetrics.includes("billed"),
   );
   const effectiveQuery = useCostExplorerQuery(
-    { granularity, groupBy: activeGroupBy, metric: "effective", compareKey: activeCompareKey },
+    {
+      granularity,
+      groupBy: activeGroupBy,
+      metric: "effective",
+      compareKey: activeCompareKey,
+      tagKey: activeTagKey,
+      tagValue: activeTagKey ? selectedTagValue : null,
+    },
     selectedMetrics.includes("effective"),
   );
   const listQuery = useCostExplorerQuery(
-    { granularity, groupBy: activeGroupBy, metric: "list", compareKey: activeCompareKey },
+    {
+      granularity,
+      groupBy: activeGroupBy,
+      metric: "list",
+      compareKey: activeCompareKey,
+      tagKey: activeTagKey,
+      tagValue: activeTagKey ? selectedTagValue : null,
+    },
     selectedMetrics.includes("list"),
   );
 
@@ -106,6 +182,52 @@ export default function CostExplorerPage() {
 
   const effectiveGranularity = (primaryQuery.data?.filtersApplied.effectiveGranularity ??
     (granularity === "hourly" && days > 14 ? "daily" : granularity)) as Granularity;
+
+  const dynamicGroupOptions = useMemo<Array<{ key: GroupBy; label: string }>>(() => {
+    const keyByDimension = new Map<AllowedGroupId, GroupBy>([
+      ["service", "service"],
+      ["region", "region"],
+    ]);
+
+    (groupOptionsQuery.data?.tagKeyOptions ?? []).forEach((option) => {
+      const matched = detectAllowedGroupFromTagKey(option.normalizedKey || option.key);
+      if (!matched) return;
+
+      const existing = keyByDimension.get(matched);
+      if ((matched === "service" || matched === "region") && existing && !existing.startsWith("tag:")) {
+        return;
+      }
+      if (!existing || existing.startsWith("tag:")) {
+        keyByDimension.set(matched, option.key as GroupBy);
+      }
+    });
+
+    return ALLOWED_GROUP_DIMENSIONS.filter((item) => keyByDimension.has(item.id)).map((item) => ({
+      key: keyByDimension.get(item.id) as GroupBy,
+      label: item.label,
+    }));
+  }, [groupOptionsQuery.data?.tagKeyOptions]);
+
+  const selectedTagValueLabel = useMemo(() => {
+    if (!selectedTagValue) return null;
+    const found = (groupOptionsQuery.data?.tagValueOptions ?? []).find(
+      (item) => item.normalizedValue === selectedTagValue,
+    );
+    return found?.key ?? selectedTagValue;
+  }, [groupOptionsQuery.data?.tagValueOptions, selectedTagValue]);
+
+  useEffect(() => {
+    if (!activeTagKey) {
+      if (selectedTagValue !== null) {
+        setSelectedTagValue(null);
+      }
+      return;
+    }
+    const values = groupOptionsQuery.data?.tagValueOptions ?? [];
+    if (selectedTagValue && !values.some((item) => item.normalizedValue === selectedTagValue)) {
+      setSelectedTagValue(null);
+    }
+  }, [activeTagKey, groupOptionsQuery.data?.tagValueOptions, selectedTagValue]);
 
   const labels = primaryQuery.data?.chart.labels ?? [];
   const primarySeries = (primaryQuery.data?.chart.series ?? []) as ChartSeries[];
@@ -172,6 +294,25 @@ export default function CostExplorerPage() {
   }, [labels, series]);
 
   const seriesMeta = useMemo(() => new Map(series.map((item) => [item.name, item])), [series]);
+  const yAxisBounds = useMemo(() => {
+    if (!labels.length || !series.length) {
+      return { min: -1, max: 1 };
+    }
+
+    let maxPositive = 0;
+    let minNegative = 0;
+    series.forEach((item) => {
+      item.values.forEach((value) => {
+        const numeric = Number(value ?? 0);
+        if (numeric > maxPositive) maxPositive = numeric;
+        if (numeric < minNegative) minNegative = numeric;
+      });
+    });
+
+    const maxAbs = Math.max(Math.abs(minNegative), Math.abs(maxPositive));
+    const padded = maxAbs === 0 ? 1 : maxAbs * 1.08;
+    return { min: -padded, max: padded };
+  }, [labels, series]);
 
   const option = useMemo<EChartsOption>(
     () => ({
@@ -204,7 +345,7 @@ export default function CostExplorerPage() {
                   ? ` <span style="color:#b8c8d2;">(${calculateDeltaPercent(Number(point.value), base) >= 0 ? "+" : ""}${percentFormatter.format(calculateDeltaPercent(Number(point.value), base))}%)</span>`
                   : "";
 
-              return `<div style="display:flex; gap:6px; align-items:center; margin-top:4px;">${point.marker}<span>${point.seriesName}:</span><strong>${currencyFormatter.format(Number(point.value))}</strong>${comparisonDelta}</div>`;
+              return `<div style="display:flex; gap:6px; align-items:center; margin-top:4px;">${point.marker}<span>${point.seriesName}:</span><strong>${formatTooltipCost(Number(point.value))}</strong>${comparisonDelta}</div>`;
             })
             .join("");
 
@@ -237,9 +378,11 @@ export default function CostExplorerPage() {
       },
       yAxis: {
         type: "value",
+        min: yAxisBounds.min,
+        max: yAxisBounds.max,
         axisLine: { show: false },
         splitLine: { lineStyle: { color: "#e5efec" } },
-        axisLabel: { color: "#6d837e", fontSize: 11, formatter: (value: number) => compactCurrencyFormatter.format(value) },
+        axisLabel: { color: "#6d837e", fontSize: 11, formatter: (value: number) => formatAxisCost(value) },
       },
       dataZoom: labels.length > 45 ? [{ type: "inside", start: 0, end: 100 }] : undefined,
       series: series.map((item, index) => {
@@ -269,14 +412,15 @@ export default function CostExplorerPage() {
             chartMode === "line" && index === 0 && activeGroupBy === "none"
               ? { color: seriesColor, opacity: 0.08 }
               : undefined,
+          barMinHeight: isBar ? 2 : undefined,
           barMaxWidth: isBar ? 22 : undefined,
-          itemStyle: isBar ? { color: seriesColor, borderRadius: [4, 4, 0, 0] } : { color: seriesColor },
+          itemStyle: isBar ? { color: seriesColor, borderRadius: 0 } : { color: seriesColor },
           data: item.values.map((value) => Number(value ?? 0)),
           z: isComparison ? 2 : 3,
         };
       }),
     }),
-    [activeGroupBy, baseValues, chartMode, labels, series, seriesColorByName, seriesMeta],
+    [activeGroupBy, baseValues, chartMode, labels, series, seriesColorByName, seriesMeta, yAxisBounds.max, yAxisBounds.min],
   );
 
   const compareLabel = activeCompareKey
@@ -485,7 +629,10 @@ export default function CostExplorerPage() {
     {
       key: "group",
       label: "Group",
-      value: GROUP_BY_OPTIONS.find((item) => item.key === activeGroupBy)?.label ?? "None",
+      value:
+        activeGroupBy.startsWith("tag:") && selectedTagValue
+          ? `${dynamicGroupOptions.find((item) => item.key === activeGroupBy)?.label ?? "None"} · ${selectedTagValueLabel ?? selectedTagValue}`
+          : (dynamicGroupOptions.find((item) => item.key === activeGroupBy)?.label ?? "None"),
     },
     {
       key: "compare",
@@ -530,12 +677,16 @@ export default function CostExplorerPage() {
     if (multiMetricMode && next !== "none") {
       setSelectedMetrics([selectedMetrics[0] ?? "billed"]);
     }
+    if (next !== groupBy) {
+      setSelectedTagValue(null);
+    }
     setGroupBy(next);
   };
 
   const clearAll = () => {
     setGranularity("daily");
-    setGroupBy("none");
+    setGroupBy("service");
+    setSelectedTagValue(null);
     setSelectedMetrics(["billed"]);
     setCompare([]);
     setRowsPerPage(5);
@@ -564,7 +715,8 @@ export default function CostExplorerPage() {
       return;
     }
     if (key === "group") {
-      setGroupBy("none");
+      setGroupBy("service");
+      setSelectedTagValue(null);
       return;
     }
     if (key === "compare") {
@@ -602,6 +754,10 @@ export default function CostExplorerPage() {
           groupRef={groupRef}
           compareRef={compareRef}
           metricRef={metricRef}
+          groupOptions={dynamicGroupOptions}
+          tagValueOptions={groupBy.startsWith("tag:") ? (groupOptionsQuery.data?.tagValueOptions ?? []) : []}
+          selectedTagValue={selectedTagValue}
+          onSelectTagValue={setSelectedTagValue}
         />
 
         <div className="cost-explorer-unified-shell__divider" aria-hidden="true" />
@@ -642,3 +798,4 @@ export default function CostExplorerPage() {
     </div>
   );
 }
+

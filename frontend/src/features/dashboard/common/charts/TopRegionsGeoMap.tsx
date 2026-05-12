@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef } from "react";
+import { useQuery } from "@tanstack/react-query";
 import * as echarts from "echarts";
 import type { EChartsOption } from "echarts";
 
@@ -458,9 +459,6 @@ const buildOption = (items: CostBreakdownItem[]): EChartsOption => {
 };
 
 export function TopRegionsGeoMap({ data, height = 340 }: TopRegionsGeoMapProps) {
-  const [isMapReady, setIsMapReady] = useState(false);
-  const [mapFailed, setMapFailed] = useState(false);
-
   const chartContainerRef = useRef<HTMLDivElement | null>(null);
   const chartRef = useRef<echarts.EChartsType | null>(null);
 
@@ -475,36 +473,15 @@ export function TopRegionsGeoMap({ data, height = 340 }: TopRegionsGeoMapProps) 
     }).length;
   }, [data]);
 
-  useEffect(() => {
-    let mounted = true;
-    let retryTimer: ReturnType<typeof setTimeout> | null = null;
-    let attempt = 0;
-
-    const tryLoadMap = async () => {
-      attempt += 1;
-      const loaded = await loadWorldMap();
-
-      if (!mounted) return;
-
-      setIsMapReady(loaded);
-      setMapFailed(!loaded);
-
-      if (!loaded && attempt < 2) {
-        retryTimer = setTimeout(() => {
-          void tryLoadMap();
-        }, 1200);
-      }
-    };
-
-    void tryLoadMap();
-
-    return () => {
-      mounted = false;
-      if (retryTimer) {
-        clearTimeout(retryTimer);
-      }
-    };
-  }, []);
+  const mapQuery = useQuery({
+    queryKey: ["dashboard", "geo-map", MAP_NAME],
+    queryFn: loadWorldMap,
+    staleTime: Infinity,
+    gcTime: Infinity,
+    retry: 1,
+  });
+  const isMapReady = mapQuery.data === true;
+  const mapFailed = mapQuery.isError || mapQuery.data === false;
 
   useEffect(() => {
     if (!isMapReady || !chartContainerRef.current) {
@@ -558,7 +535,7 @@ export function TopRegionsGeoMap({ data, height = 340 }: TopRegionsGeoMapProps) 
     );
   }
 
-  if (!isMapReady) {
+  if (mapQuery.isLoading || !isMapReady) {
     return (
       <ChartPlaceholder
         title="Loading region map"

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   useOptimizationCommitmentOverviewQuery,
   useOptimizationCommitmentRecommendationDetailQuery,
@@ -35,6 +35,8 @@ export function OptimizationCommitmentSection() {
   const [region, setRegion] = useState<string>("all");
   const [page, setPage] = useState<number>(1);
   const [selectedRecommendationId, setSelectedRecommendationId] = useState<string | null>(null);
+  const [openFilter, setOpenFilter] = useState<"status" | "term" | "payment" | "planType" | "region" | null>(null);
+  const filtersRef = useRef<HTMLDivElement | null>(null);
 
   const overviewQuery = useOptimizationCommitmentOverviewQuery();
   const recommendationsQuery = useOptimizationCommitmentRecommendationsQuery({
@@ -86,7 +88,54 @@ export function OptimizationCommitmentSection() {
     setter(value);
     setPage(1);
     setSelectedRecommendationId(null);
+    setOpenFilter(null);
   };
+
+  useEffect(() => {
+    const onDocumentPointerDown = (event: MouseEvent) => {
+      if (!filtersRef.current) return;
+      if (filtersRef.current.contains(event.target as Node)) return;
+      setOpenFilter(null);
+    };
+
+    const onEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setOpenFilter(null);
+    };
+
+    document.addEventListener("mousedown", onDocumentPointerDown);
+    document.addEventListener("keydown", onEscape);
+
+    return () => {
+      document.removeEventListener("mousedown", onDocumentPointerDown);
+      document.removeEventListener("keydown", onEscape);
+    };
+  }, []);
+
+  const statusLabel = status === "all" ? "All status" : toTitleCase(status);
+  const termLabel = term === "all" ? "All terms" : toTitleCase(term);
+  const paymentLabel = payment === "all" ? "All payment options" : toTitleCase(payment);
+  const planTypeLabel = planType === "all" ? "All plan types" : toTitleCase(planType);
+  const regionLabel = region === "all" ? "All regions" : region;
+
+  useEffect(() => {
+    if (!selectedRecommendationId) return;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    const onEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setSelectedRecommendationId(null);
+    };
+
+    document.addEventListener("keydown", onEscape);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", onEscape);
+    };
+  }, [selectedRecommendationId]);
 
   return (
     <section className="optimization-rightsizing-shell optimization-commitment-section">
@@ -118,87 +167,177 @@ export function OptimizationCommitmentSection() {
           <article className="optimization-rightsizing-kpi-inline">
             <p className="optimization-rightsizing-kpi__label">Term Mix</p>
             <p className="optimization-rightsizing-kpi__value optimization-rightsizing-kpi__value--sm">
-              {plainNumberFormatter.format(overviewQuery.data?.oneYearCount ?? 0)} 1Y / {" "}
-              {plainNumberFormatter.format(overviewQuery.data?.threeYearCount ?? 0)} 3Y
+              1Y: {plainNumberFormatter.format(overviewQuery.data?.oneYearCount ?? 0)} / 3Y:{" "}
+              {plainNumberFormatter.format(overviewQuery.data?.threeYearCount ?? 0)}
             </p>
           </article>
         </section>
 
-        <div className="optimization-rightsizing-filters optimization-commitment-filters">
+        <div className="optimization-rightsizing-filters optimization-commitment-filters" ref={filtersRef}>
           <div className="optimization-rightsizing-filter-field">
             <p className="optimization-rightsizing-filter-label">Status</p>
-            <select
-              className="optimization-rightsizing-filter-control"
-              value={status}
-              onChange={(event) => onFilterChange(setStatus, event.target.value)}
+            <button
+              type="button"
+              className={`optimization-rightsizing-filter-control optimization-rightsizing-filter-trigger${openFilter === "status" ? " is-open" : ""}`}
+              onClick={() => setOpenFilter((current) => (current === "status" ? null : "status"))}
+              aria-haspopup="listbox"
+              aria-expanded={openFilter === "status"}
             >
-              <option value="all">All status</option>
-              {filterOptions.status.map((option) => (
-                <option key={option} value={option}>
-                  {toTitleCase(option)}
-                </option>
-              ))}
-            </select>
+              <span>{statusLabel}</span>
+            </button>
+            {openFilter === "status" ? (
+              <div className="optimization-rightsizing-filter-menu" role="listbox" aria-label="Status">
+                <button
+                  type="button"
+                  className={`optimization-rightsizing-filter-option${status === "all" ? " is-active" : ""}`}
+                  onClick={() => onFilterChange(setStatus, "all")}
+                >
+                  All status
+                </button>
+                {filterOptions.status.map((option) => (
+                  <button
+                    type="button"
+                    key={option}
+                    className={`optimization-rightsizing-filter-option${status === option ? " is-active" : ""}`}
+                    onClick={() => onFilterChange(setStatus, option)}
+                  >
+                    {toTitleCase(option)}
+                  </button>
+                ))}
+              </div>
+            ) : null}
           </div>
           <div className="optimization-rightsizing-filter-field">
             <p className="optimization-rightsizing-filter-label">Term</p>
-            <select
-              className="optimization-rightsizing-filter-control"
-              value={term}
-              onChange={(event) => onFilterChange(setTerm, event.target.value)}
+            <button
+              type="button"
+              className={`optimization-rightsizing-filter-control optimization-rightsizing-filter-trigger${openFilter === "term" ? " is-open" : ""}`}
+              onClick={() => setOpenFilter((current) => (current === "term" ? null : "term"))}
+              aria-haspopup="listbox"
+              aria-expanded={openFilter === "term"}
             >
-              <option value="all">All terms</option>
-              {filterOptions.term.map((option) => (
-                <option key={option} value={option}>
-                  {toTitleCase(option)}
-                </option>
-              ))}
-            </select>
+              <span>{termLabel}</span>
+            </button>
+            {openFilter === "term" ? (
+              <div className="optimization-rightsizing-filter-menu" role="listbox" aria-label="Term">
+                <button
+                  type="button"
+                  className={`optimization-rightsizing-filter-option${term === "all" ? " is-active" : ""}`}
+                  onClick={() => onFilterChange(setTerm, "all")}
+                >
+                  All terms
+                </button>
+                {filterOptions.term.map((option) => (
+                  <button
+                    type="button"
+                    key={option}
+                    className={`optimization-rightsizing-filter-option${term === option ? " is-active" : ""}`}
+                    onClick={() => onFilterChange(setTerm, option)}
+                  >
+                    {toTitleCase(option)}
+                  </button>
+                ))}
+              </div>
+            ) : null}
           </div>
           <div className="optimization-rightsizing-filter-field">
             <p className="optimization-rightsizing-filter-label">Payment</p>
-            <select
-              className="optimization-rightsizing-filter-control"
-              value={payment}
-              onChange={(event) => onFilterChange(setPayment, event.target.value)}
+            <button
+              type="button"
+              className={`optimization-rightsizing-filter-control optimization-rightsizing-filter-trigger${openFilter === "payment" ? " is-open" : ""}`}
+              onClick={() => setOpenFilter((current) => (current === "payment" ? null : "payment"))}
+              aria-haspopup="listbox"
+              aria-expanded={openFilter === "payment"}
             >
-              <option value="all">All payment options</option>
-              {filterOptions.payment.map((option) => (
-                <option key={option} value={option}>
-                  {toTitleCase(option)}
-                </option>
-              ))}
-            </select>
+              <span>{paymentLabel}</span>
+            </button>
+            {openFilter === "payment" ? (
+              <div className="optimization-rightsizing-filter-menu" role="listbox" aria-label="Payment">
+                <button
+                  type="button"
+                  className={`optimization-rightsizing-filter-option${payment === "all" ? " is-active" : ""}`}
+                  onClick={() => onFilterChange(setPayment, "all")}
+                >
+                  All payment options
+                </button>
+                {filterOptions.payment.map((option) => (
+                  <button
+                    type="button"
+                    key={option}
+                    className={`optimization-rightsizing-filter-option${payment === option ? " is-active" : ""}`}
+                    onClick={() => onFilterChange(setPayment, option)}
+                  >
+                    {toTitleCase(option)}
+                  </button>
+                ))}
+              </div>
+            ) : null}
           </div>
           <div className="optimization-rightsizing-filter-field">
             <p className="optimization-rightsizing-filter-label">Plan Type</p>
-            <select
-              className="optimization-rightsizing-filter-control"
-              value={planType}
-              onChange={(event) => onFilterChange(setPlanType, event.target.value)}
+            <button
+              type="button"
+              className={`optimization-rightsizing-filter-control optimization-rightsizing-filter-trigger${openFilter === "planType" ? " is-open" : ""}`}
+              onClick={() => setOpenFilter((current) => (current === "planType" ? null : "planType"))}
+              aria-haspopup="listbox"
+              aria-expanded={openFilter === "planType"}
             >
-              <option value="all">All plan types</option>
-              {filterOptions.planType.map((option) => (
-                <option key={option} value={option}>
-                  {toTitleCase(option)}
-                </option>
-              ))}
-            </select>
+              <span>{planTypeLabel}</span>
+            </button>
+            {openFilter === "planType" ? (
+              <div className="optimization-rightsizing-filter-menu" role="listbox" aria-label="Plan Type">
+                <button
+                  type="button"
+                  className={`optimization-rightsizing-filter-option${planType === "all" ? " is-active" : ""}`}
+                  onClick={() => onFilterChange(setPlanType, "all")}
+                >
+                  All plan types
+                </button>
+                {filterOptions.planType.map((option) => (
+                  <button
+                    type="button"
+                    key={option}
+                    className={`optimization-rightsizing-filter-option${planType === option ? " is-active" : ""}`}
+                    onClick={() => onFilterChange(setPlanType, option)}
+                  >
+                    {toTitleCase(option)}
+                  </button>
+                ))}
+              </div>
+            ) : null}
           </div>
           <div className="optimization-rightsizing-filter-field">
             <p className="optimization-rightsizing-filter-label">Region</p>
-            <select
-              className="optimization-rightsizing-filter-control"
-              value={region}
-              onChange={(event) => onFilterChange(setRegion, event.target.value)}
+            <button
+              type="button"
+              className={`optimization-rightsizing-filter-control optimization-rightsizing-filter-trigger${openFilter === "region" ? " is-open" : ""}`}
+              onClick={() => setOpenFilter((current) => (current === "region" ? null : "region"))}
+              aria-haspopup="listbox"
+              aria-expanded={openFilter === "region"}
             >
-              <option value="all">All regions</option>
-              {filterOptions.region.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
+              <span>{regionLabel}</span>
+            </button>
+            {openFilter === "region" ? (
+              <div className="optimization-rightsizing-filter-menu" role="listbox" aria-label="Region">
+                <button
+                  type="button"
+                  className={`optimization-rightsizing-filter-option${region === "all" ? " is-active" : ""}`}
+                  onClick={() => onFilterChange(setRegion, "all")}
+                >
+                  All regions
+                </button>
+                {filterOptions.region.map((option) => (
+                  <button
+                    type="button"
+                    key={option}
+                    className={`optimization-rightsizing-filter-option${region === option ? " is-active" : ""}`}
+                    onClick={() => onFilterChange(setRegion, option)}
+                  >
+                    {option}
+                  </button>
+                ))}
+              </div>
+            ) : null}
           </div>
         </div>
 
@@ -289,8 +428,17 @@ export function OptimizationCommitmentSection() {
           </div>
         </div>
 
-        {selectedRecommendationId ? (
-          <section className="optimization-rightsizing-detail optimization-idle-detail--inside">
+      </section>
+
+      {selectedRecommendationId ? (
+        <>
+          <button
+            type="button"
+            aria-label="Close commitment detail panel"
+            className="optimization-commitment-detail-overlay"
+            onClick={() => setSelectedRecommendationId(null)}
+          />
+          <aside className="optimization-commitment-detail-drawer" role="dialog" aria-modal="true" aria-label="Commitment recommendation detail">
             <div className="optimization-rightsizing-detail__head">
               <p className="optimization-rightsizing-detail__title">Commitment Recommendation Detail</p>
               <button
@@ -337,9 +485,9 @@ export function OptimizationCommitmentSection() {
                 </p>
               </div>
             ) : null}
-          </section>
-        ) : null}
-      </section>
+          </aside>
+        </>
+      ) : null}
     </section>
   );
 }

@@ -44,6 +44,16 @@ Parameters:
     Default: KCX-CUR2-Export
     Description: Name of the AWS Data Export
 
+  StorageLensExportPrefix:
+    Type: String
+    Default: kcx/storage-lens
+    Description: Prefix where S3 Storage Lens daily exports will be delivered
+
+  StorageLensConfigId:
+    Type: String
+    Default: ''
+    Description: Optional S3 Storage Lens configuration ID (must be unique per account). Leave empty to auto-generate.
+
   CloudTrailBucketName:
     Type: String
     Default: ''
@@ -56,6 +66,7 @@ Parameters:
 
 Conditions:
   HasCloudTrailBucket: !Not [!Equals [!Ref CloudTrailBucketName, '']]
+  HasStorageLensConfigId: !Not [!Equals [!Ref StorageLensConfigId, '']]
 
 Resources:
   KCXExportBucket:
@@ -122,6 +133,16 @@ Resources:
                   - ce:StartSavingsPlansPurchaseRecommendationGeneration
                   - ce:GetSavingsPlansPurchaseRecommendation
                   - ce:GetSavingsPlanPurchaseRecommendationDetails
+                  - s3:GetBucketLocation
+                  - s3:ListAllMyBuckets
+                  - s3:GetLifecycleConfiguration
+                  - s3:GetEncryptionConfiguration
+                  - s3:GetBucketPublicAccessBlock
+                  - s3:GetBucketPolicyStatus
+                  - s3:GetBucketVersioning
+                  - s3:GetBucketLogging
+                  - s3:GetReplicationConfiguration
+                  - s3:GetBucketOwnershipControls
                 Resource: "*"
 
               - Sid: ListExportBucket
@@ -136,6 +157,8 @@ Resources:
                       - !Sub ${ExportPrefix}/*
                       - !Sub ${ExportPrefix}/metadata/*
                       - !Sub ${ExportPrefix}/data/*
+                      - !Ref StorageLensExportPrefix
+                      - !Sub ${StorageLensExportPrefix}/*
 
               - Sid: GetExportBucketLocation
                 Effect: Allow
@@ -148,6 +171,19 @@ Resources:
                 Action:
                   - s3:GetObject
                 Resource: !Sub ${KCXExportBucket.Arn}/${ExportPrefix}/*
+
+              - Sid: ReadStorageLensExportObjects
+                Effect: Allow
+                Action:
+                  - s3:GetObject
+                Resource: !Sub ${KCXExportBucket.Arn}/${StorageLensExportPrefix}/*
+
+              - Sid: ReadStorageLensConfiguration
+                Effect: Allow
+                Action:
+                  - s3:GetStorageLensConfiguration
+                  - s3:ListStorageLensConfigurations
+                Resource: "*"
 
               - !If
                 - HasCloudTrailBucket
@@ -208,6 +244,77 @@ Resources:
               ArnLike:
                 aws:SourceArn: !Sub arn:aws:bcm-data-exports:${AWS::Region}:${AWS::AccountId}:export/*
 
+          - Sid: AllowS3StorageLensToWrite
+            Effect: Allow
+            Principal:
+              Service: storage-lens.s3.amazonaws.com
+            Action:
+              - s3:PutObject
+            Resource: !Sub ${KCXExportBucket.Arn}/${StorageLensExportPrefix}/*
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+                s3:x-amz-acl: bucket-owner-full-control
+
+          - Sid: AllowS3StorageLensBucketChecks
+            Effect: Allow
+            Principal:
+              Service: storage-lens.s3.amazonaws.com
+            Action:
+              - s3:GetBucketLocation
+              - s3:ListBucket
+            Resource: !GetAtt KCXExportBucket.Arn
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+
+  KCXStorageLens:
+    Type: AWS::S3::StorageLens
+    DependsOn:
+      - KCXExportBucket
+      - ExportBucketPolicy
+    Properties:
+      StorageLensConfiguration:
+        Id: !If
+          - HasStorageLensConfigId
+          - !Ref StorageLensConfigId
+          - !Sub kcx-storage-lens-${ConnectionName}
+        AccountLevel:
+          ActivityMetrics:
+            IsEnabled: true
+          AdvancedCostOptimizationMetrics:
+            IsEnabled: true
+          AdvancedDataProtectionMetrics:
+            IsEnabled: true
+          DetailedStatusCodesMetrics:
+            IsEnabled: true
+          BucketLevel:
+            ActivityMetrics:
+              IsEnabled: true
+            AdvancedCostOptimizationMetrics:
+              IsEnabled: true
+            AdvancedDataProtectionMetrics:
+              IsEnabled: true
+            DetailedStatusCodesMetrics:
+              IsEnabled: true
+            PrefixLevel:
+              StorageMetrics:
+                IsEnabled: true
+                SelectionCriteria:
+                  MaxDepth: 5
+                  MinStorageBytesPercentage: 1.0
+                  Delimiter: "/"
+        IsEnabled: true
+        DataExport:
+          S3BucketDestination:
+            AccountId: !Ref AWS::AccountId
+            Arn: !GetAtt KCXExportBucket.Arn
+            Format: Parquet
+            OutputSchemaVersion: V_1
+            Prefix: !Ref StorageLensExportPrefix
+            Encryption:
+              SSES3: {}
+
   KCXCur2Export:
     Type: AWS::BCMDataExports::Export
     DependsOn:
@@ -227,17 +334,27 @@ Resources:
               line_item_usage_account_id AS sub_account_id,
               line_item_usage_account_name AS sub_account_name,
               line_item_product_code AS service_name,
+              product_product_family AS product_family,
+              product_usagetype AS product_usage_type,
               product_region_code AS region_id,
               product_location AS region_name,
+              product_from_location AS from_location,
+              product_to_location AS to_location,
+              product_from_region_code AS from_region_code,
+              product_to_region_code AS to_region_code,
               line_item_availability_zone AS availability_zone,
               pricing_currency AS billing_currency,
+              bill_bill_type AS bill_type,
               line_item_usage_type AS usage_type,
               line_item_operation AS operation,
               line_item_line_item_type AS line_item_type,
+              line_item_line_item_description AS line_item_description,
               line_item_resource_id AS resource_id,
+              line_item_legal_entity AS legal_entity,
               line_item_unblended_cost AS billed_cost,
               line_item_net_unblended_cost AS effective_cost,
               pricing_public_on_demand_cost AS public_on_demand_cost,
+              pricing_public_on_demand_rate AS public_on_demand_rate,
               line_item_usage_amount AS consumed_quantity,
               line_item_usage_start_date AS usage_start_time,
               line_item_usage_end_date AS usage_end_time,
@@ -249,6 +366,7 @@ Resources:
               pricing_rate_code AS pricing_rate_code,
               tags AS tags_json,
               discount_total_discount AS discount_amount,
+              discount_bundled_discount AS bundled_discount,
               line_item_tax_type AS tax_type,
               reservation_reservation_a_r_n AS reservation_arn,
               savings_plan_savings_plan_a_r_n AS savings_plan_arn,
@@ -660,6 +778,17 @@ Outputs:
   ExportPrefix:
     Description: Export S3 prefix
     Value: !Ref ExportPrefix
+
+  StorageLensExportPrefix:
+    Description: S3 Storage Lens export prefix
+    Value: !Ref StorageLensExportPrefix
+
+  StorageLensConfigId:
+    Description: S3 Storage Lens configuration ID
+    Value: !If
+      - HasStorageLensConfigId
+      - !Ref StorageLensConfigId
+      - !Sub kcx-storage-lens-${ConnectionName}
 
   ExportArn:
     Description: ARN of AWS Data Export

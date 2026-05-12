@@ -97,7 +97,7 @@ export function TicketCreateDialog({ open, onOpenChange, submitting = false, onS
         if (!nextOpen) resetForm()
       }}
     >
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-2xl rounded-none">
         <DialogHeader>
           <DialogTitle>Create Ticket</DialogTitle>
         </DialogHeader>
@@ -110,7 +110,7 @@ export function TicketCreateDialog({ open, onOpenChange, submitting = false, onS
                 type="text"
                 value={form.title}
                 onChange={(event) => setField("title", event.target.value)}
-                className="h-10 w-full rounded-md border border-[color:var(--border-light)] bg-[color:var(--bg-surface)] px-3 text-sm text-text-primary outline-none transition-colors focus:border-[color:var(--kcx-border-strong)]"
+                className="h-10 w-full rounded-none border-0 border-b border-[color:var(--border-light)] bg-transparent px-0 text-sm text-text-primary outline-none transition-colors focus:border-[color:var(--kcx-border-strong)]"
                 placeholder="Brief issue summary"
               />
               {hasSubmitted && errors.title ? <p className="text-xs text-rose-600">{errors.title}</p> : null}
@@ -121,7 +121,7 @@ export function TicketCreateDialog({ open, onOpenChange, submitting = false, onS
               <select
                 value={form.category}
                 onChange={(event) => setField("category", event.target.value)}
-                className="h-10 w-full rounded-md border border-[color:var(--border-light)] bg-[color:var(--bg-surface)] px-3 text-sm text-text-primary outline-none transition-colors focus:border-[color:var(--kcx-border-strong)]"
+                className="h-10 w-full rounded-none border-0 border-b border-[color:var(--border-light)] bg-transparent px-0 text-sm text-text-primary outline-none transition-colors focus:border-[color:var(--kcx-border-strong)]"
               >
                 {CATEGORY_OPTIONS.map((option) => (
                   <option key={option} value={option}>
@@ -136,7 +136,7 @@ export function TicketCreateDialog({ open, onOpenChange, submitting = false, onS
               <select
                 value={form.priority}
                 onChange={(event) => setField("priority", event.target.value as TicketPriority)}
-                className="h-10 w-full rounded-md border border-[color:var(--border-light)] bg-[color:var(--bg-surface)] px-3 text-sm text-text-primary outline-none transition-colors focus:border-[color:var(--kcx-border-strong)]"
+                className="h-10 w-full rounded-none border-0 border-b border-[color:var(--border-light)] bg-transparent px-0 text-sm text-text-primary outline-none transition-colors focus:border-[color:var(--kcx-border-strong)]"
               >
                 {PRIORITY_OPTIONS.map((option) => (
                   <option key={option} value={option}>
@@ -154,7 +154,7 @@ export function TicketCreateDialog({ open, onOpenChange, submitting = false, onS
                 type="text"
                 value={form.affected}
                 onChange={(event) => setField("affected", event.target.value)}
-                className="h-10 w-full rounded-md border border-[color:var(--border-light)] bg-[color:var(--bg-surface)] px-3 text-sm text-text-primary outline-none transition-colors focus:border-[color:var(--kcx-border-strong)]"
+                className="h-10 w-full rounded-none border-0 border-b border-[color:var(--border-light)] bg-transparent px-0 text-sm text-text-primary outline-none transition-colors focus:border-[color:var(--kcx-border-strong)]"
                 placeholder="Affected service, account, or module"
               />
               {hasSubmitted && errors.affected ? <p className="text-xs text-rose-600">{errors.affected}</p> : null}
@@ -172,7 +172,7 @@ export function TicketCreateDialog({ open, onOpenChange, submitting = false, onS
                     files.map((file) => file.name)
                   )
                 }}
-                className="block h-10 w-full rounded-md border border-[color:var(--border-light)] bg-[color:var(--bg-surface)] px-3 py-2 text-sm text-text-primary file:mr-3 file:rounded-md file:border-0 file:bg-white file:px-2 file:py-1 file:text-xs file:font-medium"
+                className="block h-10 w-full rounded-none border-0 border-b border-[color:var(--border-light)] bg-transparent px-0 py-2 text-sm text-text-primary file:mr-3 file:rounded-none file:border file:border-[color:var(--border-light)] file:bg-transparent file:px-2 file:py-1 file:text-xs file:font-medium"
               />
             </label>
           </div>
@@ -183,7 +183,7 @@ export function TicketCreateDialog({ open, onOpenChange, submitting = false, onS
               type="text"
               value={form.description}
               onChange={(event) => setField("description", event.target.value)}
-              className="h-10 w-full rounded-[7px] border border-[color:var(--border-light)] bg-[color:var(--bg-surface)] px-3 text-sm text-text-primary outline-none transition-colors focus:border-[color:var(--kcx-border-strong)]"
+              className="h-10 w-full rounded-none border-0 border-b border-[color:var(--border-light)] bg-transparent px-0 text-sm text-text-primary outline-none transition-colors focus:border-[color:var(--kcx-border-strong)]"
               placeholder="Describe the issue for KCX support"
             />
             {hasSubmitted && errors.description ? <p className="text-xs text-rose-600">{errors.description}</p> : null}
@@ -191,13 +191,13 @@ export function TicketCreateDialog({ open, onOpenChange, submitting = false, onS
 
           <div className="pt-1">
             <div className="flex items-center justify-end gap-3">
-            <Button type="button" variant="outline" className="h-10 rounded-md" onClick={() => onOpenChange(false)} disabled={submitting}>
+            <Button type="button" variant="outline" className="h-10 rounded-none" onClick={() => onOpenChange(false)} disabled={submitting}>
               Cancel
             </Button>
             <Button
               type="button"
               variant="outline"
-              className="h-10 rounded-md px-4"
+              className="h-10 rounded-none px-4"
               disabled={submitting}
               onClick={() => {
                 const payload = buildPayload("draft")
@@ -209,7 +209,7 @@ export function TicketCreateDialog({ open, onOpenChange, submitting = false, onS
             >
               Save as Draft
             </Button>
-            <Button type="submit" className="h-10 rounded-md px-4" disabled={submitting || (!isValid && hasSubmitted)}>
+            <Button type="submit" className="h-10 rounded-none px-4" disabled={submitting || (!isValid && hasSubmitted)}>
               {submitting ? "Submitting..." : "Submit to KCX"}
             </Button>
             </div>
