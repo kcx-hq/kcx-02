@@ -76,11 +76,40 @@ export type Ec2OptimizationSummaryFiltersQuery = {
 };
 
 export type DatabaseExplorerMetric = "cost" | "usage";
-export type DatabaseExplorerGroupBy = "db_service" | "db_engine" | "region";
+
+/** Must stay aligned with backend `database_scope` query param. */
+export const DATABASE_EXPLORER_SCOPES = [
+  "all",
+  "relational",
+  "relational_rds",
+  "relational_aurora",
+  "key_value",
+  "key_value_dynamodb",
+  "in_memory",
+  "in_memory_elasticache",
+  "in_memory_memorydb",
+  "document",
+  "graph",
+  "wide_column",
+  "time_series",
+] as const;
+
+export type DatabaseExplorerScopeValue = (typeof DATABASE_EXPLORER_SCOPES)[number];
+
+export type DatabaseExplorerGroupBy =
+  | "db_service"
+  | "db_engine"
+  | "region"
+  | "resource_type"
+  | "instance_class"
+  | "cluster"
+  | "cost_category";
 
 export type DatabaseExplorerFilters = {
   metric: DatabaseExplorerMetric;
   groupBy: DatabaseExplorerGroupBy;
+  /** Filters which db_service rows are included (independent from `groupBy`). */
+  databaseScope?: DatabaseExplorerScopeValue;
   regionKey?: number | string;
   dbService?: string;
   dbEngine?: string;
@@ -93,6 +122,7 @@ export type DatabaseExplorerAppliedFilters = {
   endDate: string;
   cloudConnectionId?: string;
   regionKey?: string;
+  databaseScope?: DatabaseExplorerScopeValue;
   dbService?: string;
   dbEngine?: string;
   metric: DatabaseExplorerMetric;
@@ -138,6 +168,29 @@ export type DatabaseExplorerTableRow = {
 export type DatabaseExplorerFilterOptions = {
   dbServices: string[];
   dbEngines: string[];
+  /** Scopes with ≥1 fact row in the current window (always includes `all`). */
+  availableDatabaseScopes: DatabaseExplorerScopeValue[];
+};
+
+export type DatabaseExplorerTrendGroupedPoint = {
+  date: string;
+  value: number;
+};
+
+export type DatabaseExplorerTrendGroupedSeries = {
+  key: string;
+  label: string;
+  data: DatabaseExplorerTrendGroupedPoint[];
+  total?: number;
+};
+
+export type DatabaseExplorerTrendGrouped = {
+  metric: DatabaseExplorerMetric;
+  groupBy: DatabaseExplorerGroupBy;
+  chartType: "stacked_bar" | "line";
+  xKey: "date";
+  usageMetric?: "load_avg";
+  series: DatabaseExplorerTrendGroupedSeries[];
 };
 
 export type DatabaseExplorerResponse = {
@@ -145,6 +198,7 @@ export type DatabaseExplorerResponse = {
   filterOptions: DatabaseExplorerFilterOptions;
   cards: DatabaseExplorerCards;
   trend: Array<DatabaseExplorerCostTrendItem | DatabaseExplorerUsageTrendItem>;
+  trendGrouped?: DatabaseExplorerTrendGrouped;
   table: DatabaseExplorerTableRow[];
 };
 
@@ -156,16 +210,27 @@ export type DatabaseAssetsSummary = {
   recommendationCount: number;
 };
 
+export type DatabaseAssetsFilterOptionObject = {
+  label?: string | null;
+  name?: string | null;
+  value?: string | number | null;
+  id?: string | number | null;
+  key?: string | number | null;
+};
+
+export type DatabaseAssetsFilterOption = string | DatabaseAssetsFilterOptionObject;
+
 export type DatabaseAssetsFilterOptions = {
-  dbServices: string[];
-  dbEngines: string[];
-  classes: string[];
-  statuses: string[];
-  regions: string[];
-  accounts: string[];
+  dbServices: DatabaseAssetsFilterOption[];
+  dbEngines: DatabaseAssetsFilterOption[];
+  classes: DatabaseAssetsFilterOption[];
+  statuses: DatabaseAssetsFilterOption[];
+  regions: DatabaseAssetsFilterOption[];
+  accounts?: DatabaseAssetsFilterOption[];
 };
 
 export type DatabaseAssetRow = {
+  cloudConnectionId: string | null;
   resourceId: string | null;
   resourceArn: string | null;
   resourceName: string | null;
@@ -216,6 +281,159 @@ export type DatabaseAssetsResponse = {
   filterOptions: DatabaseAssetsFilterOptions;
   assets: DatabaseAssetRow[];
   pagination: DatabaseAssetsPagination;
+};
+
+export type DatabaseAssetDetailIdentity = {
+  resourceId: string;
+  resourceArn: string | null;
+  resourceName: string | null;
+  dbIdentifier: string;
+  dbService: string | null;
+  dbEngine: string | null;
+  dbEngineVersion: string | null;
+  resourceType: string | null;
+  instanceClass: string | null;
+  capacityMode: string | null;
+  status: string | null;
+  clusterId: string | null;
+  isClusterResource: boolean;
+  regionKey: string | null;
+  regionName: string | null;
+  subAccountKey: string | null;
+  subAccountName: string | null;
+  cloudConnectionId: string;
+  latestUsageDate: string | null;
+  discoveredAt: string | null;
+};
+
+export type DatabaseAssetDetailCostSummary = {
+  totalCost: number;
+  totalBilledCost: number;
+  totalEffectiveCost: number;
+  totalListCost: number;
+  currencyCode: string | null;
+  dailyAverageCost: number | null;
+  primaryCostDriver: string | null;
+};
+
+export type DatabaseAssetDetailCostBreakdown = {
+  compute: number;
+  storage: number;
+  io: number;
+  backup: number;
+  dataTransfer: number;
+  tax: number;
+  credit: number;
+  refund: number;
+  other: number;
+};
+
+export type DatabaseAssetDetailUsageSummary = {
+  avgCpu: number | null;
+  maxCpu: number | null;
+  avgLoad: number | null;
+  maxLoad: number | null;
+  avgConnections: number | null;
+  maxConnections: number | null;
+  requestCount: number | null;
+};
+
+export type DatabaseAssetDetailStorageSummary = {
+  allocatedStorageGb: number | null;
+  storageUsedGb: number | null;
+  dataFootprintGb: number | null;
+  storageUtilizationPct: number | null;
+};
+
+export type DatabaseAssetDetailPerformanceSummary = {
+  avgIops: number | null;
+  maxIops: number | null;
+  avgThroughputBytes: number | null;
+  maxThroughputBytes: number | null;
+  readIops: number | null;
+  writeIops: number | null;
+  readThroughputBytes: number | null;
+  writeThroughputBytes: number | null;
+};
+
+export type DatabaseAssetDetailTopology = {
+  clusterId: string | null;
+  isClusterResource: boolean;
+  resourceType: string | null;
+  relatedResourceCount: number | null;
+};
+
+export type DatabaseAssetDetailOptimizationReadiness = {
+  recommendationCount: number;
+  signalCompleteness: number;
+  confidenceLabel: "low" | "medium" | "high";
+  notes: string[];
+};
+
+export type DatabaseAssetDetailCostTrendPoint = {
+  date: string;
+  totalCost: number;
+  compute: number;
+  storage: number;
+  io: number;
+  backup: number;
+  dataTransfer: number;
+  tax: number;
+  credit: number;
+  refund: number;
+  other: number;
+};
+
+export type DatabaseAssetDetailUsageTrendPoint = {
+  date: string;
+  avgCpu: number | null;
+  maxCpu: number | null;
+  avgLoad: number | null;
+  maxLoad: number | null;
+  avgConnections: number | null;
+  maxConnections: number | null;
+  requestCount: number | null;
+};
+
+export type DatabaseAssetDetailStorageTrendPoint = {
+  date: string;
+  allocatedStorageGb: number | null;
+  storageUsedGb: number | null;
+  dataFootprintGb: number | null;
+  storageUtilizationPct: number | null;
+};
+
+export type DatabaseAssetDetailPerformanceTrendPoint = {
+  date: string;
+  readIops: number | null;
+  writeIops: number | null;
+  totalIops: number | null;
+  readThroughputBytes: number | null;
+  writeThroughputBytes: number | null;
+  totalThroughputBytes: number | null;
+  avgLoad: number | null;
+  avgConnections: number | null;
+};
+
+export type DatabaseAssetDetail = {
+  identity: DatabaseAssetDetailIdentity;
+  costSummary: DatabaseAssetDetailCostSummary;
+  costBreakdown: DatabaseAssetDetailCostBreakdown;
+  usageSummary: DatabaseAssetDetailUsageSummary;
+  storageSummary: DatabaseAssetDetailStorageSummary;
+  performanceSummary: DatabaseAssetDetailPerformanceSummary;
+  topology: DatabaseAssetDetailTopology;
+  optimizationReadiness: DatabaseAssetDetailOptimizationReadiness;
+  trends: {
+    cost: DatabaseAssetDetailCostTrendPoint[];
+    usage: DatabaseAssetDetailUsageTrendPoint[];
+    storage: DatabaseAssetDetailStorageTrendPoint[];
+    performance: DatabaseAssetDetailPerformanceTrendPoint[];
+  };
+  metadata: {
+    tags: Record<string, unknown> | null;
+    rawMetadata: Record<string, unknown> | null;
+  };
 };
 
 export type DatabaseAssetsFilters = {

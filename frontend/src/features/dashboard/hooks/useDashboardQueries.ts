@@ -26,6 +26,7 @@ import {
   type DatabaseExplorerResponse,
   type DatabaseAssetsFilters,
   type DatabaseAssetsResponse,
+  type DatabaseAssetDetail,
 
   type S3CostInsightsFiltersQuery,
   type S3CostInsightsResponse,
@@ -140,6 +141,24 @@ export function useDatabaseAssetsQuery(filters: DatabaseAssetsFilters) {
     queryKey: ["dashboard", "services", "database", "assets", scope, filters],
     queryFn: () => dashboardApi.getDatabaseAssets(assertScope(scope), filters),
     enabled: Boolean(scope?.from && scope?.to),
+    placeholderData: (previousData) => previousData,
+    staleTime: 30_000,
+  });
+}
+
+export function useDatabaseAssetDetailQuery(
+  resourceId: string | null,
+  params: { cloudConnectionId: string | null; startDate?: string | null; endDate?: string | null },
+) {
+  const { scope } = useDashboardScope();
+  return useQuery<DatabaseAssetDetail, Error>({
+    queryKey: ["dashboard", "services", "database", "asset-detail", scope, resourceId, params],
+    queryFn: () => dashboardApi.getDatabaseAssetDetail(assertScope(scope), resourceId as string, {
+      cloudConnectionId: params.cloudConnectionId as string,
+      startDate: params.startDate ?? undefined,
+      endDate: params.endDate ?? undefined,
+    }),
+    enabled: Boolean(scope?.from && scope?.to && resourceId && params.cloudConnectionId),
     placeholderData: (previousData) => previousData,
     staleTime: 30_000,
   });

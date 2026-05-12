@@ -28,6 +28,7 @@ import EC2VolumeDetailPage from "../pages/ec2/EC2VolumeDetailPage";
 import EC2EipPage from "../pages/ec2/EC2EipPage";
 import DatabaseExplorerPage from "../pages/database/DatabaseExplorerPage";
 import DatabaseAssetsPage from "../pages/database/db-assets-page";
+import DatabaseAssetDetailPage from "../pages/database/DatabaseAssetDetailPage";
 import LoadBalancerExplorerPage from "../pages/load-balancer/LoadBalancerExplorerPage";
 import LoadBalancerListPage from "../pages/load-balancer/LoadBalancerListPage";
 import LoadBalancerDetailPage from "../pages/load-balancer/LoadBalancerDetailPage";
@@ -181,6 +182,7 @@ export default function DashboardRoutes() {
         <Route path="policy/s3" element={<S3PolicyPage />} />
         <Route path="services/database" element={<DatabaseExplorerPage />} />
         <Route path="services/database/assets" element={<DatabaseAssetsPage />} />
+        <Route path="services/database/assets/:resourceId" element={<DatabaseAssetDetailPage />} />
         <Route path="resources" element={<ResourcesPage />} />
         <Route path="allocation" element={<AllocationPage />} />
         <Route path="optimization" element={<OptimizationPage />} />

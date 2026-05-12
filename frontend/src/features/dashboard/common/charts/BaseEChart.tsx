@@ -83,5 +83,5 @@ export function BaseEChart({ option, height = 260, className, onPointClick }: Ba
 
   const containerClassName = className ? `dashboard-echart ${className}` : "dashboard-echart";
 
-  return <div ref={chartContainerRef} className={containerClassName} style={{ height }} aria-hidden="true" />;
+  return <div ref={chartContainerRef} className={containerClassName} style={{ height, cursor: onPointClick ? "pointer" : undefined }} aria-hidden="true" />;
 }

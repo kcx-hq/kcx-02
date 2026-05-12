@@ -35,7 +35,7 @@ type LbSeedProfile = {
 };
 
 const SOURCE_SYSTEM = "KCX_LOAD_BALANCER_OPTIMIZATION_V1";
-const DAYS_TO_SEED = 90;
+const DAYS_TO_SEED = 30;
 
 const round = (value: number, digits = 6): number => Number(value.toFixed(digits));
 const toDateOnly = (date: Date): string => date.toISOString().slice(0, 10);

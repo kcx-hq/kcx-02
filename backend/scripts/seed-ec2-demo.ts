@@ -5,6 +5,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((error) => {
-  console.error("EC2 demo seed failed:", error instanceof Error ? error.message : String(error));
+  console.error("EC2 demo seed failed:", error);
   process.exitCode = 1;
 });

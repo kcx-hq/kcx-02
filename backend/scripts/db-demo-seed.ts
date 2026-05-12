@@ -1,6 +1,7 @@
 // @ts-nocheck
 import { Sequelize } from "sequelize";
 import { activateDemoDbEnv, getSeedMarker } from "./demo-db-utils.js";
+import { pathToFileURL } from "node:url";
 
 const DEMO_USER = {
   email: "demo@example.com",
@@ -21,7 +22,7 @@ const DEMO = {
 const REGIONS = ["us-east-1", "us-west-2", "ap-south-1"] as const;
 const SEED_MARKER = getSeedMarker();
 
-const DAYS = 180;
+const DAYS = 30;
 
 type InstanceScenario = {
   instanceId: string;
@@ -1512,7 +1513,10 @@ async function main(): Promise<void> {
   await runDemoSeed();
 }
 
-main().catch((error) => {
-  console.error("Demo DB seed failed:", error instanceof Error ? error.message : String(error));
-  process.exitCode = 1;
-});
+const entryHref = process.argv[1] ? pathToFileURL(process.argv[1]).href : "";
+if (import.meta.url === entryHref) {
+  main().catch((error) => {
+    console.error("Demo DB seed failed:", error);
+    process.exitCode = 1;
+  });
+}

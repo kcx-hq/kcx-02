@@ -226,7 +226,7 @@ export function DashboardSidebar() {
                   <span className="dashboard-nav-item__label">{node.label}</span>
                   <span className="dashboard-nav-group__chevron" aria-hidden="true">
                     <DashboardIcon
-                      name="chevron-right"
+                      name="chevronRight"
                       className={`dashboard-nav-group__chevron-icon ${isGroupOpen ? "dashboard-nav-group__chevron-icon--open" : ""}`}
                     />
                   </span>
@@ -299,7 +299,7 @@ export function DashboardSidebar() {
                   <span className="dashboard-nav-item__label">{node.label}</span>
                   <span className="dashboard-nav-group__chevron" aria-hidden="true">
                     <DashboardIcon
-                      name="chevron-right"
+                      name="chevronRight"
                       className={`dashboard-nav-group__chevron-icon ${isNodeOpen ? "dashboard-nav-group__chevron-icon--open" : ""}`}
                     />
                   </span>
@@ -360,7 +360,7 @@ export function DashboardSidebar() {
                             {hasSubmenuItems ? (
                               <span className="dashboard-nav-group__chevron" aria-hidden="true">
                                 <DashboardIcon
-                                  name="chevron-right"
+                                  name="chevronRight"
                                   className={`dashboard-nav-group__chevron-icon ${isGroupOpen ? "dashboard-nav-group__chevron-icon--open" : ""}`}
                                 />
                               </span>

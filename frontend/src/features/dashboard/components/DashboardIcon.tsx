@@ -1,44 +1,15 @@
+import { LayoutDashboard } from "lucide-react";
 import {
-  Activity,
-  Boxes,
-  ChevronLeft,
-  ChevronRight,
-  FileText,
-  Gauge,
-  House,
-  LayoutDashboard,
-  LineChart,
-  PieChart,
-  Server,
-  ShieldCheck,
-  TriangleAlert,
-  Wallet,
-  type LucideIcon,
-} from "lucide-react";
-
-const iconMap: Record<string, LucideIcon> = {
-  activity: Activity,
-  "file-text": FileText,
-  "layout-dashboard": LayoutDashboard,
-  "line-chart": LineChart,
-  boxes: Boxes,
-  server: Server,
-  "pie-chart": PieChart,
-  gauge: Gauge,
-  "triangle-alert": TriangleAlert,
-  wallet: Wallet,
-  "shield-check": ShieldCheck,
-  house: House,
-  "chevron-left": ChevronLeft,
-  "chevron-right": ChevronRight,
-};
+  sidebarIconMap,
+  type SidebarIconKey,
+} from "../common/sidebarIconMap";
 
 type DashboardIconProps = {
-  name: string;
+  name: SidebarIconKey;
   className?: string;
 };
 
 export function DashboardIcon({ name, className }: DashboardIconProps) {
-  const Icon = iconMap[name] ?? LayoutDashboard;
+  const Icon = sidebarIconMap[name] ?? LayoutDashboard;
   return <Icon className={className} aria-hidden="true" />;
 }

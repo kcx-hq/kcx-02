@@ -9,9 +9,14 @@ import { formatCurrency, formatInteger, formatNumber } from "./databaseExplorer.
 type DatabaseExplorerGroupedTableProps = {
   rows: DatabaseExplorerTableRow[];
   isLoading?: boolean;
+  onRowClick?: (row: DatabaseExplorerTableRow) => void;
 };
 
-export function DatabaseExplorerGroupedTable({ rows, isLoading = false }: DatabaseExplorerGroupedTableProps) {
+export function DatabaseExplorerGroupedTable({
+  rows,
+  isLoading = false,
+  onRowClick,
+}: DatabaseExplorerGroupedTableProps) {
   const columnDefs = useMemo<ColDef<DatabaseExplorerTableRow>[]>(
     () => [
       { headerName: "Group", field: "group", minWidth: 180, sort: undefined },
@@ -78,6 +83,7 @@ export function DatabaseExplorerGroupedTable({ rows, isLoading = false }: Databa
           columnDefs={columnDefs}
           height={360}
           emptyMessage="No database data for selected filters"
+          onRowClick={onRowClick}
         />
       )}
     </TableShell>
