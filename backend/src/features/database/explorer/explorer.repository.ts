@@ -83,11 +83,6 @@ type FilterOptionValueRow = {
   value: string | null;
 };
 
-type RegionFilterOptionRow = {
-  value: string | number | null;
-  label: string | null;
-};
-
 type ExplorerCardsQueryParams = ExplorerQueryParams & {
   previousStartDate: string;
   previousEndDate: string;
@@ -118,11 +113,6 @@ const toNullableNumber = (value: string | number | null | undefined): number | n
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
 };
-
-const normalizeOptionList = (rows: FilterOptionValueRow[]): string[] =>
-  [...new Set(rows.map((row) => (typeof row.value === "string" ? row.value.trim() : "")).filter((value) => value.length > 0))].sort(
-    (left, right) => left.localeCompare(right),
-  );
 
 const toUtcDateOnly = (value: string, fieldName: string): string => {
   const parsed = new Date(value);
@@ -171,25 +161,6 @@ const getPreviousPeriod = (params: ExplorerQueryParams): { previousStartDate: st
   };
 };
 
-const requiresInventoryJoinForParams = (params: Pick<ExplorerQueryParams, "instanceClass" | "cluster">): boolean =>
-  Boolean(params.instanceClass || params.cluster);
-
-const buildInventoryFilterClauses = (
-  params: Pick<ExplorerQueryParams | ExplorerCardsQueryParams, "instanceClass" | "cluster">,
-): string[] => {
-  const filters: string[] = [];
-
-  if (params.instanceClass) {
-    filters.push("COALESCE(NULLIF(BTRIM(li.instance_class), ''), '') = :instanceClass");
-  }
-
-  if (params.cluster) {
-    filters.push("COALESCE(NULLIF(BTRIM(f.cluster_id), ''), NULLIF(BTRIM(li.cluster_id), ''), '') = :cluster");
-  }
-
-  return filters;
-};
-
 const buildFactFilters = (
   params: ExplorerCardsQueryParams,
   period: "current" | "previous",
@@ -223,52 +194,10 @@ const buildFactFilters = (
     filters.push(`${pref}db_engine = :dbEngine`);
   }
 
-  if (params.resourceType) {
-    filters.push(`${pref}resource_type = :resourceType`);
-  }
-
-  filters.push(...buildInventoryFilterClauses(params));
-
   return filters.join("\n    AND ");
 };
 
 const buildTrendFilters = (params: ExplorerQueryParams, tableAlias = ""): string => {
-  const pref = tableAlias ? `${tableAlias}.` : "";
-  const filters = [
-    `${pref}tenant_id = CAST(:tenantId AS uuid)`,
-    `${pref}usage_date BETWEEN CAST(:startDate AS date) AND CAST(:endDate AS date)`,
-  ];
-
-  if (params.cloudConnectionId) {
-    filters.push(`${pref}cloud_connection_id = CAST(:cloudConnectionId AS uuid)`);
-  }
-
-  if (params.regionKey) {
-    filters.push(`${pref}region_key = CAST(:regionKey AS bigint)`);
-  }
-
-  if (params.dbService) {
-    filters.push(`${pref}db_service = :dbService`);
-  }
-
-  if (params.databaseScope && params.databaseScope !== "all") {
-    filters.push(`${pref}db_service IN (:scopeDbServices)`);
-  }
-
-  if (params.dbEngine) {
-    filters.push(`${pref}db_engine = :dbEngine`);
-  }
-
-  if (params.resourceType) {
-    filters.push(`${pref}resource_type = :resourceType`);
-  }
-
-  filters.push(...buildInventoryFilterClauses(params));
-
-  return filters.join("\n    AND ");
-};
-
-const buildCostHistoryFilters = (params: ExplorerQueryParams, tableAlias = ""): string => {
   const pref = tableAlias ? `${tableAlias}.` : "";
   const filters = [
     `${pref}tenant_id = CAST(:tenantId AS uuid)`,
@@ -301,17 +230,7 @@ const buildCostHistoryFilters = (params: ExplorerQueryParams, tableAlias = ""): 
 const buildFilterOptionsFilters = (
   params: Pick<
     ExplorerQueryParams,
-    | "tenantId"
-    | "startDate"
-    | "endDate"
-    | "cloudConnectionId"
-    | "regionKey"
-    | "databaseScope"
-    | "dbService"
-    | "dbEngine"
-    | "resourceType"
-    | "instanceClass"
-    | "cluster"
+    "tenantId" | "startDate" | "endDate" | "cloudConnectionId" | "regionKey" | "databaseScope"
   >,
 ): string => {
   const filters = [
@@ -327,23 +246,9 @@ const buildFilterOptionsFilters = (
     filters.push("region_key = CAST(:regionKey AS bigint)");
   }
 
-  if (params.dbService) {
-    filters.push("db_service = :dbService");
-  }
-
   if (params.databaseScope && params.databaseScope !== "all") {
     filters.push("db_service IN (:scopeDbServices)");
   }
-
-  if (params.dbEngine) {
-    filters.push("db_engine = :dbEngine");
-  }
-
-  if (params.resourceType) {
-    filters.push("resource_type = :resourceType");
-  }
-
-  filters.push(...buildInventoryFilterClauses(params));
 
   return filters.join("\n    AND ");
 };
@@ -353,12 +258,6 @@ const buildTrendQueryParams = (params: ExplorerQueryParams): ExplorerQueryParams
   startDate: toUtcDateOnly(params.startDate, "start_date"),
   endDate: toUtcDateOnly(params.endDate, "end_date"),
 });
-
-const withoutQueryFilter = <K extends keyof ExplorerQueryParams>(params: ExplorerQueryParams, key: K): ExplorerQueryParams => {
-  const next = { ...params };
-  delete next[key];
-  return next;
-};
 
 const buildExplorerReplacements = <T extends ExplorerQueryParams>(params: T) => buildExplorerScopeReplacements(params);
 
@@ -462,18 +361,10 @@ END
 
 const OPERATIONAL_COST_CATEGORIES = ["compute", "storage", "io", "backup", "data_transfer"] as const;
 
-const getGroupedTrendSeriesLimit = (groupBy: ExplorerGroupBy): number =>
-  groupBy === "db_service" ? Number.POSITIVE_INFINITY : 8;
-
 export class DatabaseExplorerRepository {
   async getFilterOptions(params: ExplorerQueryParams): Promise<ExplorerFilterOptions> {
-    const queryParams = buildTrendQueryParams(params);
-    const serviceQueryParams = buildExplorerReplacements(withoutQueryFilter(queryParams, "dbService"));
-    const engineQueryParams = buildExplorerReplacements(withoutQueryFilter(queryParams, "dbEngine"));
-    const regionQueryParams = buildExplorerReplacements(withoutQueryFilter(queryParams, "regionKey"));
-    const resourceTypeQueryParams = buildExplorerReplacements(withoutQueryFilter(queryParams, "resourceType"));
-    const instanceClassQueryParams = buildExplorerReplacements(withoutQueryFilter(queryParams, "instanceClass"));
-    const clusterQueryParams = buildExplorerReplacements(withoutQueryFilter(queryParams, "cluster"));
+    const queryParams = buildExplorerReplacements(buildTrendQueryParams(params));
+    const filters = buildFilterOptionsFilters(queryParams);
 
     const discoveryParams = buildExplorerReplacements(
       buildTrendQueryParams({
@@ -482,20 +373,8 @@ export class DatabaseExplorerRepository {
       }),
     );
     const discoveryFilters = buildScopeDiscoveryFilters(discoveryParams);
-    const serviceFilters = buildFilterOptionsFilters(serviceQueryParams);
-    const engineFilters = buildFilterOptionsFilters(engineQueryParams);
-    const regionFilters = buildFilterOptionsFilters(regionQueryParams);
-    const resourceTypeFilters = buildFilterOptionsFilters(resourceTypeQueryParams);
-    const instanceClassFilters = buildFilterOptionsFilters(instanceClassQueryParams);
-    const clusterFilters = buildFilterOptionsFilters(clusterQueryParams);
-    const withInventoryForServiceFilters = requiresInventoryJoinForParams(serviceQueryParams);
-    const withInventoryForEngineFilters = requiresInventoryJoinForParams(engineQueryParams);
-    const withInventoryForRegionFilters = requiresInventoryJoinForParams(regionQueryParams);
-    const withInventoryForResourceTypeFilters = requiresInventoryJoinForParams(resourceTypeQueryParams);
-    const withInventoryForInstanceClassFilters = true;
-    const withInventoryForClusterFilters = true;
 
-    const [discoveryServiceRows, serviceRows, engineRows, regionRows, resourceTypeRows, instanceClassRows, clusterRows] = await Promise.all([
+    const [discoveryServiceRows, serviceRows, engineRows] = await Promise.all([
       sequelize.query<FilterOptionValueRow>(
         `
 SELECT DISTINCT db_service AS value
@@ -512,112 +391,46 @@ ORDER BY value ASC;
       ),
       sequelize.query<FilterOptionValueRow>(
         `
-${withInventoryForServiceFilters ? `WITH ${latestInventoryCteSql}` : ""}
 SELECT DISTINCT db_service AS value
-${fromFactBaseSql({ withInventory: withInventoryForServiceFilters, withRegion: false })}
-WHERE ${serviceFilters}
+FROM fact_db_resource_daily
+WHERE ${filters}
   AND db_service IS NOT NULL
   AND BTRIM(db_service) <> ''
 ORDER BY value ASC;
 `,
         {
-          replacements: serviceQueryParams,
+          replacements: queryParams,
           type: QueryTypes.SELECT,
         },
       ),
       sequelize.query<FilterOptionValueRow>(
         `
-${withInventoryForEngineFilters ? `WITH ${latestInventoryCteSql}` : ""}
 SELECT DISTINCT db_engine AS value
-${fromFactBaseSql({ withInventory: withInventoryForEngineFilters, withRegion: false })}
-WHERE ${engineFilters}
+FROM fact_db_resource_daily
+WHERE ${filters}
   AND db_engine IS NOT NULL
   AND BTRIM(db_engine) <> ''
   AND LOWER(BTRIM(db_engine)) <> 'unknown'
 ORDER BY value ASC;
 `,
         {
-          replacements: engineQueryParams,
-          type: QueryTypes.SELECT,
-        },
-      ),
-      sequelize.query<RegionFilterOptionRow>(
-        `
-${withInventoryForRegionFilters ? `WITH ${latestInventoryCteSql}` : ""}
-SELECT DISTINCT
-  f.region_key::text AS value,
-  COALESCE(NULLIF(BTRIM(dr.region_id), ''), NULLIF(BTRIM(dr.region_name), ''), f.region_key::text) AS label
-${fromFactBaseSql({ withInventory: withInventoryForRegionFilters, withRegion: true })}
-WHERE ${regionFilters}
-  AND f.region_key IS NOT NULL
-ORDER BY label ASC;
-`,
-        {
-          replacements: regionQueryParams,
-          type: QueryTypes.SELECT,
-        },
-      ),
-      sequelize.query<FilterOptionValueRow>(
-        `
-${withInventoryForResourceTypeFilters ? `WITH ${latestInventoryCteSql}` : ""}
-SELECT DISTINCT f.resource_type AS value
-${fromFactBaseSql({ withInventory: withInventoryForResourceTypeFilters, withRegion: false })}
-WHERE ${resourceTypeFilters}
-  AND f.resource_type IS NOT NULL
-  AND BTRIM(f.resource_type) <> ''
-ORDER BY value ASC;
-`,
-        {
-          replacements: resourceTypeQueryParams,
-          type: QueryTypes.SELECT,
-        },
-      ),
-      sequelize.query<FilterOptionValueRow>(
-        `
-WITH ${latestInventoryCteSql}
-SELECT DISTINCT li.instance_class AS value
-${fromFactBaseSql({ withInventory: withInventoryForInstanceClassFilters, withRegion: false })}
-WHERE ${instanceClassFilters}
-  AND li.instance_class IS NOT NULL
-  AND BTRIM(li.instance_class) <> ''
-ORDER BY value ASC;
-`,
-        {
-          replacements: instanceClassQueryParams,
-          type: QueryTypes.SELECT,
-        },
-      ),
-      sequelize.query<FilterOptionValueRow>(
-        `
-WITH ${latestInventoryCteSql}
-SELECT DISTINCT COALESCE(NULLIF(BTRIM(f.cluster_id), ''), NULLIF(BTRIM(li.cluster_id), '')) AS value
-${fromFactBaseSql({ withInventory: withInventoryForClusterFilters, withRegion: false })}
-WHERE ${clusterFilters}
-  AND COALESCE(NULLIF(BTRIM(f.cluster_id), ''), NULLIF(BTRIM(li.cluster_id), '')) IS NOT NULL
-ORDER BY value ASC;
-`,
-        {
-          replacements: clusterQueryParams,
+          replacements: queryParams,
           type: QueryTypes.SELECT,
         },
       ),
     ]);
 
-    const discoveryServices = normalizeOptionList(discoveryServiceRows);
+    const discoveryServices = discoveryServiceRows
+      .map((row) => (typeof row.value === "string" ? row.value.trim() : ""))
+      .filter((value) => value.length > 0);
 
     return {
-      dbServices: normalizeOptionList(serviceRows),
-      dbEngines: normalizeOptionList(engineRows),
-      regions: regionRows
-        .map((row) => ({
-          value: String(row.value ?? "").trim(),
-          label: String(row.label ?? row.value ?? "").trim(),
-        }))
-        .filter((row) => row.value.length > 0 && row.label.length > 0)
-        .sort((left, right) => left.label.localeCompare(right.label)),
-      resourceTypes: normalizeOptionList(resourceTypeRows),
-      instanceClasses: normalizeOptionList(instanceClassRows),
-      clusters: normalizeOptionList(clusterRows),
+      dbServices: serviceRows
+        .map((row) => (typeof row.value === "string" ? row.value.trim() : ""))
+        .filter((value) => value.length > 0),
+      dbEngines: engineRows
+        .map((row) => (typeof row.value === "string" ? row.value.trim() : ""))
+        .filter((value) => value.length > 0),
       availableDatabaseScopes: servicesToAvailableDatabaseScopes(discoveryServices),
     };
   }
@@ -630,27 +443,25 @@ ORDER BY value ASC;
       endDate: toUtcDateOnly(params.endDate, "end_date"),
       ...previousPeriod,
     });
-    const withInventory = requiresInventoryJoinForParams(queryParams);
     const currentFilters = buildFactFilters(queryParams, "current");
     const previousFilters = buildFactFilters(queryParams, "previous");
 
     const rows = await sequelize.query<CardsAggregateRow>(
       `
-${withInventory ? `WITH ${latestInventoryCteSql},` : "WITH "}
-current_period AS (
+WITH current_period AS (
   SELECT
-    COALESCE(SUM(f.total_effective_cost), 0) AS "totalCost",
-    COUNT(DISTINCT f.resource_id) AS "activeResources",
-    COALESCE(SUM(f.data_footprint_gb), 0) AS "dataFootprintGb",
-    AVG(f.load_avg) AS "avgLoad",
-    AVG(f.connections_avg) AS "connections"
-  ${fromFactBaseSql({ withInventory, withRegion: false })}
+    COALESCE(SUM(total_effective_cost), 0) AS "totalCost",
+    COUNT(DISTINCT resource_id) AS "activeResources",
+    COALESCE(SUM(data_footprint_gb), 0) AS "dataFootprintGb",
+    AVG(load_avg) AS "avgLoad",
+    AVG(connections_avg) AS "connections"
+  FROM fact_db_resource_daily
   WHERE ${currentFilters}
 ),
 previous_period AS (
   SELECT
-    COALESCE(SUM(f.total_effective_cost), 0) AS "previousCost"
-  ${fromFactBaseSql({ withInventory, withRegion: false })}
+    COALESCE(SUM(total_effective_cost), 0) AS "previousCost"
+  FROM fact_db_resource_daily
   WHERE ${previousFilters}
 )
 SELECT
@@ -690,21 +501,19 @@ CROSS JOIN previous_period;
   async getTrend(params: ExplorerQueryParams): Promise<ExplorerTrendItem[]> {
     const queryParams = buildExplorerReplacements(buildTrendQueryParams(params));
     const filters = buildTrendFilters(queryParams);
-    const withInventory = requiresInventoryJoinForParams(queryParams);
 
     if (queryParams.metric === "usage") {
       const rows = await sequelize.query<UsageTrendRow>(
         `
-${withInventory ? `WITH ${latestInventoryCteSql}` : ""}
 SELECT
-  f.usage_date AS date,
-  AVG(f.load_avg) AS load,
-  AVG(f.connections_avg) AS connections
-${fromFactBaseSql({ withInventory, withRegion: false })}
+  usage_date AS date,
+  AVG(load_avg) AS load,
+  AVG(connections_avg) AS connections
+FROM fact_db_resource_daily
 WHERE ${filters}
-  AND (f.load_avg IS NOT NULL OR f.connections_avg IS NOT NULL)
-GROUP BY f.usage_date
-ORDER BY f.usage_date ASC;
+  AND (load_avg IS NOT NULL OR connections_avg IS NOT NULL)
+GROUP BY usage_date
+ORDER BY usage_date ASC;
 `,
         {
           replacements: queryParams,
@@ -721,18 +530,17 @@ ORDER BY f.usage_date ASC;
 
     const rows = await sequelize.query<CostTrendRow>(
       `
-${withInventory ? `WITH ${latestInventoryCteSql}` : ""}
 SELECT
-  f.usage_date AS date,
-  COALESCE(SUM(f.compute_cost), 0) AS compute,
-  COALESCE(SUM(f.storage_cost), 0) AS storage,
-  COALESCE(SUM(f.io_cost), 0) AS io,
-  COALESCE(SUM(f.backup_cost), 0) AS backup,
-  COALESCE(SUM(f.total_effective_cost), 0) AS total
-${fromFactBaseSql({ withInventory, withRegion: false })}
+  usage_date AS date,
+  COALESCE(SUM(compute_cost), 0) AS compute,
+  COALESCE(SUM(storage_cost), 0) AS storage,
+  COALESCE(SUM(io_cost), 0) AS io,
+  COALESCE(SUM(backup_cost), 0) AS backup,
+  COALESCE(SUM(total_effective_cost), 0) AS total
+FROM fact_db_resource_daily
 WHERE ${filters}
-GROUP BY f.usage_date
-ORDER BY f.usage_date ASC;
+GROUP BY usage_date
+ORDER BY usage_date ASC;
 `,
       {
         replacements: queryParams,
@@ -756,7 +564,7 @@ ORDER BY f.usage_date ASC;
       if (queryParams.metric === "usage") {
         return [];
       }
-      const filters = buildCostHistoryFilters(queryParams, "ch");
+      const filters = buildTrendFilters(queryParams, "ch");
       const rows = await sequelize.query<CostCategoryGroupedRow>(
         `
 SELECT
@@ -788,7 +596,7 @@ ORDER BY "totalCost" DESC;
 
     const groupBy = GROUP_BY_COLUMNS[queryParams.groupBy];
     const filters = buildTrendFilters(queryParams, "f");
-    const withInventory = groupBy.requiresInventory || requiresInventoryJoinForParams(queryParams);
+    const withInventory = groupBy.requiresInventory;
     const withRegion = groupBy.requiresRegion;
 
     const rows = await sequelize.query<TableAggregateRow>(
@@ -840,7 +648,7 @@ ORDER BY "totalCost" DESC;
           series: [],
         };
       }
-      const filters = buildCostHistoryFilters(queryParams, "ch");
+      const filters = buildTrendFilters(queryParams, "ch");
       const rows = await sequelize.query<CostCategoryGroupedRow>(
         `
 SELECT
@@ -875,9 +683,8 @@ ORDER BY ch.usage_date ASC;
         bySeries.set(key, current);
       }
       const sorted = [...bySeries.values()].sort((a, b) => b.total - a.total);
-      const seriesLimit = getGroupedTrendSeriesLimit(queryParams.groupBy);
-      const top = sorted.slice(0, seriesLimit);
-      const rest = sorted.slice(seriesLimit);
+      const top = sorted.slice(0, 8);
+      const rest = sorted.slice(8);
       const dateSet = new Set<string>();
       for (const series of sorted) for (const point of series.points) dateSet.add(point.date);
       const dates = [...dateSet].sort((a, b) => a.localeCompare(b));
@@ -917,7 +724,7 @@ ORDER BY ch.usage_date ASC;
     const filters = buildTrendFilters(queryParams, "f");
     const unknownLabel = GROUPED_UNKNOWN_LABELS[queryParams.groupBy];
     const isUsage = queryParams.metric === "usage";
-    const withInventory = groupBy.requiresInventory || requiresInventoryJoinForParams(queryParams);
+    const withInventory = groupBy.requiresInventory;
     const withRegion = groupBy.requiresRegion;
 
     const valueExpression = isUsage
@@ -958,9 +765,8 @@ ORDER BY f.usage_date ASC;
     }
 
     const sorted = [...bySeries.values()].sort((a, b) => b.total - a.total);
-    const seriesLimit = getGroupedTrendSeriesLimit(queryParams.groupBy);
-    const top = sorted.slice(0, seriesLimit);
-    const rest = sorted.slice(seriesLimit);
+    const top = sorted.slice(0, 8);
+    const rest = sorted.slice(8);
     const includeOther = rest.length > 0;
     const dateSet = new Set<string>();
     for (const series of sorted) {

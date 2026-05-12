@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 
 import { DashboardPageHeader } from "../../components/DashboardPageHeader";
 import { useDatabaseExplorerQuery } from "../../hooks/useDashboardQueries";
@@ -14,6 +14,7 @@ import {
   DatabaseExplorerGroupedTable,
   DatabaseExplorerTrend,
 } from "./components";
+import { deriveAutoGroupBy } from "./databaseExplorer.taxonomy";
 
 const metricOptions: Array<{ value: DatabaseExplorerMetric; label: string }> = [
   { value: "cost", label: "Cost" },
@@ -22,28 +23,25 @@ const metricOptions: Array<{ value: DatabaseExplorerMetric; label: string }> = [
 
 export default function DatabaseExplorerPage() {
   const [metric, setMetric] = useState<DatabaseExplorerMetric>("cost");
-  const [groupBy, setGroupBy] = useState<DatabaseExplorerGroupBy>("db_service");
+  const [groupBy, setGroupBy] = useState<"auto" | DatabaseExplorerGroupBy>("auto");
   const [databaseScope, setDatabaseScope] = useState<DatabaseExplorerScopeValue>("all");
   const [dbService, setDbService] = useState("");
   const [dbEngine, setDbEngine] = useState("");
-  const [regionKey, setRegionKey] = useState("");
-  const [resourceType, setResourceType] = useState("");
-  const [instanceClass, setInstanceClass] = useState("");
-  const [cluster, setCluster] = useState("");
+
+  const effectiveGroupBy = useMemo<DatabaseExplorerGroupBy>(
+    () => (groupBy === "auto" ? deriveAutoGroupBy(databaseScope, dbService, dbEngine) : groupBy),
+    [databaseScope, dbEngine, dbService, groupBy],
+  );
 
   const filters = useMemo<DatabaseExplorerFiltersQuery>(
     () => ({
       metric,
-      groupBy,
+      groupBy: effectiveGroupBy,
       ...(databaseScope !== "all" ? { databaseScope } : {}),
-      ...(regionKey.trim() ? { regionKey: regionKey.trim() } : {}),
       ...(dbService.trim() ? { dbService: dbService.trim() } : {}),
       ...(dbEngine.trim() ? { dbEngine: dbEngine.trim() } : {}),
-      ...(resourceType.trim() ? { resourceType: resourceType.trim() } : {}),
-      ...(instanceClass.trim() ? { instanceClass: instanceClass.trim() } : {}),
-      ...(cluster.trim() ? { cluster: cluster.trim() } : {}),
     }),
-    [cluster, databaseScope, dbEngine, dbService, groupBy, instanceClass, metric, regionKey, resourceType],
+    [databaseScope, dbEngine, dbService, effectiveGroupBy, metric],
   );
 
   const query = useDatabaseExplorerQuery(filters);
@@ -54,82 +52,29 @@ export default function DatabaseExplorerPage() {
   const handleMetricChange = (nextMetric: DatabaseExplorerMetric) => {
     setMetric(nextMetric);
     if (nextMetric === "usage" && groupBy === "cost_category") {
-      setGroupBy("db_service");
+      setGroupBy("auto");
     }
   };
 
   const handleClearAll = () => {
-    setGroupBy("db_service");
+    setGroupBy("auto");
     setDatabaseScope("all");
     setDbService("");
     setDbEngine("");
-    setRegionKey("");
-    setResourceType("");
-    setInstanceClass("");
-    setCluster("");
   };
 
-  const handleFiltersChange = (
-    next: Partial<{
-      databaseScope: DatabaseExplorerScopeValue;
-      dbService: string;
-      dbEngine: string;
-      regionKey: string;
-      resourceType: string;
-      instanceClass: string;
-      cluster: string;
-    }>,
-  ) => {
-    if (typeof next.databaseScope !== "undefined") setDatabaseScope(next.databaseScope);
-    if (typeof next.dbService !== "undefined") setDbService(next.dbService);
-    if (typeof next.dbEngine !== "undefined") setDbEngine(next.dbEngine);
-    if (typeof next.regionKey !== "undefined") setRegionKey(next.regionKey);
-    if (typeof next.resourceType !== "undefined") setResourceType(next.resourceType);
-    if (typeof next.instanceClass !== "undefined") setInstanceClass(next.instanceClass);
-    if (typeof next.cluster !== "undefined") setCluster(next.cluster);
+  const handleApplyScope = (next: { databaseScope: DatabaseExplorerScopeValue; dbService: string; dbEngine: string }) => {
+    setDatabaseScope(next.databaseScope);
+    setDbService(next.dbService);
+    setDbEngine(next.dbEngine);
   };
 
-  const handleGroupByChange = (nextGroupBy: DatabaseExplorerGroupBy) => {
-    setGroupBy(nextGroupBy);
-    if (nextGroupBy !== "region") setRegionKey("");
-    if (nextGroupBy !== "resource_type") setResourceType("");
-    if (nextGroupBy !== "instance_class") setInstanceClass("");
-    if (nextGroupBy !== "cluster") setCluster("");
+  const handleApplyGroupBy = (next: { groupBy: "auto" | DatabaseExplorerGroupBy }) => {
+    setGroupBy(next.groupBy);
   };
 
   const availableDatabaseScopes = data?.filterOptions?.availableDatabaseScopes ?? ["all"];
-  const filterOptions = data?.filterOptions ?? {
-    dbServices: [],
-    dbEngines: [],
-    regions: [],
-    resourceTypes: [],
-    instanceClasses: [],
-    clusters: [],
-    availableDatabaseScopes,
-  };
-
-  useEffect(() => {
-    if (!data?.filterOptions) return;
-
-    if (dbService && !data.filterOptions.dbServices.includes(dbService)) {
-      setDbService("");
-    }
-    if (dbEngine && !data.filterOptions.dbEngines.includes(dbEngine)) {
-      setDbEngine("");
-    }
-    if (regionKey && !data.filterOptions.regions.some((option) => option.value === regionKey)) {
-      setRegionKey("");
-    }
-    if (resourceType && !data.filterOptions.resourceTypes.includes(resourceType)) {
-      setResourceType("");
-    }
-    if (instanceClass && !data.filterOptions.instanceClasses.includes(instanceClass)) {
-      setInstanceClass("");
-    }
-    if (cluster && !data.filterOptions.clusters.includes(cluster)) {
-      setCluster("");
-    }
-  }, [cluster, data?.filterOptions, dbEngine, dbService, instanceClass, regionKey, resourceType]);
+  const backendEngineOptions = data?.filterOptions?.dbEngines ?? [];
 
   return (
     <div className="dashboard-page database-explorer-page cost-explorer-page">
@@ -164,15 +109,12 @@ export default function DatabaseExplorerPage() {
         databaseScope={databaseScope}
         dbService={dbService}
         dbEngine={dbEngine}
-        regionKey={regionKey}
-        resourceType={resourceType}
-        instanceClass={instanceClass}
-        cluster={cluster}
         groupBy={groupBy}
+        effectiveGroupBy={effectiveGroupBy}
         availableDatabaseScopes={availableDatabaseScopes}
-        filterOptions={filterOptions}
-        onFiltersChange={handleFiltersChange}
-        onGroupByChange={handleGroupByChange}
+        backendEngineOptions={backendEngineOptions}
+        onApplyScope={handleApplyScope}
+        onApplyGroupBy={handleApplyGroupBy}
         onClearAll={handleClearAll}
       />
 
@@ -196,7 +138,7 @@ export default function DatabaseExplorerPage() {
           />
           <DatabaseExplorerTrend
             metric={metric}
-            groupBy={groupBy}
+            groupBy={effectiveGroupBy}
             trend={data?.trend ?? []}
             trendGrouped={data?.trendGrouped}
             isLoading={pageLoading}
