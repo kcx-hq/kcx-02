@@ -304,6 +304,85 @@ Network line-item inclusion filter (any match):
 - data transfer patterns (`usage_type`, `product_usage_type`, `product_family`, description)
 - nat/elasticip/lb/lcu operation or usage hints
 
+## 13A) EC2 Explorer: Data Transfer Metric (v1)
+
+Scope:
+- Applies only when `metric = data_transfer` in EC2 Explorer.
+
+Allowed Group By values (v1 only):
+- `transfer_type`
+- `instance`
+- `region`
+
+Default Group By:
+- `transfer_type`
+
+State behavior:
+- If metric changes to `data_transfer` and current groupBy is not one of the three allowed values, fallback to `transfer_type`.
+- If metric changes away from `data_transfer`, normal metric-specific groupBy behavior resumes.
+
+Chart behavior:
+1. Group By = `transfer_type`
+- Series represent transfer categories:
+  - Internet Data Transfer
+  - Inter-AZ Data Transfer
+  - Regional Data Transfer
+  - Unknown (if present)
+- Stacked bar behavior remains valid.
+
+2. Group By = `instance`
+- Series represent instances.
+- X-axis remains date-aligned by selected granularity.
+- To prevent clutter, chart limits to top groups (top 10 by selected value basis) and rolls up remaining groups into `Other`.
+
+3. Group By = `region`
+- Series represent regions.
+- X-axis remains date-aligned by selected granularity.
+- If many regions exist, top 10 are shown and remaining are rolled into `Other`.
+
+Table behavior:
+1. Group By = `transfer_type`
+- Columns:
+  - Transfer Type
+  - Cost
+  - Billed Usage GB
+  - % of Data Transfer
+  - Resource Count
+  - Unmapped Resources
+
+2. Group By = `instance`
+- Columns:
+  - Instance
+  - Data Transfer Cost (USD)
+  - Internet Data Transfer (GB)
+  - Inter-AZ Data Transfer (GB)
+  - Regional Data Transfer (GB)
+  - Total Data Transfer (GB)
+  - Region
+  - Instance Type
+
+3. Group By = `region`
+- Columns:
+  - Region
+  - Data Transfer Cost (USD)
+  - Internet Data Transfer (GB)
+  - Inter-AZ Data Transfer (GB)
+  - Regional Data Transfer (GB)
+  - Total Data Transfer (GB)
+  - Resource Count
+
+Formatting contract:
+- Cost: `$0.00`
+- GB: `0.00 GB`
+- Percentage: `0.00%`
+- Null/undefined fallback: render zero-equivalent values (`$0.00`, `0.00 GB`, `0.00%`)
+
+Sorting:
+- Data transfer tables must support sorting by:
+  - Data Transfer Cost
+  - Total Data Transfer
+  - Internet Data Transfer
+
 ## 14) EC2 Explorer: Usage Metric -> Network Type
 
 Behavior:

@@ -28,6 +28,10 @@ import EC2VolumeDetailPage from "../pages/ec2/EC2VolumeDetailPage";
 import EC2EipPage from "../pages/ec2/EC2EipPage";
 import DatabaseExplorerPage from "../pages/database/DatabaseExplorerPage";
 import DatabaseAssetsPage from "../pages/database/db-assets-page";
+import LoadBalancerExplorerPage from "../pages/load-balancer/LoadBalancerExplorerPage";
+import LoadBalancerListPage from "../pages/load-balancer/LoadBalancerListPage";
+import LoadBalancerDetailPage from "../pages/load-balancer/LoadBalancerDetailPage";
+import LoadBalancerOptimizationPage from "../pages/load-balancer/LoadBalancerOptimizationPage";
 
 function DashboardOverviewRedirect() {
   const location = useLocation();
@@ -108,7 +112,7 @@ function DashboardS3Redirect() {
   return (
     <Navigate
       to={{
-        pathname: "/dashboard/s3/bucket",
+        pathname: "/dashboard/s3/cost",
         search: location.search,
       }}
       replace
@@ -157,6 +161,8 @@ export default function DashboardRoutes() {
         <Route path="cost/history" element={<CostHistoryPage />} />
         <Route path="cost-explorer" element={<DashboardCostRedirect />} />
         <Route path="ec2/explorer" element={<EC2ExplorerPage />} />
+        <Route path="load-balancer/explorer" element={<LoadBalancerExplorerPage />} />
+        <Route path="load-balancer/optimization" element={<LoadBalancerOptimizationPage />} />
         <Route path="ec2/volumes" element={<EC2VolumesPage />} />
         <Route path="ec2/optimization" element={<EC2OptimizationPage />} />
         <Route path="ec2/network/data-transfer" element={<DashboardEc2DataTransferRedirect />} />
@@ -187,6 +193,8 @@ export default function DashboardRoutes() {
         <Route path="inventory/aws/ec2/instances" element={<EC2InstancesPage />} />
         <Route path="inventory/aws/ec2/elastic-ip" element={<EC2EipPage />} />
         <Route path="inventory/aws/ec2/instances/:instanceId" element={<EC2InstanceDetailPage />} />
+        <Route path="inventory/aws/load-balancer/list" element={<LoadBalancerListPage />} />
+        <Route path="inventory/aws/load-balancer/list/:loadBalancerId" element={<LoadBalancerDetailPage />} />
         <Route path="inventory/aws/ec2/snapshots" element={<EC2SnapshotsPage />} />
         <Route path="inventory/aws/ec2/volumes" element={<EC2VolumesPage />} />
         <Route path="inventory/aws/ec2/volumes/:volumeId" element={<EC2VolumeDetailPage />} />

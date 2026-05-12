@@ -20,7 +20,6 @@ export const classifyNetworkCostType = (lineItem: NetworkCostClassifierInput): E
   let classified: Ec2NetworkBreakdownType = "Other Network";
   if (explorerCategory === "nat_gateway") classified = "NAT Gateway";
   else if (explorerCategory === "elastic_ip") classified = "Elastic IP";
-  else if (explorerCategory === "load_balancer") classified = "Load Balancer";
   else if (explorerCategory === "data_transfer") {
     const transfer = classifyDataTransferSignals(lineItem).transferType;
     if (transfer === "internet") classified = "Internet Data Transfer";

@@ -33,6 +33,10 @@ import type {
   Ec2DataTransferResponse,
   Ec2ElasticIpFiltersQuery,
   Ec2ElasticIpResponse,
+  LoadBalancerExplorerFiltersQuery,
+  LoadBalancerExplorerSummaryResponse,
+  LoadBalancerExplorerTrendResponse,
+  LoadBalancerExplorerGroupByResponse,
   DatabaseExplorerFilters,
   DatabaseExplorerResponse,
   DatabaseAssetsFilters,
@@ -412,6 +416,8 @@ function withEc2RecommendationsFilters(
   if (filters?.team) params.set("team", filters.team);
   if (filters?.product) params.set("product", filters.product);
   if (filters?.environment) params.set("environment", filters.environment);
+  if (filters?.service) params.set("service", filters.service);
+  if (filters?.resourceType) params.set("resourceType", filters.resourceType);
   if (Array.isArray(filters?.tags) && filters.tags.length > 0) params.set("tags", filters.tags.join(","));
   if (filters?.dateFrom) params.set("dateFrom", filters.dateFrom);
   if (filters?.dateTo) params.set("dateTo", filters.dateTo);
@@ -451,6 +457,40 @@ function withEc2ElasticIpFilters(
   if (filters?.search) params.set("search", filters.search);
   if (typeof filters?.page === "number") params.set("page", String(filters.page));
   if (typeof filters?.pageSize === "number") params.set("pageSize", String(filters.pageSize));
+  const query = params.toString();
+  return query.length > 0 ? `${path}?${query}` : path;
+}
+
+function withLoadBalancerExplorerFilters(
+  path: string,
+  scope: DashboardResolvedScope,
+  filters: LoadBalancerExplorerFiltersQuery,
+): string {
+  const params = new URLSearchParams(buildDashboardQueryParams(scope));
+  const appendArray = (key: string, values?: Array<string | number>) => {
+    if (!Array.isArray(values) || values.length === 0) return;
+    params.set(key, values.join(","));
+  };
+
+  params.set("metric", filters.metric);
+  if (filters.usageType) params.set("usageType", filters.usageType);
+  params.set("groupBy", filters.groupBy);
+  if (filters.startDate) params.set("startDate", filters.startDate);
+  if (filters.endDate) params.set("endDate", filters.endDate);
+  if (filters.granularity) params.set("granularity", filters.granularity);
+  if (filters.tagKey) params.set("tagKey", filters.tagKey);
+  if (filters.loadBalancerArn) params.set("loadBalancerArn", filters.loadBalancerArn);
+  if (filters.accountId) params.set("accountId", filters.accountId);
+  appendArray("regions", filters.regions);
+  appendArray("types", filters.types);
+  appendArray("schemes", filters.schemes);
+  appendArray("states", filters.states);
+  appendArray("teams", filters.teams);
+  appendArray("products", filters.products);
+  appendArray("environments", filters.environments);
+  appendArray("tags", filters.tags);
+  appendArray("groupValues", filters.groupValues);
+
   const query = params.toString();
   return query.length > 0 ? `${path}?${query}` : path;
 }
@@ -735,10 +775,14 @@ export const dashboardApi = {
       payload ?? {},
     );
   },
-  updateEc2RecommendationStatus(scope: DashboardResolvedScope, recommendationId: number, status: Ec2RecommendationStatus) {
-    return apiPatch<{ id: number; status: Ec2RecommendationStatus }>(
+  updateEc2RecommendationStatus(
+    scope: DashboardResolvedScope,
+    recommendationId: number,
+    payload: { status: Ec2RecommendationStatus; reason?: string | null; snoozed_until?: string | null },
+  ) {
+    return apiPatch<{ id: number; status: Ec2RecommendationStatus; statusReason?: string | null; snoozedUntil?: string | null }>(
       withDashboardQuery(`/dashboard/ec2/recommendations/${recommendationId}/status`, scope),
-      { status },
+      payload,
     );
   },
   getEc2Explorer(scope: DashboardResolvedScope, filters: Ec2ExplorerFiltersQuery) {
@@ -865,6 +909,13 @@ export type {
   Ec2DataTransferResponse,
   Ec2ElasticIpFiltersQuery,
   Ec2ElasticIpResponse,
+  LoadBalancerExplorerMetric,
+  LoadBalancerExplorerGroupBy,
+  LoadBalancerExplorerGranularity,
+  LoadBalancerExplorerFiltersQuery,
+  LoadBalancerExplorerSummaryResponse,
+  LoadBalancerExplorerTrendResponse,
+  LoadBalancerExplorerGroupByResponse,
   S3CostInsightsFiltersQuery,
   S3CostInsightsResponse,
   S3BucketLifecycleInsightResponse,

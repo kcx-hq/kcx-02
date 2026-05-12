@@ -1,4 +1,4 @@
-import { syncEc2InstanceCostDaily } from "../src/features/ec2/scheduled-jobs/handlers/ec2-instance-cost-daily.service.js";
+import { syncEc2InstanceCostDaily } from "../src/features/scheduled-jobs/handlers/ec2/ec2-instance-cost-daily.service.js";
 import { sequelize } from "../src/models/index.js";
 
 type CliOptions = {
@@ -136,4 +136,5 @@ main()
   .finally(async () => {
     await sequelize.close();
   });
+
 

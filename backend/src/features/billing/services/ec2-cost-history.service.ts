@@ -1,10 +1,10 @@
 import { QueryTypes, Transaction } from "sequelize";
 
 import { sequelize } from "../../../models/index.js";
-import { syncEc2InstanceCostDaily } from "../../ec2/scheduled-jobs/handlers/ec2-instance-cost-daily.service.js";
-import { syncEc2InstanceCoverageDaily } from "../../ec2/scheduled-jobs/handlers/ec2-instance-coverage-daily.service.js";
-import { syncEc2InstanceDailyFact } from "../../ec2/scheduled-jobs/handlers/ec2-instance-daily-fact.service.js";
-import { syncEbsVolumeDaily } from "../../ec2/scheduled-jobs/handlers/ebs-volume-daily.service.js";
+import { syncEc2InstanceCostDaily } from "../../scheduled-jobs/handlers/ec2/ec2-instance-cost-daily.service.js";
+import { syncEc2InstanceCoverageDaily } from "../../scheduled-jobs/handlers/ec2/ec2-instance-coverage-daily.service.js";
+import { syncEc2InstanceDailyFact } from "../../scheduled-jobs/handlers/ec2/ec2-instance-daily-fact.service.js";
+import { syncEbsVolumeDaily } from "../../scheduled-jobs/handlers/ec2/ebs-volume-daily.service.js";
 
 type PeriodStatus = "open" | "frozen" | "adjusted";
 

@@ -1310,9 +1310,11 @@ export class CostExplorerRepository {
       });
     } else {
       const chartGroupLimit =
-        filters.groupBy === "service" || filters.groupBy === "service-category" || filters.groupBy === "resource"
-          ? 7
-          : 5;
+        filters.groupBy === "service"
+          ? 5000
+          : filters.groupBy === "service-category" || filters.groupBy === "resource"
+            ? 7
+            : 5;
       const topGroups = await this.getTopGroupKeys(
         scope,
         filters.effectiveGranularity,
@@ -1358,6 +1360,27 @@ export class CostExplorerRepository {
           values: valuesByGroup.get(group.key) ?? Array(labels.length).fill(0),
         });
       });
+
+      const includedTotalsByBucket = Array(labels.length).fill(0);
+      valuesByGroup.forEach((values) => {
+        values.forEach((value, index) => {
+          includedTotalsByBucket[index] += Number(value ?? 0);
+        });
+      });
+      const othersValues = currentTotals.map((entry, index) => {
+        const totalValue = Number(entry.value ?? 0);
+        const includedValue = includedTotalsByBucket[index] ?? 0;
+        const remainder = totalValue - includedValue;
+        return Math.abs(remainder) < 1e-9 ? 0 : remainder;
+      });
+      const hasOthers = othersValues.some((value) => Math.abs(value) >= 1e-9);
+      if (hasOthers) {
+        series.push({
+          name: "Others",
+          kind: "group",
+          values: othersValues,
+        });
+      }
     }
 
     const previousRange = buildPreviousPeriod(filters.from, filters.to);

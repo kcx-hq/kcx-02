@@ -132,7 +132,7 @@ export const STATE_OPTIONS: Array<{ key: EC2State; label: string }> = [
 
 export const GROUP_BY_OPTIONS: Array<{ key: EC2GroupBy; label: string }> = [
   { key: "none", label: "None" },
-  { key: "cost-category", label: "Cost Category" },
+  { key: "cost-category", label: "Cost Type" },
   { key: "region", label: "Region" },
   { key: "account", label: "Account" },
   { key: "availability-zone", label: "Availability Zone" },
@@ -155,6 +155,27 @@ export const GROUP_BY_OPTIONS: Array<{ key: EC2GroupBy; label: string }> = [
   { key: "destination-region", label: "Destination Region" },
   { key: "tag", label: "Tag" },
 ];
+
+export const GROUP_BY_OPTIONS_BY_METRIC: Record<EC2Metric, EC2GroupBy[]> = {
+  cost: ["none", "account", "region", "instance-type", "cost-category", "tag", "reservation-type"],
+  usage: ["none", "account", "region", "instance", "instance-type", "tag"],
+  instances: ["none", "account", "region", "instance", "instance-type", "instance-state", "recommendation", "tag"],
+  volumes: ["none", "account", "region", "instance", "volume", "volume_type", "attachment_state", "size_bucket", "tag"],
+  "data-transfer": ["none", "account", "region", "instance", "transfer-type", "tag"],
+};
+
+export const isGroupByAllowedForMetric = (groupBy: EC2GroupBy, metric: EC2Metric): boolean =>
+  GROUP_BY_OPTIONS_BY_METRIC[metric].includes(groupBy);
+
+export const getGroupByOptionsForMetric = (metric: EC2Metric): Array<{ key: EC2GroupBy; label: string }> => {
+  const allowed = new Set(GROUP_BY_OPTIONS_BY_METRIC[metric]);
+  return GROUP_BY_OPTIONS.filter((option) => allowed.has(option.key));
+};
+
+export const getValidGroupByForMetric = (
+  metric: EC2Metric,
+  currentGroupBy: EC2GroupBy,
+): EC2GroupBy => (isGroupByAllowedForMetric(currentGroupBy, metric) ? currentGroupBy : "none");
 
 export const INSTANCE_TYPE_OPTIONS: Array<{ key: string; label: string }> = [
   { key: "all", label: "All types" },

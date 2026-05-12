@@ -13,6 +13,7 @@ import {
 } from "../../dashboard/optimization/recommendation-sync/sync.service.js";
 import { syncEc2CostHistoryForIngestionRun } from "./ec2-cost-history.service.js";
 import { syncDbCostHistoryForIngestionRun } from "./db-cost-history.service.js";
+import { syncLoadBalancerCostDailyForIngestionRun } from "../../load-balancer/cost/load-balancer-cost-daily.service.js";
 import { processAwsExportParquetRun } from "./aws-export-parquet.processor.js";
 import {
   createIngestionDimensionCache,
@@ -132,6 +133,48 @@ function scheduleStorageLensSyncAfterIngestion({ tenantId, billingSourceId, inge
           ingestionRunId: String(ingestionRunId),
           tenantId: normalizedTenantId,
           billingSourceId: normalizedBillingSourceId,
+          reason: error instanceof Error ? error.message : String(error),
+        });
+      });
+
+    trackPostIngestionTask(task);
+  });
+}
+
+function scheduleLoadBalancerCostAggregationAfterIngestion({
+  ingestionRunId,
+  cloudConnectionId,
+}: {
+  ingestionRunId: string | number;
+  cloudConnectionId?: string | null;
+}): void {
+  setImmediate(() => {
+    const task = syncLoadBalancerCostDailyForIngestionRun({
+      ingestionRunId: String(ingestionRunId),
+      cloudConnectionId: cloudConnectionId ?? null,
+    })
+      .then((result) => {
+        logger.info("Load balancer cost aggregation completed after ingestion", {
+          triggerSource: "ingestion",
+          ingestionRunId: String(ingestionRunId),
+          cloudConnectionId: cloudConnectionId ?? null,
+          skipped: result.skipped,
+          reason: result.reason ?? null,
+          rowsScanned: result.rowsScanned ?? 0,
+          lbRowsMatched:
+            typeof result.rowsClassified === "number" && typeof result.rowsUnmatched === "number"
+              ? Math.max(result.rowsClassified - result.rowsUnmatched, 0)
+              : 0,
+          unmatchedRows: result.rowsUnmatched ?? 0,
+          dailyRowsWritten: result.rowsUpserted ?? 0,
+          rowsDeleted: result.rowsDeleted ?? 0,
+        });
+      })
+      .catch((error) => {
+        logger.warn("Load balancer cost aggregation failed after ingestion", {
+          triggerSource: "ingestion",
+          ingestionRunId: String(ingestionRunId),
+          cloudConnectionId: cloudConnectionId ?? null,
           reason: error instanceof Error ? error.message : String(error),
         });
       });
@@ -838,6 +881,10 @@ async function processIngestionRun(ingestionRunId) {
         tenantId: rawFile.tenantId,
         providerId: rawFile.cloudProviderId,
         billingSourceId: run.billingSourceId,
+      });
+      scheduleLoadBalancerCostAggregationAfterIngestion({
+        ingestionRunId: run.id,
+        cloudConnectionId: null,
       });
 
       const tenantIdForSync = typeof rawFile.tenantId === "string" ? rawFile.tenantId.trim() : "";

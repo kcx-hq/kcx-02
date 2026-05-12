@@ -18,6 +18,10 @@ import {
   type Ec2DataTransferResponse,
   type Ec2ElasticIpFiltersQuery,
   type Ec2ElasticIpResponse,
+  type LoadBalancerExplorerFiltersQuery,
+  type LoadBalancerExplorerSummaryResponse,
+  type LoadBalancerExplorerTrendResponse,
+  type LoadBalancerExplorerGroupByResponse,
   type DatabaseExplorerFilters,
   type DatabaseExplorerResponse,
   type DatabaseAssetsFilters,
@@ -390,6 +394,42 @@ export function useEc2ElasticIpsQuery(filters?: Ec2ElasticIpFiltersQuery, enable
   return useQuery<Ec2ElasticIpResponse, Error>({
     queryKey: ["dashboard", "ec2", "elastic-ips", scope, filters],
     queryFn: () => dashboardApi.getEc2ElasticIps(assertScope(scope), filters),
+    enabled: Boolean(scope) && enabledOverride,
+    placeholderData: (previous) => previous,
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
+  });
+}
+
+export function useLoadBalancerExplorerSummaryQuery(filters: LoadBalancerExplorerFiltersQuery, enabledOverride: boolean = true) {
+  const { scope } = useDashboardScope();
+  return useQuery<LoadBalancerExplorerSummaryResponse, Error>({
+    queryKey: ["dashboard", "load-balancer", "explorer", "summary", scope, filters],
+    queryFn: () => dashboardApi.getLoadBalancerExplorerSummary(assertScope(scope), filters),
+    enabled: Boolean(scope) && enabledOverride,
+    placeholderData: (previous) => previous,
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
+  });
+}
+
+export function useLoadBalancerExplorerTrendQuery(filters: LoadBalancerExplorerFiltersQuery, enabledOverride: boolean = true) {
+  const { scope } = useDashboardScope();
+  return useQuery<LoadBalancerExplorerTrendResponse, Error>({
+    queryKey: ["dashboard", "load-balancer", "explorer", "trend", scope, filters],
+    queryFn: () => dashboardApi.getLoadBalancerExplorerTrend(assertScope(scope), filters),
+    enabled: Boolean(scope) && enabledOverride,
+    placeholderData: (previous) => previous,
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
+  });
+}
+
+export function useLoadBalancerExplorerGroupByQuery(filters: LoadBalancerExplorerFiltersQuery, enabledOverride: boolean = true) {
+  const { scope } = useDashboardScope();
+  return useQuery<LoadBalancerExplorerGroupByResponse, Error>({
+    queryKey: ["dashboard", "load-balancer", "explorer", "group-by", scope, filters],
+    queryFn: () => dashboardApi.getLoadBalancerExplorerGroupBy(assertScope(scope), filters),
     enabled: Boolean(scope) && enabledOverride,
     placeholderData: (previous) => previous,
     staleTime: 60_000,

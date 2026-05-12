@@ -1,12 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { EChartsOption } from "echarts";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 
 import { useCostExplorerGroupOptionsQuery, useCostExplorerQuery } from "../../hooks/useDashboardQueries";
 import { useDashboardScope } from "../../hooks/useDashboardScope";
 import {
   COMPARE_OPTIONS,
-  GROUP_BY_OPTIONS,
   METRIC_OPTIONS,
   type ChartSeries,
   type CompareKey,
@@ -18,7 +17,8 @@ import {
 import {
   calculateDeltaPercent,
   compactCurrencyFormatter,
-  currencyFormatter,
+  formatAxisCost,
+  formatTooltipCost,
   percentFormatter,
   parseInputDate,
 } from "./costExplorer.utils";
@@ -27,28 +27,27 @@ import { CostExplorerChartSection, CostExplorerFiltersPanel } from "./components
 type ChartMode = "line" | "bar";
 type RowsPerPage = 5 | 10 | 15;
 
-const ENTITY_SERIES_PALETTE = [
-  "#1f77b4",
-  "#d62728",
-  "#2ca02c",
-  "#9467bd",
-  "#ff7f0e",
-  "#17becf",
-  "#8c564b",
-  "#e377c2",
-  "#bcbd22",
-  "#7f7f7f",
-  "#393b79",
-  "#637939",
-  "#8c6d31",
-  "#843c39",
-  "#7b4173",
-];
-
 const COMPARISON_SERIES_COLORS: Record<CompareKey, string> = {
   "previous-month": "#4f46e5",
   budget: "#b45309",
   forecast: "#7e22ce",
+};
+
+const stringToHue = (value: string): number => {
+  let hash = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = (hash * 31 + value.charCodeAt(index)) >>> 0;
+  }
+  return hash % 360;
+};
+
+const colorForSeriesName = (name: string): string => {
+  const normalized = name.trim().toLowerCase();
+  if (normalized === "amazons3") {
+    return "#1f77b4";
+  }
+  const hue = stringToHue(normalized);
+  return `hsl(${hue} 62% 45%)`;
 };
 
 const haveSameStringItems = (left: string[], right: string[]): boolean => {
@@ -65,9 +64,62 @@ const parseOptionalBoolean = (value: string | null): boolean | undefined => {
   return undefined;
 };
 
+type AllowedGroupId =
+  | "env"
+  | "app"
+  | "team"
+  | "cost-center"
+  | "project"
+  | "service"
+  | "region"
+  | "charge-type"
+  | "usage-type";
+
+const ALLOWED_GROUP_DIMENSIONS: Array<{ id: AllowedGroupId; label: string }> = [
+  { id: "env", label: "Env" },
+  { id: "app", label: "App" },
+  { id: "team", label: "Team" },
+  { id: "cost-center", label: "Cost Center" },
+  { id: "project", label: "Project" },
+  { id: "service", label: "Service" },
+  { id: "region", label: "Region" },
+  { id: "charge-type", label: "Charge Type" },
+  { id: "usage-type", label: "Usage Type" },
+];
+
+const detectAllowedGroupFromTagKey = (rawValue: string): AllowedGroupId | null => {
+  const raw = rawValue.trim().toLowerCase().replace(/^tag:/, "");
+  const stripped = raw
+    .replace(/^resourcetagsuser/, "")
+    .replace(/^resource_tags_user/, "")
+    .replace(/^resourcetags/, "")
+    .replace(/^resource_tags/, "")
+    .replace(/^tagsuser/, "")
+    .replace(/^taguser/, "")
+    .replace(/^tags/, "")
+    .replace(/^tag/, "")
+    .replace(/^user/, "");
+  const compact = (stripped.length > 0 ? stripped : raw).replace(/[^a-z0-9]/g, "");
+
+  if (!compact) return null;
+  if (compact.includes("costcenter") || compact.includes("costcentre")) return "cost-center";
+  if (compact.includes("usagetype") || compact === "usage") return "usage-type";
+  if (compact.includes("chargetype") || compact.includes("costtype") || compact.includes("lineitemtype")) {
+    return "charge-type";
+  }
+  if (compact.includes("environment") || compact === "env") return "env";
+  if (compact.includes("application") || compact === "app") return "app";
+  if (compact.includes("team")) return "team";
+  if (compact.includes("project")) return "project";
+  if (compact.includes("service")) return "service";
+  if (compact.includes("region")) return "region";
+  return null;
+};
+
 export default function CostExplorerPage() {
   const { scope } = useDashboardScope();
   const location = useLocation();
+  const navigate = useNavigate();
   const searchParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
   const forecastingEnabled = parseOptionalBoolean(
     searchParams.get("forecastingEnabled") ??
@@ -77,12 +129,12 @@ export default function CostExplorerPage() {
       searchParams.get("forecastingFilter"),
   );
 
-  const [draftGroupBy, setDraftGroupBy] = useState<GroupBy>("none");
-  const [appliedGroupBy, setAppliedGroupBy] = useState<GroupBy>("none");
+  const [draftGroupBy, setDraftGroupBy] = useState<GroupBy>("service");
+  const [appliedGroupBy, setAppliedGroupBy] = useState<GroupBy>("service");
   const [selectedMetrics, setSelectedMetrics] = useState<Metric[]>(["billed"]);
   const [compare, setCompare] = useState<CompareKey[]>([]);
   const [granularity, setGranularity] = useState<Granularity>("daily");
-  const [chartMode, setChartMode] = useState<ChartMode>("line");
+  const [chartMode, setChartMode] = useState<ChartMode>("bar");
   const [draftGroupValues, setDraftGroupValues] = useState<string[]>([]);
   const [appliedGroupValues, setAppliedGroupValues] = useState<string[]>([]);
   const [rowsPerPage, setRowsPerPage] = useState<RowsPerPage>(5);
@@ -167,18 +219,28 @@ export default function CostExplorerPage() {
     (granularity === "hourly" && days > 14 ? "daily" : granularity)) as Granularity;
 
   const dynamicGroupOptions = useMemo<Array<{ key: GroupBy; label: string }>>(() => {
-    const base = GROUP_BY_OPTIONS.map((item) => ({ key: item.key as GroupBy, label: item.label }));
-    const noneOption = base.find((item) => item.key === "none") ?? { key: "none" as GroupBy, label: "None" };
-    const baseWithoutNone = base.filter((item) => item.key !== "none");
-    const tags =
-      groupOptionsQuery.data?.tagKeyOptions.map((option) => ({
-        key: option.key as GroupBy,
-        label:
-          option.normalizedKey.length > 0
-            ? option.normalizedKey[0].toUpperCase() + option.normalizedKey.slice(1)
-            : option.normalizedKey,
-      })) ?? [];
-    return [noneOption, ...tags, ...baseWithoutNone];
+    const keyByDimension = new Map<AllowedGroupId, GroupBy>([
+      ["service", "service"],
+      ["region", "region"],
+    ]);
+
+    (groupOptionsQuery.data?.tagKeyOptions ?? []).forEach((option) => {
+      const matched = detectAllowedGroupFromTagKey(option.normalizedKey || option.key);
+      if (!matched) return;
+
+      const existing = keyByDimension.get(matched);
+      if ((matched === "service" || matched === "region") && existing && !existing.startsWith("tag:")) {
+        return;
+      }
+      if (!existing || existing.startsWith("tag:")) {
+        keyByDimension.set(matched, option.key as GroupBy);
+      }
+    });
+
+    return ALLOWED_GROUP_DIMENSIONS.filter((item) => keyByDimension.has(item.id)).map((item) => ({
+      key: keyByDimension.get(item.id) as GroupBy,
+      label: item.label,
+    }));
   }, [groupOptionsQuery.data?.tagKeyOptions]);
 
   useEffect(() => {
@@ -223,7 +285,6 @@ export default function CostExplorerPage() {
 
   const seriesColorByName = useMemo(() => {
     const map = new Map<string, string>();
-    let entityColorIndex = 0;
 
     for (const item of series) {
       if (item.kind === "comparison") {
@@ -234,8 +295,7 @@ export default function CostExplorerPage() {
       }
 
       if (!map.has(item.name)) {
-        map.set(item.name, ENTITY_SERIES_PALETTE[entityColorIndex % ENTITY_SERIES_PALETTE.length]);
-        entityColorIndex += 1;
+        map.set(item.name, colorForSeriesName(item.name));
       }
     }
 
@@ -251,12 +311,71 @@ export default function CostExplorerPage() {
   }, [labels, series]);
 
   const seriesMeta = useMemo(() => new Map(series.map((item) => [item.name, item])), [series]);
+  const yAxisBounds = useMemo(() => {
+    if (!labels.length || !series.length) {
+      return { min: -1, max: 1 };
+    }
+
+    let maxValue = Number.NEGATIVE_INFINITY;
+    let minValue = Number.POSITIVE_INFINITY;
+
+    if (chartMode === "bar") {
+      const nonComparisonSeries = series.filter((item) => item.kind !== "comparison");
+      for (let index = 0; index < labels.length; index += 1) {
+        let bucketPositive = 0;
+        let bucketNegative = 0;
+        nonComparisonSeries.forEach((item) => {
+          const value = Number(item.values[index] ?? 0);
+          if (value >= 0) {
+            bucketPositive += value;
+          } else {
+            bucketNegative += value;
+          }
+        });
+        if (bucketPositive > maxValue) maxValue = bucketPositive;
+        if (bucketNegative < minValue) minValue = bucketNegative;
+      }
+
+      series
+        .filter((item) => item.kind === "comparison")
+        .forEach((item) => {
+          item.values.forEach((value) => {
+            const numeric = Number(value ?? 0);
+            if (numeric > maxValue) maxValue = numeric;
+            if (numeric < minValue) minValue = numeric;
+          });
+        });
+    } else {
+      series.forEach((item) => {
+        item.values.forEach((value) => {
+          const numeric = Number(value ?? 0);
+          if (numeric > maxValue) maxValue = numeric;
+          if (numeric < minValue) minValue = numeric;
+        });
+      });
+    }
+
+    if (!Number.isFinite(minValue) || !Number.isFinite(maxValue)) {
+      return { min: -1, max: 1 };
+    }
+
+    if (minValue === maxValue) {
+      const bump = Math.abs(minValue) > 0 ? Math.abs(minValue) * 0.08 : 1;
+      return { min: minValue - bump, max: maxValue + bump };
+    }
+
+    const span = maxValue - minValue;
+    const pad = span * 0.08;
+    return { min: minValue - pad, max: maxValue + pad };
+  }, [chartMode, labels, series]);
 
   const option = useMemo<EChartsOption>(
     () => ({
       color: series.map((item) => seriesColorByName.get(item.name) ?? "#4f7088"),
       tooltip: {
         trigger: "axis",
+        axisPointer: { type: chartMode === "bar" ? "shadow" : "line" },
+        confine: true,
         backgroundColor: "rgba(21, 35, 48, 0.95)",
         borderWidth: 0,
         textStyle: { color: "#f7fbfb", fontSize: 12 },
@@ -283,7 +402,7 @@ export default function CostExplorerPage() {
                   ? ` <span style="color:#b8c8d2;">(${calculateDeltaPercent(Number(point.value), base) >= 0 ? "+" : ""}${percentFormatter.format(calculateDeltaPercent(Number(point.value), base))}%)</span>`
                   : "";
 
-              return `<div style="display:flex; gap:6px; align-items:center; margin-top:4px;">${point.marker}<span>${point.seriesName}:</span><strong>${currencyFormatter.format(Number(point.value))}</strong>${comparisonDelta}</div>`;
+              return `<div style="display:flex; gap:6px; align-items:center; margin-top:4px;">${point.marker}<span>${point.seriesName}:</span><strong>${formatTooltipCost(Number(point.value))}</strong>${comparisonDelta}</div>`;
             })
             .join("");
 
@@ -295,13 +414,17 @@ export default function CostExplorerPage() {
         },
       },
       legend: {
+        type: "scroll",
         top: 0,
         icon: "roundRect",
         itemHeight: 6,
         itemWidth: 18,
+        pageIconColor: "#4f7088",
+        pageIconInactiveColor: "#9db2ae",
+        pageTextStyle: { color: "#6d837e", fontSize: 10 },
         textStyle: { color: "#58706d", fontSize: 11 },
       },
-      grid: { left: 10, right: 10, top: 34, bottom: 14, containLabel: true },
+      grid: { left: 10, right: 10, top: 58, bottom: 14, containLabel: true },
       xAxis: {
         type: "category",
         boundaryGap: chartMode === "bar",
@@ -316,9 +439,11 @@ export default function CostExplorerPage() {
       },
       yAxis: {
         type: "value",
+        min: yAxisBounds.min,
+        max: yAxisBounds.max,
         axisLine: { show: false },
         splitLine: { lineStyle: { color: "#e1eae7", type: "dashed" } },
-        axisLabel: { color: "#6d837e", fontSize: 11, formatter: (value: number) => compactCurrencyFormatter.format(value) },
+        axisLabel: { color: "#6d837e", fontSize: 11, formatter: (value: number) => formatAxisCost(value) },
       },
       dataZoom: labels.length > 45 ? [{ type: "inside", start: 0, end: 100 }] : undefined,
       series: series.map((item, index) => {
@@ -334,6 +459,7 @@ export default function CostExplorerPage() {
           showSymbol: renderAsBar ? false : labels.length <= 35,
           symbolSize: 5,
           emphasis: { focus: "series" },
+          blur: { itemStyle: { opacity: 0.22 }, lineStyle: { opacity: 0.2 } },
           animationDurationUpdate: 220,
           animationEasingUpdate: "cubicOut",
           lineStyle: renderAsBar
@@ -348,15 +474,18 @@ export default function CostExplorerPage() {
             !renderAsBar && index === 0 && activeGroupBy === "none"
               ? { color: seriesColor, opacity: 0.08 }
               : undefined,
+          barMinHeight: renderAsBar ? 2 : undefined,
           barMaxWidth: renderAsBar ? 24 : undefined,
           barCategoryGap: renderAsBar ? "42%" : undefined,
-          itemStyle: renderAsBar ? { color: seriesColor, borderRadius: 0 } : { color: seriesColor },
+          itemStyle: renderAsBar
+            ? { color: seriesColor, borderRadius: 0, borderColor: "rgba(255,255,255,0.4)", borderWidth: 0.4 }
+            : { color: seriesColor },
           data: item.values.map((value) => Number(value ?? 0)),
           z: isComparison ? 4 : 3,
         };
       }),
     }),
-    [activeGroupBy, baseValues, chartMode, labels, series, seriesColorByName, seriesMeta],
+    [activeGroupBy, baseValues, chartMode, labels, series, seriesColorByName, seriesMeta, yAxisBounds.max, yAxisBounds.min],
   );
 
   const compareLabel = activeCompareKey
@@ -631,8 +760,8 @@ export default function CostExplorerPage() {
 
   const clearAll = () => {
     setGranularity("daily");
-    setDraftGroupBy("none");
-    setAppliedGroupBy("none");
+    setDraftGroupBy("service");
+    setAppliedGroupBy("service");
     setDraftGroupValues([]);
     setAppliedGroupValues([]);
     setSelectedMetrics(["billed"]);
@@ -663,8 +792,8 @@ export default function CostExplorerPage() {
       return;
     }
     if (key === "group") {
-      setDraftGroupBy("none");
-      setAppliedGroupBy("none");
+      setDraftGroupBy("service");
+      setAppliedGroupBy("service");
       setDraftGroupValues([]);
       setAppliedGroupValues([]);
       return;
@@ -687,6 +816,31 @@ export default function CostExplorerPage() {
   const firstError = activeQueries.find((item) => item.error);
   const errorMessage = (firstError?.error as Error | undefined)?.message;
   const isFetching = activeQueries.some((item) => item.isFetching);
+  const handleChartPointClick = useCallback(
+    (params: unknown) => {
+      if (!params || typeof params !== "object") {
+        return;
+      }
+
+      const event = params as { seriesName?: unknown; name?: unknown };
+      const clickedLabel =
+        typeof event.seriesName === "string"
+          ? event.seriesName.trim()
+          : typeof event.name === "string"
+            ? event.name.trim()
+            : "";
+
+      if (clickedLabel.toLowerCase() !== "amazons3") {
+        return;
+      }
+
+      navigate({
+        pathname: "/dashboard/s3/cost",
+        search: location.search,
+      });
+    },
+    [location.search, navigate],
+  );
 
   return (
     <div className="dashboard-page cost-explorer-page">
@@ -733,6 +887,7 @@ export default function CostExplorerPage() {
           isFetching={isFetching}
           showApplySkeleton={isFetching}
           chartReady={chartReady}
+          onPointClick={handleChartPointClick}
           chartMode={chartMode}
           onChartModeChange={setChartMode}
           kpis={chartKpis}
@@ -762,3 +917,4 @@ export default function CostExplorerPage() {
     </div>
   );
 }
+

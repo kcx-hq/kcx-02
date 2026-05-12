@@ -26,6 +26,7 @@ type EC2ExplorerChartProps = {
   title: string;
   chartType: EC2ChartType;
   canUseStackedBar: boolean;
+  yAxisLabel?: string;
   valueMode?: "default" | "data-transfer-cost" | "data-transfer-usage" | "data-transfer-distribution";
   onChartTypeChange: (nextChartType: EC2ChartType) => void;
   graph: {
@@ -45,6 +46,7 @@ export function EC2ExplorerChart({
   title,
   chartType,
   canUseStackedBar,
+  yAxisLabel,
   valueMode = "default",
   onChartTypeChange,
   graph,
@@ -82,7 +84,9 @@ export function EC2ExplorerChart({
     }
     const shouldShowLegend = graph.series.length > 1;
     const axisName =
-      valueMode === "data-transfer-cost"
+      typeof yAxisLabel === "string" && yAxisLabel.trim().length > 0
+        ? yAxisLabel
+        : valueMode === "data-transfer-cost"
         ? "Cost ($)"
         : valueMode === "data-transfer-usage"
           ? "Data Transfer (GB)"
@@ -166,7 +170,7 @@ export function EC2ExplorerChart({
         }),
       })),
     };
-  }, [graph, valueMode]);
+  }, [graph, valueMode, yAxisLabel]);
 
   if (loading) {
     return <div className="ec2-explorer-chart__skeleton" aria-hidden="true" />;

@@ -55,6 +55,5 @@ export type Ec2ExplorerCostCategory =
   | "ebs"
   | "snapshot"
   | "elastic_ip"
-  | "load_balancer"
   | "nat_gateway"
   | "other";

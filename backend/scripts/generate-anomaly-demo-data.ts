@@ -1,7 +1,7 @@
 import { Op, type Transaction } from "sequelize";
 
-import { syncEc2InstanceCostDaily } from "../src/features/ec2/scheduled-jobs/handlers/ec2-instance-cost-daily.service.js";
-import { syncEc2InstanceDailyFact } from "../src/features/ec2/scheduled-jobs/handlers/ec2-instance-daily-fact.service.js";
+import { syncEc2InstanceCostDaily } from "../src/features/scheduled-jobs/handlers/ec2/ec2-instance-cost-daily.service.js";
+import { syncEc2InstanceDailyFact } from "../src/features/scheduled-jobs/handlers/ec2/ec2-instance-daily-fact.service.js";
 import {
   AggCostDaily,
   BillingSource,
@@ -1139,3 +1139,4 @@ main()
   .finally(async () => {
     await sequelize.close();
   });
+

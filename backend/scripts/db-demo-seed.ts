@@ -21,7 +21,7 @@ const DEMO = {
 const REGIONS = ["us-east-1", "us-west-2", "ap-south-1"] as const;
 const SEED_MARKER = getSeedMarker();
 
-const DAYS = 30;
+const DAYS = 180;
 
 type InstanceScenario = {
   instanceId: string;

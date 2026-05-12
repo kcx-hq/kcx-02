@@ -55,7 +55,6 @@ const GROUP_VALUE_OPTIONS: Record<EC2GroupBy, GroupByValueOption[]> = {
     { key: "data_transfer", label: "Data Transfer", count: 1870 },
     { key: "nat_gateway", label: "NAT Gateway", count: 520 },
     { key: "eip", label: "EIP", count: 530 },
-    { key: "load_balancer", label: "Load Balancer", count: 690 },
     { key: "other", label: "Other", count: 440 },
   ],
   "usage-type": [
@@ -66,7 +65,6 @@ const GROUP_VALUE_OPTIONS: Record<EC2GroupBy, GroupByValueOption[]> = {
   operation: [
     { key: "runinstances", label: "RunInstances", count: 2440 },
     { key: "createnatgateway", label: "CreateNatGateway", count: 510 },
-    { key: "loadbalancerusage", label: "LoadBalancerUsage", count: 760 },
   ],
   "instance-state": [
     { key: "running", label: "Running", count: 5020 },

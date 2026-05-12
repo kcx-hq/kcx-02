@@ -40,12 +40,9 @@ export const classifyExplorerCostCategory = (lineItem: NetworkCostClassifierInpu
   ].join(" ");
 
   // Priority order:
-  // 1 NAT 2 LB 3 EIP 4 Data Transfer 5 Snapshot 6 EBS 7 Compute 8 Other
+  // 1 NAT 2 EIP 3 Data Transfer 4 Snapshot 5 EBS 6 Compute 7 Other
   const hasNat = includesAny(blob, ["natgateway", "nat-gateway", "nat gateway", "natgateway-hours", "natgateway-bytes"]);
   if (hasNat) return "nat_gateway";
-
-  const hasLoadBalancer = includesAny(blob, ["loadbalancer", "load balancer", "loadbalancing", "lcu", "alb", "nlb", "elb"]);
-  if (hasLoadBalancer) return "load_balancer";
 
   const hasEip = includesAny(blob, ["elasticip", "elastic ip", "idleaddress", "inuseaddress", "publicipv4"]);
   if (hasEip) return "elastic_ip";

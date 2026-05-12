@@ -275,7 +275,13 @@ export type Ec2OverviewResponse = {
 };
 export type Ec2OptimizationInstancesFiltersQuery = Ec2OptimizationSummaryFiltersQuery;
 
-export type Ec2RecommendationCategory = "compute" | "storage" | "pricing" | "network";
+export type Ec2RecommendationCategory =
+  | "compute"
+  | "storage"
+  | "pricing"
+  | "network"
+  | "cost_optimization"
+  | "reliability";
 export type Ec2RecommendationType =
   | "idle_instance"
   | "underutilized_instance"
@@ -289,8 +295,13 @@ export type Ec2RecommendationType =
   | "high_inter_az_data_transfer"
   | "low_cpu_high_network"
   | "high_nat_gateway_cost"
-  | "unattached_elastic_ip";
-export type Ec2RecommendationStatus = "open" | "accepted" | "ignored" | "snoozed" | "completed";
+  | "unattached_elastic_ip"
+  | "idle_load_balancer"
+  | "low_traffic_load_balancer"
+  | "unhealthy_targets"
+  | "high_error_rate"
+  | "high_data_processing_cost";
+export type Ec2RecommendationStatus = "open" | "in_progress" | "snoozed" | "dismissed" | "completed";
 
 export type Ec2RecommendationsFiltersQuery = {
   cloudConnectionId?: string;
@@ -303,6 +314,8 @@ export type Ec2RecommendationsFiltersQuery = {
   team?: string;
   product?: string;
   environment?: string;
+  service?: "ec2" | "load_balancer";
+  resourceType?: "instance" | "volume" | "snapshot" | "elastic_ip" | "load_balancer";
   tags?: string[];
   dateFrom?: string;
   dateTo?: string;
@@ -312,7 +325,7 @@ export type Ec2RecommendationRecord = {
   id: number;
   category: Ec2RecommendationCategory;
   type: Ec2RecommendationType;
-  resourceType: "instance" | "volume" | "snapshot" | "elastic_ip";
+  resourceType: "instance" | "volume" | "snapshot" | "elastic_ip" | "load_balancer";
   resourceId: string;
   resourceName: string;
   accountId: string | null;
@@ -324,6 +337,8 @@ export type Ec2RecommendationRecord = {
   risk: "low" | "medium" | "high";
   effort: "low" | "medium" | "high";
   status: Ec2RecommendationStatus;
+  statusReason: string | null;
+  snoozedUntil: string | null;
   detectedAt: string | null;
   lastSeenAt: string | null;
   metadata: Record<string, unknown> | null;
@@ -332,8 +347,8 @@ export type Ec2RecommendationRecord = {
 export type Ec2RecommendationsResponse = {
   overview: {
     totalPotentialMonthlySaving: number;
-    countByCategory: Record<Ec2RecommendationCategory, number>;
-    savingByCategory: Record<Ec2RecommendationCategory, number>;
+    countByCategory: Record<"compute" | "storage" | "pricing" | "network", number>;
+    savingByCategory: Record<"compute" | "storage" | "pricing" | "network", number>;
     countByType: Record<Ec2RecommendationType, number>;
   };
   recommendations: {
@@ -506,7 +521,6 @@ export type Ec2NetworkBreakdownType =
   | "Inter-AZ Data Transfer"
   | "NAT Gateway"
   | "Elastic IP"
-  | "Load Balancer"
   | "Other Network";
 
 export type Ec2NetworkBreakdownResponse = {
@@ -612,6 +626,101 @@ export type Ec2ElasticIpResponse = {
     page: number;
     pageSize: number;
     total: number;
+  };
+};
+
+export type LoadBalancerExplorerMetric = "cost" | "load_balancers" | "usage";
+export type LoadBalancerExplorerGroupBy =
+  | "cost_type"
+  | "none"
+  | "account"
+  | "region"
+  | "type"
+  | "scheme"
+  | "state"
+  | "team"
+  | "product"
+  | "environment"
+  | "tag"
+  | "load_balancer";
+export type LoadBalancerExplorerGranularity = "hourly" | "daily" | "monthly";
+
+export type LoadBalancerExplorerFiltersQuery = {
+  startDate?: string;
+  endDate?: string;
+  metric: LoadBalancerExplorerMetric;
+  usageType?:
+    | "requests"
+    | "processed_gb"
+    | "active_connections"
+    | "new_connections"
+    | "healthy_hosts"
+    | "unhealthy_hosts"
+    | "errors";
+  granularity?: LoadBalancerExplorerGranularity;
+  groupBy: LoadBalancerExplorerGroupBy;
+  tagKey?: string | null;
+  loadBalancerArn?: string | null;
+  accountId?: string | null;
+  regions?: string[];
+  types?: string[];
+  schemes?: string[];
+  states?: string[];
+  teams?: string[];
+  products?: string[];
+  environments?: string[];
+  tags?: string[];
+  groupValues?: string[];
+};
+
+export type LoadBalancerExplorerSummaryResponse = {
+  summary: {
+    totalCost: number;
+    fixedCost?: number;
+    lcuCost?: number;
+    dataProcessingCost?: number;
+    previousCost: number;
+    trendPercent: number;
+    loadBalancerCount: number;
+    totalLoadBalancers?: number;
+    albCount?: number;
+    nlbCount?: number;
+    activeLoadBalancerCount: number;
+    internetFacingCount: number;
+    internalCount: number;
+    totalProcessedBytesGb: number;
+    avgDailyCost: number;
+    requestCount?: number;
+    processedGB?: number;
+    activeConnections?: number;
+    newConnections?: number;
+    healthyHosts?: number;
+    unhealthyHosts?: number;
+    errorCount?: number;
+  };
+};
+
+export type LoadBalancerExplorerTrendResponse = {
+  graph: {
+    type: "bar" | "stacked_bar" | "line" | "area" | "stacked_area";
+    xKey: "date";
+    series: Array<{
+      key: string;
+      label: string;
+      data: Array<{
+        date: string;
+        value: number;
+        group?: string;
+        loadBalancerCount?: number;
+      }>;
+    }>;
+  };
+};
+
+export type LoadBalancerExplorerGroupByResponse = {
+  table: {
+    columns: Array<{ key: string; label: string }>;
+    rows: Array<{ id: string; [key: string]: string | number | null }>;
   };
 };
 

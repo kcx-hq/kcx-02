@@ -163,16 +163,9 @@ const querySchema = z
     }
     if (value.metric === "data_transfer") {
       const allowed = new Set([
-        "none",
         "transfer_type",
-        "region",
-        "account",
-        "availability_zone",
         "instance",
-        "instance_type",
-        "source_region",
-        "destination_region",
-        "tag",
+        "region",
       ]);
       if (!allowed.has(value.groupBy)) {
         ctx.addIssue({

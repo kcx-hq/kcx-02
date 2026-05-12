@@ -1,4 +1,4 @@
-import type { ScheduledJob } from "../../../models/ec2/scheduled_jobs.js";
+import type { ScheduledJob } from "../../models/ec2/scheduled_jobs.js";
 import type { ComputeNextRunAtResult } from "./scheduled-jobs.types.js";
 
 const addMinutes = (base: Date, minutes: number): Date => new Date(base.getTime() + minutes * 60_000);
@@ -30,4 +30,3 @@ export function computeNextRunAt(job: ScheduledJob, baseTime: Date = new Date())
 
   throw new Error(`Unsupported schedule_type for scheduled job ${String(job.id)}: ${scheduleType}`);
 }
-

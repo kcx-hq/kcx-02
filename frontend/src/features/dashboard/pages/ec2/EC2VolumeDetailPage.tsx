@@ -1,9 +1,7 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import type { EChartsOption } from "echarts";
-import type { ColDef } from "ag-grid-community";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 
-import { useInventoryEc2Snapshots } from "@/features/client-home/hooks/useInventoryEc2Snapshots";
 import { useInventoryEc2VolumePerformance } from "@/features/client-home/hooks/useInventoryEc2VolumePerformance";
 import type {
   InventoryEc2VolumePerformanceMetric,
@@ -14,11 +12,6 @@ import { useInventoryEc2VolumeDetail, useInventoryEc2Volumes } from "@/features/
 import { BaseEChart } from "@/features/dashboard/common/charts/BaseEChart";
 import { EmptyStateBlock } from "@/features/dashboard/common/components/EmptyStateBlock";
 import { KpiCard } from "@/features/dashboard/common/components/KpiCard";
-import { BaseDataTable } from "@/features/dashboard/common/tables/BaseDataTable";
-import {
-  EC2VolumeDetailHeaderTabs,
-  type EC2VolumeDetailTabKey,
-} from "./components/EC2VolumeDetailHeaderTabs";
 
 const VOLUMES_PAGE_PATH = "/dashboard/inventory/aws/ec2/volumes";
 const INSTANCES_PAGE_PATH = "/dashboard/inventory/aws/ec2/instances";
@@ -87,16 +80,6 @@ const formatDateTime = (value: string | null | undefined): string => {
   return DATE_TIME_FORMATTER.format(new Date(parsed));
 };
 
-const getInsight = (volume: InventoryEc2VolumeRow) => {
-  if (volume.isUnattached) {
-    return { label: "Unattached", tone: "idle" as const, message: "Volume is unattached and may be a direct savings opportunity." };
-  }
-  if (volume.isIdleCandidate || volume.isUnderutilizedCandidate) {
-    return { label: "High Cost", tone: "warn" as const, message: "Usage indicators suggest potential downsizing or cleanup action." };
-  }
-  return { label: "Healthy", tone: "good" as const, message: "Current size, attachment, and spend posture look healthy." };
-};
-
 const getMetadataDate = (volume: InventoryEc2VolumeRow, keys: string[]): string | null => {
   const metadata = volume.metadata;
   if (!metadata || typeof metadata !== "object") return null;
@@ -116,6 +99,13 @@ const getMetadataString = (volume: InventoryEc2VolumeRow, keys: string[]): strin
     if (typeof value === "number" || typeof value === "boolean") return String(value);
   }
   return null;
+};
+
+const getTagValue = (tags: Record<string, unknown>, key: string): string => {
+  const exact = tags[key];
+  if (typeof exact === "string" && exact.trim().length > 0) return exact;
+  const found = Object.entries(tags).find(([k]) => k.toLowerCase() === key.toLowerCase());
+  return found ? String(found[1]) : "-";
 };
 
 const buildLineOption = (
@@ -196,7 +186,6 @@ export default function EC2VolumeDetailPage() {
   const { volumeId } = useParams<{ volumeId: string }>();
   const location = useLocation();
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<EC2VolumeDetailTabKey>("overview");
 
   const queryParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
   const defaults = getDefaultDateRange();
@@ -243,13 +232,6 @@ export default function EC2VolumeDetailPage() {
     Boolean(volumeId),
   );
 
-  const snapshotsQuery = useInventoryEc2Snapshots({
-    cloudConnectionId: volumeCloudConnectionId,
-    search: selectedVolume?.volumeId ?? null,
-    page: 1,
-    pageSize: 100,
-  });
-
   const backToVolumes = () => {
     const next = new URLSearchParams(location.search);
     next.delete("volumeId");
@@ -281,7 +263,6 @@ export default function EC2VolumeDetailPage() {
   }
 
   const volumeName = selectedVolume.volumeName ?? selectedVolume.volumeId;
-  const insight = getInsight(selectedVolume);
   const attachedInstance = selectedVolume.attachedInstanceId;
   const attachTime = getMetadataDate(selectedVolume, ["lastAttachedTime", "lastAttachedAt", "attachTime", "attachDate"]);
   const deleteOnTermination = getMetadataString(selectedVolume, ["deleteOnTermination", "DeleteOnTermination"]);
@@ -292,46 +273,7 @@ export default function EC2VolumeDetailPage() {
   const totalVolumeCost = detailData?.costBreakdown.totalVolumeCost ?? selectedVolume.mtdCost ?? 0;
   const volumeSnapshotCount = detailData?.snapshot.snapshotCount ?? selectedVolume.snapshotCount ?? 0;
   const volumeSnapshotCost = detailData?.snapshot.snapshotCost ?? selectedVolume.snapshotCost ?? 0;
-  const hasSeparateCostFields = Boolean(
-    detailData &&
-      (
-        detailData.costBreakdown.storageCost > 0 ||
-        detailData.costBreakdown.iopsCost > 0 ||
-        detailData.costBreakdown.throughputCost > 0 ||
-        detailData.costBreakdown.snapshotCost > 0
-      ),
-  );
-  const costRows = [
-    {
-      type: "Storage",
-      cost: hasSeparateCostFields ? detailData?.costBreakdown.storageCost ?? 0 : totalVolumeCost,
-    },
-    { type: "IOPS", cost: hasSeparateCostFields ? detailData?.costBreakdown.iopsCost ?? 0 : 0 },
-    {
-      type: "Throughput",
-      cost: hasSeparateCostFields ? detailData?.costBreakdown.throughputCost ?? 0 : 0,
-    },
-    {
-      type: "Snapshot",
-      cost: hasSeparateCostFields ? detailData?.costBreakdown.snapshotCost ?? 0 : 0,
-    },
-  ].map((row) => ({
-    ...row,
-    pct: totalVolumeCost > 0 ? (row.cost / totalVolumeCost) * 100 : 0,
-  }));
-
-  const overviewCostTrend = detailData?.trends.costTrend ?? [];
   const overviewSizeTrend = detailData?.trends.sizeTrend ?? [];
-  const costTrendOption = buildLineOption({
-    labels: overviewCostTrend.map((row) => row.date),
-    yAxisName: "USD",
-    series: [{ name: "Cost", data: overviewCostTrend.map((row) => row.totalCost) }],
-  });
-  const sizeTrendOption = buildLineOption({
-    labels: overviewSizeTrend.map((row) => row.date),
-    yAxisName: "GB",
-    series: [{ name: "Size", data: overviewSizeTrend.map((row) => row.sizeGb) }],
-  });
 
   const performanceSeries = performanceQuery.data?.series ?? [];
   const readOpsSeries = metricSeries(performanceSeries, "volume_read_ops");
@@ -342,10 +284,6 @@ export default function EC2VolumeDetailPage() {
   const idleSeries = metricSeries(performanceSeries, "volume_idle_time");
 
   const perfKpis = {
-    readOps: sumSeriesValues(readOpsSeries),
-    writeOps: sumSeriesValues(writeOpsSeries),
-    readBytes: sumSeriesValues(readBytesSeries),
-    writeBytes: sumSeriesValues(writeBytesSeries),
     iops: (() => {
       const read = sumSeriesValues(readOpsSeries);
       const write = sumSeriesValues(writeOpsSeries);
@@ -370,16 +308,6 @@ export default function EC2VolumeDetailPage() {
     label: formatPerfLabel(point.timestamp),
     throughput: point.value + (writeBytesSeries?.points[index]?.value ?? 0),
   })) ?? [];
-  const readWritePoints = readOpsSeries?.points.map((point, index) => ({
-    label: formatPerfLabel(point.timestamp),
-    read: point.value,
-    write: writeOpsSeries?.points[index]?.value ?? null,
-  })) ?? [];
-  const queueIdlePoints = queueSeries?.points.map((point, index) => ({
-    label: formatPerfLabel(point.timestamp),
-    queue: point.value,
-    idle: idleSeries?.points[index]?.value ?? null,
-  })) ?? [];
 
   const iopsOption = buildLineOption({
     labels: iopsPoints.map((p) => p.label),
@@ -393,111 +321,75 @@ export default function EC2VolumeDetailPage() {
     series: [{ name: "Throughput", data: throughputPoints.map((p) => p.throughput) }],
   });
 
-  const readWriteOption = buildLineOption({
-    labels: readWritePoints.map((p) => p.label),
-    yAxisName: "Ops",
-    legend: ["Read Ops", "Write Ops"],
-    series: [
-      { name: "Read Ops", data: readWritePoints.map((p) => p.read) },
-      { name: "Write Ops", data: readWritePoints.map((p) => p.write) },
-    ],
-  });
+  const perfTelemetryPresent = performanceSeries.some((series) => series.points.length > 0);
+  const lowActivity = selectedVolume.isIdleCandidate || selectedVolume.isUnderutilizedCandidate;
+  const queueRisk = (perfKpis.queueLength ?? 0) > 5;
+  const snapshotHeavy = totalVolumeCost > 0 && volumeSnapshotCost / totalVolumeCost > 0.3;
+  const inefficiencies: string[] = [];
 
-  const queueIdleOption = buildLineOption({
-    labels: queueIdlePoints.map((p) => p.label),
-    yAxisName: "Count",
-    legend: ["Queue Length", "Idle Time"],
-    series: [
-      { name: "Queue Length", data: queueIdlePoints.map((p) => p.queue) },
-      { name: "Idle Time", data: queueIdlePoints.map((p) => p.idle) },
-    ],
-  });
+  if (selectedVolume.isUnattached) inefficiencies.push("Volume is unattached and continues to incur cost.");
+  if (selectedVolume.isUnderutilizedCandidate) inefficiencies.push("Utilization signals suggest the volume may be oversized.");
+  if (selectedVolume.isIdleCandidate) inefficiencies.push("Idle behavior indicates low active usage.");
+  if (snapshotHeavy) inefficiencies.push("Snapshot spend is high relative to storage cost.");
+  if (queueRisk) inefficiencies.push("Queue length indicates intermittent storage pressure.");
 
-  const performanceReady = performanceSeries.some((series) => series.points.length > 0);
+  const potentialSavings = selectedVolume.isUnattached
+    ? totalVolumeCost * 0.8
+    : selectedVolume.isIdleCandidate
+      ? totalVolumeCost * 0.4
+      : selectedVolume.isUnderutilizedCandidate
+        ? totalVolumeCost * 0.25
+        : 0;
 
-  const volumeSnapshots = (snapshotsQuery.data?.rows ?? []).filter(
-    (snapshot) => snapshot.sourceVolumeId === selectedVolume.volumeId,
-  );
+  const decisionStatus = selectedVolume.isUnattached
+    ? "Risk"
+    : inefficiencies.length > 0
+      ? "Optimization Opportunity"
+      : "Healthy";
 
-  const snapshotRows = volumeSnapshots.map((snapshot) => {
-    const createdAtMs = typeof snapshot.ageDays === "number" ? Date.now() - snapshot.ageDays * 24 * 60 * 60 * 1000 : Number.NaN;
-    const nowMs = Date.now();
-    const ageDays = Number.isNaN(createdAtMs) ? null : Math.max(0, Math.floor((nowMs - createdAtMs) / (1000 * 60 * 60 * 24)));
-    return {
-      snapshotId: snapshot.snapshotId,
-      createdTime: "-",
-      size: "Needs backend source",
-      cost: formatCurrency(snapshot.cost),
-      age: ageDays === null ? "-" : `${ageDays} days`,
-      recommendation: snapshot.recommendation ?? snapshot.statusLabel ?? "Healthy",
-    };
-  });
+  const decisionHeadline = selectedVolume.isUnattached
+    ? "Unattached volume requires immediate review"
+    : decisionStatus === "Healthy"
+      ? "Healthy Storage Usage"
+      : "Underutilized volume - consider downsizing";
 
-  const snapshotColumns: ColDef<(typeof snapshotRows)[number]>[] = [
-    { headerName: "Snapshot ID", field: "snapshotId", minWidth: 210 },
-    { headerName: "Created Time", field: "createdTime", minWidth: 170 },
-    { headerName: "Size", field: "size", minWidth: 130 },
-    { headerName: "Cost", field: "cost", minWidth: 120 },
-    { headerName: "Age", field: "age", minWidth: 120 },
-    { headerName: "Recommendation", field: "recommendation", minWidth: 200 },
-  ];
+  const decisionSubtext = decisionStatus === "Healthy"
+    ? `${formatCurrency(totalVolumeCost)}/month - no optimization needed`
+    : inefficiencies[0] ?? "Review suggested to improve storage efficiency.";
 
-  type RecommendationRow = {
-    type: string;
-    problem: string;
-    evidence: string;
-    action: string;
-    saving: string;
-    risk: string;
-    status: string;
-  };
-  const recommendationsRows: RecommendationRow[] = [
-    selectedVolume.isUnattached
-      ? {
-          type: "Unattached",
-          problem: "Volume is not attached",
-          evidence: `State: ${toTitle(selectedVolume.state)}, Cost: ${formatCurrency(selectedVolume.mtdCost)}, Size: ${formatSize(selectedVolume.sizeGb)}`,
-          action: "Delete volume",
-          saving: formatCurrency(selectedVolume.mtdCost * 0.8),
-          risk: "Low",
-          status: "Open",
-        }
-      : null,
-    selectedVolume.isUnderutilizedCandidate
-      ? {
-          type: "Oversized",
-          problem: "Provisioned above usage",
-          evidence: `State: ${toTitle(selectedVolume.state)}, Cost: ${formatCurrency(selectedVolume.mtdCost)}, IOPS: ${formatNumber(selectedVolume.iops)}`,
-          action: "Downsize type/size",
-          saving: formatCurrency(selectedVolume.mtdCost * 0.25),
-          risk: "Low",
-          status: "Open",
-        }
-      : null,
-    selectedVolume.isIdleCandidate
-      ? {
-          type: "Idle",
-          problem: "Low activity trend",
-          evidence: `State: ${toTitle(selectedVolume.state)}, Cost: ${formatCurrency(selectedVolume.mtdCost)}`,
-          action: "Review and stop/delete if unused",
-          saving: formatCurrency(selectedVolume.mtdCost * 0.4),
-          risk: "Low",
-          status: "Open",
-        }
-      : null,
-  ].filter((row): row is RecommendationRow => Boolean(row));
+  const tags = (selectedVolume.tags as Record<string, unknown> | null) ?? {};
+  const environment = getTagValue(tags, "Environment");
+  const product = getTagValue(tags, "Product");
 
-  const recommendationColumns: ColDef<RecommendationRow>[] = [
-    { headerName: "Type", field: "type", minWidth: 120 },
-    { headerName: "Problem", field: "problem", minWidth: 180 },
-    { headerName: "Evidence", field: "evidence", minWidth: 230 },
-    { headerName: "Action", field: "action", minWidth: 180 },
-    { headerName: "Saving", field: "saving", minWidth: 120 },
-    { headerName: "Risk", field: "risk", minWidth: 90 },
-    { headerName: "Status", field: "status", minWidth: 90 },
-  ];
+  const activityLevel = selectedVolume.isUnattached
+    ? "Low"
+    : lowActivity
+      ? "Low"
+      : (perfKpis.iops ?? 0) > 10000
+        ? "High"
+        : perfTelemetryPresent
+          ? "Moderate"
+          : "Moderate";
 
-  const metadataRows = Object.entries((selectedVolume.tags as Record<string, unknown> | null) ?? {}).map(([key, value]) => ({
+  const idleBehavior = selectedVolume.isIdleCandidate
+    ? "Frequent idle windows detected"
+    : perfTelemetryPresent
+      ? "No material idle concern detected"
+      : "Telemetry is limited for idle-time analysis";
+
+  const queueHealth = queueRisk
+    ? "Watch queue pressure"
+    : perfTelemetryPresent
+      ? "Queue depth is healthy"
+      : "Queue data is limited";
+
+  const utilizationConclusion = selectedVolume.isUnattached
+    ? "Volume is unattached and should be remediated to avoid unnecessary spend."
+    : lowActivity
+      ? "Volume shows low activity and may be oversized."
+      : "Volume is actively used and right-sized.";
+
+  const metadataRows = Object.entries(tags).map(([key, value]) => ({
     key,
     value: String(value),
   }));
@@ -505,225 +397,160 @@ export default function EC2VolumeDetailPage() {
   return (
     <div className="dashboard-page">
       <section className="ec2-instance-detail" aria-label="EC2 volume detail">
-        <EC2VolumeDetailHeaderTabs activeTab={activeTab} onChange={setActiveTab} />
+   
+        <section className="ec2-instance-detail__panel ec2-instance-detail__summary-card">
+          <div className="ec2-instance-detail__summary-head">
+            <span className={`ec2-instance-detail__status-pill ec2-instance-detail__status-pill--${decisionStatus.toLowerCase().replaceAll(" ", "-")}`}>
+              {decisionStatus}
+            </span>
+            <strong>{formatCurrency(totalVolumeCost)}/month</strong>
+          </div>
+          <div className="ec2-instance-detail__summary-grid">
+            <div><span>Decision</span><strong>{decisionHeadline}</strong></div>
+            <div><span>Explanation</span><strong>{decisionSubtext}</strong></div>
+            <div><span>Potential savings</span><strong>{potentialSavings > 0 ? `${formatCurrency(potentialSavings)}/month` : "No material savings"}</strong></div>
+            <div><span>Risk posture</span><strong>{selectedVolume.isUnattached ? "Critical" : decisionStatus === "Healthy" ? "Low" : "Medium"}</strong></div>
+          </div>
+        </section>
 
-        {activeTab === "overview" ? (
-          <section className="ec2-instance-detail__panel">
-            <section className="overview-kpi-strip overview-kpi-board ec2-instance-detail__kpi-board">
-              <div className="overview-kpi-row overview-kpi-row--report ec2-overview-kpi-row">
-                <KpiCard label="Volume Cost" value={formatCurrency(totalVolumeCost)} />
-                <KpiCard label="Size" value={formatSize(selectedVolume.sizeGb)} />
-                <KpiCard label="Type" value={selectedVolume.volumeType ?? "-"} />
-                <KpiCard
-                  label="State"
-                  value={toTitle(selectedVolume.state)}
-                  delta={selectedVolume.isAttached ? "Attached" : "Unattached"}
-                  deltaTone={selectedVolume.isAttached ? "positive" : "negative"}
-                />
-              </div>
-            </section>
-
-            <table className="ec2-instance-detail__simple-table">
-              <tbody>
-                <tr>
-                  <th>Context</th>
-                  <td>
-                    <span>
-                      Attached:{" "}
-                      {attachedInstance ? (
-                        <>
-                          <button
-                            type="button"
-                            className="ec2-linked-cell-btn"
-                            onClick={() => {
-                              const next = new URLSearchParams(location.search);
-                              next.set("instanceId", attachedInstance);
-                              next.set("search", attachedInstance);
-                              navigate({ pathname: `${INSTANCES_PAGE_PATH}/${attachedInstance}`, search: next.toString() });
-                            }}
-                          >
-                            {selectedVolume.attachedInstanceName ?? attachedInstance}
-                          </button>{" "}
-                          ({toTitle(selectedVolume.attachedInstanceState)})
-                        </>
-                      ) : (
-                        "Unattached"
-                      )}
-                    </span>
-                    <br />
-                    <span>
-                      Region: {selectedVolume.regionName ?? selectedVolume.regionId ?? selectedVolume.regionKey ?? "-"} | AZ: {selectedVolume.availabilityZone ?? "-"}
-                    </span>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-
-            <div className={`ec2-instance-detail__insight ec2-instance-detail__insight--${insight.tone}`}>
-              <strong>{insight.label}</strong>
-              <span>{insight.message}</span>
-            </div>
-
-            <div>
-              <h4>Snapshot</h4>
-              <table className="ec2-instance-detail__simple-table">
-                <tbody>
-                  <tr>
-                    <th>Snapshot Count</th>
-                    <td>{volumeSnapshotCount}</td>
-                  </tr>
-                  <tr>
-                    <th>Snapshot Cost</th>
-                    <td>{formatCurrency(volumeSnapshotCost)}</td>
-                  </tr>
-                  <tr>
-                    <th>Link</th>
-                    <td>
+        <section className="ec2-instance-detail__panel">
+          <h3>Context</h3>
+          <table className="ec2-instance-detail__simple-table">
+            <tbody>
+              <tr>
+                <th>Attached Instance</th>
+                <td>
+                  {attachedInstance ? (
+                    <>
                       <button
                         type="button"
                         className="ec2-linked-cell-btn"
                         onClick={() => {
                           const next = new URLSearchParams(location.search);
-                          next.set("volumeId", selectedVolume.volumeId);
-                          navigate({ pathname: SNAPSHOTS_PAGE_PATH, search: next.toString() });
+                          next.set("instanceId", attachedInstance);
+                          next.set("search", attachedInstance);
+                          navigate({ pathname: `${INSTANCES_PAGE_PATH}/${attachedInstance}`, search: next.toString() });
                         }}
                       >
-                        View Snapshots
-                      </button>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
+                        {selectedVolume.attachedInstanceName ?? attachedInstance}
+                      </button>{" "}
+                      ({toTitle(selectedVolume.attachedInstanceState)})
+                    </>
+                  ) : "Unattached"}
+                </td>
+              </tr>
+              <tr>
+                <th>Environment / Product</th>
+                <td>{environment} / {product}</td>
+              </tr>
+              <tr>
+                <th>Region / AZ</th>
+                <td>{selectedVolume.regionName ?? selectedVolume.regionId ?? selectedVolume.regionKey ?? "-"} / {selectedVolume.availabilityZone ?? "-"}</td>
+              </tr>
+            </tbody>
+          </table>
+        </section>
 
+        <section className="ec2-instance-detail__panel">
+          <h3>Key Signals</h3>
+          <section className="overview-kpi-strip overview-kpi-board ec2-instance-detail__kpi-board">
+            <div className="overview-kpi-row overview-kpi-row--report ec2-overview-kpi-row">
+              <KpiCard label="Cost" value={formatCurrency(totalVolumeCost)} />
+              <KpiCard label="Size" value={formatSize(selectedVolume.sizeGb)} />
+              <KpiCard label="Type" value={selectedVolume.volumeType ?? "-"} />
+              <KpiCard label="State" value={toTitle(selectedVolume.state)} />
+              <KpiCard label="IOPS" value={formatNumber(perfKpis.iops ?? selectedVolume.iops)} />
+              <KpiCard label="Throughput" value={formatNumber(perfKpis.throughput ?? selectedVolume.throughput)} />
+            </div>
+          </section>
+        </section>
+
+        <section className="ec2-instance-detail__panel">
+          <h3>Utilization Insight</h3>
+          <div className="ec2-instance-detail__kpis ec2-instance-detail__kpis--compact">
+            <div className="ec2-instance-detail__kpi"><span>Activity Level</span><strong>{activityLevel}</strong></div>
+            <div className="ec2-instance-detail__kpi"><span>Idle Behavior</span><strong>{idleBehavior}</strong></div>
+            <div className="ec2-instance-detail__kpi"><span>Queue Health</span><strong>{queueHealth}</strong></div>
+          </div>
+          <div className={`ec2-instance-detail__insight ${lowActivity || selectedVolume.isUnattached ? "ec2-instance-detail__insight--warn" : "ec2-instance-detail__insight--good"}`}>
+            <strong>{utilizationConclusion}</strong>
+            {inefficiencies.length > 0 ? <span>{inefficiencies.join(" ")}</span> : null}
+          </div>
+        </section>
+
+        <section className="ec2-instance-detail__panel">
+          <h3>Cost &amp; Efficiency</h3>
+          <table className="ec2-instance-detail__simple-table">
+            <tbody>
+              <tr><th>Monthly Cost</th><td>{formatCurrency(totalVolumeCost)}</td></tr>
+              <tr><th>Snapshot Cost</th><td>{formatCurrency(volumeSnapshotCost)}</td></tr>
+              <tr><th>Growth Signal</th><td>{overviewSizeTrend.length > 1 && overviewSizeTrend.at(-1) && overviewSizeTrend[0] ? `${formatNumber((overviewSizeTrend.at(-1)!.sizeGb ?? 0) - (overviewSizeTrend[0].sizeGb ?? 0))} GB change in selected range` : "Stable size profile"}</td></tr>
+              <tr><th>Inefficiencies</th><td>{inefficiencies.length > 0 ? inefficiencies.join(" ") : "No inefficiencies detected"}</td></tr>
+            </tbody>
+          </table>
+        </section>
+
+        <section className="ec2-instance-detail__panel">
+          <details>
+            <summary><strong>Performance Trends</strong></summary>
             <div className="ec2-instance-detail__charts2">
-              <div>
-                <h4>Cost Breakdown</h4>
-                {volumeDetailQuery.isLoading ? (
-                  <p className="dashboard-note">Loading cost breakdown...</p>
-                ) : overviewCostTrend.length > 0 ? (
-                  <table className="ec2-instance-detail__simple-table">
-                    <thead><tr><th>Cost Type</th><th>Cost</th><th>%</th></tr></thead>
-                    <tbody>
-                      {costRows.map((row) => (
-                        <tr key={row.type}>
-                          <td>{row.type}</td>
-                          <td>{formatCurrency(row.cost)}</td>
-                          <td>{DECIMAL_FORMATTER.format(row.pct)}%</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                ) : (
-                  <p className="dashboard-note">Needs backend source</p>
-                )}
-              </div>
-              <div>
-                <h4>Cost Trend</h4>
-                {volumeDetailQuery.isLoading ? (
-                  <p className="dashboard-note">Loading trend...</p>
-                ) : overviewCostTrend.length > 0 ? (
-                  <BaseEChart option={costTrendOption} height={260} />
-                ) : (
-                  <p className="dashboard-note">Needs backend source</p>
-                )}
-              </div>
+              {iopsPoints.length > 0 ? <div><h4>IOPS Trend</h4><BaseEChart option={iopsOption} height={240} /></div> : null}
+              {throughputPoints.length > 0 ? <div><h4>Throughput Trend</h4><BaseEChart option={throughputOption} height={240} /></div> : null}
             </div>
+          </details>
+        </section>
 
-            <div>
-              <h4>Size Trend</h4>
-              {volumeDetailQuery.isLoading ? (
-                <p className="dashboard-note">Loading trend...</p>
-              ) : overviewSizeTrend.length > 0 ? (
-                <BaseEChart option={sizeTrendOption} height={260} />
-              ) : (
-                <p className="dashboard-note">No size history available</p>
-              )}
-            </div>
+        <section className="ec2-instance-detail__panel">
+          <h3>Snapshots</h3>
+          <table className="ec2-instance-detail__simple-table">
+            <tbody>
+              <tr><th>Snapshot Count</th><td>{volumeSnapshotCount}</td></tr>
+              <tr><th>Total Snapshot Cost</th><td>{formatCurrency(volumeSnapshotCost)}</td></tr>
+              <tr>
+                <th>Details</th>
+                <td>
+                  <button
+                    type="button"
+                    className="ec2-linked-cell-btn"
+                    onClick={() => {
+                      const next = new URLSearchParams(location.search);
+                      next.set("volumeId", selectedVolume.volumeId);
+                      navigate({ pathname: SNAPSHOTS_PAGE_PATH, search: next.toString() });
+                    }}
+                  >
+                    View Snapshots
+                  </button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </section>
 
-            <details>
-              <summary><strong>Metadata</strong></summary>
-              <table className="ec2-instance-detail__simple-table">
-                <tbody>
-                  <tr><th>Volume ID</th><td>{selectedVolume.volumeId}</td></tr>
-                  <tr><th>Name</th><td>{volumeName}</td></tr>
-                  <tr><th>Created Time</th><td>{formatDateTime(selectedVolume.discoveredAt ?? selectedVolume.usageDate)}</td></tr>
-                  <tr><th>Attach Time</th><td>{formatDateTime(attachTime)}</td></tr>
-                  <tr><th>Delete on Termination</th><td>{deleteOnTermination ?? "-"}</td></tr>
-                  <tr><th>Encrypted</th><td>{encrypted ?? "-"}</td></tr>
-                  <tr><th>KMS Key</th><td>{kmsKey ?? "-"}</td></tr>
-                </tbody>
-              </table>
+        <section className="ec2-instance-detail__panel">
+          <details>
+            <summary><strong>Metadata</strong></summary>
+            <table className="ec2-instance-detail__simple-table">
+              <tbody>
+                <tr><th>Volume ID</th><td>{selectedVolume.volumeId}</td></tr>
+                <tr><th>Name</th><td>{volumeName}</td></tr>
+                <tr><th>Created Time</th><td>{formatDateTime(selectedVolume.discoveredAt ?? selectedVolume.usageDate)}</td></tr>
+                <tr><th>Attach Time</th><td>{formatDateTime(attachTime)}</td></tr>
+                <tr><th>Delete on Termination</th><td>{deleteOnTermination ?? "-"}</td></tr>
+                <tr><th>Encrypted</th><td>{encrypted ?? "-"}</td></tr>
+                <tr><th>KMS Key</th><td>{kmsKey ?? "-"}</td></tr>
+              </tbody>
+            </table>
 
+            {metadataRows.length > 0 ? (
               <table className="ec2-instance-detail__simple-table">
                 <thead><tr><th>Tag</th><th>Value</th></tr></thead>
                 <tbody>
-                  {metadataRows.length === 0 ? <tr><td colSpan={2}>No tags available</td></tr> : null}
                   {metadataRows.map((row) => <tr key={row.key}><td>{row.key}</td><td>{row.value}</td></tr>)}
                 </tbody>
               </table>
-            </details>
-          </section>
-        ) : null}
-
-        {activeTab === "deepDive" ? (
-          <section className="ec2-instance-detail__panel">
-            <h4>Performance</h4>
-            {performanceQuery.isLoading ? <p className="dashboard-note">Loading performance data...</p> : null}
-            {performanceQuery.isError ? <p className="dashboard-note">Failed to load performance data: {performanceQuery.error.message}</p> : null}
-            {!performanceQuery.isLoading && !performanceQuery.isError && !performanceReady ? <p className="dashboard-note">No performance data available</p> : null}
-
-            {performanceReady ? (
-              <>
-                <div className="ec2-instance-detail__kpis ec2-instance-detail__kpis--compact">
-                  <div className="ec2-instance-detail__kpi"><span>Read Ops</span><strong>{formatNumber(perfKpis.readOps)}</strong></div>
-                  <div className="ec2-instance-detail__kpi"><span>Write Ops</span><strong>{formatNumber(perfKpis.writeOps)}</strong></div>
-                  <div className="ec2-instance-detail__kpi"><span>Read Bytes</span><strong>{formatNumber(perfKpis.readBytes)}</strong></div>
-                  <div className="ec2-instance-detail__kpi"><span>Write Bytes</span><strong>{formatNumber(perfKpis.writeBytes)}</strong></div>
-                  <div className="ec2-instance-detail__kpi"><span>IOPS</span><strong>{formatNumber(perfKpis.iops)}</strong></div>
-                  <div className="ec2-instance-detail__kpi"><span>Throughput</span><strong>{formatNumber(perfKpis.throughput)}</strong></div>
-                  <div className="ec2-instance-detail__kpi"><span>Queue Length</span><strong>{formatNumber(perfKpis.queueLength)}</strong></div>
-                  <div className="ec2-instance-detail__kpi"><span>Idle Time</span><strong>{formatNumber(perfKpis.idleTime)}</strong></div>
-                </div>
-                <div className="ec2-instance-detail__charts2">
-                  <div><h4>IOPS Trend</h4>{iopsPoints.length > 0 ? <BaseEChart option={iopsOption} height={240} /> : <p className="dashboard-note">No performance data available</p>}</div>
-                  <div><h4>Throughput Trend</h4>{throughputPoints.length > 0 ? <BaseEChart option={throughputOption} height={240} /> : <p className="dashboard-note">No performance data available</p>}</div>
-                  <div><h4>Read/Write Trend</h4>{readWritePoints.length > 0 ? <BaseEChart option={readWriteOption} height={240} /> : <p className="dashboard-note">No performance data available</p>}</div>
-                  <div><h4>Queue/Idle Trend</h4>{queueIdlePoints.length > 0 ? <BaseEChart option={queueIdleOption} height={240} /> : <p className="dashboard-note">No performance data available</p>}</div>
-                </div>
-              </>
             ) : null}
-
-            <h4>Snapshots</h4>
-            {snapshotsQuery.isLoading ? <p className="dashboard-note">Loading snapshots...</p> : null}
-            {snapshotsQuery.isError ? <p className="dashboard-note">Failed to load snapshots: {snapshotsQuery.error.message}</p> : null}
-
-            {!snapshotsQuery.isLoading && !snapshotsQuery.isError ? (
-              <>
-                <section className="overview-kpi-strip overview-kpi-board ec2-instance-detail__kpi-board">
-                  <div className="overview-kpi-row overview-kpi-row--report ec2-overview-kpi-row">
-                    <KpiCard label="Snapshot Count" value={String(volumeSnapshots.length)} />
-                    <KpiCard label="Total Snapshot Cost" value={formatCurrency(volumeSnapshots.reduce((sum, row) => sum + (row.cost ?? 0), 0))} />
-                  </div>
-                </section>
-                {snapshotRows.length === 0 ? (
-                  <p className="dashboard-note">No data available</p>
-                ) : overviewSizeTrend.length > 0 ? (
-                  <BaseDataTable columnDefs={snapshotColumns} rowData={snapshotRows} autoHeight />
-                ) : (
-                  <p className="dashboard-note">No data available</p>
-                )}
-              </>
-            ) : null}
-
-            <h4>Recommendations</h4>
-            {recommendationsRows.length === 0 ? (
-              <p className="dashboard-note">No optimization opportunities found for this volume.</p>
-            ) : (
-              <BaseDataTable columnDefs={recommendationColumns} rowData={recommendationsRows} autoHeight />
-            )}
-          </section>
-        ) : null}
+          </details>
+        </section>
       </section>
     </div>
   );

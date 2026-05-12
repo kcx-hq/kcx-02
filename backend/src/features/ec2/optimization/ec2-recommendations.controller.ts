@@ -37,7 +37,12 @@ export async function handleRefreshEc2Recommendations(req: Request, res: Respons
 }
 
 export async function handlePatchEc2RecommendationStatus(req: Request, res: Response): Promise<void> {
-  let payload: { id: number; status: "open" | "accepted" | "ignored" | "snoozed" | "completed" };
+  let payload: {
+    id: number;
+    status: "open" | "in_progress" | "snoozed" | "dismissed" | "completed";
+    reason: string | null;
+    snoozedUntil: string | null;
+  };
   try {
     payload = buildEc2RecommendationStatusPatch(req);
   } catch (error) {
@@ -51,6 +56,11 @@ export async function handlePatchEc2RecommendationStatus(req: Request, res: Resp
     req,
     statusCode: HTTP_STATUS.OK,
     message: "Recommendation status updated successfully",
-    data: { id: payload.id, status: payload.status },
+    data: {
+      id: payload.id,
+      status: payload.status,
+      statusReason: payload.reason,
+      snoozedUntil: payload.snoozedUntil,
+    },
   });
 }

@@ -1,4 +1,4 @@
-import { syncEbsVolumeMetrics } from "../src/features/ec2/scheduled-jobs/handlers/ebs-volume-metrics-sync.service.js";
+import { syncEbsVolumeMetrics } from "../src/features/scheduled-jobs/handlers/ec2/ebs-volume-metrics-sync.service.js";
 import { CloudConnectionV2, sequelize } from "../src/models/index.js";
 import type { ScheduledJob } from "../src/models/ec2/scheduled_jobs.js";
 
@@ -133,3 +133,4 @@ main()
   .finally(async () => {
     await sequelize.close();
   });
+

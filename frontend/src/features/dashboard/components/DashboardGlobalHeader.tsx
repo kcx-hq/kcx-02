@@ -14,6 +14,20 @@ type BreadcrumbItem = {
   path?: string;
 };
 
+const getLoadBalancerBreadcrumbLabel = (routeValue: string, searchParams: URLSearchParams): string => {
+  const nameFromQuery = searchParams.get("loadBalancerName")?.trim();
+  if (nameFromQuery) return nameFromQuery;
+
+  const decoded = decodeURIComponent(routeValue);
+  const loadBalancerPart = decoded.match(/loadbalancer\/(?:(?:app|net|gwy)\/)?([^/]+)/i)?.[1];
+  if (loadBalancerPart) return loadBalancerPart;
+
+  const arnName = decoded.match(/:loadbalancer\/([^/]+)$/i)?.[1];
+  if (arnName) return arnName;
+
+  return decoded;
+};
+
 const parseDateValue = (value: string | null): string => {
   if (!value) return "";
   return /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : "";
@@ -439,7 +453,7 @@ export function DashboardGlobalHeader() {
         { label: "EC2" },
       ];
     }
-    if (path === "/dashboard/s3" || path === "/dashboard/s3/bucket") {
+    if (path === "/dashboard/s3/bucket") {
       return [
         { label: rootCrumb, path: "/dashboard/overview" },
         { label: "Services", path: "/dashboard/inventory" },
@@ -447,7 +461,7 @@ export function DashboardGlobalHeader() {
         { label: "Bucket" },
       ];
     }
-    if (path === "/dashboard/s3/explorer" || path === "/dashboard/s3/cost") {
+    if (path === "/dashboard/s3" || path === "/dashboard/s3/explorer" || path === "/dashboard/s3/cost") {
       return [
         { label: rootCrumb, path: "/dashboard/overview" },
         { label: "Services", path: "/dashboard/inventory" },
@@ -515,6 +529,7 @@ export function DashboardGlobalHeader() {
       { label: bestMatch?.label ?? "Overview Dashboard" },
     ];
   }, [location.pathname, searchParams]);
+  const isLoadBalancerBreadcrumb = location.pathname.startsWith("/dashboard/inventory/aws/load-balancer/list");
 
   const uploadedFileLabel = useMemo(() => {
     if (scope?.scopeType !== "upload") {
@@ -757,7 +772,10 @@ export function DashboardGlobalHeader() {
   return (
     <>
       <header className="dashboard-global-header">
-        <nav className="dashboard-global-header__breadcrumbs" aria-label="Breadcrumb">
+        <nav
+          className={`dashboard-global-header__breadcrumbs${isLoadBalancerBreadcrumb ? " dashboard-global-header__breadcrumbs--load-balancer" : ""}`}
+          aria-label="Breadcrumb"
+        >
           {breadcrumbs.map((crumb, index) => {
             const isCurrent = index === breadcrumbs.length - 1;
             return (

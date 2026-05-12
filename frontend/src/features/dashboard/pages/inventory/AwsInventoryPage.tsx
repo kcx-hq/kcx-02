@@ -53,6 +53,24 @@ const serviceGroups: InventoryServiceGroup[] = [
         label: "AMIs",
         placeholder: true,
       },
+      {
+        id: "load-balancer-explorer",
+        label: "Load Balancer Explorer",
+        href: "/dashboard/load-balancer/explorer",
+        matchPrefixes: ["/dashboard/load-balancer/explorer"],
+      },
+      {
+        id: "load-balancer-list",
+        label: "Load Balancer List",
+        href: "/dashboard/inventory/aws/load-balancer/list",
+        matchPrefixes: ["/dashboard/inventory/aws/load-balancer/list"],
+      },
+      {
+        id: "load-balancer-optimization",
+        label: "Load Balancer Optimization",
+        href: "/dashboard/load-balancer/optimization",
+        matchPrefixes: ["/dashboard/load-balancer/optimization"],
+      },
     ],
   },
   {
