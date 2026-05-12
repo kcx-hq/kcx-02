@@ -38,6 +38,8 @@ type CostExplorerFiltersPanelProps = {
   onApplyGroupFilters?: () => void;
   hasPendingGroupChanges?: boolean;
   groupValuesLoading?: boolean;
+  hideGranularity?: boolean;
+  enableGroupValueFiltering?: boolean;
 };
 
 type FilterPopoverKey = CostExplorerChip["key"];
@@ -73,6 +75,8 @@ export function CostExplorerFiltersPanel({
   onApplyGroupFilters,
   hasPendingGroupChanges = false,
   groupValuesLoading = false,
+  hideGranularity = false,
+  enableGroupValueFiltering = true,
 }: CostExplorerFiltersPanelProps) {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const [activePopover, setActivePopover] = useState<FilterPopoverKey | null>(null);
@@ -148,6 +152,9 @@ export function CostExplorerFiltersPanel({
 
   const onSelectGroupBy = (value: GroupBy) => {
     onSetGroupBy(value);
+    if (!showGroupValuesPane) {
+      setActivePopover(null);
+    }
   };
 
   const onSelectMetric = (value: Metric) => {
@@ -206,7 +213,7 @@ export function CostExplorerFiltersPanel({
   const filteredGroupOptions = filterOptions(resolvedGroupOptions, searchByPopover.group);
   const filteredMetricOptions = filterOptions(metricOptions, searchByPopover.metric);
   const filteredCompareOptions = filterOptions(compareOptions, searchByPopover.compare);
-  const showGroupValuesPane = groupBy !== "none";
+  const showGroupValuesPane = enableGroupValueFiltering && groupBy !== "none";
   const groupPopoverClassName = showGroupValuesPane
     ? "cost-explorer-filter-popover cost-explorer-filter-popover--split cost-explorer-filter-popover--group-split"
     : "cost-explorer-filter-popover cost-explorer-filter-popover--group-single";
@@ -294,37 +301,44 @@ export function CostExplorerFiltersPanel({
     );
   };
 
+  const visibleChips = useMemo(
+    () => (hideGranularity ? chips.filter((chip) => chip.key !== "granularity") : chips),
+    [chips, hideGranularity],
+  );
+
   return (
     <section className="cost-explorer-control-surface" aria-label="Cost explorer filters" ref={rootRef}>
       <div className="cost-explorer-toolbar-row">
-        <div className="cost-explorer-toolbar-item">
-          <button
-            type="button"
-            ref={granularityRef}
-            className={`cost-explorer-toolbar-trigger${activePopover === "granularity" ? " is-active" : ""}`}
-            onClick={() => togglePopover("granularity")}
-            aria-expanded={activePopover === "granularity"}
-            aria-haspopup="dialog"
-          >
-            <span className="cost-explorer-toolbar-trigger__label">Granularity</span>
-            <span className="cost-explorer-toolbar-trigger__row">
-              <span className="cost-explorer-toolbar-trigger__value">{granularityLabel}</span>
-              <ChevronDown className="cost-explorer-toolbar-trigger__caret" size={14} aria-hidden="true" />
-            </span>
-          </button>
-          {activePopover === "granularity" ? (
-            <div className="cost-explorer-filter-popover" role="dialog" aria-label="Granularity options">
-              <p className="cost-explorer-filter-popover__title">Granularity</p>
-              {renderPopoverSearch("granularity", "Search granularity...")}
-              {renderFilterList({
-                options: filteredGranularityOptions,
-                selected: effectiveGranularity,
-                onSelect: onSelectGranularity,
-                emptyLabel: "No granularity options found.",
-              })}
-            </div>
-          ) : null}
-        </div>
+        {!hideGranularity ? (
+          <div className="cost-explorer-toolbar-item">
+            <button
+              type="button"
+              ref={granularityRef}
+              className={`cost-explorer-toolbar-trigger${activePopover === "granularity" ? " is-active" : ""}`}
+              onClick={() => togglePopover("granularity")}
+              aria-expanded={activePopover === "granularity"}
+              aria-haspopup="dialog"
+            >
+              <span className="cost-explorer-toolbar-trigger__label">Granularity</span>
+              <span className="cost-explorer-toolbar-trigger__row">
+                <span className="cost-explorer-toolbar-trigger__value">{granularityLabel}</span>
+                <ChevronDown className="cost-explorer-toolbar-trigger__caret" size={14} aria-hidden="true" />
+              </span>
+            </button>
+            {activePopover === "granularity" ? (
+              <div className="cost-explorer-filter-popover" role="dialog" aria-label="Granularity options">
+                <p className="cost-explorer-filter-popover__title">Granularity</p>
+                {renderPopoverSearch("granularity", "Search granularity...")}
+                {renderFilterList({
+                  options: filteredGranularityOptions,
+                  selected: effectiveGranularity,
+                  onSelect: onSelectGranularity,
+                  emptyLabel: "No granularity options found.",
+                })}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
 
         <div className="cost-explorer-toolbar-item">
           <button
@@ -405,19 +419,21 @@ export function CostExplorerFiltersPanel({
                   </div>
                 ) : null}
               </div>
-              <div className="cost-explorer-filter-popover__actions">
-                <button
-                  type="button"
-                  className="cost-explorer-filter-popover__apply"
-                  onClick={() => {
-                    onApplyGroupFilters?.();
-                    setActivePopover(null);
-                  }}
-                  disabled={!hasPendingGroupChanges}
-                >
-                  Apply
-                </button>
-              </div>
+              {showGroupValuesPane ? (
+                <div className="cost-explorer-filter-popover__actions">
+                  <button
+                    type="button"
+                    className="cost-explorer-filter-popover__apply"
+                    onClick={() => {
+                      onApplyGroupFilters?.();
+                      setActivePopover(null);
+                    }}
+                    disabled={!hasPendingGroupChanges}
+                  >
+                    Apply
+                  </button>
+                </div>
+              ) : null}
             </div>
           ) : null}
         </div>
@@ -483,7 +499,7 @@ export function CostExplorerFiltersPanel({
 
       <div className="cost-explorer-chip-bar" aria-label="Selected filter summary">
         <div className="cost-explorer-chip-row">
-          {chips.map((chip) => (
+          {visibleChips.map((chip) => (
             <span key={chip.key} className="cost-explorer-chip">
               <button type="button" className="cost-explorer-chip__edit" onClick={() => handleChipEdit(chip.key)}>
                 {chip.label}: {chip.value}

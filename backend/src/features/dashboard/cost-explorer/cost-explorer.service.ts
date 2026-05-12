@@ -19,7 +19,7 @@ export class CostExplorerService {
       to: scope.to,
     };
 
-    const [chartData, topServices, topServiceCategories, topResources, topAccounts, topRegions] = await Promise.all([
+    const [chartData, topServices, topServiceCategories, topResources, topAccounts, topRegions, serviceDetails] = await Promise.all([
       this.repository.getChartData(scope, effectiveFilters),
       this.repository.getBreakdownByDimension(scope, effectiveFilters, "service", CostExplorerService.BREAKDOWN_MAX_ROWS),
       this.repository.getBreakdownByDimension(
@@ -31,6 +31,7 @@ export class CostExplorerService {
       this.repository.getBreakdownByDimension(scope, effectiveFilters, "resource", CostExplorerService.BREAKDOWN_MAX_ROWS),
       this.repository.getBreakdownByDimension(scope, effectiveFilters, "account", CostExplorerService.BREAKDOWN_MAX_ROWS),
       this.repository.getBreakdownByDimension(scope, effectiveFilters, "region", CostExplorerService.BREAKDOWN_MAX_ROWS),
+      this.repository.getServiceDetailRows(scope, effectiveFilters, CostExplorerService.BREAKDOWN_MAX_ROWS),
     ]);
 
     const trendPct =
@@ -72,6 +73,7 @@ export class CostExplorerService {
         account: topAccounts,
         region: topRegions,
       },
+      serviceDetails,
     };
   }
 

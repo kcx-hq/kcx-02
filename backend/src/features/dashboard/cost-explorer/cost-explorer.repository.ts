@@ -10,6 +10,7 @@ import type {
   CostExplorerGroupBy,
   CostExplorerGroupOptionsResponse,
   CostExplorerMetric,
+  CostExplorerServiceDetailRow,
   CostExplorerSeries,
 } from "./cost-explorer.types.js";
 
@@ -58,6 +59,18 @@ type ResourceDetailRow = {
   resource_key: number | string | null;
   service_name: string | null;
   resource_type: string | null;
+};
+
+type ServiceDetailQueryRow = {
+  service_name: string | null;
+  resource_name: string | null;
+  usage_type: string | null;
+  region_name: string | null;
+  usage_quantity: number | string | null;
+  unit: string | null;
+  total_cost: number | string | null;
+  usage_date: string | Date | null;
+  percentage_of_total_service_cost: number | string | null;
 };
 
 type GroupDimensionKey = number | string;
@@ -1564,6 +1577,76 @@ export class CostExplorerRepository {
         relatedResourceTypes: dimension === "resource" ? resourceDetails.resourceTypes : undefined,
       };
     });
+  }
+
+  async getServiceDetailRows(
+    scope: DashboardScope,
+    filters: CostExplorerEffectiveFilters,
+    limit: number,
+  ): Promise<CostExplorerServiceDetailRow[]> {
+    const effectiveTagFilter = this.parseTagFilter(filters.tagKey, filters.tagValue, filters.groupValues);
+    const groupValueFilter = this.parseGroupValueFilter(filters.groupBy, filters.groupValues);
+    const config = factConfigByGranularity[filters.effectiveGranularity];
+    const metricColumn = resolveMetricColumn(filters.metric);
+    const where = this.buildScopeWhereClause(scope, config, filters.from, filters.to, 1, effectiveTagFilter, groupValueFilter);
+
+    const rows = await sequelize.query<ServiceDetailQueryRow>(
+      `
+        WITH grouped AS (
+          SELECT
+            COALESCE(ds.service_name, 'Unspecified') AS service_name,
+            COALESCE(dres.resource_name, dres.resource_id, 'Unspecified') AS resource_name,
+            COALESCE(NULLIF(${config.alias}.usage_type, ''), NULLIF(${config.alias}.product_usage_type, ''), 'Unspecified') AS usage_type,
+            COALESCE(dr.region_name, 'Unspecified') AS region_name,
+            COALESCE(NULLIF(dsku.pricing_unit, ''), 'Units') AS unit,
+            DATE(COALESCE(${config.alias}.usage_start_time, ${config.alias}.usage_end_time)) AS usage_date,
+            COALESCE(SUM(COALESCE(${config.alias}.consumed_quantity, 0)), 0)::double precision AS usage_quantity,
+            COALESCE(SUM(${config.alias}.${metricColumn}), 0)::double precision AS total_cost
+          FROM ${config.tableName} ${config.alias}
+          LEFT JOIN dim_service ds ON ds.id = ${config.alias}.service_key
+          LEFT JOIN dim_resource dres ON dres.id = ${config.alias}.resource_key
+          LEFT JOIN dim_region dr ON dr.id = ${config.alias}.region_key
+          LEFT JOIN dim_sku dsku ON dsku.id = ${config.alias}.sku_key
+          WHERE ${where.whereClause}
+          GROUP BY
+            COALESCE(ds.service_name, 'Unspecified'),
+            COALESCE(dres.resource_name, dres.resource_id, 'Unspecified'),
+            COALESCE(NULLIF(${config.alias}.usage_type, ''), NULLIF(${config.alias}.product_usage_type, ''), 'Unspecified'),
+            COALESCE(dr.region_name, 'Unspecified'),
+            COALESCE(NULLIF(dsku.pricing_unit, ''), 'Units'),
+            DATE(COALESCE(${config.alias}.usage_start_time, ${config.alias}.usage_end_time))
+        )
+        SELECT
+          service_name,
+          resource_name,
+          usage_type,
+          region_name,
+          usage_quantity,
+          unit,
+          total_cost,
+          usage_date,
+          CASE
+            WHEN SUM(total_cost) OVER (PARTITION BY service_name) = 0 THEN 0
+            ELSE (total_cost / SUM(total_cost) OVER (PARTITION BY service_name)) * 100
+          END::double precision AS percentage_of_total_service_cost
+        FROM grouped
+        ORDER BY total_cost DESC, service_name ASC, usage_date DESC
+        LIMIT $${where.nextIndex};
+      `,
+      { bind: [...where.params, limit], type: QueryTypes.SELECT },
+    );
+
+    return rows.map((row) => ({
+      serviceName: row.service_name ?? "Unspecified",
+      resourceName: row.resource_name ?? "Unspecified",
+      usageType: row.usage_type ?? "Unspecified",
+      region: row.region_name ?? "Unspecified",
+      usageQuantity: toNumber(row.usage_quantity),
+      unit: row.unit ?? "Units",
+      totalCost: toNumber(row.total_cost),
+      date: row.usage_date instanceof Date ? row.usage_date.toISOString().slice(0, 10) : String(row.usage_date ?? ""),
+      percentageOfTotalServiceCost: toNumber(row.percentage_of_total_service_cost),
+    }));
   }
 }
 

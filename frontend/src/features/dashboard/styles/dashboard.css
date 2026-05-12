@@ -4198,6 +4198,100 @@
   margin-top: 8px;
 }
 
+.cost-history-page .cost-explorer-control-surface {
+  padding: 16px 24px 12px;
+  border-bottom: 1px solid var(--ce-separator);
+}
+
+.cost-history-page .cost-explorer-control-surface > .cost-explorer-toolbar-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px 22px;
+  align-items: end;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--ce-separator);
+}
+
+.cost-history-page .cost-explorer-control-surface > .cost-explorer-toolbar-row .cost-explorer-toolbar-item {
+  flex: 1 1 auto;
+  max-width: none;
+}
+
+.cost-history-page .cost-explorer-control-surface > .cost-explorer-toolbar-row .cost-explorer-toolbar-trigger {
+  height: 52px;
+  border: 0;
+  border-bottom: 1px solid color-mix(in srgb, #8fa0ab 58%, var(--dashboard-border-light) 42%);
+  border-radius: 0;
+  background: transparent;
+  padding: 6px 0 10px;
+  transition: border-color 150ms ease, background-color 150ms ease, color 150ms ease;
+}
+
+.cost-history-page .cost-explorer-control-surface > .cost-explorer-toolbar-row .cost-explorer-toolbar-trigger::after {
+  display: block;
+  background: color-mix(in srgb, var(--dashboard-accent) 70%, #244e57 30%);
+}
+
+.cost-history-page .cost-explorer-control-surface > .cost-explorer-toolbar-row .cost-explorer-toolbar-trigger:hover {
+  transform: none;
+  border-color: color-mix(in srgb, var(--dashboard-accent) 35%, var(--dashboard-border-light) 65%);
+  background: transparent;
+}
+
+.cost-history-page .cost-explorer-control-surface > .cost-explorer-toolbar-row .cost-explorer-toolbar-trigger.is-active {
+  border-color: color-mix(in srgb, var(--dashboard-accent) 46%, var(--dashboard-border-light) 54%);
+  background: transparent;
+}
+
+.cost-history-page .cost-explorer-control-surface > .cost-explorer-toolbar-row .cost-explorer-toolbar-trigger__label {
+  color: #4f6872;
+}
+
+.cost-history-page .cost-explorer-control-surface > .cost-explorer-toolbar-row .cost-explorer-toolbar-trigger__row {
+  margin-top: 4px;
+}
+
+.cost-history-page .cost-explorer-control-surface > .cost-explorer-toolbar-row .cost-explorer-toolbar-trigger__value {
+  font-size: 1.01rem;
+}
+
+.cost-history-page .cost-explorer-chip-bar {
+  margin-top: 10px;
+  padding: 12px 0 8px;
+  border-bottom: 1px solid var(--ce-separator);
+}
+
+.cost-history-page .cost-explorer-chip-row {
+  gap: 8px;
+}
+
+.cost-history-page .cost-explorer-filter-popover.cost-explorer-filter-popover--group-single {
+  width: min(360px, calc(100vw - 34px));
+  max-width: min(360px, calc(100vw - 34px));
+  min-width: 260px;
+}
+
+.cost-history-page .cost-explorer-filter-popover--group-single .cost-explorer-filter-popover__list--group-dimensions {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+@media (max-width: 1120px) {
+  .cost-history-page .cost-explorer-control-surface > .cost-explorer-toolbar-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 680px) {
+  .cost-history-page .cost-explorer-control-surface {
+    padding: 12px 12px 10px;
+  }
+
+  .cost-history-page .cost-explorer-control-surface > .cost-explorer-toolbar-row {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+}
+
 .cost-history-card {
   border: 0;
   border-radius: 0;

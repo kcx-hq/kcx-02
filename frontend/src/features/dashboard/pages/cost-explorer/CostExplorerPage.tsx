@@ -4,6 +4,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 
 import { useCostExplorerGroupOptionsQuery, useCostExplorerQuery } from "../../hooks/useDashboardQueries";
 import { useDashboardScope } from "../../hooks/useDashboardScope";
+import type { CostExplorerServiceDetailRow } from "../../api/dashboardTypes";
 import {
   COMPARE_OPTIONS,
   METRIC_OPTIONS,
@@ -372,19 +373,35 @@ export default function CostExplorerPage() {
   const option = useMemo<EChartsOption>(
     () => ({
       color: series.map((item) => seriesColorByName.get(item.name) ?? "#4f7088"),
+      animation: true,
+      animationDuration: 640,
+      animationEasing: "cubicOut",
+      animationDurationUpdate: 460,
+      animationEasingUpdate: "cubicOut",
+      stateAnimation: {
+        duration: 260,
+        easing: "cubicOut",
+      },
       tooltip: {
-        trigger: "axis",
-        axisPointer: { type: chartMode === "bar" ? "shadow" : "line" },
+        trigger: chartMode === "bar" ? "item" : "axis",
+        axisPointer:
+          chartMode === "bar"
+            ? { type: "shadow", shadowStyle: { color: "rgba(79, 112, 136, 0.08)" } }
+            : { type: "line" },
         confine: true,
         backgroundColor: "rgba(21, 35, 48, 0.95)",
         borderWidth: 0,
         textStyle: { color: "#f7fbfb", fontSize: 12 },
         formatter: (raw: unknown) => {
-          const points = (Array.isArray(raw) ? raw : []) as Array<{
+          const points = (Array.isArray(raw)
+            ? raw
+            : raw && typeof raw === "object"
+              ? [raw]
+              : []) as Array<{
             seriesName: string;
-            value: number;
-            marker: string;
-            dataIndex: number;
+            value: number | [string | number, string | number] | null | undefined;
+            marker?: string;
+            dataIndex?: number;
           }>;
 
           if (!points.length) return "";
@@ -396,13 +413,16 @@ export default function CostExplorerPage() {
             .map((point) => {
               const entry = seriesMeta.get(point.seriesName);
               if (!entry) return "";
+              const numericValue = Array.isArray(point.value)
+                ? Number(point.value[point.value.length - 1] ?? 0)
+                : Number(point.value ?? 0);
 
               const comparisonDelta =
                 entry.kind === "comparison" && base > 0
-                  ? ` <span style="color:#b8c8d2;">(${calculateDeltaPercent(Number(point.value), base) >= 0 ? "+" : ""}${percentFormatter.format(calculateDeltaPercent(Number(point.value), base))}%)</span>`
+                  ? ` <span style="color:#b8c8d2;">(${calculateDeltaPercent(numericValue, base) >= 0 ? "+" : ""}${percentFormatter.format(calculateDeltaPercent(numericValue, base))}%)</span>`
                   : "";
 
-              return `<div style="display:flex; gap:6px; align-items:center; margin-top:4px;">${point.marker}<span>${point.seriesName}:</span><strong>${formatTooltipCost(Number(point.value))}</strong>${comparisonDelta}</div>`;
+              return `<div style="display:flex; gap:6px; align-items:center; margin-top:4px;">${point.marker ?? ""}<span>${point.seriesName}:</span><strong>${formatTooltipCost(numericValue)}</strong>${comparisonDelta}</div>`;
             })
             .join("");
 
@@ -458,10 +478,28 @@ export default function CostExplorerPage() {
           smooth: !renderAsBar,
           showSymbol: renderAsBar ? false : labels.length <= 35,
           symbolSize: 5,
-          emphasis: { focus: "series" },
-          blur: { itemStyle: { opacity: 0.22 }, lineStyle: { opacity: 0.2 } },
-          animationDurationUpdate: 220,
+          emphasis: renderAsBar
+            ? {
+                focus: "series",
+                itemStyle: {
+                  color: seriesColor,
+                  opacity: 1,
+                  borderColor: seriesColor,
+                  borderWidth: 0,
+                  shadowBlur: 10,
+                  shadowColor: "rgba(15, 26, 35, 0.35)",
+                },
+              }
+            : { focus: "series" },
+          blur: { itemStyle: { opacity: 0.4 }, lineStyle: { opacity: 0.45 } },
+          progressive: 5000,
+          progressiveThreshold: 3000,
+          universalTransition: true,
+          animationDuration: renderAsBar ? 780 : 520,
+          animationDurationUpdate: renderAsBar ? 560 : 380,
+          animationEasing: "cubicOut",
           animationEasingUpdate: "cubicOut",
+          animationDelay: (idx: number) => Math.min(index * 36 + idx * 22, 640),
           lineStyle: renderAsBar
             ? undefined
             : {
@@ -475,8 +513,10 @@ export default function CostExplorerPage() {
               ? { color: seriesColor, opacity: 0.08 }
               : undefined,
           barMinHeight: renderAsBar ? 2 : undefined,
-          barMaxWidth: renderAsBar ? 24 : undefined,
-          barCategoryGap: renderAsBar ? "42%" : undefined,
+          barWidth: renderAsBar ? "86%" : undefined,
+          barMaxWidth: renderAsBar ? 80 : undefined,
+          barCategoryGap: renderAsBar ? "8%" : undefined,
+          barGap: renderAsBar ? "0%" : undefined,
           itemStyle: renderAsBar
             ? { color: seriesColor, borderRadius: 0, borderColor: "rgba(255,255,255,0.4)", borderWidth: 0.4 }
             : { color: seriesColor },
@@ -713,6 +753,11 @@ export default function CostExplorerPage() {
     },
   ];
 
+  const serviceDetailRows = useMemo<CostExplorerServiceDetailRow[]>(
+    () => (primaryQuery.data?.serviceDetails ?? []) as CostExplorerServiceDetailRow[],
+    [primaryQuery.data?.serviceDetails],
+  );
+
   const toggleCompare = (key: CompareKey) => {
     if (multiMetricMode) {
       setSelectedMetrics([selectedMetrics[0] ?? "billed"]);
@@ -830,12 +875,40 @@ export default function CostExplorerPage() {
             ? event.name.trim()
             : "";
 
-      if (clickedLabel.toLowerCase() !== "amazons3") {
+      const normalized = clickedLabel.toLowerCase().replace(/[^a-z0-9]/g, "");
+      const routeByService = new Map<string, string>([
+        ["amazons3", "/dashboard/s3/cost"],
+        ["s3", "/dashboard/s3/cost"],
+        ["amazonec2", "/dashboard/ec2/explorer"],
+        ["ec2", "/dashboard/ec2/explorer"],
+        ["amazonelasticcomputecloud", "/dashboard/ec2/explorer"],
+        ["elasticcomputecloud", "/dashboard/ec2/explorer"],
+        ["amazonrds", "/dashboard/services/database"],
+        ["rds", "/dashboard/services/database"],
+        ["amazonrelationaldatabaseservice", "/dashboard/services/database"],
+        ["elasticloadbalancing", "/dashboard/load-balancer/explorer"],
+        ["awselasticloadbalancing", "/dashboard/load-balancer/explorer"],
+        ["awselb", "/dashboard/load-balancer/explorer"],
+        ["amazonelb", "/dashboard/load-balancer/explorer"],
+        ["loadbalancer", "/dashboard/load-balancer/explorer"],
+        ["loadbalancing", "/dashboard/load-balancer/explorer"],
+      ]);
+
+      const targetPath =
+        routeByService.get(normalized) ??
+        (normalized.includes("rds")
+          ? "/dashboard/services/database"
+          : normalized.includes("elasticloadbalancing") ||
+              normalized.includes("loadbalancer") ||
+              normalized.includes("elb")
+            ? "/dashboard/load-balancer/explorer"
+            : undefined);
+      if (!targetPath) {
         return;
       }
 
       navigate({
-        pathname: "/dashboard/s3/cost",
+        pathname: targetPath,
         search: location.search,
       });
     },
@@ -892,6 +965,7 @@ export default function CostExplorerPage() {
           onChartModeChange={setChartMode}
           kpis={chartKpis}
           topBreakdowns={visibleBreakdowns}
+          serviceDetailRows={serviceDetailRows}
           rowsPerPage={rowsPerPage}
           onRowsPerPageChange={setRowsPerPage}
           breakdownPagination={

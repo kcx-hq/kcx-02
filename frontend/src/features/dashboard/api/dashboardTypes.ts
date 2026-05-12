@@ -2197,6 +2197,18 @@ export type CostExplorerBreakdownRow = {
   relatedResourceTypes?: string[];
 };
 
+export type CostExplorerServiceDetailRow = {
+  serviceName: string;
+  resourceName: string;
+  usageType: string;
+  region: string;
+  usageQuantity: number;
+  unit: string;
+  totalCost: number;
+  date: string;
+  percentageOfTotalServiceCost: number;
+};
+
 export type CostExplorerResponse = {
   section: "cost-explorer";
   title: "Cost Explorer";
@@ -2231,4 +2243,5 @@ export type CostExplorerResponse = {
     account: CostExplorerBreakdownRow[];
     region: CostExplorerBreakdownRow[];
   };
+  serviceDetails: CostExplorerServiceDetailRow[];
 };
