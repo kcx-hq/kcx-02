@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { EChartsOption } from "echarts";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 
@@ -6,6 +6,7 @@ import { BaseEChart } from "@/features/dashboard/common/charts/BaseEChart";
 import { EmptyStateBlock } from "@/features/dashboard/common/components/EmptyStateBlock";
 import { KpiCard } from "@/features/dashboard/common/components/KpiCard";
 import {
+  useEc2RecommendationsQuery,
   useLoadBalancerExplorerSummaryQuery,
   useLoadBalancerExplorerTrendQuery,
 } from "@/features/dashboard/hooks/useDashboardQueries";
@@ -14,10 +15,12 @@ import {
   LOAD_BALANCER_USAGE_TYPE_OPTIONS,
   type LoadBalancerExplorerControlsState,
 } from "@/features/dashboard/pages/load-balancer/loadBalancerExplorer.types";
-import { StickySectionNav } from "../ec2/components/EC2InstanceDetailDecisionLayout";
 import { useInventoryLoadBalancerDetail } from "@/features/client-home/hooks/useInventoryLoadBalancers";
+import type { Ec2RecommendationRecord, Ec2RecommendationStatus, Ec2RecommendationType } from "@/features/dashboard/api/dashboardTypes";
+import { formatRecommendationEvidence } from "../ec2/components/recommendationEvidence";
 
 const LIST_PATH = "/dashboard/inventory/aws/load-balancer/list";
+const OPTIMIZATION_PATH = "/dashboard/load-balancer/optimization";
 
 const CURRENCY_FORMATTER = new Intl.NumberFormat("en-US", {
   style: "currency",
@@ -45,6 +48,29 @@ const toTitle = (value: string | null | undefined): string => {
     .filter(Boolean)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
     .join(" ");
+};
+
+const typeLabel = (value: Ec2RecommendationType): string => {
+  if (value === "idle_load_balancer") return "Idle Load Balancer";
+  if (value === "low_traffic_load_balancer") return "Low Traffic Load Balancer";
+  if (value === "unhealthy_targets") return "Unhealthy Targets";
+  if (value === "high_error_rate") return "High Error Rate";
+  if (value === "high_data_processing_cost") return "High Data Processing Cost";
+  return toTitle(value);
+};
+
+const statusLabel = (value: Ec2RecommendationStatus): string => {
+  if (value === "in_progress") return "In Progress";
+  if (value === "completed") return "Resolved";
+  return toTitle(value);
+};
+
+const statusBadgeClassName = (status: Ec2RecommendationStatus): string => {
+  if (status === "open") return "is-status-open";
+  if (status === "in_progress") return "is-status-in-progress";
+  if (status === "dismissed") return "is-status-dismissed";
+  if (status === "snoozed") return "is-status-snoozed";
+  return "is-status-completed";
 };
 
 const formatCurrency = (value: number | null | undefined): string => {
@@ -185,6 +211,66 @@ const toDefaultActionsText = (value: unknown[] | Record<string, unknown> | null)
   return summarizeAction(value);
 };
 
+function LoadBalancerStickySectionNav(props: { sections: Array<{ id: string; label: string }> }) {
+  const [activeId, setActiveId] = useState<string>(props.sections[0]?.id ?? "overview");
+  const [manualTargetId, setManualTargetId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (props.sections.length === 0) return;
+    const offset = 124;
+    const resolveActive = () => {
+      const points = props.sections
+        .map((section) => ({ id: section.id, element: document.getElementById(section.id) }))
+        .filter((item): item is { id: string; element: HTMLElement } => item.element instanceof HTMLElement);
+      if (points.length === 0) return;
+      const current = points
+        .filter((item) => item.element.getBoundingClientRect().top <= offset)
+        .at(-1)?.id ?? points[0].id;
+      setActiveId(current);
+      if (manualTargetId && current === manualTargetId) {
+        setManualTargetId(null);
+      }
+    };
+
+    const onScroll = () => {
+      if (manualTargetId) return;
+      resolveActive();
+    };
+
+    resolveActive();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", onScroll);
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      window.removeEventListener("resize", onScroll);
+    };
+  }, [manualTargetId, props.sections]);
+
+  return (
+    <nav className="ec2-instance-detail__sticky-nav" aria-label="Load balancer detail sections">
+      {props.sections.map((section) => (
+        <a
+          key={section.id}
+          href={`#${section.id}`}
+          className={activeId === section.id ? "is-active" : undefined}
+          onClick={(event) => {
+            event.preventDefault();
+            const element = document.getElementById(section.id);
+            if (!element) return;
+            const offset = 118;
+            const top = window.scrollY + element.getBoundingClientRect().top - offset;
+            setManualTargetId(section.id);
+            setActiveId(section.id);
+            window.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
+          }}
+        >
+          {section.label}
+        </a>
+      ))}
+    </nav>
+  );
+}
+
 const buildCostTrendOption = (graph: unknown): EChartsOption => {
   const fallback: EChartsOption = {
     tooltip: { trigger: "axis", confine: true },
@@ -300,6 +386,7 @@ export default function LoadBalancerDetailPage() {
   const navigate = useNavigate();
   const { scope } = useDashboardScope();
   const [usageType, setUsageType] = useState<LoadBalancerExplorerControlsState["usageType"]>("requests");
+  const [copiedArn, setCopiedArn] = useState(false);
 
   const queryParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
   const decodedLoadBalancerId = useMemo(() => (loadBalancerId ? safeDecode(loadBalancerId) : ""), [loadBalancerId]);
@@ -365,12 +452,29 @@ export default function LoadBalancerDetailPage() {
   const costTrendQuery = useLoadBalancerExplorerTrendQuery(costFilters, explorerQueriesEnabled);
   const usageSummaryQuery = useLoadBalancerExplorerSummaryQuery(usageFilters, explorerQueriesEnabled);
   const usageTrendQuery = useLoadBalancerExplorerTrendQuery(usageFilters, explorerQueriesEnabled);
+  const recommendationsQuery = useEc2RecommendationsQuery({ service: "load_balancer", resourceType: "load_balancer" });
 
   const costTrendOption = useMemo(() => buildCostTrendOption(costTrendQuery.data?.graph), [costTrendQuery.data?.graph]);
   const usageTrendOption = useMemo(
     () => buildUsageTrendOption(usageTrendQuery.data?.graph, usageType),
     [usageTrendQuery.data?.graph, usageType],
   );
+  const relatedRecommendations = useMemo(() => {
+    const data = recommendationsQuery.data?.recommendations;
+    if (!data || !detail) return [];
+    const all = [...data.compute, ...data.storage, ...data.pricing, ...data.network].filter((row) => row.resourceType === "load_balancer");
+    const active = all.filter((row) => {
+      const status = (row.status ?? "open").toLowerCase();
+      if (status !== "open" && status !== "in_progress") return false;
+      return (
+        row.resourceId === detail.arn ||
+        row.resourceId === detail.id ||
+        row.resourceName === detail.name ||
+        row.resourceId === decodedLoadBalancerId
+      );
+    });
+    return active;
+  }, [decodedLoadBalancerId, detail, recommendationsQuery.data?.recommendations]);
 
   const backToList = () => {
     navigate({ pathname: LIST_PATH, search: location.search });
@@ -412,11 +516,6 @@ export default function LoadBalancerDetailPage() {
   const usageSummary = usageSummaryQuery.data?.summary;
   const displayName = (detail.name ?? "").trim() || deriveNameFromArn(detail.arn) || "Unknown Load Balancer";
   const overviewRows = [
-    { label: "Name", value: displayName },
-    { label: "Type", value: toTitle(detail.type) },
-    { label: "Scheme", value: toTitle(detail.scheme) },
-    { label: "State", value: toTitle(detail.state) },
-    { label: "Region", value: detail.region ?? "-" },
     { label: "Account", value: detail.accountId ?? "-" },
     { label: "VPC", value: detail.vpcId ?? "-" },
     { label: "DNS Name", value: detail.dnsName ?? "-" },
@@ -435,10 +534,32 @@ export default function LoadBalancerDetailPage() {
               <div className="load-balancer-detail__header">
                 <h2 className="load-balancer-detail__title" title={displayName}>{displayName}</h2>
                 <p className="load-balancer-detail__subtitle">Load Balancer Detail</p>
+                <div className="load-balancer-detail__badge-row">
+                  <span className="load-balancer-detail__badge">{toTitle(detail.type)}</span>
+                  <span className="load-balancer-detail__badge">{toTitle(detail.scheme)}</span>
+                  <span className="load-balancer-detail__badge">{toTitle(detail.state)}</span>
+                  <span className="load-balancer-detail__badge">{detail.region ?? "-"}</span>
+                </div>
               </div>
-              <div className="load-balancer-detail__arn-wrap">
+              <div className="load-balancer-detail__arn-meta">
                 <span className="load-balancer-detail__arn-label">ARN</span>
                 <code className="load-balancer-detail__arn" title={detail.arn ?? "-"}>{detail.arn ?? "-"}</code>
+                <button
+                  type="button"
+                  className="cost-explorer-state-btn"
+                  onClick={async () => {
+                    if (!detail.arn) return;
+                    try {
+                      await navigator.clipboard.writeText(detail.arn);
+                      setCopiedArn(true);
+                      setTimeout(() => setCopiedArn(false), 1300);
+                    } catch {
+                      setCopiedArn(false);
+                    }
+                  }}
+                >
+                  {copiedArn ? "Copied" : "Copy ARN"}
+                </button>
               </div>
               <h3>Overview</h3>
               <table className="ec2-instance-detail__simple-table">
@@ -465,6 +586,67 @@ export default function LoadBalancerDetailPage() {
               </section>
             </section>
 
+            <section id="usage-summary" className="ec2-instance-detail__panel">
+              <h3>Usage Summary</h3>
+              <section className="overview-kpi-strip overview-kpi-board ec2-instance-detail__kpi-board">
+                <div className="overview-kpi-row overview-kpi-row--report ec2-overview-kpi-row">
+                  <KpiCard label="Requests" value={formatInteger(toNumber(usageSummary?.requestCount))} />
+                  <KpiCard label="Processed GB" value={formatProcessedGb(toNumber(usageSummary?.processedGB))} />
+                  <KpiCard label="Active Connections" value={formatInteger(toNumber(usageSummary?.activeConnections))} />
+                  <KpiCard label="New Connections" value={formatInteger(toNumber(usageSummary?.newConnections))} />
+                  <KpiCard label="Healthy Hosts" value={formatInteger(toNumber(usageSummary?.healthyHosts))} />
+                  <KpiCard label="Unhealthy Hosts" value={formatInteger(toNumber(usageSummary?.unhealthyHosts))} />
+                  <KpiCard label="Errors" value={formatInteger(toNumber(usageSummary?.errorCount))} />
+                </div>
+              </section>
+            </section>
+
+            <section id="related-recommendations" className="ec2-instance-detail__panel">
+              <h3>Related Recommendations</h3>
+              {recommendationsQuery.isLoading ? <p className="dashboard-note">Loading recommendations...</p> : null}
+              {!recommendationsQuery.isLoading && relatedRecommendations.length === 0 ? (
+                <p className="dashboard-note">No active recommendations for this load balancer.</p>
+              ) : null}
+              {relatedRecommendations.length > 0 ? (
+                <div className="load-balancer-detail__recommendations-list">
+                  {relatedRecommendations.map((item: Ec2RecommendationRecord) => {
+                    const status = (item.status ?? "open") as Ec2RecommendationStatus;
+                    const evidence = formatRecommendationEvidence(item.type, item.evidence);
+                    return (
+                      <article key={item.id} className="load-balancer-detail__recommendation-card">
+                        <div className="load-balancer-detail__recommendation-head">
+                          <strong>{typeLabel(item.type)}</strong>
+                          <span className={`optimization-rightsizing-pill ${statusBadgeClassName(status)}`}>{statusLabel(status)}</span>
+                        </div>
+                        <div className="load-balancer-detail__recommendation-meta">
+                          <span><strong>Category:</strong> {toTitle(item.category)}</span>
+                          <span><strong>Severity:</strong> {toTitle(item.risk)}</span>
+                          <span><strong>Estimated Savings:</strong> {formatCurrency(item.estimatedMonthlySaving)}</span>
+                        </div>
+                        <p className="load-balancer-detail__recommendation-evidence"><strong>Evidence:</strong> {evidence.summary}</p>
+                        <div className="load-balancer-detail__recommendation-actions">
+                          <button
+                            type="button"
+                            className="cost-explorer-state-btn"
+                            onClick={() => {
+                              const next = new URLSearchParams(location.search);
+                              next.set("tab", "recommendations");
+                              next.set("resourceId", item.resourceId);
+                              next.set("issueType", item.type);
+                              next.set("recommendationId", String(item.id));
+                              navigate({ pathname: OPTIMIZATION_PATH, search: next.toString() });
+                            }}
+                          >
+                            View Recommendation
+                          </button>
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+              ) : null}
+            </section>
+
             <section id="cost-trend" className="ec2-instance-detail__panel">
               <h3>Cost Trend</h3>
               {costTrendQuery.isLoading ? <p className="dashboard-note">Loading cost trend...</p> : null}
@@ -480,21 +662,6 @@ export default function LoadBalancerDetailPage() {
                   ? <div className="load-balancer-detail__chart-shell"><BaseEChart option={costTrendOption} height={280} /></div>
                   : <p className="dashboard-note">No cost trend data for selected range.</p>
               ) : null}
-            </section>
-
-            <section id="usage-summary" className="ec2-instance-detail__panel">
-              <h3>Usage Summary</h3>
-              <section className="overview-kpi-strip overview-kpi-board ec2-instance-detail__kpi-board">
-                <div className="overview-kpi-row overview-kpi-row--report ec2-overview-kpi-row">
-                  <KpiCard label="Requests" value={formatInteger(toNumber(usageSummary?.requestCount))} />
-                  <KpiCard label="Processed GB" value={formatProcessedGb(toNumber(usageSummary?.processedGB))} />
-                  <KpiCard label="Active Connections" value={formatInteger(toNumber(usageSummary?.activeConnections))} />
-                  <KpiCard label="New Connections" value={formatInteger(toNumber(usageSummary?.newConnections))} />
-                  <KpiCard label="Healthy Hosts" value={formatInteger(toNumber(usageSummary?.healthyHosts))} />
-                  <KpiCard label="Unhealthy Hosts" value={formatInteger(toNumber(usageSummary?.unhealthyHosts))} />
-                  <KpiCard label="Errors" value={formatInteger(toNumber(usageSummary?.errorCount))} />
-                </div>
-              </section>
             </section>
 
             <section id="usage-trend" className="ec2-instance-detail__panel">
@@ -632,22 +799,18 @@ export default function LoadBalancerDetailPage() {
             </section>
           </div>
 
-          <StickySectionNav
+          <LoadBalancerStickySectionNav
             sections={[
               { id: "overview", label: "Overview" },
               { id: "cost-summary", label: "Cost Summary" },
-              { id: "cost-trend", label: "Cost Trend" },
               { id: "usage-summary", label: "Usage Summary" },
+              { id: "related-recommendations", label: "Related Recommendations" },
+              { id: "cost-trend", label: "Cost Trend" },
               { id: "usage-trend", label: "Usage Trend" },
               { id: "target-groups", label: "Target Groups" },
               { id: "listeners", label: "Listeners" },
               { id: "tags", label: "Tags" },
             ]}
-            onNavigate={(id) => {
-              const section = document.getElementById(id);
-              if (!section) return;
-              section.scrollIntoView({ behavior: "smooth", block: "start" });
-            }}
           />
         </div>
       </section>

@@ -46,6 +46,7 @@ const addDays = (date: Date, days: number): Date => {
 };
 const startOfUtcDay = (d: Date): Date => new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
 const bytesFromGb = (gb: number): number => Math.round(gb * 1024 * 1024 * 1024);
+const clamp = (value: number, min: number, max: number): number => Math.max(min, Math.min(max, value));
 
 const stableNoise = (key: string, dayIndex: number): number => {
   const raw = `${key}:${dayIndex}`;
@@ -246,6 +247,10 @@ function dailyTrafficBaseline(profile: LbSeedProfile): { requests: number; gb: n
   return { requests: 1, gb: 0.001, active: 0, isIdle: true };
 }
 
+function deterministicChance(key: string, dayIndex: number): number {
+  return stableNoise(`${key}:chance`, dayIndex) + 0.5;
+}
+
 async function seedDemoData(scope: CloudScope): Promise<void> {
   const now = new Date();
   const end = startOfUtcDay(now);
@@ -261,31 +266,53 @@ async function seedDemoData(scope: CloudScope): Promise<void> {
       SELECT fr.id
       FROM fact_recommendations fr
       WHERE fr.source_system = :sourceSystem
+        AND fr.tenant_id = :tenantId
+        AND fr.cloud_connection_id = :cloudConnectionId
       `,
-      { replacements: { sourceSystem: SOURCE_SYSTEM }, type: QueryTypes.SELECT, transaction },
+      {
+        replacements: {
+          sourceSystem: SOURCE_SYSTEM,
+          tenantId: scope.tenantId,
+          cloudConnectionId: scope.cloudConnectionId,
+        },
+        type: QueryTypes.SELECT,
+        transaction,
+      },
     );
     const lbRecIds = lbRecRows.map((r) => Number(r.id)).filter((v) => Number.isFinite(v));
 
-    const deletedActions = lbRecIds.length
-      ? await sequelize.query<{ count: string }>(
-          `
-          DELETE FROM fact_recommendation_actions
-          WHERE recommendation_id IN (:recIds)
-          RETURNING 1::text AS count
-          `,
-          { replacements: { recIds: lbRecIds }, type: QueryTypes.SELECT, transaction },
-        )
-      : [];
+    const actionsTableExists = await sequelize.query<{ exists: boolean }>(
+      `
+      SELECT to_regclass('public.fact_recommendation_actions') IS NOT NULL AS "exists"
+      `,
+      { type: QueryTypes.SELECT, transaction },
+    );
+    const deletedActions =
+      lbRecIds.length && actionsTableExists[0]?.exists
+        ? await sequelize.query<{ count: string }>(
+            `
+            DELETE FROM fact_recommendation_actions
+            WHERE recommendation_id IN (:recIds)
+            RETURNING 1::text AS count
+            `,
+            { replacements: { recIds: lbRecIds }, type: QueryTypes.SELECT, transaction },
+          )
+        : [];
 
     const deletedRecs = await FactRecommendations.destroy({
-      where: { sourceSystem: SOURCE_SYSTEM } as never,
+      where: {
+        sourceSystem: SOURCE_SYSTEM,
+        tenantId: scope.tenantId,
+        cloudConnectionId: scope.cloudConnectionId,
+      } as never,
       transaction,
     });
-    const deletedCost = await LoadBalancerCostDaily.destroy({ where: {}, truncate: false, transaction });
-    const deletedMetrics = await LoadBalancerMetricsDaily.destroy({ where: {}, truncate: false, transaction });
-    const deletedListeners = await LoadBalancerListener.destroy({ where: {}, truncate: false, transaction });
-    const deletedTargetGroups = await LoadBalancerTargetGroup.destroy({ where: {}, truncate: false, transaction });
-    const deletedLbs = await LoadBalancer.destroy({ where: {}, truncate: false, transaction });
+    const lbWhere = { cloudConnectionId: scope.cloudConnectionId, accountId: scope.accountId } as never;
+    const deletedCost = await LoadBalancerCostDaily.destroy({ where: lbWhere, truncate: false, transaction });
+    const deletedMetrics = await LoadBalancerMetricsDaily.destroy({ where: lbWhere, truncate: false, transaction });
+    const deletedListeners = await LoadBalancerListener.destroy({ where: lbWhere, truncate: false, transaction });
+    const deletedTargetGroups = await LoadBalancerTargetGroup.destroy({ where: lbWhere, truncate: false, transaction });
+    const deletedLbs = await LoadBalancer.destroy({ where: lbWhere, truncate: false, transaction });
 
     return {
       deletedActions: deletedActions.length,
@@ -445,20 +472,64 @@ async function seedDemoData(scope: CloudScope): Promise<void> {
       const baseline = dailyTrafficBaseline(profile);
       for (let dayIndex = 0; dayIndex < dates.length; dayIndex += 1) {
         const usageDate = dates[dayIndex];
-        const noise = stableNoise(profile.name, dayIndex) * 0.12;
-        const requestCount = Math.max(0, Math.round(baseline.requests * (1 + noise)));
-        const processedGb = Math.max(0, baseline.gb * (1 + noise));
+        const dayDate = new Date(`${usageDate}T00:00:00.000Z`);
+        const dayOfWeek = dayDate.getUTCDay();
+        const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+
+        // Smooth realistic shaping: weekly seasonality + short-cycle wave + gradual trend + small jitter.
+        const weekendFactor = isWeekend ? (profile.scheme === "internal" ? 0.9 : 0.65) : 1;
+        const weeklyWave = 1 + Math.sin((2 * Math.PI * (dayIndex + 2)) / 7) * 0.08;
+        const cycleWave = 1 + Math.sin((2 * Math.PI * dayIndex) / 19 + (stableNoise(`${profile.name}:phase`, 0) + 0.5) * Math.PI) * 0.06;
+        const trendSlope = clamp(stableNoise(`${profile.name}:trend`, 0) * 0.0016, -0.0012, 0.0018);
+        const trendFactor = 1 + trendSlope * dayIndex;
+        const jitter = 1 + stableNoise(profile.name, dayIndex) * 0.09;
+
+        const schemeFactor = profile.scheme === "internal" ? 0.55 : 1.12;
+        const typeReqFactor = profile.type === "network" ? 0.48 : 1;
+        const typeConnFactor = profile.type === "network" ? 1.55 : 1;
+
+        let demandFactor = weekendFactor * weeklyWave * cycleWave * trendFactor * jitter * schemeFactor;
+        if (profile.traffic === "idle") demandFactor = Math.max(0.65, demandFactor * 0.25);
+        if (profile.traffic === "low") demandFactor = Math.max(0.55, demandFactor * 0.6);
+
+        // Rare deterministic burst days (marketing spikes, batch events), except on idle profiles.
+        const burstChance = deterministicChance(`${profile.name}:burst`, dayIndex);
+        const burstFactor = (profile.traffic === "idle" || profile.traffic === "low") ? 1 : (burstChance > 0.965 ? 1.18 : 1);
+        demandFactor *= burstFactor;
+
+        const requestCount = Math.max(1, Math.round(baseline.requests * typeReqFactor * demandFactor));
+        let processedGb = Math.max(0.0005, baseline.gb * demandFactor);
+        // NLBs typically carry fewer requests but larger payloads/streams.
+        if (profile.type === "network") processedGb *= 1.35;
+        if (profile.name === "data-heavy-nlb") processedGb *= 1.75;
         const processedBytes = bytesFromGb(processedGb);
-        const activeConnectionCount = Math.max(0, Math.round(baseline.active * (1 + noise)));
-        const newConnectionCount = Math.max(0, Math.round(activeConnectionCount * (profile.type === "application" ? 2.2 : 1.5)));
-        const activeFlowCount = profile.type === "network" ? Math.max(0, Math.round(activeConnectionCount * 1.15)) : 0;
-        const newFlowCount = profile.type === "network" ? Math.max(0, Math.round(newConnectionCount * 1.1)) : 0;
-        const healthyHostCount = profile.unhealthyHosts > 0 ? 2 : profile.type === "application" ? 4 : 3;
-        const unhealthyHostCount = profile.unhealthyHosts > 0 ? profile.unhealthyHosts : 0;
-        const elb5xxCount = Math.round((requestCount * profile.errorRatePercent) / 100 * 0.45);
-        const target5xxCount = Math.round((requestCount * profile.errorRatePercent) / 100 * 0.55);
-        const tcpTargetResetCount = profile.type === "network" ? Math.round(requestCount * 0.00002) : Math.round(requestCount * 0.00001);
-        const targetResponseTimeAvg = profile.traffic === "idle" ? 0.004 : profile.errorRatePercent >= 1 ? 0.38 : 0.09;
+        const activeConnectionCount = Math.max(0, Math.round(baseline.active * typeConnFactor * (demandFactor * 0.92 + 0.08)));
+        const newConnectionCount = Math.max(1, Math.round(activeConnectionCount * (profile.type === "application" ? 2.3 : 1.25)));
+        const activeFlowCount = profile.type === "network" ? Math.max(0, Math.round(activeConnectionCount * 1.22)) : 0;
+        const newFlowCount = profile.type === "network" ? Math.max(0, Math.round(newConnectionCount * 1.17)) : 0;
+
+        const baseHealthyHosts = profile.type === "application" ? 4 : 3;
+        const healthyHostCount = profile.unhealthyHosts > 0 ? Math.max(1, baseHealthyHosts - profile.unhealthyHosts) : baseHealthyHosts;
+        let unhealthyHostCount = 0;
+        // Deterministic temporary unhealthy windows.
+        if (profile.unhealthyHosts > 0) {
+          const unhealthyWindow = deterministicChance(`${profile.name}:unhealthy-window`, dayIndex);
+          unhealthyHostCount = unhealthyWindow > 0.77 ? profile.unhealthyHosts : 0;
+        }
+
+        // Error spikes some days; stronger for error-profile.
+        const spikeChance = deterministicChance(`${profile.name}:error-spike`, dayIndex);
+        const spikeMultiplier = spikeChance > 0.95 ? 2.6 : spikeChance > 0.89 ? 1.45 : 1;
+        const profileErrorRatePct = profile.errorRatePercent * spikeMultiplier;
+        const totalErrorCount = Math.round((requestCount * profileErrorRatePct) / 100);
+        const elb5xxCount = Math.max(0, Math.round(totalErrorCount * 0.42));
+        const target5xxCount = Math.max(0, Math.round(totalErrorCount * 0.58));
+        const tcpTargetResetCount = profile.type === "network" ? Math.round(requestCount * 0.000022) : Math.round(requestCount * 0.00001);
+        const targetResponseTimeAvg = profile.traffic === "idle"
+          ? 0.005
+          : profileErrorRatePct >= 2
+            ? round(0.32 + deterministicChance(`${profile.name}:latency`, dayIndex) * 0.2, 6)
+            : round(0.075 + deterministicChance(`${profile.name}:latency`, dayIndex) * 0.055, 6);
 
         const fixedCost = profile.type === "application" ? 0.55 : 0.48;
         const lcuCost = profile.type === "application"

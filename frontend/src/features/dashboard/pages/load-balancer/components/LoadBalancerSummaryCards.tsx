@@ -107,7 +107,10 @@ export function LoadBalancerSummaryCards({ metric, usageType, summary, usageDail
           })();
 
   return (
-    <section className="ec2-explorer-summary" aria-label="Load balancer explorer summary cards">
+    <section
+      className={`ec2-explorer-summary load-balancer-explorer-summary${metric === "load_balancers" ? " load-balancer-explorer-summary--inventory" : ""}`}
+      aria-label="Load balancer explorer summary cards"
+    >
       {cards.map((card) => (
         <article
           key={card.label}

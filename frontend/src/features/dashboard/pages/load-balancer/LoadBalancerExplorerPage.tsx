@@ -520,9 +520,6 @@ export default function LoadBalancerExplorerPage() {
       types: controls.scopeFilters.type,
       schemes: controls.scopeFilters.scheme,
       states: controls.scopeFilters.state,
-      teams: controls.scopeFilters.team,
-      products: controls.scopeFilters.product,
-      environments: controls.scopeFilters.environment,
       tags: controls.scopeFilters.tags,
       groupValues: controls.groupByValues,
     }),
@@ -644,15 +641,6 @@ export default function LoadBalancerExplorerPage() {
     addChip("state", "State", controls.scopeFilters.state, () =>
       setControls((current) => ({ ...current, scopeFilters: { ...current.scopeFilters, state: [] } })),
     );
-    addChip("team", "Team", controls.scopeFilters.team, () =>
-      setControls((current) => ({ ...current, scopeFilters: { ...current.scopeFilters, team: [] } })),
-    );
-    addChip("product", "Product", controls.scopeFilters.product, () =>
-      setControls((current) => ({ ...current, scopeFilters: { ...current.scopeFilters, product: [] } })),
-    );
-    addChip("environment", "Environment", controls.scopeFilters.environment, () =>
-      setControls((current) => ({ ...current, scopeFilters: { ...current.scopeFilters, environment: [] } })),
-    );
     addChip("tags", "Tags", controls.scopeFilters.tags, () =>
       setControls((current) => ({ ...current, scopeFilters: { ...current.scopeFilters, tags: [] } })),
     );
@@ -670,7 +658,6 @@ export default function LoadBalancerExplorerPage() {
     }
     return list;
   }, [controls]);
-
   return (
     <div className="dashboard-page cost-explorer-page">
       <section className="ec2-explorer-head-stack" aria-label="Load balancer explorer controls and summary">

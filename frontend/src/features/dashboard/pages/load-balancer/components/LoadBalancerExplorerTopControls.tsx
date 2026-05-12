@@ -1,8 +1,9 @@
 import { Check, ChevronDown, Filter, RotateCcw } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { EC2ExplorerScopeFilters } from "../../ec2/components/EC2ExplorerScopeFilters";
+import type { EC2ScopeFilters } from "../../ec2/ec2ExplorerControls.types";
 import {
-  LOAD_BALANCER_DEFAULT_CONTROLS,
   LOAD_BALANCER_GRANULARITY_OPTIONS,
   LOAD_BALANCER_GROUP_BY_OPTIONS,
   LOAD_BALANCER_METRIC_OPTIONS,
@@ -26,43 +27,17 @@ type Props = {
   children?: ReactNode;
 };
 
-type ScopeFilterKey = keyof LoadBalancerScopeFilters;
-
-const SCOPE_FIELDS: Array<{ key: ScopeFilterKey; label: string; placeholder: string }> = [
-  { key: "account", label: "Account", placeholder: "e.g. 123456789012, prod-account" },
-  { key: "region", label: "Region", placeholder: "e.g. us-east-1, ap-south-1" },
-  { key: "type", label: "Type", placeholder: "e.g. application, network" },
-  { key: "scheme", label: "Scheme", placeholder: "e.g. internet-facing, internal" },
-  { key: "state", label: "State", placeholder: "e.g. active, provisioning" },
-  { key: "team", label: "Team", placeholder: "e.g. platform, payments" },
-  { key: "product", label: "Product", placeholder: "e.g. checkout, api-gateway" },
-  { key: "environment", label: "Environment", placeholder: "e.g. prod, stage" },
-  { key: "tags", label: "Tags", placeholder: "e.g. owner:team-a, app:web" },
-];
-
-const parseCsv = (value: string): string[] =>
-  value
-    .split(",")
-    .map((entry) => entry.trim())
-    .filter((entry) => entry.length > 0);
-
-const toCsv = (value: string[]): string => value.join(", ");
+const toEc2ScopeFilters = (scope: LoadBalancerScopeFilters): EC2ScopeFilters => ({
+  region: scope.region,
+  tags: scope.tags,
+});
 
 export function LoadBalancerExplorerTopControls({ value, onChange, onReset, children }: Props) {
   const rootRef = useRef<HTMLDivElement | null>(null);
+  const scopeDraftRef = useRef<LoadBalancerScopeFilters>(value.scopeFilters);
   const [activePopover, setActivePopover] = useState<PopoverKey | null>(null);
   const [scopeFiltersOpen, setScopeFiltersOpen] = useState(false);
-  const [scopeDraft, setScopeDraft] = useState<Record<ScopeFilterKey, string>>({
-    account: "",
-    region: "",
-    type: "",
-    scheme: "",
-    state: "",
-    team: "",
-    product: "",
-    environment: "",
-    tags: "",
-  });
+  const [scopeDraft, setScopeDraft] = useState<LoadBalancerScopeFilters>(value.scopeFilters);
 
   useEffect(() => {
     const handlePointerDown = (event: MouseEvent) => {
@@ -82,17 +57,8 @@ export function LoadBalancerExplorerTopControls({ value, onChange, onReset, chil
   }, []);
 
   useEffect(() => {
-    setScopeDraft({
-      account: toCsv(value.scopeFilters.account),
-      region: toCsv(value.scopeFilters.region),
-      type: toCsv(value.scopeFilters.type),
-      scheme: toCsv(value.scopeFilters.scheme),
-      state: toCsv(value.scopeFilters.state),
-      team: toCsv(value.scopeFilters.team),
-      product: toCsv(value.scopeFilters.product),
-      environment: toCsv(value.scopeFilters.environment),
-      tags: toCsv(value.scopeFilters.tags),
-    });
+    scopeDraftRef.current = value.scopeFilters;
+    setScopeDraft(value.scopeFilters);
   }, [value.scopeFilters]);
 
   const update = (patch: Partial<LoadBalancerExplorerControlsState>) => onChange({ ...value, ...patch });
@@ -282,71 +248,30 @@ export function LoadBalancerExplorerTopControls({ value, onChange, onReset, chil
             <DialogTitle className="text-xl font-semibold text-text-primary">Load Balancer Filters</DialogTitle>
           </DialogHeader>
           <div className="mt-4 ec2-explorer-thresholds">
-            <div className="ec2-explorer-thresholds__grid">
-              {SCOPE_FIELDS.map((field) => (
-                <label key={field.key} className="ec2-explorer-thresholds__field">
-                  <span>{field.label}</span>
-                  <input
-                    value={scopeDraft[field.key]}
-                    placeholder={field.placeholder}
-                    onChange={(event) =>
-                      setScopeDraft((current) => ({
-                        ...current,
-                        [field.key]: event.target.value,
-                      }))
-                    }
-                  />
-                </label>
-              ))}
-              <label className="ec2-explorer-thresholds__field">
-                <span>Tag Key (for Group By tag)</span>
-                <input
-                  value={value.tagKey}
-                  placeholder="e.g. owner"
-                  onChange={(event) => update({ tagKey: event.target.value })}
-                />
-              </label>
-            </div>
-            <div className="cost-explorer-filter-popover__actions">
-              <button
-                type="button"
-                className="cost-explorer-filter-popover__apply"
-                onClick={() => {
-                  update({
-                    scopeFilters: {
-                      account: parseCsv(scopeDraft.account),
-                      region: parseCsv(scopeDraft.region),
-                      type: parseCsv(scopeDraft.type),
-                      scheme: parseCsv(scopeDraft.scheme),
-                      state: parseCsv(scopeDraft.state),
-                      team: parseCsv(scopeDraft.team),
-                      product: parseCsv(scopeDraft.product),
-                      environment: parseCsv(scopeDraft.environment),
-                      tags: parseCsv(scopeDraft.tags),
-                    },
-                  });
-                  setScopeFiltersOpen(false);
-                }}
-              >
-                Apply
-              </button>
-              <button
-                type="button"
-                className="cost-explorer-state-btn"
-                onClick={() => {
-                  update({
-                    ...LOAD_BALANCER_DEFAULT_CONTROLS,
-                    metric: value.metric,
-                    granularity: value.granularity,
-                    groupBy: getValidLoadBalancerGroupByForMetric(value.metric, value.groupBy),
-                    chartType: value.chartType,
-                  });
-                  setScopeFiltersOpen(false);
-                }}
-              >
-                Clear filters
-              </button>
-            </div>
+            <EC2ExplorerScopeFilters
+              value={toEc2ScopeFilters(scopeDraft)}
+              onChange={(next) =>
+                setScopeDraft((current) => {
+                  const updated = {
+                    ...current,
+                    region: next.region,
+                    tags: next.tags,
+                  };
+                  scopeDraftRef.current = updated;
+                  return updated;
+                })
+              }
+              onApply={() => {
+                update({
+                  scopeFilters: {
+                    ...value.scopeFilters,
+                    region: scopeDraftRef.current.region,
+                    tags: scopeDraftRef.current.tags,
+                  },
+                });
+                setScopeFiltersOpen(false);
+              }}
+            />
           </div>
         </DialogContent>
       </Dialog>

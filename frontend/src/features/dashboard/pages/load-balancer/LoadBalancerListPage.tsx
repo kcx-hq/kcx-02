@@ -1,5 +1,6 @@
 import { Search, SlidersHorizontal, X } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useRef } from "react";
 import type { ColDef, ICellRendererParams, ValueFormatterParams } from "ag-grid-community";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -7,6 +8,8 @@ import type { InventoryLoadBalancerRow } from "@/features/client-home/api/invent
 import { useInventoryLoadBalancers } from "@/features/client-home/hooks/useInventoryLoadBalancers";
 import { EmptyStateBlock } from "../../common/components/EmptyStateBlock";
 import { BaseDataTable } from "../../common/tables/BaseDataTable";
+import { EC2ExplorerScopeFilters } from "../ec2/components/EC2ExplorerScopeFilters";
+import type { EC2ScopeFilters } from "../ec2/ec2ExplorerControls.types";
 
 const PAGE_SIZE = 100;
 const LIST_PATH = "/dashboard/inventory/aws/load-balancer/list";
@@ -18,9 +21,6 @@ type ListControls = {
   type: string;
   scheme: string;
   state: string;
-  team: string;
-  product: string;
-  environment: string;
   tags: string;
   sortBy: "name" | "type" | "scheme" | "region" | "totalCost" | "fixedCost" | "lcuCost" | "dataProcessingCost";
   sortDirection: "asc" | "desc";
@@ -33,9 +33,6 @@ const DEFAULT_CONTROLS: ListControls = {
   type: "",
   scheme: "",
   state: "",
-  team: "",
-  product: "",
-  environment: "",
   tags: "",
   sortBy: "name",
   sortDirection: "asc",
@@ -98,9 +95,6 @@ const FILTER_QUERY_KEYS = [
   "type",
   "scheme",
   "state",
-  "team",
-  "product",
-  "environment",
   "tags",
   "tag",
   "sortBy",
@@ -124,9 +118,6 @@ export default function LoadBalancerListPage() {
     type: params.get("type") ?? "",
     scheme: params.get("scheme") ?? "",
     state: params.get("state") ?? "",
-    team: params.get("team") ?? "",
-    product: params.get("product") ?? "",
-    environment: params.get("environment") ?? "",
     tags: params.get("tags") ?? params.get("tag") ?? "",
     sortBy: (params.get("sortBy") as ListControls["sortBy"]) ?? DEFAULT_CONTROLS.sortBy,
     sortDirection: (params.get("sortDirection") as ListControls["sortDirection"]) ?? DEFAULT_CONTROLS.sortDirection,
@@ -152,9 +143,6 @@ export default function LoadBalancerListPage() {
     type: controls.type.trim() || null,
     scheme: controls.scheme.trim() || null,
     state: controls.state.trim() || null,
-    team: controls.team.trim() || null,
-    product: controls.product.trim() || null,
-    environment: controls.environment.trim() || null,
     tags: parseCsv(controls.tags),
     sortBy: controls.sortBy,
     sortDirection: controls.sortDirection,
@@ -224,12 +212,25 @@ export default function LoadBalancerListPage() {
     push("type", "Type", controls.type);
     push("scheme", "Scheme", controls.scheme);
     push("state", "State", controls.state);
-    push("team", "Team", controls.team);
-    push("product", "Product", controls.product);
-    push("environment", "Environment", controls.environment);
     push("tags", "Tags", controls.tags);
     return entries;
   }, [controls]);
+
+  const scopeFilterValue = useMemo<EC2ScopeFilters>(
+    () => ({
+      region: controls.region ? [controls.region] : [],
+      tags: parseCsv(controls.tags),
+    }),
+    [controls.region, controls.tags],
+  );
+  const [scopeDraft, setScopeDraft] = useState<EC2ScopeFilters>(scopeFilterValue);
+  const scopeDraftRef = useRef<EC2ScopeFilters>(scopeFilterValue);
+
+  useEffect(() => {
+    if (!filtersOpen) return;
+    setScopeDraft(scopeFilterValue);
+    scopeDraftRef.current = scopeFilterValue;
+  }, [filtersOpen, scopeFilterValue]);
 
   return (
     <div className="dashboard-page cost-explorer-page">
@@ -271,45 +272,48 @@ export default function LoadBalancerListPage() {
 
               <div className="cost-explorer-toolbar-item">
                 <label className="cost-explorer-toolbar-trigger">
-                  <span className="cost-explorer-toolbar-trigger__label">Sort</span>
+                  <span className="cost-explorer-toolbar-trigger__label">Type</span>
                   <select
-                    value={controls.sortBy}
-                    onChange={(event) => {
-                      setControls((current) => ({
-                        ...current,
-                        sortBy: event.target.value as ListControls["sortBy"],
-                      }));
-                    }}
+                    value={controls.type}
+                    onChange={(event) => setControls((current) => ({ ...current, type: event.target.value }))}
                   >
-                    <option value="name">Name</option>
-                    <option value="type">Type</option>
-                    <option value="scheme">Scheme</option>
-                    <option value="region">Region</option>
-                    <option value="totalCost">Total Cost</option>
-                    <option value="fixedCost">Fixed Cost</option>
-                    <option value="lcuCost">LCU Cost</option>
-                    <option value="dataProcessingCost">Data Processing Cost</option>
+                    <option value="">All</option>
+                    <option value="application">Application</option>
+                    <option value="network">Network</option>
                   </select>
                 </label>
               </div>
 
               <div className="cost-explorer-toolbar-item">
                 <label className="cost-explorer-toolbar-trigger">
-                  <span className="cost-explorer-toolbar-trigger__label">Direction</span>
+                  <span className="cost-explorer-toolbar-trigger__label">Scheme</span>
                   <select
-                    value={controls.sortDirection}
-                    onChange={(event) => {
-                      setControls((current) => ({
-                        ...current,
-                        sortDirection: event.target.value as ListControls["sortDirection"],
-                      }));
-                    }}
+                    value={controls.scheme}
+                    onChange={(event) => setControls((current) => ({ ...current, scheme: event.target.value }))}
                   >
-                    <option value="asc">Ascending</option>
-                    <option value="desc">Descending</option>
+                    <option value="">All</option>
+                    <option value="internet-facing">Internet-facing</option>
+                    <option value="internal">Internal</option>
                   </select>
                 </label>
               </div>
+
+              <div className="cost-explorer-toolbar-item">
+                <label className="cost-explorer-toolbar-trigger">
+                  <span className="cost-explorer-toolbar-trigger__label">State</span>
+                  <select
+                    value={controls.state}
+                    onChange={(event) => setControls((current) => ({ ...current, state: event.target.value }))}
+                  >
+                    <option value="">All</option>
+                    <option value="active">Active</option>
+                    <option value="provisioning">Provisioning</option>
+                    <option value="failed">Failed</option>
+                  </select>
+                </label>
+              </div>
+
+
             </div>
           </div>
 
@@ -390,28 +394,21 @@ export default function LoadBalancerListPage() {
             <DialogTitle className="text-xl font-semibold text-text-primary">Load Balancer Filters</DialogTitle>
           </DialogHeader>
           <div className="mt-4 ec2-explorer-thresholds">
-            <div className="ec2-explorer-thresholds__grid">
-              <label className="ec2-explorer-thresholds__field"><span>Account</span><input value={controls.account} onChange={(e) => setControls((c) => ({ ...c, account: e.target.value }))} /></label>
-              <label className="ec2-explorer-thresholds__field"><span>Region</span><input value={controls.region} onChange={(e) => setControls((c) => ({ ...c, region: e.target.value }))} /></label>
-              <label className="ec2-explorer-thresholds__field"><span>Type</span><input value={controls.type} onChange={(e) => setControls((c) => ({ ...c, type: e.target.value }))} /></label>
-              <label className="ec2-explorer-thresholds__field"><span>Scheme</span><input value={controls.scheme} onChange={(e) => setControls((c) => ({ ...c, scheme: e.target.value }))} /></label>
-              <label className="ec2-explorer-thresholds__field"><span>State</span><input value={controls.state} onChange={(e) => setControls((c) => ({ ...c, state: e.target.value }))} /></label>
-              <label className="ec2-explorer-thresholds__field"><span>Team</span><input value={controls.team} onChange={(e) => setControls((c) => ({ ...c, team: e.target.value }))} /></label>
-              <label className="ec2-explorer-thresholds__field"><span>Product</span><input value={controls.product} onChange={(e) => setControls((c) => ({ ...c, product: e.target.value }))} /></label>
-              <label className="ec2-explorer-thresholds__field"><span>Environment</span><input value={controls.environment} onChange={(e) => setControls((c) => ({ ...c, environment: e.target.value }))} /></label>
-              <label className="ec2-explorer-thresholds__field"><span>Tags</span><input placeholder="key:value, key2:value2" value={controls.tags} onChange={(e) => setControls((c) => ({ ...c, tags: e.target.value }))} /></label>
-            </div>
-            <div className="cost-explorer-filter-popover__actions">
-              <button
-                type="button"
-                className="cost-explorer-filter-popover__apply"
-                onClick={() => {
-                  setFiltersOpen(false);
-                }}
-              >
-                Apply
-              </button>
-            </div>
+            <EC2ExplorerScopeFilters
+              value={scopeDraft}
+              onChange={(next) => {
+                scopeDraftRef.current = next;
+                setScopeDraft(next);
+              }}
+              onApply={() => {
+                setControls((current) => ({
+                  ...current,
+                  region: scopeDraftRef.current.region[0] ?? "",
+                  tags: scopeDraftRef.current.tags.join(","),
+                }));
+                setFiltersOpen(false);
+              }}
+            />
           </div>
         </DialogContent>
       </Dialog>
