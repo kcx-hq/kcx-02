@@ -191,7 +191,7 @@ export function TeamAccessUsersSection() {
 
   return (
     <section aria-label="Users management" className="space-y-4">
-      <Card className="rounded-md border-[color:var(--border-light)] bg-white shadow-sm-custom">
+      <Card className="rounded-md border-[color:var(--border-light)] bg-[#f7fbfb] shadow-sm-custom">
         <div className="grid grid-cols-1 border-b border-[color:var(--border-light)] md:grid-cols-3">
           <div className="min-h-[108px] px-6 py-4">
             <div className="flex items-start justify-between gap-3">
@@ -199,8 +199,8 @@ export function TeamAccessUsersSection() {
                 <p className="text-xs font-semibold uppercase tracking-[0.08em] text-text-muted">Total Users</p>
                 <p className="mt-3 text-[2rem] font-semibold leading-none text-text-primary">{counts.total}</p>
               </div>
-              <span className="inline-flex h-10 w-10 items-center justify-center rounded-md border border-[color:var(--border-light)] bg-[color:var(--bg-surface)] text-text-secondary">
-                <Users className="h-4.5 w-4.5" />
+              <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-[rgba(55,145,116,0.12)] text-[color:#24755d]">
+                <Users className="h-4 w-4" />
               </span>
             </div>
           </div>
@@ -210,8 +210,8 @@ export function TeamAccessUsersSection() {
                 <p className="text-xs font-semibold uppercase tracking-[0.08em] text-text-muted">Active Users</p>
                 <p className="mt-3 text-[2rem] font-semibold leading-none text-text-primary">{counts.active}</p>
               </div>
-              <span className="inline-flex h-10 w-10 items-center justify-center rounded-md border border-[color:var(--border-light)] bg-[color:var(--bg-surface)] text-text-secondary">
-                <UserCheck className="h-4.5 w-4.5" />
+              <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-[rgba(55,145,116,0.14)] text-[color:#1f7d60]">
+                <UserCheck className="h-4 w-4" />
               </span>
             </div>
           </div>
@@ -221,8 +221,8 @@ export function TeamAccessUsersSection() {
                 <p className="text-xs font-semibold uppercase tracking-[0.08em] text-text-muted">Pending Access</p>
                 <p className="mt-3 text-[2rem] font-semibold leading-none text-text-primary">{counts.pending}</p>
               </div>
-              <span className="inline-flex h-10 w-10 items-center justify-center rounded-md border border-[color:var(--border-light)] bg-[color:var(--bg-surface)] text-text-secondary">
-                <ShieldCheck className="h-4.5 w-4.5" />
+              <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-[rgba(214,135,26,0.14)] text-[color:#9e5a00]">
+                <ShieldCheck className="h-4 w-4" />
               </span>
             </div>
           </div>
@@ -239,7 +239,7 @@ export function TeamAccessUsersSection() {
                   setPage(1)
                 }}
                 placeholder="Search users..."
-                className="h-9 w-full rounded-md border border-[color:var(--border-light)] bg-[color:var(--bg-surface)] pl-9 pr-3 text-sm text-text-primary outline-none transition-colors focus:border-[color:var(--kcx-border-strong)]"
+                className="h-9 w-full rounded-none border-0 border-b border-[color:var(--border-light)] bg-transparent pl-9 pr-3 text-sm text-text-primary outline-none transition-colors focus:border-[color:var(--kcx-border-strong)]"
               />
               </div>
 
@@ -253,7 +253,7 @@ export function TeamAccessUsersSection() {
                       setPage(1)
                     }
                   }
-                  className="h-9 min-w-[11rem] rounded-md border border-[color:var(--border-light)] bg-[color:var(--bg-surface)] pl-9 pr-3 text-sm text-text-primary outline-none"
+                  className="h-9 min-w-[11rem] rounded-none border-0 border-b border-[color:var(--border-light)] bg-transparent pl-9 pr-3 text-sm text-text-primary outline-none"
                 >
                   <option value="ALL">All Statuses</option>
                   <option value="active">Active</option>
@@ -338,7 +338,7 @@ export function TeamAccessUsersSection() {
                           {(user.status === "invited" || user.status === "pending_approval") ? (
                             <Button
                               variant="outline"
-                              className="h-8 rounded-md px-2.5"
+                              className="h-8 rounded-none border-[color:var(--border-light)] bg-transparent px-2.5 text-text-primary hover:bg-transparent disabled:bg-transparent disabled:text-text-muted disabled:opacity-100"
                               disabled={approveMutation.isPending || statusMutation.isPending}
                               onClick={() => approveMutation.mutate(user.id)}
                             >
@@ -349,7 +349,7 @@ export function TeamAccessUsersSection() {
                           {user.status === "active" ? (
                             <Button
                               variant="outline"
-                              className="h-8 rounded-md px-2.5"
+                              className="h-8 rounded-none border-[color:var(--border-light)] bg-transparent px-2.5 text-text-primary hover:bg-transparent disabled:bg-transparent disabled:text-text-muted disabled:opacity-100"
                               disabled={statusMutation.isPending || user.isPrimaryAdmin}
                               onClick={() => statusMutation.mutate({ userId: user.id, status: "inactive" })}
                             >
@@ -360,7 +360,7 @@ export function TeamAccessUsersSection() {
                           {user.status === "inactive" ? (
                             <Button
                               variant="outline"
-                              className="h-8 rounded-md px-2.5"
+                              className="h-8 rounded-none border-[color:var(--border-light)] bg-transparent px-2.5 text-text-primary hover:bg-transparent disabled:bg-transparent disabled:text-text-muted disabled:opacity-100"
                               disabled={statusMutation.isPending}
                               onClick={() => statusMutation.mutate({ userId: user.id, status: "active" })}
                             >
@@ -398,7 +398,7 @@ export function TeamAccessUsersSection() {
           }
         }}
       >
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-lg rounded-none">
           <DialogHeader>
             <DialogTitle>Invite User</DialogTitle>
           </DialogHeader>
@@ -417,8 +417,8 @@ export function TeamAccessUsersSection() {
                 }}
                 placeholder="Jane Doe"
                 className={cn(
-                  "h-10 w-full rounded-md border bg-white px-3 text-sm text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(62,138,118,0.2)]",
-                  inviteErrors.fullName ? "border-red-300 focus-visible:ring-[rgba(220,38,38,0.2)]" : "border-[color:var(--border-light)]",
+                  "h-10 w-full rounded-none border-0 border-b bg-transparent px-0 text-sm text-text-primary focus-visible:outline-none",
+                  inviteErrors.fullName ? "border-red-300" : "border-[color:var(--border-light)] focus:border-[color:var(--kcx-border-strong)]",
                 )}
               />
               {inviteErrors.fullName ? <p className="text-xs text-red-600">{inviteErrors.fullName}</p> : null}
@@ -437,8 +437,8 @@ export function TeamAccessUsersSection() {
                 }}
                 placeholder={companyDomain ? `jane@${companyDomain}` : "jane@company.com"}
                 className={cn(
-                  "h-10 w-full rounded-md border bg-white px-3 text-sm text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(62,138,118,0.2)]",
-                  inviteErrors.email ? "border-red-300 focus-visible:ring-[rgba(220,38,38,0.2)]" : "border-[color:var(--border-light)]",
+                  "h-10 w-full rounded-none border-0 border-b bg-transparent px-0 text-sm text-text-primary focus-visible:outline-none",
+                  inviteErrors.email ? "border-red-300" : "border-[color:var(--border-light)] focus:border-[color:var(--kcx-border-strong)]",
                 )}
               />
               {inviteErrors.email ? <p className="text-xs text-red-600">{inviteErrors.email}</p> : null}
@@ -451,7 +451,7 @@ export function TeamAccessUsersSection() {
                 id="invite-user-role"
                 value={inviteForm.role}
                 onChange={(event) => setInviteForm((current) => ({ ...current, role: event.target.value as "member" | "admin" }))}
-                className="h-10 w-full rounded-md border border-[color:var(--border-light)] bg-white px-3 text-sm text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(62,138,118,0.2)]"
+                className="h-10 w-full rounded-none border-0 border-b border-[color:var(--border-light)] bg-transparent px-0 text-sm text-text-primary focus-visible:outline-none focus:border-[color:var(--kcx-border-strong)]"
               >
                 <option value="member">Member</option>
                 <option value="admin">Admin</option>
@@ -459,10 +459,10 @@ export function TeamAccessUsersSection() {
             </div>
 
             <div className="flex items-center justify-end gap-2 pt-2">
-              <Button type="button" variant="outline" className="h-9 rounded-md" onClick={() => setInviteDialogOpen(false)}>
+              <Button type="button" variant="outline" className="h-9 rounded-none" onClick={() => setInviteDialogOpen(false)}>
                 Cancel
               </Button>
-              <Button type="submit" className="h-9 rounded-md" disabled={inviteMutation.isPending}>
+              <Button type="submit" className="h-9 rounded-none" disabled={inviteMutation.isPending}>
                 {inviteMutation.isPending ? "Inviting..." : "Send Invite"}
               </Button>
             </div>

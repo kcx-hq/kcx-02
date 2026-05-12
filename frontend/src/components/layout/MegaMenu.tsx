@@ -45,7 +45,7 @@ export function MegaMenu({ menu, open, shellTone, onMouseEnter, onMouseLeave, on
   return (
     <div
       className={cn(
-        "absolute left-1/2 top-[calc(100%+0.65rem)] z-[70] w-[min(1140px,calc(100vw-2rem))] -translate-x-1/2 rounded-2xl p-5 transition-all duration-200",
+        "absolute left-1/2 top-[calc(100%+0.65rem)] z-[70] w-[min(1140px,calc(100vw-2rem))] -translate-x-1/2 rounded-none p-5 transition-all duration-200",
         shellTone === "light"
           ? "border border-[rgba(20,36,48,0.14)] bg-[rgba(248,251,250,0.82)] shadow-[0_34px_72px_-28px_rgba(8,22,33,0.28)] backdrop-blur-sm"
           : "border border-[rgba(255,255,255,0.2)] bg-[rgba(9,19,29,0.82)] shadow-[0_42px_90px_-30px_rgba(1,7,13,0.95)] backdrop-blur-sm",
@@ -75,7 +75,7 @@ export function MegaMenu({ menu, open, shellTone, onMouseEnter, onMouseLeave, on
                     href={link.href}
                     onClick={(event) => handleAppLinkClick(event, link.href, onLinkClick)}
                     className={cn(
-                      "block rounded-md px-2.5 py-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary",
+                      "block rounded-none px-2.5 py-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary",
                       shellTone === "light"
                         ? "hover:bg-[rgba(9,30,43,0.06)]"
                         : "hover:bg-[rgba(255,255,255,0.08)]"
@@ -128,7 +128,7 @@ export function MegaMenu({ menu, open, shellTone, onMouseEnter, onMouseLeave, on
 
         <aside
           className={cn(
-            "rounded-xl p-3.5",
+            "rounded-none p-3.5",
             shellTone === "light"
               ? "border border-[rgba(17,35,48,0.12)] bg-[rgba(255,255,255,0.6)] backdrop-blur-sm"
               : "border border-[rgba(255,255,255,0.22)] bg-[rgba(255,255,255,0.14)] backdrop-blur-sm"
@@ -158,7 +158,7 @@ export function MegaMenu({ menu, open, shellTone, onMouseEnter, onMouseLeave, on
           >
             {menu.featured.description}
           </p>
-          <Button asChild className="mt-4 h-9 px-4 text-xs">
+          <Button asChild className="mt-4 h-9 rounded-none px-4 text-xs">
             <a
               href={menu.featured.href}
               className="inline-flex items-center gap-1.5"

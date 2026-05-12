@@ -24,7 +24,7 @@ export function AnnouncementsTable({
   onArchive,
 }: AnnouncementsTableProps) {
   return (
-    <div className="mt-4 overflow-x-auto">
+    <div className="kcx-admin-table-scroll mt-4 overflow-x-auto">
       <table className="min-w-[1080px] w-full border-collapse text-sm">
         <thead>
           <tr className="border-b border-[color:rgba(15,23,42,0.1)] text-left text-[0.72rem] font-semibold uppercase tracking-[0.13em] text-[color:rgba(15,23,42,0.55)]">

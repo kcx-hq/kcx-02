@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react"
 
 import { Header } from "@/components/layout/Header"
-import { ActionPage } from "@/features/actions"
 import {
   ClientAwsConnectionPage,
   ClientBillingPage,
@@ -68,7 +67,6 @@ const CLIENT_WORKSPACE_ROUTES = new Set([
   "/client/support/live-chat",
   "/client/users",
   "/client/organization/users",
-  "/client/actions",
   "/client/profile",
   "/reports/cloud-cost-anomaly",
 ])
@@ -77,8 +75,7 @@ const CLOUD_PROVIDER_ROUTE_REGEX = /^\/client\/billing\/(?:connect-cloud|connect
 const NON_AWS_PROVIDER_ROUTE_REGEX = /^\/client\/billing\/(?:connect-cloud|connections)\/(azure|gcp|oracle-cloud)$/
 const AWS_MANUAL_EXPLORER_ROUTE_REGEX = /^\/client\/billing\/(?:connect-cloud|connections)\/aws\/manual\/explorer(?:\/|$)/
 const AWS_MANUAL_SUCCESS_ROUTE_REGEX = /^\/client\/billing\/(?:connect-cloud|connections)\/aws\/manual\/success(?:\/|$)/
-const DASHBOARD_ROUTE_REGEX =
-  /^\/dashboard(?:\/(?:overview|cost-explorer|resources|allocation|optimization|anomalies-alerts|budget|report))?$/
+const DASHBOARD_ROUTE_REGEX = /^\/dashboard(?:\/.*)?$/
 const MANUAL_DASHBOARD_ROUTE_REGEX =
   /^\/uploads-dashboard(?:\/(?:overview|cost-explorer|anomalies-alerts))?$/
 const REPORT_STANDALONE_ROUTE_REGEX = /^\/reports\/cloud-cost-anomaly\/?$/
@@ -268,11 +265,6 @@ export function App() {
       {route === "/client/users" || route === "/client/organization/users" ? (
         <ClientLayout>
           <ClientTeamAccessPage />
-        </ClientLayout>
-      ) : null}
-      {route === "/client/actions" ? (
-        <ClientLayout>
-          <ActionPage />
         </ClientLayout>
       ) : null}
       {route === "/client/profile" ? (

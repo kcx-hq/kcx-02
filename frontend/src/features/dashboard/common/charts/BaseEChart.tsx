@@ -6,6 +6,7 @@ type BaseEChartProps = {
   option: EChartsOption;
   height?: number;
   className?: string;
+  onPointClick?: (params: unknown) => void;
 };
 
 const sharedOption: EChartsOption = {
@@ -24,7 +25,7 @@ const sharedOption: EChartsOption = {
   },
 };
 
-export function BaseEChart({ option, height = 260, className }: BaseEChartProps) {
+export function BaseEChart({ option, height = 260, className, onPointClick }: BaseEChartProps) {
   const chartContainerRef = useRef<HTMLDivElement | null>(null);
   const chartRef = useRef<echarts.EChartsType | null>(null);
 
@@ -34,7 +35,7 @@ export function BaseEChart({ option, height = 260, className }: BaseEChartProps)
       return;
     }
 
-    chartRef.current = echarts.init(node, undefined, { renderer: "canvas" });
+    chartRef.current = echarts.init(node, undefined, { renderer: "canvas", useDirtyRect: true });
 
     const resizeObserver = new ResizeObserver(() => {
       chartRef.current?.resize();
@@ -59,11 +60,28 @@ export function BaseEChart({ option, height = 260, className }: BaseEChartProps)
         ...sharedOption,
         ...option,
       },
-      true,
+      {
+        notMerge: false,
+        lazyUpdate: true,
+      },
     );
   }, [option]);
 
+  useEffect(() => {
+    if (!chartRef.current) return;
+    if (!onPointClick) return;
+
+    const handler = (params: unknown) => {
+      onPointClick(params);
+    };
+
+    chartRef.current.on("click", handler);
+    return () => {
+      chartRef.current?.off("click", handler);
+    };
+  }, [onPointClick]);
+
   const containerClassName = className ? `dashboard-echart ${className}` : "dashboard-echart";
 
-  return <div ref={chartContainerRef} className={containerClassName} style={{ height }} aria-hidden="true" />;
+  return <div ref={chartContainerRef} className={containerClassName} style={{ height, cursor: onPointClick ? "pointer" : undefined }} aria-hidden="true" />;
 }

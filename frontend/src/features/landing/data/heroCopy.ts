@@ -1,15 +1,15 @@
 import type { LucideIcon } from "lucide-react"
-import { Clock3, FileText, Lock } from "lucide-react"
+import { CloudUpload, ShieldCheck, Zap } from "lucide-react"
 
 export const landingCloudProviders = [
   { label: "AWS" },
-  { label: "Azure" },
   { label: "GCP" },
-  { label: "Oracle" },
+  { label: "AWS" },
+  { label: "GCP" },
 ] as const
 
 export const landingHeroHighlights: Array<{ label: string; icon: LucideIcon }> = [
-  { label: "Instant Audit", icon: Clock3 },
-  { label: "CSV Upload", icon: FileText },
-  { label: "Secure & Private", icon: Lock },
+  { label: "Upload, S3, or AWS Connect", icon: CloudUpload },
+  { label: "Budgets & Anomaly Detection", icon: ShieldCheck },
+  { label: "Recommendation Execution for AWS", icon: Zap },
 ]

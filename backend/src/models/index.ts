@@ -19,6 +19,8 @@ import createBillingSourceModel from "./billing-source.js";
 import createBillingIngestionRunModel from "./billing-ingestion-run.js";
 import createBillingIngestionRunFileModel from "./billing-ingestion-run-file.js";
 import createAnomalyDetectionRunModel from "./anomaly-detection-run.js";
+import createStorageLensRawFileModel from "./storage-lens-raw-file.js";
+import createStorageLensIngestionRunModel from "./storage-lens-ingestion-run.js";
 import createManualCloudConnectionModel from "./manual-cloud-connection.js";
 import createS3UploadConnectionModel from "./s3-upload-connection.js";
 import createSupportTicketModel from "./support-ticket.js";
@@ -32,7 +34,9 @@ import createDimResourceModel from "./billing/dim_resource.js";
 import createDimSkuModel from "./billing/dim_sku.js";
 import createDimChargeModel from "./billing/dim_charge.js";
 import createDimDateModel from "./billing/dim_date.js";
+import createDimTagModel from "./billing/dim_tag.js";
 import createFactCostLineItemsModel from "./billing/fact_cost_line_items.js";
+import createFactCostLineItemTagsModel from "./billing/fact_cost_line_item_tags.js";
 import createBillingIngestionRowErrorModel from "./billing/billing_ingestion_row_error.js";
 import createResourceInventorySnapshotModel from "./billing/resource_inventory_snapshots.js";
 import createResourceUtilizationDailyModel from "./billing/resource_utilization_daily.js";
@@ -49,6 +53,39 @@ import createBudgetAlertsModel from "./billing/budget_alerts.js";
 import createAggCostHourlyModel from "./billing/agg_cost_hourly.js";
 import createAggCostDailyModel from "./billing/agg_cost_daily.js";
 import createAggCostMonthlyModel from "./billing/agg_cost_monthly.js";
+import createCostPeriodStatusModel from "./billing/cost_period_status.js";
+import createS3StorageLensDailyModel from "./billing/s3_storage_lens_daily.js";
+import createS3BucketConfigSnapshotModel from "./billing/s3_bucket_config_snapshot.js";
+import createS3BucketCostSummaryDailyModel from "./billing/s3_bucket_cost_summary_daily.js";
+import createS3CostDailyModel from "./billing/s3_cost_daily.js";
+import createS3PolicyActionLogsModel from "./billing/s3_policy_action_logs.js";
+import createEc2CostHistoryDailyModel from "./ec2/ec2_cost_history_daily.js";
+import createEc2CostHistoryMonthlyModel from "./ec2/ec2_cost_history_monthly.js";
+import createEc2InstanceInventorySnapshotModel from "./ec2/ec2_instance_inventory_snapshots.js";
+import createEc2VolumeInventorySnapshotModel from "./ec2/ec2_volume_inventory_snapshots.js";
+import createEc2SnapshotInventorySnapshotModel from "./ec2/ec2_snapshot_inventory_snapshots.js";
+import createEc2EipInventorySnapshotModel from "./ec2/ec2_eip_inventory_snapshots.js";
+import createEc2AmiInventorySnapshotModel from "./ec2/ec2_ami_inventory_snapshots.js";
+import createEc2LoadBalancerInventorySnapshotModel from "./ec2/ec2_load_balancer_inventory_snapshots.js";
+import createEc2TargetGroupInventorySnapshotModel from "./ec2/ec2_target_group_inventory_snapshots.js";
+import createLoadBalancerModel from "./load_balancers/load_balancers.js";
+import createLoadBalancerTargetGroupModel from "./load_balancers/load_balancer_target_groups.js";
+import createLoadBalancerListenerModel from "./load_balancers/load_balancer_listeners.js";
+import createLoadBalancerCostDailyModel from "./load_balancers/load_balancer_cost_daily.js";
+import createLoadBalancerMetricsDailyModel from "./load_balancers/load_balancer_metrics_daily.js";
+import createEc2InstanceUtilizationHourlyModel from "./ec2/ec2_instance_utilization_hourly.js";
+import createEc2InstanceUtilizationDailyModel from "./ec2/ec2_instance_utilization_daily.js";
+import createDbResourceInventorySnapshotModel from "./db/db_resource_inventory_snapshots.js";
+import createDbCostHistoryDailyModel from "./db/db_cost_history_daily.js";
+import createDbUtilizationDailyModel from "./db/db_utilization_daily.js";
+import createFactDbResourceDailyModel from "./db/fact_db_resource_daily.js";
+import createFactEc2InstanceDailyModel from "./ec2/fact_ec2_instance_daily.js";
+import createFactEc2InstanceCostDailyModel from "./ec2/fact_ec2_instance_cost_daily.js";
+import createFactEc2InstanceCoverageDailyModel from "./ec2/fact_ec2_instance_coverage_daily.js";
+import createFactEbsVolumeDailyModel from "./ec2/fact_ebs_volume_daily.js";
+import createEbsVolumeUtilizationHourlyModel from "./ec2/ebs_volume_utilization_hourly.js";
+import createEbsVolumeUtilizationDailyModel from "./ec2/ebs_volume_utilization_daily.js";
+import createScheduledJobModel from "./ec2/scheduled_jobs.js";
 
 const dbUrl = new URL(env.dbUrl);
 if (!dbUrl.searchParams.has("sslmode")) {
@@ -85,6 +122,8 @@ const BillingSource = createBillingSourceModel(sequelize);
 const BillingIngestionRun = createBillingIngestionRunModel(sequelize);
 const BillingIngestionRunFile = createBillingIngestionRunFileModel(sequelize);
 const AnomalyDetectionRun = createAnomalyDetectionRunModel(sequelize);
+const StorageLensRawFile = createStorageLensRawFileModel(sequelize);
+const StorageLensIngestionRun = createStorageLensIngestionRunModel(sequelize);
 const ManualCloudConnection = createManualCloudConnectionModel(sequelize);
 const S3UploadConnection = createS3UploadConnectionModel(sequelize);
 const SupportTicket = createSupportTicketModel(sequelize);
@@ -98,7 +137,9 @@ const DimResource = createDimResourceModel(sequelize);
 const DimSku = createDimSkuModel(sequelize);
 const DimCharge = createDimChargeModel(sequelize);
 const DimDate = createDimDateModel(sequelize);
+const DimTag = createDimTagModel(sequelize);
 const FactCostLineItems = createFactCostLineItemsModel(sequelize);
+const FactCostLineItemTags = createFactCostLineItemTagsModel(sequelize);
 const BillingIngestionRowError = createBillingIngestionRowErrorModel(sequelize);
 const ResourceInventorySnapshot = createResourceInventorySnapshotModel(sequelize);
 const ResourceUtilizationDaily = createResourceUtilizationDailyModel(sequelize);
@@ -115,6 +156,39 @@ const BudgetAlerts = createBudgetAlertsModel(sequelize);
 const AggCostHourly = createAggCostHourlyModel(sequelize);
 const AggCostDaily = createAggCostDailyModel(sequelize);
 const AggCostMonthly = createAggCostMonthlyModel(sequelize);
+const CostPeriodStatus = createCostPeriodStatusModel(sequelize);
+const S3StorageLensDaily = createS3StorageLensDailyModel(sequelize);
+const S3BucketConfigSnapshot = createS3BucketConfigSnapshotModel(sequelize);
+const S3BucketCostSummaryDaily = createS3BucketCostSummaryDailyModel(sequelize);
+const S3CostDaily = createS3CostDailyModel(sequelize);
+const S3PolicyActionLogs = createS3PolicyActionLogsModel(sequelize);
+const Ec2CostHistoryDaily = createEc2CostHistoryDailyModel(sequelize);
+const Ec2CostHistoryMonthly = createEc2CostHistoryMonthlyModel(sequelize);
+const Ec2InstanceInventorySnapshot = createEc2InstanceInventorySnapshotModel(sequelize);
+const Ec2VolumeInventorySnapshot = createEc2VolumeInventorySnapshotModel(sequelize);
+const Ec2SnapshotInventorySnapshot = createEc2SnapshotInventorySnapshotModel(sequelize);
+const Ec2EipInventorySnapshot = createEc2EipInventorySnapshotModel(sequelize);
+const Ec2AmiInventorySnapshot = createEc2AmiInventorySnapshotModel(sequelize);
+const Ec2LoadBalancerInventorySnapshot = createEc2LoadBalancerInventorySnapshotModel(sequelize);
+const Ec2TargetGroupInventorySnapshot = createEc2TargetGroupInventorySnapshotModel(sequelize);
+const LoadBalancer = createLoadBalancerModel(sequelize);
+const LoadBalancerTargetGroup = createLoadBalancerTargetGroupModel(sequelize);
+const LoadBalancerListener = createLoadBalancerListenerModel(sequelize);
+const LoadBalancerCostDaily = createLoadBalancerCostDailyModel(sequelize);
+const LoadBalancerMetricsDaily = createLoadBalancerMetricsDailyModel(sequelize);
+const Ec2InstanceUtilizationHourly = createEc2InstanceUtilizationHourlyModel(sequelize);
+const Ec2InstanceUtilizationDaily = createEc2InstanceUtilizationDailyModel(sequelize);
+const DbResourceInventorySnapshot = createDbResourceInventorySnapshotModel(sequelize);
+const DbCostHistoryDaily = createDbCostHistoryDailyModel(sequelize);
+const DbUtilizationDaily = createDbUtilizationDailyModel(sequelize);
+const FactDbResourceDaily = createFactDbResourceDailyModel(sequelize);
+const FactEc2InstanceDaily = createFactEc2InstanceDailyModel(sequelize);
+const FactEc2InstanceCostDaily = createFactEc2InstanceCostDailyModel(sequelize);
+const FactEc2InstanceCoverageDaily = createFactEc2InstanceCoverageDailyModel(sequelize);
+const FactEbsVolumeDaily = createFactEbsVolumeDailyModel(sequelize);
+const EbsVolumeUtilizationHourly = createEbsVolumeUtilizationHourlyModel(sequelize);
+const EbsVolumeUtilizationDaily = createEbsVolumeUtilizationDailyModel(sequelize);
+const ScheduledJob = createScheduledJobModel(sequelize);
 
 User.hasMany(DemoRequest, { foreignKey: "userId" });
 DemoRequest.belongsTo(User, { foreignKey: "userId" });
@@ -163,6 +237,12 @@ BillingIngestionRun.hasMany(AnomalyDetectionRun, { foreignKey: "ingestionRunId" 
 AnomalyDetectionRun.belongsTo(BillingIngestionRun, { foreignKey: "ingestionRunId" });
 RawBillingFile.hasMany(BillingIngestionRunFile, { foreignKey: "rawBillingFileId" });
 BillingIngestionRunFile.belongsTo(RawBillingFile, { foreignKey: "rawBillingFileId" });
+BillingSource.hasMany(StorageLensIngestionRun, { foreignKey: "billingSourceId" });
+StorageLensIngestionRun.belongsTo(BillingSource, { foreignKey: "billingSourceId" });
+BillingSource.hasMany(StorageLensRawFile, { foreignKey: "billingSourceId" });
+StorageLensRawFile.belongsTo(BillingSource, { foreignKey: "billingSourceId" });
+StorageLensIngestionRun.hasMany(StorageLensRawFile, { foreignKey: "ingestionRunId" });
+StorageLensRawFile.belongsTo(StorageLensIngestionRun, { foreignKey: "ingestionRunId" });
 Tenant.hasMany(ManualCloudConnection, { foreignKey: "tenantId" });
 ManualCloudConnection.belongsTo(Tenant, { foreignKey: "tenantId" });
 User.hasMany(ManualCloudConnection, { foreignKey: "createdBy" });
@@ -207,6 +287,11 @@ DimResource.belongsTo(CloudProvider, { foreignKey: "providerId" });
 CloudProvider.hasMany(DimSku, { foreignKey: "providerId" });
 DimSku.belongsTo(CloudProvider, { foreignKey: "providerId" });
 
+Tenant.hasMany(DimTag, { foreignKey: "tenantId" });
+DimTag.belongsTo(Tenant, { foreignKey: "tenantId" });
+CloudProvider.hasMany(DimTag, { foreignKey: "providerId" });
+DimTag.belongsTo(CloudProvider, { foreignKey: "providerId" });
+
 DimBillingAccount.hasMany(FactCostLineItems, { foreignKey: "billingAccountKey" });
 FactCostLineItems.belongsTo(DimBillingAccount, { foreignKey: "billingAccountKey" });
 DimSubAccount.hasMany(FactCostLineItems, { foreignKey: "subAccountKey" });
@@ -221,6 +306,16 @@ DimSku.hasMany(FactCostLineItems, { foreignKey: "skuKey" });
 FactCostLineItems.belongsTo(DimSku, { foreignKey: "skuKey" });
 DimCharge.hasMany(FactCostLineItems, { foreignKey: "chargeKey" });
 FactCostLineItems.belongsTo(DimCharge, { foreignKey: "chargeKey" });
+DimTag.hasMany(FactCostLineItems, { foreignKey: "tagId" });
+FactCostLineItems.belongsTo(DimTag, { foreignKey: "tagId" });
+FactCostLineItems.hasMany(FactCostLineItemTags, { foreignKey: "factId" });
+FactCostLineItemTags.belongsTo(FactCostLineItems, { foreignKey: "factId" });
+DimTag.hasMany(FactCostLineItemTags, { foreignKey: "tagId" });
+FactCostLineItemTags.belongsTo(DimTag, { foreignKey: "tagId" });
+Tenant.hasMany(FactCostLineItemTags, { foreignKey: "tenantId" });
+FactCostLineItemTags.belongsTo(Tenant, { foreignKey: "tenantId" });
+CloudProvider.hasMany(FactCostLineItemTags, { foreignKey: "providerId" });
+FactCostLineItemTags.belongsTo(CloudProvider, { foreignKey: "providerId" });
 
 DimDate.hasMany(FactCostLineItems, { foreignKey: "usageDateKey" });
 FactCostLineItems.belongsTo(DimDate, { foreignKey: "usageDateKey", as: "usageDate" });
@@ -271,6 +366,181 @@ DimRegion.hasMany(ResourceUtilizationDaily, { foreignKey: "regionKey" });
 ResourceUtilizationDaily.belongsTo(DimRegion, { foreignKey: "regionKey" });
 DimSubAccount.hasMany(ResourceUtilizationDaily, { foreignKey: "subAccountKey" });
 ResourceUtilizationDaily.belongsTo(DimSubAccount, { foreignKey: "subAccountKey" });
+
+Tenant.hasMany(DbUtilizationDaily, { foreignKey: "tenantId" });
+DbUtilizationDaily.belongsTo(Tenant, { foreignKey: "tenantId" });
+CloudConnectionV2.hasMany(DbUtilizationDaily, { foreignKey: "cloudConnectionId" });
+DbUtilizationDaily.belongsTo(CloudConnectionV2, { foreignKey: "cloudConnectionId" });
+CloudProvider.hasMany(DbUtilizationDaily, { foreignKey: "providerId" });
+DbUtilizationDaily.belongsTo(CloudProvider, { foreignKey: "providerId" });
+DimResource.hasMany(DbUtilizationDaily, { foreignKey: "resourceKey" });
+DbUtilizationDaily.belongsTo(DimResource, { foreignKey: "resourceKey" });
+DimRegion.hasMany(DbUtilizationDaily, { foreignKey: "regionKey" });
+DbUtilizationDaily.belongsTo(DimRegion, { foreignKey: "regionKey" });
+DimSubAccount.hasMany(DbUtilizationDaily, { foreignKey: "subAccountKey" });
+DbUtilizationDaily.belongsTo(DimSubAccount, { foreignKey: "subAccountKey" });
+
+Tenant.hasMany(FactDbResourceDaily, { foreignKey: "tenantId" });
+FactDbResourceDaily.belongsTo(Tenant, { foreignKey: "tenantId" });
+CloudConnectionV2.hasMany(FactDbResourceDaily, { foreignKey: "cloudConnectionId" });
+FactDbResourceDaily.belongsTo(CloudConnectionV2, { foreignKey: "cloudConnectionId" });
+BillingSource.hasMany(FactDbResourceDaily, { foreignKey: "billingSourceId" });
+FactDbResourceDaily.belongsTo(BillingSource, { foreignKey: "billingSourceId" });
+CloudProvider.hasMany(FactDbResourceDaily, { foreignKey: "providerId" });
+FactDbResourceDaily.belongsTo(CloudProvider, { foreignKey: "providerId" });
+DimResource.hasMany(FactDbResourceDaily, { foreignKey: "resourceKey" });
+FactDbResourceDaily.belongsTo(DimResource, { foreignKey: "resourceKey" });
+DimRegion.hasMany(FactDbResourceDaily, { foreignKey: "regionKey" });
+FactDbResourceDaily.belongsTo(DimRegion, { foreignKey: "regionKey" });
+DimSubAccount.hasMany(FactDbResourceDaily, { foreignKey: "subAccountKey" });
+FactDbResourceDaily.belongsTo(DimSubAccount, { foreignKey: "subAccountKey" });
+
+Tenant.hasMany(Ec2InstanceInventorySnapshot, { foreignKey: "tenantId" });
+Ec2InstanceInventorySnapshot.belongsTo(Tenant, { foreignKey: "tenantId" });
+CloudConnectionV2.hasMany(Ec2InstanceInventorySnapshot, { foreignKey: "cloudConnectionId" });
+Ec2InstanceInventorySnapshot.belongsTo(CloudConnectionV2, { foreignKey: "cloudConnectionId" });
+CloudProvider.hasMany(Ec2InstanceInventorySnapshot, { foreignKey: "providerId" });
+Ec2InstanceInventorySnapshot.belongsTo(CloudProvider, { foreignKey: "providerId" });
+DimResource.hasMany(Ec2InstanceInventorySnapshot, { foreignKey: "resourceKey" });
+Ec2InstanceInventorySnapshot.belongsTo(DimResource, { foreignKey: "resourceKey" });
+DimRegion.hasMany(Ec2InstanceInventorySnapshot, { foreignKey: "regionKey" });
+Ec2InstanceInventorySnapshot.belongsTo(DimRegion, { foreignKey: "regionKey" });
+DimSubAccount.hasMany(Ec2InstanceInventorySnapshot, { foreignKey: "subAccountKey" });
+Ec2InstanceInventorySnapshot.belongsTo(DimSubAccount, { foreignKey: "subAccountKey" });
+
+Tenant.hasMany(DbResourceInventorySnapshot, { foreignKey: "tenantId" });
+DbResourceInventorySnapshot.belongsTo(Tenant, { foreignKey: "tenantId" });
+CloudConnectionV2.hasMany(DbResourceInventorySnapshot, { foreignKey: "cloudConnectionId" });
+DbResourceInventorySnapshot.belongsTo(CloudConnectionV2, { foreignKey: "cloudConnectionId" });
+CloudProvider.hasMany(DbResourceInventorySnapshot, { foreignKey: "providerId" });
+DbResourceInventorySnapshot.belongsTo(CloudProvider, { foreignKey: "providerId" });
+DimResource.hasMany(DbResourceInventorySnapshot, { foreignKey: "resourceKey" });
+DbResourceInventorySnapshot.belongsTo(DimResource, { foreignKey: "resourceKey" });
+DimRegion.hasMany(DbResourceInventorySnapshot, { foreignKey: "regionKey" });
+DbResourceInventorySnapshot.belongsTo(DimRegion, { foreignKey: "regionKey" });
+DimSubAccount.hasMany(DbResourceInventorySnapshot, { foreignKey: "subAccountKey" });
+DbResourceInventorySnapshot.belongsTo(DimSubAccount, { foreignKey: "subAccountKey" });
+
+Tenant.hasMany(Ec2InstanceUtilizationHourly, { foreignKey: "tenantId" });
+Ec2InstanceUtilizationHourly.belongsTo(Tenant, { foreignKey: "tenantId" });
+CloudConnectionV2.hasMany(Ec2InstanceUtilizationHourly, { foreignKey: "cloudConnectionId" });
+Ec2InstanceUtilizationHourly.belongsTo(CloudConnectionV2, { foreignKey: "cloudConnectionId" });
+CloudProvider.hasMany(Ec2InstanceUtilizationHourly, { foreignKey: "providerId" });
+Ec2InstanceUtilizationHourly.belongsTo(CloudProvider, { foreignKey: "providerId" });
+DimResource.hasMany(Ec2InstanceUtilizationHourly, { foreignKey: "resourceKey" });
+Ec2InstanceUtilizationHourly.belongsTo(DimResource, { foreignKey: "resourceKey" });
+DimRegion.hasMany(Ec2InstanceUtilizationHourly, { foreignKey: "regionKey" });
+Ec2InstanceUtilizationHourly.belongsTo(DimRegion, { foreignKey: "regionKey" });
+DimSubAccount.hasMany(Ec2InstanceUtilizationHourly, { foreignKey: "subAccountKey" });
+Ec2InstanceUtilizationHourly.belongsTo(DimSubAccount, { foreignKey: "subAccountKey" });
+
+Tenant.hasMany(Ec2InstanceUtilizationDaily, { foreignKey: "tenantId" });
+Ec2InstanceUtilizationDaily.belongsTo(Tenant, { foreignKey: "tenantId" });
+CloudConnectionV2.hasMany(Ec2InstanceUtilizationDaily, { foreignKey: "cloudConnectionId" });
+Ec2InstanceUtilizationDaily.belongsTo(CloudConnectionV2, { foreignKey: "cloudConnectionId" });
+CloudProvider.hasMany(Ec2InstanceUtilizationDaily, { foreignKey: "providerId" });
+Ec2InstanceUtilizationDaily.belongsTo(CloudProvider, { foreignKey: "providerId" });
+DimResource.hasMany(Ec2InstanceUtilizationDaily, { foreignKey: "resourceKey" });
+Ec2InstanceUtilizationDaily.belongsTo(DimResource, { foreignKey: "resourceKey" });
+DimRegion.hasMany(Ec2InstanceUtilizationDaily, { foreignKey: "regionKey" });
+Ec2InstanceUtilizationDaily.belongsTo(DimRegion, { foreignKey: "regionKey" });
+DimSubAccount.hasMany(Ec2InstanceUtilizationDaily, { foreignKey: "subAccountKey" });
+Ec2InstanceUtilizationDaily.belongsTo(DimSubAccount, { foreignKey: "subAccountKey" });
+
+Tenant.hasMany(FactEc2InstanceDaily, { foreignKey: "tenantId" });
+FactEc2InstanceDaily.belongsTo(Tenant, { foreignKey: "tenantId" });
+CloudConnectionV2.hasMany(FactEc2InstanceDaily, { foreignKey: "cloudConnectionId" });
+FactEc2InstanceDaily.belongsTo(CloudConnectionV2, { foreignKey: "cloudConnectionId" });
+BillingSource.hasMany(FactEc2InstanceDaily, { foreignKey: "billingSourceId" });
+FactEc2InstanceDaily.belongsTo(BillingSource, { foreignKey: "billingSourceId" });
+CloudProvider.hasMany(FactEc2InstanceDaily, { foreignKey: "providerId" });
+FactEc2InstanceDaily.belongsTo(CloudProvider, { foreignKey: "providerId" });
+DimResource.hasMany(FactEc2InstanceDaily, { foreignKey: "resourceKey" });
+FactEc2InstanceDaily.belongsTo(DimResource, { foreignKey: "resourceKey" });
+DimRegion.hasMany(FactEc2InstanceDaily, { foreignKey: "regionKey" });
+FactEc2InstanceDaily.belongsTo(DimRegion, { foreignKey: "regionKey" });
+DimSubAccount.hasMany(FactEc2InstanceDaily, { foreignKey: "subAccountKey" });
+FactEc2InstanceDaily.belongsTo(DimSubAccount, { foreignKey: "subAccountKey" });
+
+Tenant.hasMany(FactEc2InstanceCostDaily, { foreignKey: "tenantId" });
+FactEc2InstanceCostDaily.belongsTo(Tenant, { foreignKey: "tenantId" });
+CloudConnectionV2.hasMany(FactEc2InstanceCostDaily, { foreignKey: "cloudConnectionId" });
+FactEc2InstanceCostDaily.belongsTo(CloudConnectionV2, { foreignKey: "cloudConnectionId" });
+BillingSource.hasMany(FactEc2InstanceCostDaily, { foreignKey: "billingSourceId" });
+FactEc2InstanceCostDaily.belongsTo(BillingSource, { foreignKey: "billingSourceId" });
+CloudProvider.hasMany(FactEc2InstanceCostDaily, { foreignKey: "providerId" });
+FactEc2InstanceCostDaily.belongsTo(CloudProvider, { foreignKey: "providerId" });
+DimResource.hasMany(FactEc2InstanceCostDaily, { foreignKey: "resourceKey" });
+FactEc2InstanceCostDaily.belongsTo(DimResource, { foreignKey: "resourceKey" });
+DimRegion.hasMany(FactEc2InstanceCostDaily, { foreignKey: "regionKey" });
+FactEc2InstanceCostDaily.belongsTo(DimRegion, { foreignKey: "regionKey" });
+DimSubAccount.hasMany(FactEc2InstanceCostDaily, { foreignKey: "subAccountKey" });
+FactEc2InstanceCostDaily.belongsTo(DimSubAccount, { foreignKey: "subAccountKey" });
+
+Tenant.hasMany(FactEc2InstanceCoverageDaily, { foreignKey: "tenantId" });
+FactEc2InstanceCoverageDaily.belongsTo(Tenant, { foreignKey: "tenantId" });
+CloudConnectionV2.hasMany(FactEc2InstanceCoverageDaily, { foreignKey: "cloudConnectionId" });
+FactEc2InstanceCoverageDaily.belongsTo(CloudConnectionV2, { foreignKey: "cloudConnectionId" });
+BillingSource.hasMany(FactEc2InstanceCoverageDaily, { foreignKey: "billingSourceId" });
+FactEc2InstanceCoverageDaily.belongsTo(BillingSource, { foreignKey: "billingSourceId" });
+CloudProvider.hasMany(FactEc2InstanceCoverageDaily, { foreignKey: "providerId" });
+FactEc2InstanceCoverageDaily.belongsTo(CloudProvider, { foreignKey: "providerId" });
+DimResource.hasMany(FactEc2InstanceCoverageDaily, { foreignKey: "resourceKey" });
+FactEc2InstanceCoverageDaily.belongsTo(DimResource, { foreignKey: "resourceKey" });
+DimRegion.hasMany(FactEc2InstanceCoverageDaily, { foreignKey: "regionKey" });
+FactEc2InstanceCoverageDaily.belongsTo(DimRegion, { foreignKey: "regionKey" });
+DimSubAccount.hasMany(FactEc2InstanceCoverageDaily, { foreignKey: "subAccountKey" });
+FactEc2InstanceCoverageDaily.belongsTo(DimSubAccount, { foreignKey: "subAccountKey" });
+
+Tenant.hasMany(FactEbsVolumeDaily, { foreignKey: "tenantId" });
+FactEbsVolumeDaily.belongsTo(Tenant, { foreignKey: "tenantId" });
+CloudConnectionV2.hasMany(FactEbsVolumeDaily, { foreignKey: "cloudConnectionId" });
+FactEbsVolumeDaily.belongsTo(CloudConnectionV2, { foreignKey: "cloudConnectionId" });
+BillingSource.hasMany(FactEbsVolumeDaily, { foreignKey: "billingSourceId" });
+FactEbsVolumeDaily.belongsTo(BillingSource, { foreignKey: "billingSourceId" });
+CloudProvider.hasMany(FactEbsVolumeDaily, { foreignKey: "providerId" });
+FactEbsVolumeDaily.belongsTo(CloudProvider, { foreignKey: "providerId" });
+DimResource.hasMany(FactEbsVolumeDaily, { foreignKey: "resourceKey" });
+FactEbsVolumeDaily.belongsTo(DimResource, { foreignKey: "resourceKey" });
+DimRegion.hasMany(FactEbsVolumeDaily, { foreignKey: "regionKey" });
+FactEbsVolumeDaily.belongsTo(DimRegion, { foreignKey: "regionKey" });
+DimSubAccount.hasMany(FactEbsVolumeDaily, { foreignKey: "subAccountKey" });
+FactEbsVolumeDaily.belongsTo(DimSubAccount, { foreignKey: "subAccountKey" });
+
+Tenant.hasMany(EbsVolumeUtilizationHourly, { foreignKey: "tenantId" });
+EbsVolumeUtilizationHourly.belongsTo(Tenant, { foreignKey: "tenantId" });
+CloudConnectionV2.hasMany(EbsVolumeUtilizationHourly, { foreignKey: "cloudConnectionId" });
+EbsVolumeUtilizationHourly.belongsTo(CloudConnectionV2, { foreignKey: "cloudConnectionId" });
+CloudProvider.hasMany(EbsVolumeUtilizationHourly, { foreignKey: "providerId" });
+EbsVolumeUtilizationHourly.belongsTo(CloudProvider, { foreignKey: "providerId" });
+DimResource.hasMany(EbsVolumeUtilizationHourly, { foreignKey: "resourceKey" });
+EbsVolumeUtilizationHourly.belongsTo(DimResource, { foreignKey: "resourceKey" });
+DimRegion.hasMany(EbsVolumeUtilizationHourly, { foreignKey: "regionKey" });
+EbsVolumeUtilizationHourly.belongsTo(DimRegion, { foreignKey: "regionKey" });
+DimSubAccount.hasMany(EbsVolumeUtilizationHourly, { foreignKey: "subAccountKey" });
+EbsVolumeUtilizationHourly.belongsTo(DimSubAccount, { foreignKey: "subAccountKey" });
+
+Tenant.hasMany(EbsVolumeUtilizationDaily, { foreignKey: "tenantId" });
+EbsVolumeUtilizationDaily.belongsTo(Tenant, { foreignKey: "tenantId" });
+CloudConnectionV2.hasMany(EbsVolumeUtilizationDaily, { foreignKey: "cloudConnectionId" });
+EbsVolumeUtilizationDaily.belongsTo(CloudConnectionV2, { foreignKey: "cloudConnectionId" });
+CloudProvider.hasMany(EbsVolumeUtilizationDaily, { foreignKey: "providerId" });
+EbsVolumeUtilizationDaily.belongsTo(CloudProvider, { foreignKey: "providerId" });
+DimResource.hasMany(EbsVolumeUtilizationDaily, { foreignKey: "resourceKey" });
+EbsVolumeUtilizationDaily.belongsTo(DimResource, { foreignKey: "resourceKey" });
+DimRegion.hasMany(EbsVolumeUtilizationDaily, { foreignKey: "regionKey" });
+EbsVolumeUtilizationDaily.belongsTo(DimRegion, { foreignKey: "regionKey" });
+DimSubAccount.hasMany(EbsVolumeUtilizationDaily, { foreignKey: "subAccountKey" });
+EbsVolumeUtilizationDaily.belongsTo(DimSubAccount, { foreignKey: "subAccountKey" });
+
+Tenant.hasMany(ScheduledJob, { foreignKey: "tenantId" });
+ScheduledJob.belongsTo(Tenant, { foreignKey: "tenantId" });
+CloudConnectionV2.hasMany(ScheduledJob, { foreignKey: "cloudConnectionId" });
+ScheduledJob.belongsTo(CloudConnectionV2, { foreignKey: "cloudConnectionId" });
+BillingSource.hasMany(ScheduledJob, { foreignKey: "billingSourceId" });
+ScheduledJob.belongsTo(BillingSource, { foreignKey: "billingSourceId" });
+CloudProvider.hasMany(ScheduledJob, { foreignKey: "providerId" });
+ScheduledJob.belongsTo(CloudProvider, { foreignKey: "providerId" });
 
 Tenant.hasMany(FactAnomalies, { foreignKey: "tenantId" });
 FactAnomalies.belongsTo(Tenant, { foreignKey: "tenantId" });
@@ -360,6 +630,86 @@ AggCostMonthly.belongsTo(CloudProvider, { foreignKey: "providerId" });
 User.hasMany(AggCostMonthly, { foreignKey: "uploadedBy" });
 AggCostMonthly.belongsTo(User, { foreignKey: "uploadedBy" });
 
+Tenant.hasMany(CostPeriodStatus, { foreignKey: "tenantId" });
+CostPeriodStatus.belongsTo(Tenant, { foreignKey: "tenantId" });
+CloudProvider.hasMany(CostPeriodStatus, { foreignKey: "providerId" });
+CostPeriodStatus.belongsTo(CloudProvider, { foreignKey: "providerId" });
+BillingSource.hasMany(CostPeriodStatus, { foreignKey: "billingSourceId" });
+CostPeriodStatus.belongsTo(BillingSource, { foreignKey: "billingSourceId" });
+BillingIngestionRun.hasMany(CostPeriodStatus, { foreignKey: "sourceIngestionRunId" });
+CostPeriodStatus.belongsTo(BillingIngestionRun, { foreignKey: "sourceIngestionRunId" });
+
+Tenant.hasMany(S3BucketConfigSnapshot, { foreignKey: "tenantId" });
+S3BucketConfigSnapshot.belongsTo(Tenant, { foreignKey: "tenantId" });
+CloudConnectionV2.hasMany(S3BucketConfigSnapshot, { foreignKey: "cloudConnectionId" });
+S3BucketConfigSnapshot.belongsTo(CloudConnectionV2, { foreignKey: "cloudConnectionId" });
+BillingSource.hasMany(S3BucketConfigSnapshot, { foreignKey: "billingSourceId" });
+S3BucketConfigSnapshot.belongsTo(BillingSource, { foreignKey: "billingSourceId" });
+CloudProvider.hasMany(S3BucketConfigSnapshot, { foreignKey: "providerId" });
+S3BucketConfigSnapshot.belongsTo(CloudProvider, { foreignKey: "providerId" });
+
+Tenant.hasMany(S3BucketCostSummaryDaily, { foreignKey: "tenantId" });
+S3BucketCostSummaryDaily.belongsTo(Tenant, { foreignKey: "tenantId" });
+CloudConnectionV2.hasMany(S3BucketCostSummaryDaily, { foreignKey: "cloudConnectionId" });
+S3BucketCostSummaryDaily.belongsTo(CloudConnectionV2, { foreignKey: "cloudConnectionId" });
+BillingSource.hasMany(S3BucketCostSummaryDaily, { foreignKey: "billingSourceId" });
+S3BucketCostSummaryDaily.belongsTo(BillingSource, { foreignKey: "billingSourceId" });
+CloudProvider.hasMany(S3BucketCostSummaryDaily, { foreignKey: "providerId" });
+S3BucketCostSummaryDaily.belongsTo(CloudProvider, { foreignKey: "providerId" });
+
+Tenant.hasMany(S3CostDaily, { foreignKey: "tenantId" });
+S3CostDaily.belongsTo(Tenant, { foreignKey: "tenantId" });
+CloudConnectionV2.hasMany(S3CostDaily, { foreignKey: "cloudConnectionId" });
+S3CostDaily.belongsTo(CloudConnectionV2, { foreignKey: "cloudConnectionId" });
+BillingSource.hasMany(S3CostDaily, { foreignKey: "billingSourceId" });
+S3CostDaily.belongsTo(BillingSource, { foreignKey: "billingSourceId" });
+CloudProvider.hasMany(S3CostDaily, { foreignKey: "providerId" });
+S3CostDaily.belongsTo(CloudProvider, { foreignKey: "providerId" });
+
+Tenant.hasMany(S3PolicyActionLogs, { foreignKey: "tenantId" });
+S3PolicyActionLogs.belongsTo(Tenant, { foreignKey: "tenantId" });
+CloudConnectionV2.hasMany(S3PolicyActionLogs, { foreignKey: "cloudConnectionId" });
+S3PolicyActionLogs.belongsTo(CloudConnectionV2, { foreignKey: "cloudConnectionId" });
+BillingSource.hasMany(S3PolicyActionLogs, { foreignKey: "billingSourceId" });
+S3PolicyActionLogs.belongsTo(BillingSource, { foreignKey: "billingSourceId" });
+CloudProvider.hasMany(S3PolicyActionLogs, { foreignKey: "providerId" });
+S3PolicyActionLogs.belongsTo(CloudProvider, { foreignKey: "providerId" });
+User.hasMany(S3PolicyActionLogs, { foreignKey: "createdByUserId" });
+S3PolicyActionLogs.belongsTo(User, { foreignKey: "createdByUserId" });
+
+Tenant.hasMany(Ec2CostHistoryDaily, { foreignKey: "tenantId" });
+Ec2CostHistoryDaily.belongsTo(Tenant, { foreignKey: "tenantId" });
+CloudProvider.hasMany(Ec2CostHistoryDaily, { foreignKey: "providerId" });
+Ec2CostHistoryDaily.belongsTo(CloudProvider, { foreignKey: "providerId" });
+BillingSource.hasMany(Ec2CostHistoryDaily, { foreignKey: "billingSourceId" });
+Ec2CostHistoryDaily.belongsTo(BillingSource, { foreignKey: "billingSourceId" });
+CloudConnectionV2.hasMany(Ec2CostHistoryDaily, { foreignKey: "cloudConnectionId" });
+Ec2CostHistoryDaily.belongsTo(CloudConnectionV2, { foreignKey: "cloudConnectionId" });
+BillingIngestionRun.hasMany(Ec2CostHistoryDaily, { foreignKey: "ingestionRunId" });
+Ec2CostHistoryDaily.belongsTo(BillingIngestionRun, { foreignKey: "ingestionRunId" });
+
+Tenant.hasMany(DbCostHistoryDaily, { foreignKey: "tenantId" });
+DbCostHistoryDaily.belongsTo(Tenant, { foreignKey: "tenantId" });
+CloudProvider.hasMany(DbCostHistoryDaily, { foreignKey: "providerId" });
+DbCostHistoryDaily.belongsTo(CloudProvider, { foreignKey: "providerId" });
+BillingSource.hasMany(DbCostHistoryDaily, { foreignKey: "billingSourceId" });
+DbCostHistoryDaily.belongsTo(BillingSource, { foreignKey: "billingSourceId" });
+CloudConnectionV2.hasMany(DbCostHistoryDaily, { foreignKey: "cloudConnectionId" });
+DbCostHistoryDaily.belongsTo(CloudConnectionV2, { foreignKey: "cloudConnectionId" });
+BillingIngestionRun.hasMany(DbCostHistoryDaily, { foreignKey: "ingestionRunId" });
+DbCostHistoryDaily.belongsTo(BillingIngestionRun, { foreignKey: "ingestionRunId" });
+
+Tenant.hasMany(Ec2CostHistoryMonthly, { foreignKey: "tenantId" });
+Ec2CostHistoryMonthly.belongsTo(Tenant, { foreignKey: "tenantId" });
+CloudProvider.hasMany(Ec2CostHistoryMonthly, { foreignKey: "providerId" });
+Ec2CostHistoryMonthly.belongsTo(CloudProvider, { foreignKey: "providerId" });
+BillingSource.hasMany(Ec2CostHistoryMonthly, { foreignKey: "billingSourceId" });
+Ec2CostHistoryMonthly.belongsTo(BillingSource, { foreignKey: "billingSourceId" });
+CloudConnectionV2.hasMany(Ec2CostHistoryMonthly, { foreignKey: "cloudConnectionId" });
+Ec2CostHistoryMonthly.belongsTo(CloudConnectionV2, { foreignKey: "cloudConnectionId" });
+BillingIngestionRun.hasMany(Ec2CostHistoryMonthly, { foreignKey: "ingestionRunId" });
+Ec2CostHistoryMonthly.belongsTo(BillingIngestionRun, { foreignKey: "ingestionRunId" });
+
 Tenant.hasMany(Budgets, { foreignKey: "tenantId" });
 Budgets.belongsTo(Tenant, { foreignKey: "tenantId" });
 CloudConnectionV2.hasMany(Budgets, { foreignKey: "cloudConnectionId" });
@@ -401,6 +751,8 @@ export {
   BillingIngestionRun,
   BillingIngestionRunFile,
   AnomalyDetectionRun,
+  StorageLensRawFile,
+  StorageLensIngestionRun,
   ManualCloudConnection,
   S3UploadConnection,
   SupportTicket,
@@ -414,7 +766,9 @@ export {
   DimSku,
   DimCharge,
   DimDate,
+  DimTag,
   FactCostLineItems,
+  FactCostLineItemTags,
   BillingIngestionRowError,
   ResourceInventorySnapshot,
   ResourceUtilizationDaily,
@@ -431,4 +785,37 @@ export {
   AggCostHourly,
   AggCostDaily,
   AggCostMonthly,
+  CostPeriodStatus,
+  S3StorageLensDaily,
+  S3BucketConfigSnapshot,
+  S3BucketCostSummaryDaily,
+  S3CostDaily,
+  S3PolicyActionLogs,
+  Ec2CostHistoryDaily,
+  Ec2CostHistoryMonthly,
+  Ec2InstanceInventorySnapshot,
+  Ec2VolumeInventorySnapshot,
+  Ec2SnapshotInventorySnapshot,
+  Ec2EipInventorySnapshot,
+  Ec2AmiInventorySnapshot,
+  Ec2LoadBalancerInventorySnapshot,
+  Ec2TargetGroupInventorySnapshot,
+  LoadBalancer,
+  LoadBalancerTargetGroup,
+  LoadBalancerListener,
+  LoadBalancerCostDaily,
+  LoadBalancerMetricsDaily,
+  Ec2InstanceUtilizationHourly,
+  Ec2InstanceUtilizationDaily,
+  DbResourceInventorySnapshot,
+  DbCostHistoryDaily,
+  DbUtilizationDaily,
+  FactDbResourceDaily,
+  FactEc2InstanceDaily,
+  FactEc2InstanceCostDaily,
+  FactEc2InstanceCoverageDaily,
+  FactEbsVolumeDaily,
+  EbsVolumeUtilizationHourly,
+  EbsVolumeUtilizationDaily,
+  ScheduledJob,
 };

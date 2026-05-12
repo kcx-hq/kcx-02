@@ -1,4 +1,4 @@
-export type OptimizationInsightKey = "rightsizing" | "idle-resources" | "commitments" | "storage";
+export type OptimizationInsightKey = "rightsizing" | "idle-resources" | "commitments";
 
 export type SavingInsight = {
   key: OptimizationInsightKey;
@@ -45,18 +45,9 @@ export const optimizationInsights: SavingInsight[] = [
     recommendations: 8,
     color: "#89b5cf",
   },
-  {
-    key: "storage",
-    label: "Storage",
-    shortLabel: "Storage",
-    potential: 2900,
-    realized: 1150,
-    recommendations: 5,
-    color: "#6c91d8",
-  },
 ];
 
-export function buildDonutGradient(items: SavingInsight[]): string {
+export function buildDonutGradient(items: Array<{ potential: number; color: string }>): string {
   const total = items.reduce((sum, item) => sum + item.potential, 0);
   if (!total) {
     return "conic-gradient(#d8e7e5 0deg, #d8e7e5 360deg)";

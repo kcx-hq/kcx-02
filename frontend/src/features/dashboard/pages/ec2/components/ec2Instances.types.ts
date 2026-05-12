@@ -1,0 +1,72 @@
+import type { EC2ScopeFilters, EC2Thresholds } from "../ec2ExplorerControls.types";
+
+export type EC2InstancesStatus = "all" | "idle" | "underutilized" | "overutilized" | "uncovered" | "healthy";
+export type EC2InstancesStateFilter = "all" | "running" | "stopped" | "terminated";
+export type EC2InstancesReservationType = "all" | "on_demand" | "reserved" | "savings_plan" | "spot";
+export type EC2InstancesNetworkType =
+  | "all"
+  | "Internet Data Transfer"
+  | "Inter-Region Data Transfer"
+  | "Inter-AZ Data Transfer"
+  | "NAT Gateway"
+  | "Elastic IP"
+  | "Other Network";
+
+export type EC2InstancesControlsState = {
+  status: EC2InstancesStatus;
+  state: EC2InstancesStateFilter;
+  instanceType: string;
+  reservationType: EC2InstancesReservationType;
+  networkType: EC2InstancesNetworkType;
+  scopeFilters: EC2ScopeFilters;
+  thresholds: EC2Thresholds;
+  search: string;
+};
+
+export const EC2_INSTANCES_STATUS_OPTIONS: Array<{ key: EC2InstancesStatus; label: string }> = [
+  { key: "all", label: "All" },
+  { key: "idle", label: "Idle" },
+  { key: "underutilized", label: "Underutilized" },
+  { key: "overutilized", label: "Overutilized" },
+  { key: "uncovered", label: "Uncovered" },
+  { key: "healthy", label: "Healthy" },
+];
+
+export const EC2_INSTANCES_STATE_OPTIONS: Array<{ key: EC2InstancesStateFilter; label: string }> = [
+  { key: "all", label: "All" },
+  { key: "running", label: "Running" },
+  { key: "stopped", label: "Stopped" },
+  { key: "terminated", label: "Terminated" },
+];
+
+export const EC2_INSTANCES_RESERVATION_OPTIONS: Array<{
+  key: EC2InstancesReservationType;
+  label: string;
+}> = [
+  { key: "all", label: "All" },
+  { key: "on_demand", label: "On-Demand" },
+  { key: "reserved", label: "Reserved" },
+  { key: "savings_plan", label: "Savings Plan" },
+  { key: "spot", label: "Spot" },
+];
+
+export const EC2_INSTANCES_DEFAULT_CONTROLS: EC2InstancesControlsState = {
+  status: "all",
+  state: "all",
+  instanceType: "all",
+  reservationType: "all",
+  networkType: "all",
+  scopeFilters: {
+    region: [],
+    tags: [],
+  },
+  thresholds: {
+    cpuMin: "",
+    cpuMax: "",
+    costMin: "",
+    costMax: "",
+    networkMin: "",
+    networkMax: "",
+  },
+  search: "",
+};

@@ -54,6 +54,7 @@ export class OverviewService {
       filtersApplied: {
         billingPeriodStart: filters.billingPeriodStart,
         billingPeriodEnd: filters.billingPeriodEnd,
+        forecastingEnabled: filters.forecastingEnabled,
         accountKeys: filters.accountKeys,
         serviceKeys: filters.serviceKeys,
         regionKeys: filters.regionKeys,

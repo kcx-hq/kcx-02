@@ -272,14 +272,14 @@ export function Header() {
         className={cn(
           "relative mx-auto w-full transition-all duration-300 ease-out",
           shellVisible
-            ? "max-w-[min(1140px,calc(100vw-1.5rem))] rounded-2xl px-5 md:px-6"
-            : "max-w-[min(1420px,calc(100vw-1rem))] rounded-2xl px-4 md:px-6",
+            ? "max-w-[min(1140px,calc(100vw-1.5rem))] rounded-none px-5 md:px-6"
+            : "max-w-[min(1420px,calc(100vw-1rem))] rounded-none px-4 md:px-6",
           shellVisible ? "py-2.5" : "py-3.5"
         )}
       >
         <div
           className={cn(
-            "pointer-events-none absolute inset-0 rounded-2xl transition-all duration-300 ease-out",
+            "pointer-events-none absolute inset-0 rounded-none transition-all duration-300 ease-out",
             contentTone === "light"
               ? "border border-[rgba(21,37,49,0.14)] bg-[rgba(247,250,249,0.97)] shadow-[0_22px_44px_-26px_rgba(15,23,42,0.35)] backdrop-blur-sm"
               : "border border-[rgba(226,240,236,0.24)] bg-[rgba(7,18,28,0.78)] shadow-[0_28px_56px_-30px_rgba(0,7,14,0.8)] backdrop-blur-md",
@@ -370,6 +370,7 @@ export function Header() {
             <Button
               variant="outline"
               className={cn(
+                "rounded-none",
                 contentTone === "light"
                   ? "border-[rgba(21,37,49,0.16)] bg-white text-slate-700 hover:bg-slate-50"
                   : "border-[rgba(226,240,236,0.28)] bg-[rgba(255,255,255,0.05)] text-[#e9f4f0] hover:bg-[rgba(255,255,255,0.12)]"
@@ -383,6 +384,7 @@ export function Header() {
 
             <Button
               className={cn(
+                "rounded-none",
                 "inline-flex items-center gap-1.5",
                 "bg-[#3e8a76] text-white shadow-none hover:bg-[#357563] hover:shadow-none"
               )}
@@ -403,7 +405,7 @@ export function Header() {
               variant="outline"
               size="sm"
               className={cn(
-                "h-10 w-10 p-0",
+                "h-10 w-10 rounded-none p-0",
                 contentTone === "light"
                   ? "border-[rgba(21,37,49,0.16)] bg-white text-slate-900 hover:bg-slate-100"
                   : "border-[rgba(226,240,236,0.28)] bg-[rgba(255,255,255,0.05)] text-white hover:bg-[rgba(255,255,255,0.12)]"
@@ -453,7 +455,7 @@ export function Header() {
       >
         <div className="flex items-center justify-between">
           <p className="text-lg font-semibold">Navigation</p>
-          <Button type="button" variant="ghost" size="sm" className="h-9 w-9 p-0" onClick={handleMobileClose}>
+          <Button type="button" variant="ghost" size="sm" className="h-9 w-9 rounded-none p-0" onClick={handleMobileClose}>
             <X className="h-4 w-4" />
             <span className="sr-only">Close</span>
           </Button>
@@ -476,7 +478,7 @@ export function Header() {
                             <a
                               key={link.title}
                               href={link.href}
-                              className="block rounded-md px-2 py-1.5 text-sm text-text-secondary hover:bg-highlight-green/60 hover:text-text-primary"
+                              className="block rounded-none px-2 py-1.5 text-sm text-text-secondary hover:bg-highlight-green/60 hover:text-text-primary"
                               onClick={(event) => handleAppLinkClick(event, link.href, handleMobileClose)}
                             >
                               {link.title}
@@ -492,12 +494,12 @@ export function Header() {
           </Accordion>
 
           <div className="mt-6 space-y-2">
-            <Button variant="outline" className="w-full justify-start" asChild>
+            <Button variant="outline" className="w-full justify-start rounded-none" asChild>
               <a href="/login" onClick={(event) => handleAppLinkClick(event, "/login", handleMobileClose)}>
                 Login
               </a>
             </Button>
-            <Button className="w-full justify-start bg-[#3e8a76] text-white hover:bg-[#357563]" asChild>
+            <Button className="w-full justify-start rounded-none bg-[#3e8a76] text-white hover:bg-[#357563]" asChild>
               <a
                 href="/schedule-demo"
                 onClick={(event) => handleAppLinkClick(event, "/schedule-demo", handleMobileClose)}

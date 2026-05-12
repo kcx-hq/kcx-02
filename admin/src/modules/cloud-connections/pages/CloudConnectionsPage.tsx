@@ -15,7 +15,6 @@ import {
   CloudConnectionsFilters,
   type BillingSourceLinkedFilter,
 } from "@/modules/cloud-connections/components/CloudConnectionsFilters"
-import { CloudConnectionsSummaryCards } from "@/modules/cloud-connections/components/CloudConnectionsSummaryCards"
 import { CloudConnectionsTable } from "@/modules/cloud-connections/components/CloudConnectionsTable"
 import { CloudConnectionDetailsDrawer } from "@/modules/cloud-connections/components/CloudConnectionDetailsDrawer"
 import { getAdminToken } from "@/modules/auth/admin-session"
@@ -58,8 +57,6 @@ export function CloudConnectionsPage() {
   const [total, setTotal] = useState(0)
   const [totalPages, setTotalPages] = useState(0)
 
-  const [searchInput, setSearchInput] = useState("")
-  const [search, setSearch] = useState("")
   const [provider, setProvider] = useState("")
   const [mode, setMode] = useState<AdminCloudIntegrationMode | "">("")
   const [status, setStatus] = useState<AdminCloudIntegrationStatus | "">("")
@@ -73,15 +70,6 @@ export function CloudConnectionsPage() {
   const [detailLoading, setDetailLoading] = useState(false)
   const [detailError, setDetailError] = useState<string | null>(null)
   const [detailData, setDetailData] = useState<AdminCloudConnectionDetailData | null>(null)
-
-  useEffect(() => {
-    const handle = window.setTimeout(() => {
-      setSearch(searchInput.trim())
-      setPage(1)
-    }, 350)
-
-    return () => window.clearTimeout(handle)
-  }, [searchInput])
 
   const providerOptions = useMemo(() => {
     const values = new Map<string, string>()
@@ -103,7 +91,7 @@ export function CloudConnectionsPage() {
       buildListQuery({
         page,
         limit: DEFAULT_LIMIT,
-        search,
+        search: "",
         provider,
         mode,
         status,
@@ -129,7 +117,7 @@ export function CloudConnectionsPage() {
   useEffect(() => {
     loadList()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token, page, search, provider, mode, status, billingSourceLinked, dateFrom, dateTo, sortBy, sortOrder])
+  }, [token, page, provider, mode, status, billingSourceLinked, dateFrom, dateTo, sortBy, sortOrder])
 
   const loadDetails = (integrationId: string) => {
     if (!token) return
@@ -166,87 +154,93 @@ export function CloudConnectionsPage() {
     setPage(1)
   }
 
-  const handleResetFilters = () => {
-    setSearchInput("")
-    setSearch("")
-    setProvider("")
-    setMode("")
-    setStatus("")
-    setBillingSourceLinked("")
-    setDateFrom("")
-    setDateTo("")
-    setSortBy("updatedAt")
-    setSortOrder("desc")
-    setPage(1)
-  }
-
   return (
     <>
       <div className="space-y-5">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h1 className="text-xl font-semibold tracking-[-0.02em] text-[color:rgba(15,23,42,0.92)]">Cloud Connections</h1>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Monitor persistent cloud integrations, linkage health, and latest ingestion context.
-            </p>
-          </div>
-          <Button
-            type="button"
-            size="icon"
-            variant="outline"
-            className="h-9 w-9"
-            onClick={loadList}
-            disabled={loading}
-            aria-label="Refresh cloud connections"
-            title="Refresh"
-          >
-            <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-          </Button>
-        </div>
-
-        <CloudConnectionsSummaryCards summary={summary} />
-
         <Card>
-          <CardContent className="space-y-4 p-4">
-            <CloudConnectionsFilters
-              searchInput={searchInput}
-              provider={provider}
-              mode={mode}
-              status={status}
-              billingSourceLinked={billingSourceLinked}
-              dateFrom={dateFrom}
-              dateTo={dateTo}
-              providerOptions={providerOptions}
-              onSearchInputChange={setSearchInput}
-              onProviderChange={(value) => {
-                setProvider(value)
-                setPage(1)
-              }}
-              onModeChange={(value) => {
-                setMode(value)
-                setPage(1)
-              }}
-              onStatusChange={(value) => {
-                setStatus(value)
-                setPage(1)
-              }}
-              onBillingSourceLinkedChange={(value) => {
-                setBillingSourceLinked(value)
-                setPage(1)
-              }}
-              onDateFromChange={(value) => {
-                setDateFrom(value)
-                setPage(1)
-              }}
-              onDateToChange={(value) => {
-                setDateTo(value)
-                setPage(1)
-              }}
-              onReset={handleResetFilters}
-            />
+          <CardContent className="p-0">
+            <div className="grid grid-cols-2 border-b border-[color:rgba(15,23,42,0.12)] lg:grid-cols-5">
+              <div className="px-5 py-4 lg:border-r lg:border-[color:rgba(15,23,42,0.12)]">
+                <p className="text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground">Total</p>
+                <p className="mt-2 text-4xl font-semibold leading-none text-foreground">{summary.total}</p>
+                <p className="mt-1 text-sm text-muted-foreground">Filtered set</p>
+              </div>
+              <div className="px-5 py-4 lg:border-r lg:border-[color:rgba(15,23,42,0.12)]">
+                <p className="text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground">Active</p>
+                <p className="mt-2 text-4xl font-semibold leading-none text-foreground">{summary.active}</p>
+                <p className="mt-1 text-sm text-muted-foreground">Healthy integrations</p>
+              </div>
+              <div className="px-5 py-4 lg:border-r lg:border-[color:rgba(15,23,42,0.12)]">
+                <p className="text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground">Failed</p>
+                <p className="mt-2 text-4xl font-semibold leading-none text-foreground">{summary.failed}</p>
+                <p className="mt-1 text-sm text-muted-foreground">Needs investigation</p>
+              </div>
+              <div className="px-5 py-4 lg:border-r lg:border-[color:rgba(15,23,42,0.12)]">
+                <p className="text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground">Suspended</p>
+                <p className="mt-2 text-4xl font-semibold leading-none text-foreground">{summary.suspended}</p>
+                <p className="mt-1 text-sm text-muted-foreground">Disconnected state</p>
+              </div>
+              <div className="px-5 py-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground">Source Missing</p>
+                <p className="mt-2 text-4xl font-semibold leading-none text-foreground">{summary.billingSourceMissing}</p>
+                <p className="mt-1 text-sm text-muted-foreground">No linked billing source</p>
+              </div>
+            </div>
+
+            <div className="border-b border-[color:rgba(15,23,42,0.12)] px-5 py-4">
+              <div className="overflow-x-auto">
+                <div className="flex min-w-max flex-nowrap items-center gap-2.5">
+                  <CloudConnectionsFilters
+                    provider={provider}
+                    mode={mode}
+                    status={status}
+                    billingSourceLinked={billingSourceLinked}
+                    dateFrom={dateFrom}
+                    dateTo={dateTo}
+                    providerOptions={providerOptions}
+                    onProviderChange={(value) => {
+                      setProvider(value)
+                      setPage(1)
+                    }}
+                    onModeChange={(value) => {
+                      setMode(value)
+                      setPage(1)
+                    }}
+                    onStatusChange={(value) => {
+                      setStatus(value)
+                      setPage(1)
+                    }}
+                    onBillingSourceLinkedChange={(value) => {
+                      setBillingSourceLinked(value)
+                      setPage(1)
+                    }}
+                    onDateFromChange={(value) => {
+                      setDateFrom(value)
+                      setPage(1)
+                    }}
+                    onDateToChange={(value) => {
+                      setDateTo(value)
+                      setPage(1)
+                    }}
+                  />
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="outline"
+                    className="h-10 w-10 shrink-0"
+                    onClick={loadList}
+                    disabled={loading}
+                    aria-label="Refresh cloud connections"
+                    title="Refresh"
+                  >
+                    <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+                  </Button>
+                </div>
+              </div>
+            </div>
 
             {error ? (
-              <div className="rounded-xl border border-red-500/20 bg-red-500/5 px-4 py-3 text-sm text-[color:rgba(15,23,42,0.86)]">
+              <div className="m-5 rounded-xl border border-red-500/20 bg-red-500/5 px-4 py-3 text-sm text-[color:rgba(15,23,42,0.86)]">
                 <div>{error}</div>
                 <Button className="mt-3" size="sm" variant="secondary" onClick={loadList}>
                   Retry
@@ -254,16 +248,18 @@ export function CloudConnectionsPage() {
               </div>
             ) : null}
 
-            <CloudConnectionsTable
-              loading={loading}
-              items={items}
-              sortBy={sortBy}
-              sortOrder={sortOrder}
-              onSort={handleSort}
-              onView={setSelectedIntegrationId}
-            />
+            <div className="px-5 py-4">
+              <CloudConnectionsTable
+                loading={loading}
+                items={items}
+                sortBy={sortBy}
+                sortOrder={sortOrder}
+                onSort={handleSort}
+                onView={setSelectedIntegrationId}
+              />
+            </div>
 
-            <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center justify-between gap-3 px-5 pb-4">
               <div className="text-sm text-[color:rgba(15,23,42,0.70)]">
                 Page {page} of {Math.max(totalPages, 1)} - {total} total
               </div>

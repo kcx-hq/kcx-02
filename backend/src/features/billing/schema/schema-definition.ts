@@ -49,13 +49,24 @@ const CANONICAL_COLUMNS = Object.freeze([
   "pricing_term",
   "purchase_option",
   "public_on_demand_cost",
+  "public_on_demand_rate",
   "discount_amount",
+  "bundled_discount",
   "credit_amount",
   "refund_amount",
   "tax_cost",
   "reservation_arn",
   "savings_plan_arn",
   "savings_plan_type",
+  "product_family",
+  "product_usage_type",
+  "from_location",
+  "to_location",
+  "from_region_code",
+  "to_region_code",
+  "bill_type",
+  "line_item_description",
+  "legal_entity",
 ]);
 
 /**
@@ -372,10 +383,19 @@ const COLUMN_ALIASES = Object.freeze({
     "list_cost",
     "pricing/publicOnDemandCost",
   ]),
+  public_on_demand_rate: Object.freeze([
+    "public_on_demand_rate",
+    "pricing_public_on_demand_rate",
+    "pricing/publicOnDemandRate",
+  ]),
   discount_amount: Object.freeze([
     "discount_amount",
     "discount",
     "savings_amount",
+  ]),
+  bundled_discount: Object.freeze([
+    "bundled_discount",
+    "discount_bundled_discount",
   ]),
   credit_amount: Object.freeze([
     "credit_amount",
@@ -403,6 +423,42 @@ const COLUMN_ALIASES = Object.freeze({
   savings_plan_type: Object.freeze([
     "savings_plan_type",
     "savingsplantype",
+  ]),
+  product_family: Object.freeze([
+    "product_family",
+    "product_product_family",
+  ]),
+  product_usage_type: Object.freeze([
+    "product_usage_type",
+    "product_usagetype",
+  ]),
+  from_location: Object.freeze([
+    "from_location",
+    "product_from_location",
+  ]),
+  to_location: Object.freeze([
+    "to_location",
+    "product_to_location",
+  ]),
+  from_region_code: Object.freeze([
+    "from_region_code",
+    "product_from_region_code",
+  ]),
+  to_region_code: Object.freeze([
+    "to_region_code",
+    "product_to_region_code",
+  ]),
+  bill_type: Object.freeze([
+    "bill_type",
+    "bill_bill_type",
+  ]),
+  line_item_description: Object.freeze([
+    "line_item_description",
+    "line_item_line_item_description",
+  ]),
+  legal_entity: Object.freeze([
+    "legal_entity",
+    "line_item_legal_entity",
   ]),
 });
 

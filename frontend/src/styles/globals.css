@@ -178,6 +178,25 @@
     -moz-osx-font-smoothing: grayscale;
   }
 
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(138, 154, 148, 0.75) transparent;
+  }
+
+  *::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background-color: rgba(138, 154, 148, 0.75);
+    border: 1px solid transparent;
+  }
+
   #root {
     @apply min-h-screen;
     isolation: isolate;
@@ -1619,5 +1638,36 @@
   .kcx-flow-line::after,
   .kcx-flow-line-vertical::after {
     animation: none;
+  }
+}
+
+@layer components {
+  .kcx-client-content-radiusless,
+  .kcx-client-content-radiusless *,
+  .kcx-client-content-radiusless *::before,
+  .kcx-client-content-radiusless *::after {
+    border-radius: 0 !important;
+  }
+
+  .kcx-dashboard {
+    --dashboard-radius-sm: 0px;
+    --dashboard-radius-md: 0px;
+    --dashboard-radius-lg: 0px;
+  }
+
+  .kcx-dashboard,
+  .kcx-dashboard *,
+  .kcx-dashboard *::before,
+  .kcx-dashboard *::after {
+    border-radius: 0 !important;
+  }
+
+  .kcx-dashboard .optimization-overview-donut,
+  .kcx-dashboard .optimization-overview-donut::before,
+  .kcx-dashboard .optimization-overview-insight-item__dot,
+  .kcx-dashboard .optimization-donut,
+  .kcx-dashboard .optimization-donut::before,
+  .kcx-dashboard .optimization-donut-legend__dot {
+    border-radius: 50% !important;
   }
 }

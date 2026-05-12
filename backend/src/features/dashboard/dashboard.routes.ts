@@ -9,7 +9,10 @@ import {
   handleUpdateBudgetStatus,
 } from "./budget/budget.controller.js";
 import { handleGetDashboardScope, handleGetDashboardTestTotalSpend } from "./dashboard.controller.js";
-import { handleGetCostExplorerDashboard } from "./cost-explorer/cost-explorer.controller.js";
+import {
+  handleGetCostExplorerDashboard,
+  handleGetCostExplorerGroupOptions,
+} from "./cost-explorer/cost-explorer.controller.js";
 import {
   handleExecuteIdleRecommendation,
   handleExecuteRightsizingRecommendation,
@@ -47,6 +50,19 @@ import {
 import { handleGetAnomalies as handleGetAnomaliesAlertsDashboard } from "./anomaly-alerts/anomaly.controller.js";
 import { handleGetReportDashboard } from "./report/report.controller.js";
 import { handleGetResourcesDashboard } from "./resources/resources.controller.js";
+import { handleGetS3CostInsights } from "./s3/s3-cost-insights.controller.js";
+import {
+  handleApplyS3BucketLifecyclePolicy,
+  handleApplyS3ReplicationSetup,
+  handleAutoCreateS3ReplicationRole,
+  handleDeleteS3BucketLifecyclePolicy,
+  handleGetPolicyActionHistory,
+  handleGetS3ReplicationDestinationBuckets,
+  handlePreviewS3ReplicationSetup,
+  handleGetS3Replication,
+  handleGetS3BucketLifecycleInsight,
+  handleGetS3Optimization,
+} from "./s3/s3-optimization.controller.js";
 
 const router = Router();
 
@@ -67,6 +83,7 @@ router.get("/dashboard/overview/anomalies", asyncHandler(handleGetOverviewAnomal
 router.get("/dashboard/overview/recommendations", asyncHandler(handleGetOverviewRecommendations));
 router.get("/dashboard/filters", asyncHandler(handleGetDashboardFilters));
 router.get("/dashboard/cost-explorer", asyncHandler(handleGetCostExplorerDashboard));
+router.get("/dashboard/cost-explorer/group-options", asyncHandler(handleGetCostExplorerGroupOptions));
 router.get("/dashboard/resources", asyncHandler(handleGetResourcesDashboard));
 router.get("/dashboard/allocation", asyncHandler(handleGetAllocationDashboard));
 router.get("/dashboard/optimization", asyncHandler(handleGetOptimizationDashboard));
@@ -147,6 +164,18 @@ router.get(
   asyncHandler(handleDebugSyncOptimizationRecommendations),
 );
 router.get("/dashboard/anomalies-alerts", asyncHandler(handleGetAnomaliesAlertsDashboard));
+router.get("/dashboard/s3/cost-insights", asyncHandler(handleGetS3CostInsights));
+router.get("/dashboard/s3/optimization", asyncHandler(handleGetS3Optimization));
+router.get("/dashboard/s3/replication", asyncHandler(handleGetS3Replication));
+router.get("/dashboard/s3/replication/destination-buckets", asyncHandler(handleGetS3ReplicationDestinationBuckets));
+router.post("/dashboard/s3/replication/role/auto-create", asyncHandler(handleAutoCreateS3ReplicationRole));
+router.post("/dashboard/s3/replication/setup/preview", asyncHandler(handlePreviewS3ReplicationSetup));
+router.post("/dashboard/s3/replication/setup/apply", asyncHandler(handleApplyS3ReplicationSetup));
+router.get("/dashboard/s3/lifecycle-insight", asyncHandler(handleGetS3BucketLifecycleInsight));
+router.get("/dashboard/s3/usage/bucket-lifecycle-insight", asyncHandler(handleGetS3BucketLifecycleInsight));
+router.post("/dashboard/s3/lifecycle-policy", asyncHandler(handleApplyS3BucketLifecyclePolicy));
+router.post("/dashboard/s3/lifecycle-policy/delete", asyncHandler(handleDeleteS3BucketLifecyclePolicy));
+router.get("/dashboard/policy/actions", asyncHandler(handleGetPolicyActionHistory));
 router.get("/dashboard/budget", asyncHandler(handleGetBudgetDashboard));
 router.post("/dashboard/budget", asyncHandler(handleCreateBudget));
 router.patch("/dashboard/budget/:budgetId", asyncHandler(handleUpdateBudget));

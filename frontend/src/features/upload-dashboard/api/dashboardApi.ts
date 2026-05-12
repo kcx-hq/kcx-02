@@ -7,6 +7,7 @@ import type {
   BudgetUpsertPayload,
   BudgetActualForecastPoint,
   CostExplorerFiltersQuery,
+  CostExplorerGroupOptionsResponse,
   CostExplorerResponse,
   CostBreakdownItem,
   DashboardOverviewResponse,
@@ -78,6 +79,9 @@ function withCostExplorerFilters(
   if (filters?.granularity) params.set("granularity", filters.granularity);
   if (filters?.groupBy) params.set("groupBy", filters.groupBy);
   if (filters?.metric) params.set("metric", filters.metric);
+  if (Array.isArray(filters?.groupValues) && filters.groupValues.length > 0) {
+    params.set("groupValues", filters.groupValues.join(","));
+  }
 
   if (filters?.compareKey) {
     params.set("compareKey", filters.compareKey);
@@ -85,6 +89,23 @@ function withCostExplorerFilters(
     params.delete("compareKey");
   }
 
+  const query = params.toString();
+  return query.length > 0 ? `${path}?${query}` : path;
+}
+
+function withCostExplorerGroupOptions(
+  path: string,
+  scope: DashboardResolvedScope,
+  groupBy?: CostExplorerFiltersQuery["groupBy"],
+  tagKey?: string | null,
+): string {
+  const params = new URLSearchParams(buildDashboardQueryParams(scope));
+  if (groupBy && groupBy.trim().length > 0) {
+    params.set("groupBy", groupBy);
+  }
+  if (tagKey && tagKey.trim().length > 0) {
+    params.set("tagKey", tagKey.trim().toLowerCase());
+  }
   const query = params.toString();
   return query.length > 0 ? `${path}?${query}` : path;
 }
@@ -209,6 +230,16 @@ export const dashboardApi = {
 
   getCostExplorer(scope: DashboardResolvedScope, filters?: CostExplorerFiltersQuery) {
     return apiGet<CostExplorerResponse>(withCostExplorerFilters("/dashboard/cost-explorer", scope, filters));
+  },
+
+  getCostExplorerGroupOptions(
+    scope: DashboardResolvedScope,
+    groupBy?: CostExplorerFiltersQuery["groupBy"],
+    tagKey?: string | null,
+  ) {
+    return apiGet<CostExplorerGroupOptionsResponse>(
+      withCostExplorerGroupOptions("/dashboard/cost-explorer/group-options", scope, groupBy, tagKey),
+    );
   },
 
   getResources(scope: DashboardResolvedScope) {

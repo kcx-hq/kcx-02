@@ -26,7 +26,7 @@ export function NavItem({
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-md px-2.5 py-2 text-[13px] font-medium tracking-[0.02em] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary",
+        "inline-flex items-center gap-1.5 rounded-none px-2.5 py-2 text-[13px] font-medium tracking-[0.02em] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary",
         shellTone === "dark"
           ? active
             ? "text-white"

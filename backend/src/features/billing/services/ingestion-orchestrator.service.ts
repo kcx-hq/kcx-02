@@ -6,11 +6,14 @@ import env from "../../../config/env.js";
 import { NotFoundError } from "../../../errors/http-errors.js";
 import { RawBillingFile } from "../../../models/index.js";
 import { logger } from "../../../utils/logger.js";
-import { mapFactCostLineItem } from "../mappers/raw_focus_to_dimensions.mapper.js";
+import { RAW_COLUMNS, mapFactCostLineItem } from "../mappers/raw_focus_to_dimensions.mapper.js";
 import {
   syncAwsIdleRecommendationsAfterIngestion,
   syncAwsRightsizingRecommendationsAfterIngestion,
 } from "../../dashboard/optimization/recommendation-sync/sync.service.js";
+import { syncEc2CostHistoryForIngestionRun } from "./ec2-cost-history.service.js";
+import { syncDbCostHistoryForIngestionRun } from "./db-cost-history.service.js";
+import { syncLoadBalancerCostDailyForIngestionRun } from "../../load-balancer/cost/load-balancer-cost-daily.service.js";
 import { processAwsExportParquetRun } from "./aws-export-parquet.processor.js";
 import {
   createIngestionDimensionCache,
@@ -33,6 +36,9 @@ import {
   validateHeaders,
 } from "./schema-validator.service.js";
 import { upsertCostAggregationsForRun } from "./cost-aggregation.service.js";
+import { createTagDimensionCache, resolveFactPrimaryTagId, resolveFactTagIds } from "./dim-tag.service.js";
+import { assertTagDimensionSchemaReady } from "./ingestion-schema-guard.service.js";
+import { syncStorageLensFromClientAccount } from "./s3-storage-lens-sync.service.js";
 
 const SUPPORTED_FORMATS = new Set(["csv", "parquet"]);
 const PROGRESS_BY_STAGE = {
@@ -84,6 +90,98 @@ const toErrorMessage = (error) => {
 const normalizeFormat = (value) => String(value ?? "").trim().toLowerCase();
 
 const now = () => new Date();
+const pendingPostIngestionTasks = new Set<Promise<void>>();
+
+function trackPostIngestionTask(task: Promise<void>): void {
+  pendingPostIngestionTasks.add(task);
+  task.finally(() => {
+    pendingPostIngestionTasks.delete(task);
+  });
+}
+
+async function waitForPendingPostIngestionTasks(): Promise<void> {
+  if (pendingPostIngestionTasks.size === 0) {
+    return;
+  }
+
+  await Promise.allSettled(Array.from(pendingPostIngestionTasks));
+}
+
+function scheduleStorageLensSyncAfterIngestion({ tenantId, billingSourceId, ingestionRunId }) {
+  const normalizedTenantId = String(tenantId ?? "").trim();
+  const normalizedBillingSourceId = String(billingSourceId ?? "").trim();
+  if (!normalizedTenantId || !normalizedBillingSourceId) {
+    return;
+  }
+
+  setImmediate(() => {
+    const task = syncStorageLensFromClientAccount({
+      tenantId: normalizedTenantId,
+      billingSourceId: normalizedBillingSourceId,
+    })
+      .then((result) => {
+        logger.info("Storage Lens auto-sync completed after ingestion", {
+          ingestionRunId: String(ingestionRunId),
+          tenantId: normalizedTenantId,
+          billingSourceId: normalizedBillingSourceId,
+          snapshotsUpserted: result.snapshotsUpserted,
+          objectsProcessed: result.objectsProcessed,
+        });
+      })
+      .catch((error) => {
+        logger.warn("Storage Lens auto-sync failed after ingestion", {
+          ingestionRunId: String(ingestionRunId),
+          tenantId: normalizedTenantId,
+          billingSourceId: normalizedBillingSourceId,
+          reason: error instanceof Error ? error.message : String(error),
+        });
+      });
+
+    trackPostIngestionTask(task);
+  });
+}
+
+function scheduleLoadBalancerCostAggregationAfterIngestion({
+  ingestionRunId,
+  cloudConnectionId,
+}: {
+  ingestionRunId: string | number;
+  cloudConnectionId?: string | null;
+}): void {
+  setImmediate(() => {
+    const task = syncLoadBalancerCostDailyForIngestionRun({
+      ingestionRunId: String(ingestionRunId),
+      cloudConnectionId: cloudConnectionId ?? null,
+    })
+      .then((result) => {
+        logger.info("Load balancer cost aggregation completed after ingestion", {
+          triggerSource: "ingestion",
+          ingestionRunId: String(ingestionRunId),
+          cloudConnectionId: cloudConnectionId ?? null,
+          skipped: result.skipped,
+          reason: result.reason ?? null,
+          rowsScanned: result.rowsScanned ?? 0,
+          lbRowsMatched:
+            typeof result.rowsClassified === "number" && typeof result.rowsUnmatched === "number"
+              ? Math.max(result.rowsClassified - result.rowsUnmatched, 0)
+              : 0,
+          unmatchedRows: result.rowsUnmatched ?? 0,
+          dailyRowsWritten: result.rowsUpserted ?? 0,
+          rowsDeleted: result.rowsDeleted ?? 0,
+        });
+      })
+      .catch((error) => {
+        logger.warn("Load balancer cost aggregation failed after ingestion", {
+          triggerSource: "ingestion",
+          ingestionRunId: String(ingestionRunId),
+          cloudConnectionId: cloudConnectionId ?? null,
+          reason: error instanceof Error ? error.message : String(error),
+        });
+      });
+
+    trackPostIngestionTask(task);
+  });
+}
 
 function clampProgress(progressPercent) {
   if (!Number.isFinite(progressPercent)) return 0;
@@ -278,6 +376,8 @@ async function processIngestionRun(ingestionRunId) {
   let rowsFailed = 0;
 
   try {
+    await assertTagDimensionSchemaReady();
+
     logger.info("Ingestion orchestrator: step=load_run:start", { ingestionRunId });
     run = await loadIngestionRunOrThrow(ingestionRunId);
     logger.info("Ingestion orchestrator: step=load_run:done", {
@@ -431,6 +531,7 @@ async function processIngestionRun(ingestionRunId) {
     latestProgressPercent = PROGRESS_BY_STAGE.upserting_dimensions;
 
     const dimensionCache = createIngestionDimensionCache();
+    const tagCache = createTagDimensionCache();
 
     let chunkIndex = 0;
     let movedToInsertStage = false;
@@ -502,6 +603,7 @@ async function processIngestionRun(ingestionRunId) {
       const factRows = [];
       for (const [chunkRowIndex, normalizedRow] of normalizedChunk.entries()) {
         const rowNumber = chunkStartRowNumber + chunkRowIndex;
+        const rawRow = rawChunk[chunkRowIndex] ?? null;
         try {
           const {
             billingAccountKey,
@@ -521,9 +623,22 @@ async function processIngestionRun(ingestionRunId) {
             cache: dimensionCache,
           });
 
+          const tagIds = await resolveFactTagIds({
+            tenantId: rawFile.tenantId,
+            providerId: rawFile.cloudProviderId,
+            rawTags: normalizedRow[RAW_COLUMNS.tags],
+            tagCache,
+          });
+          const primaryTagId = await resolveFactPrimaryTagId({
+            tenantId: rawFile.tenantId,
+            providerId: rawFile.cloudProviderId,
+            rawTags: normalizedRow[RAW_COLUMNS.tags],
+            tagCache,
+          });
+
           const factPayload = mapFactCostLineItem({
             tenant_id: rawFile.tenantId,
-            billing_source_id: rawFile.billingSourceId,
+            billing_source_id: run.billingSourceId,
             ingestion_run_id: run.id,
             provider_id: rawFile.cloudProviderId,
             billing_account_key: billingAccountKey,
@@ -533,6 +648,7 @@ async function processIngestionRun(ingestionRunId) {
             resource_key: resourceKey,
             sku_key: skuKey,
             charge_key: chargeKey,
+            tag_id: primaryTagId,
             usage_date_key: usageDateKey,
             billing_period_start_date_key: billingPeriodStartDateKey,
             billing_period_end_date_key: billingPeriodEndDateKey,
@@ -563,12 +679,23 @@ async function processIngestionRun(ingestionRunId) {
               usageStartTime: factPayload.usage_start_time,
               usageEndTime: factPayload.usage_end_time,
               usageType: factPayload.usage_type,
+              productUsageType: factPayload.product_usage_type,
+              productFamily: factPayload.product_family,
+              fromLocation: factPayload.from_location,
+              toLocation: factPayload.to_location,
+              fromRegionCode: factPayload.from_region_code,
+              toRegionCode: factPayload.to_region_code,
+              billType: factPayload.bill_type,
+              lineItemDescription: factPayload.line_item_description,
+              legalEntity: factPayload.legal_entity,
               operation: factPayload.operation,
               lineItemType: factPayload.line_item_type,
               pricingTerm: factPayload.pricing_term,
               purchaseOption: factPayload.purchase_option,
               publicOnDemandCost: factPayload.public_on_demand_cost,
+              publicOnDemandRate: factPayload.public_on_demand_rate,
               discountAmount: factPayload.discount_amount,
+              bundledDiscount: factPayload.bundled_discount,
               creditAmount: factPayload.credit_amount,
               refundAmount: factPayload.refund_amount,
               taxCost: factPayload.tax_cost,
@@ -577,8 +704,9 @@ async function processIngestionRun(ingestionRunId) {
               savingsPlanType: factPayload.savings_plan_type,
               consumedQuantity: factPayload.consumed_quantity,
               pricingQuantity: factPayload.pricing_quantity,
-              tagsJson: factPayload.tags_json,
+              tagId: factPayload.tag_id,
             },
+            tagIds,
           });
         } catch (err) {
           rowsFailed += 1;
@@ -739,15 +867,28 @@ async function processIngestionRun(ingestionRunId) {
         ingestionRunId: run.id,
         tenantId: rawFile.tenantId,
         providerId: rawFile.cloudProviderId,
-        billingSourceId: rawFile.billingSourceId,
+        billingSourceId: run.billingSourceId,
         uploadedBy: rawFile.uploadedBy,
+      });
+      await syncEc2CostHistoryForIngestionRun({
+        ingestionRunId: run.id,
+        tenantId: rawFile.tenantId,
+        providerId: rawFile.cloudProviderId,
+        billingSourceId: run.billingSourceId,
+      });
+      await syncDbCostHistoryForIngestionRun({
+        ingestionRunId: run.id,
+        tenantId: rawFile.tenantId,
+        providerId: rawFile.cloudProviderId,
+        billingSourceId: run.billingSourceId,
+      });
+      scheduleLoadBalancerCostAggregationAfterIngestion({
+        ingestionRunId: run.id,
+        cloudConnectionId: null,
       });
 
       const tenantIdForSync = typeof rawFile.tenantId === "string" ? rawFile.tenantId.trim() : "";
-      const billingSourceIdForSync =
-        typeof rawFile.billingSourceId === "string" || typeof rawFile.billingSourceId === "number"
-          ? String(rawFile.billingSourceId)
-          : "";
+      const billingSourceIdForSync = run?.billingSourceId ? String(run.billingSourceId) : "";
 
       if (tenantIdForSync && billingSourceIdForSync) {
         try {
@@ -818,6 +959,11 @@ async function processIngestionRun(ingestionRunId) {
       rowsLoaded,
       rowsFailed,
       warningMessage,
+    });
+    scheduleStorageLensSyncAfterIngestion({
+      tenantId: rawFile.tenantId,
+      billingSourceId: run.billingSourceId,
+      ingestionRunId: run.id,
     });
 
     console.log("[S3-UPLOAD-DEBUG][INGESTION][END]", {
@@ -898,6 +1044,7 @@ export const ingestionOrchestrator = {
   markRunRunning,
   markRunCompleted,
   markRunFailed,
+  waitForPendingPostIngestionTasks,
 };
 
 export {
@@ -908,5 +1055,6 @@ export {
   markRunRunning,
   markRunCompleted,
   markRunFailed,
+  waitForPendingPostIngestionTasks,
 };
 

@@ -5,13 +5,24 @@ const STATIC_ROUTES = [
   "/",
   "/dashboard",
   "/dashboard/overview",
+  "/dashboard/cfo-dashboard",
+  "/dashboard/cost",
+  "/dashboard/cost/explorer",
+  "/dashboard/cost/history",
   "/dashboard/cost-explorer",
+  "/dashboard/ec2/optimization",
   "/dashboard/resources",
   "/dashboard/allocation",
   "/dashboard/optimization",
   "/dashboard/anomalies-alerts",
   "/dashboard/budget",
   "/dashboard/report",
+  "/dashboard/inventory",
+  "/dashboard/inventory/aws",
+  "/dashboard/inventory/aws/ec2",
+  "/dashboard/inventory/aws/ec2/instances",
+  "/dashboard/inventory/aws/ec2/snapshots",
+  "/dashboard/inventory/aws/ec2/volumes",
   "/uploads-dashboard",
   "/uploads-dashboard/overview",
   "/uploads-dashboard/cost-explorer",
@@ -44,7 +55,6 @@ const STATIC_ROUTES = [
   "/client/support/meetings",
   "/client/users",
   "/client/organization/users",
-  "/client/actions",
   "/client/profile",
   "/schedule-demo",
   "/login",
@@ -78,7 +88,6 @@ const LEGACY_ROUTE_REDIRECTS: Record<string, StaticRoute> = {
   "/client-home": "/client/overview",
   "/clienthome": "/client/overview",
   "/client/tickets": "/client/support/tickets",
-  "/client/action": "/client/actions",
   "/client/billing": "/client/billing/uploads",
   "/billing/cloud-integration": "/client/billing/cloud-integration",
   "/billing/upload-files": "/client/billing/upload-files",
@@ -101,9 +110,17 @@ const LEGACY_ROUTE_REDIRECTS: Record<string, StaticRoute> = {
   "/client/billing/connections/aws/manual": "/client/billing/connect-cloud/aws/manual",
   "/client/billing/connections/aws/manual/success": "/client/billing/connect-cloud/aws/manual/success",
   "/client/billing/connections/manual-setup": "/client/billing/connect-cloud/aws/manual",
-  "/dashboard/cost-analysis": "/dashboard/cost-explorer",
+  "/client/inventory": "/dashboard/inventory/aws",
+  "/client/inventory/aws": "/dashboard/inventory/aws",
+  "/client/inventory/aws/ec2": "/dashboard/inventory/aws/ec2/instances",
+  "/client/inventory/aws/ec2/instances": "/dashboard/inventory/aws/ec2/instances",
+  "/client/inventory/aws/ec2/snapshots": "/dashboard/inventory/aws/ec2/snapshots",
+  "/client/inventory/aws/ec2/volumes": "/dashboard/inventory/aws/ec2/volumes",
+  "/dashboard/ec2/volumes": "/dashboard/inventory/aws/ec2/volumes",
+  "/dashboard/cost-analysis": "/dashboard/cost/explorer",
   "/dashboard/cost-driver": "/dashboard/allocation",
   "/dashboard/data-quality": "/dashboard/anomalies-alerts",
+  "/dashboard/ec2/anomaly-detection": "/dashboard/anomalies-alerts",
   "/manual-dashboard": "/uploads-dashboard/overview",
   "/client/billing/manual-setup": "/client/billing/connect-cloud/aws/manual",
 }
@@ -112,6 +129,9 @@ const BLOG_DETAIL_PATH_REGEX = /^\/resources\/blogs?\/([^/]+)$/
 const AWS_CONNECTION_SETUP_PATH_REGEX = /^\/client\/billing\/(?:connect-cloud|connections)\/aws\/setup\/[0-9a-fA-F-]{36}$/
 const AWS_MANUAL_EXPLORER_PATH_REGEX = /^\/client\/billing\/(?:connect-cloud|connections)\/aws\/manual\/explorer(?:\/|$)/
 const AWS_MANUAL_SUCCESS_PATH_REGEX = /^\/client\/billing\/(?:connect-cloud|connections)\/aws\/manual\/success(?:\/|$)/
+const DASHBOARD_PATH_REGEX = /^\/dashboard(?:\/.*)?$/
+const UPLOAD_DASHBOARD_PATH_REGEX = /^\/uploads-dashboard(?:\/.*)?$/
+const REPORT_STANDALONE_PATH_REGEX = /^\/reports\/cloud-cost-anomaly\/?$/
 
 function normalizePathname(pathname: string): string {
   if (!pathname.startsWith("/")) return `/${pathname}`
@@ -143,6 +163,18 @@ function resolvePathname(pathname: string): RouteResolution {
   }
 
   if (AWS_MANUAL_SUCCESS_PATH_REGEX.test(normalized)) {
+    return { route: normalized, redirectTo: null }
+  }
+
+  if (DASHBOARD_PATH_REGEX.test(normalized)) {
+    return { route: normalized, redirectTo: null }
+  }
+
+  if (UPLOAD_DASHBOARD_PATH_REGEX.test(normalized)) {
+    return { route: normalized, redirectTo: null }
+  }
+
+  if (REPORT_STANDALONE_PATH_REGEX.test(normalized)) {
     return { route: normalized, redirectTo: null }
   }
 
@@ -196,7 +228,10 @@ export function handleAppLinkClick(
     BLOG_DETAIL_PATH_REGEX.test(normalizedHref) ||
     AWS_CONNECTION_SETUP_PATH_REGEX.test(normalizedHref) ||
     AWS_MANUAL_EXPLORER_PATH_REGEX.test(normalizedHref) ||
-    AWS_MANUAL_SUCCESS_PATH_REGEX.test(normalizedHref)
+    AWS_MANUAL_SUCCESS_PATH_REGEX.test(normalizedHref) ||
+    DASHBOARD_PATH_REGEX.test(normalizedHref) ||
+    UPLOAD_DASHBOARD_PATH_REGEX.test(normalizedHref) ||
+    REPORT_STANDALONE_PATH_REGEX.test(normalizedHref)
   if (!isKnownPath) return
 
   event.preventDefault()

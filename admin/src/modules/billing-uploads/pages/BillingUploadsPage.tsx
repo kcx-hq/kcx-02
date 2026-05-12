@@ -13,7 +13,6 @@ import {
   BillingUploadsFilters,
   type BillingSourceTypeFilter,
 } from "@/modules/billing-uploads/components/BillingUploadsFilters"
-import { BillingUploadsSummaryCards } from "@/modules/billing-uploads/components/BillingUploadsSummaryCards"
 import { BillingUploadsTable } from "@/modules/billing-uploads/components/BillingUploadsTable"
 import { getAdminToken } from "@/modules/auth/admin-session"
 import { ApiError } from "@/lib/api"
@@ -129,63 +128,76 @@ export function BillingUploadsPage() {
   return (
     <>
       <div className="space-y-5">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h1 className="text-xl font-semibold tracking-[-0.02em] text-[color:rgba(15,23,42,0.92)]">Billing Uploads</h1>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Monitor billing file intake and ingestion run health across clients.
-            </p>
-          </div>
-          <Button
-            type="button"
-            size="icon"
-            variant="outline"
-            className="h-9 w-9"
-            onClick={loadList}
-            disabled={loading}
-            aria-label="Refresh billing uploads"
-            title="Refresh"
-          >
-            <RefreshCw className="h-4 w-4" />
-          </Button>
-        </div>
-
-        <BillingUploadsSummaryCards
-          total={items.length}
-          warning={warningCount}
-          failed={failedCount}
-          completed={completedCount}
-        />
-
         <Card>
-          <CardContent className="space-y-4 p-4">
-            <BillingUploadsFilters
-              searchInput={searchInput}
-              status={status}
-              sourceType={sourceType}
-              dateFrom={dateFrom}
-              dateTo={dateTo}
-              onSearchInputChange={setSearchInput}
-              onStatusChange={(value) => {
-                setStatus(value)
-                setPage(1)
-              }}
-              onSourceTypeChange={(value) => {
-                setSourceType(value)
-                setPage(1)
-              }}
-              onDateFromChange={(value) => {
-                setDateFrom(value)
-                setPage(1)
-              }}
-              onDateToChange={(value) => {
-                setDateTo(value)
-                setPage(1)
-              }}
-            />
+          <CardContent className="p-0">
+            <div className="grid grid-cols-2 border-b border-[color:rgba(15,23,42,0.12)] lg:grid-cols-4">
+              <div className="px-5 py-4 lg:border-r lg:border-[color:rgba(15,23,42,0.12)]">
+                <p className="text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground">Total</p>
+                <p className="mt-2 text-4xl font-semibold leading-none text-foreground">{items.length}</p>
+                <p className="mt-1 text-sm text-muted-foreground">All uploads</p>
+              </div>
+              <div className="px-5 py-4 lg:border-r lg:border-[color:rgba(15,23,42,0.12)]">
+                <p className="text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground">Completed</p>
+                <p className="mt-2 text-4xl font-semibold leading-none text-foreground">{completedCount}</p>
+                <p className="mt-1 text-sm text-muted-foreground">Successfully processed</p>
+              </div>
+              <div className="px-5 py-4 lg:border-r lg:border-[color:rgba(15,23,42,0.12)]">
+                <p className="text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground">Warning</p>
+                <p className="mt-2 text-4xl font-semibold leading-none text-foreground">{warningCount}</p>
+                <p className="mt-1 text-sm text-muted-foreground">Needs attention</p>
+              </div>
+              <div className="px-5 py-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground">Failed</p>
+                <p className="mt-2 text-4xl font-semibold leading-none text-foreground">{failedCount}</p>
+                <p className="mt-1 text-sm text-muted-foreground">Failed runs</p>
+              </div>
+            </div>
+
+            <div className="border-b border-[color:rgba(15,23,42,0.12)] px-5 py-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <BillingUploadsFilters
+                    searchInput={searchInput}
+                    status={status}
+                    sourceType={sourceType}
+                    dateFrom={dateFrom}
+                    dateTo={dateTo}
+                    onSearchInputChange={setSearchInput}
+                    onStatusChange={(value) => {
+                      setStatus(value)
+                      setPage(1)
+                    }}
+                    onSourceTypeChange={(value) => {
+                      setSourceType(value)
+                      setPage(1)
+                    }}
+                    onDateFromChange={(value) => {
+                      setDateFrom(value)
+                      setPage(1)
+                    }}
+                    onDateToChange={(value) => {
+                      setDateTo(value)
+                      setPage(1)
+                    }}
+                  />
+                </div>
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="outline"
+                  className="h-10 w-10"
+                  onClick={loadList}
+                  disabled={loading}
+                  aria-label="Refresh billing uploads"
+                  title="Refresh"
+                >
+                  <RefreshCw className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
 
             {error ? (
-              <div className="rounded-xl border border-red-500/20 bg-red-500/5 px-4 py-3 text-sm text-[color:rgba(15,23,42,0.86)]">
+              <div className="m-5 rounded-xl border border-red-500/20 bg-red-500/5 px-4 py-3 text-sm text-[color:rgba(15,23,42,0.86)]">
                 <div>{error}</div>
                 <Button className="mt-3" size="sm" variant="secondary" onClick={loadList}>
                   Retry
@@ -193,16 +205,18 @@ export function BillingUploadsPage() {
               </div>
             ) : null}
 
-            <BillingUploadsTable
-              loading={loading}
-              items={items}
-              currentPage={isSerialLookup ? 1 : requestPage}
-              pageSize={DEFAULT_LIMIT}
-              serialStartIndex={serialLookupValue !== null ? serialLookupValue - 1 : undefined}
-              onView={setSelectedRunId}
-            />
+            <div className="px-5 py-4">
+              <BillingUploadsTable
+                loading={loading}
+                items={items}
+                currentPage={isSerialLookup ? 1 : requestPage}
+                pageSize={DEFAULT_LIMIT}
+                serialStartIndex={serialLookupValue !== null ? serialLookupValue - 1 : undefined}
+                onView={setSelectedRunId}
+              />
+            </div>
 
-            <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center justify-between gap-3 px-5 pb-4">
               <div className="text-sm text-[color:rgba(15,23,42,0.70)]">
                 Page {isSerialLookup ? 1 : requestPage} of {Math.max(totalPages, 1)} - {total} total
               </div>

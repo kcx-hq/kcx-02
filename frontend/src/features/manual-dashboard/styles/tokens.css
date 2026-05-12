@@ -35,9 +35,9 @@
   --dashboard-sidebar-text: #edf4f8;
   --dashboard-sidebar-text-muted: #cfdee8;
   --dashboard-sidebar-text-soft: #b5c8d6;
-  --dashboard-sidebar-hover: rgba(64, 178, 155, 0.16);
-  --dashboard-sidebar-active: rgba(64, 178, 155, 0.18);
-  --dashboard-sidebar-active-border: rgba(64, 178, 155, 0.44);
+  --dashboard-sidebar-hover: rgba(35, 162, 130, 0.16);
+  --dashboard-sidebar-active: rgba(35, 162, 130, 0.18);
+  --dashboard-sidebar-active-border: rgba(35, 162, 130, 0.44);
 
   --dashboard-border-light: var(--border-light);
   --dashboard-border-muted: #e5ebe8;
@@ -47,9 +47,9 @@
   --dashboard-text-secondary: var(--text-secondary);
   --dashboard-text-muted: var(--text-muted);
 
-  --dashboard-accent: var(--brand-primary);
-  --dashboard-accent-hover: var(--brand-primary-hover);
-  --dashboard-accent-soft: var(--brand-primary-soft);
+  --dashboard-accent: #23a282;
+  --dashboard-accent-hover: #1d8d71;
+  --dashboard-accent-soft: #e2f4ef;
   --dashboard-dark: var(--brand-secondary);
 
   --dashboard-transition-fast: var(--transition-fast);

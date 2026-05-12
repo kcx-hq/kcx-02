@@ -55,7 +55,12 @@ export function ManualDashboardSidebar() {
       <div className="dashboard-sidebar__header">
         <div className="dashboard-logo" aria-label="KCX Manual Dashboard">
           <img src={kcxLogo} alt="KCX" className="dashboard-logo__image" />
-          <span className="dashboard-logo__text">Manual</span>
+          <span className="dashboard-logo__text-block">
+            <span className="dashboard-logo__brand">
+              KC<span className="dashboard-logo__brand-x">X</span>
+            </span>
+            <span className="dashboard-logo__sub">FinOps Platform</span>
+          </span>
         </div>
       </div>
 

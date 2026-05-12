@@ -8,27 +8,28 @@ const footerColumns = [
     title: "Platform",
     links: [
       { label: "Overview", href: "#" },
-      { label: "Cost Visibility", href: "#" },
-      { label: "Optimization", href: "#" },
+      { label: "Data Onboarding", href: "#" },
+      { label: "Cost Intelligence", href: "#" },
       { label: "Anomaly Detection", href: "#" },
+      { label: "Optimization Actions", href: "#" },
     ],
   },
   {
     title: "Solutions",
     links: [
-      { label: "Finance Teams", href: "#" },
-      { label: "Engineering Teams", href: "#" },
-      { label: "Our Story", href: "/about/our-story" },
-      { label: "Leadership", href: "/about/leadership" },
-      { label: "FinOps Maturity", href: "#" },
+      { label: "Finance Leaders", href: "#" },
+      { label: "FinOps Teams", href: "#" },
+      { label: "Platform Engineering", href: "#" },
+      { label: "Cloud Operations", href: "#" },
     ],
   },
   {
     title: "Resources",
     links: [
-      { label: "Blog", href: "/resources/blog" },
+      { label: "FinOps Maturity", href: "#" },
       { label: "Documentation", href: "/resources/documentation" },
       { label: "Implementation Guide", href: "#" },
+      { label: "Blog", href: "/resources/blog" },
     ],
   },
 ]
@@ -59,14 +60,14 @@ export function SiteFooter() {
             </div>
 
             <p className="mt-6 text-[0.88rem] leading-[1.6] text-[rgba(198,217,226,0.82)]">
-              Your FinOps operating partner for trusted cloud visibility, optimization velocity, and decision-ready governance.
+              Trusted FinOps operations from onboarding to validated cost intelligence, optimization, and selected AWS action workflows.
             </p>
 
             <p className="mt-7 text-[0.72rem] font-semibold uppercase tracking-[0.18em] text-[rgba(214,236,228,0.82)]">
               Subscribe to updates
             </p>
 
-            <form className="mt-3 grid h-12 w-full grid-cols-[minmax(0,1fr)_auto] overflow-hidden rounded-xl border border-white/[0.12] bg-[rgba(8,18,26,0.88)] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+            <form className="mt-3 grid h-12 w-full grid-cols-[minmax(0,1fr)_auto] overflow-hidden rounded-none border border-white/[0.12] bg-[rgba(8,18,26,0.88)] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
               <label htmlFor="footer-email" className="sr-only">
                 Email address
               </label>
@@ -106,21 +107,21 @@ export function SiteFooter() {
                   <a
                     href="#"
                     aria-label="LinkedIn"
-                    className="flex h-9 w-9 items-center justify-center rounded-lg border border-[rgba(131,210,187,0.2)] bg-[rgba(9,24,32,0.65)] text-[rgba(205,230,223,0.6)] transition-all duration-200 hover:-translate-y-0.5 hover:border-[rgba(131,210,187,0.35)] hover:text-[rgba(177,240,222,0.92)]"
+                    className="flex h-9 w-9 items-center justify-center rounded-none border border-[rgba(131,210,187,0.2)] bg-[rgba(9,24,32,0.65)] text-[rgba(205,230,223,0.6)] transition-all duration-200 hover:-translate-y-0.5 hover:border-[rgba(131,210,187,0.35)] hover:text-[rgba(177,240,222,0.92)]"
                   >
                     <Linkedin className="h-3.5 w-3.5" strokeWidth={1.8} />
                   </a>
                   <a
                     href="#"
                     aria-label="Twitter"
-                    className="flex h-9 w-9 items-center justify-center rounded-lg border border-[rgba(131,210,187,0.2)] bg-[rgba(9,24,32,0.65)] text-[rgba(205,230,223,0.6)] transition-all duration-200 hover:-translate-y-0.5 hover:border-[rgba(131,210,187,0.35)] hover:text-[rgba(177,240,222,0.92)]"
+                    className="flex h-9 w-9 items-center justify-center rounded-none border border-[rgba(131,210,187,0.2)] bg-[rgba(9,24,32,0.65)] text-[rgba(205,230,223,0.6)] transition-all duration-200 hover:-translate-y-0.5 hover:border-[rgba(131,210,187,0.35)] hover:text-[rgba(177,240,222,0.92)]"
                   >
                     <Twitter className="h-3.5 w-3.5" strokeWidth={1.8} />
                   </a>
                   <a
                     href="#"
                     aria-label="GitHub"
-                    className="flex h-9 w-9 items-center justify-center rounded-lg border border-[rgba(131,210,187,0.2)] bg-[rgba(9,24,32,0.65)] text-[rgba(205,230,223,0.6)] transition-all duration-200 hover:-translate-y-0.5 hover:border-[rgba(131,210,187,0.35)] hover:text-[rgba(177,240,222,0.92)]"
+                    className="flex h-9 w-9 items-center justify-center rounded-none border border-[rgba(131,210,187,0.2)] bg-[rgba(9,24,32,0.65)] text-[rgba(205,230,223,0.6)] transition-all duration-200 hover:-translate-y-0.5 hover:border-[rgba(131,210,187,0.35)] hover:text-[rgba(177,240,222,0.92)]"
                   >
                     <Github className="h-3.5 w-3.5" strokeWidth={1.8} />
                   </a>

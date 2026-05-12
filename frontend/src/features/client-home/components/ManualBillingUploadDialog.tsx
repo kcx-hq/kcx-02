@@ -52,6 +52,8 @@ type FailedKeyDetail = {
   reason?: string
 }
 
+const AWS_PROVIDER_CODE = "aws"
+
 function normalizePrefix(value: string) {
   return value.trim().replace(/\\/g, "/").replace(/^\/+/, "")
 }
@@ -180,7 +182,8 @@ export function ManualBillingUploadDialog({
       try {
         const nextProviders = await apiGet<CloudProvider[]>("/billing/cloud-providers")
         setProviders(nextProviders)
-        setSelectedProviderId((current) => current || nextProviders[0]?.id || "")
+        const awsProvider = nextProviders.find((provider) => provider.code.toLowerCase() === AWS_PROVIDER_CODE)
+        setSelectedProviderId((current) => current || awsProvider?.id || nextProviders[0]?.id || "")
       } catch (requestError) {
         if (requestError instanceof ApiError) {
           setLocalError(requestError.message || "Failed to load cloud providers")
@@ -417,10 +420,10 @@ export function ManualBillingUploadDialog({
 
   return (
     <Dialog open={open} onOpenChange={(nextOpen) => (nextOpen ? onOpenChange(true) : closeDialog())}>
-      <DialogContent className="max-w-xl rounded-[14px]">
+      <DialogContent className="max-w-xl rounded-none">
         <div className="space-y-4">
           {!hideSourceTabs && source !== "local" ? (
-            <Button type="button" variant="outline" className="h-9 rounded-md" onClick={() => setSource("local")}>
+            <Button type="button" variant="outline" className="h-9 rounded-none" onClick={() => setSource("local")}>
               Upload from Local
             </Button>
           ) : null}
@@ -435,7 +438,7 @@ export function ManualBillingUploadDialog({
               <label className="block space-y-1.5">
                 <span className="text-xs font-semibold uppercase tracking-[0.08em] text-text-muted">Cloud Provider</span>
                 <select
-                  className="h-10 w-full rounded-md border border-[color:var(--border-light)] bg-white px-3 text-sm outline-none focus:border-[color:var(--kcx-border-strong)]"
+                  className="h-10 w-full rounded-none border-0 border-b border-[color:var(--border-light)] bg-transparent px-0 text-sm outline-none focus:border-[color:var(--kcx-border-strong)]"
                   value={selectedProviderId}
                   onChange={(event) => {
                     setLocalError(null)
@@ -455,7 +458,7 @@ export function ManualBillingUploadDialog({
 
               <label className="block space-y-1.5">
                 <span className="text-xs font-semibold uppercase tracking-[0.08em] text-text-muted">Billing File</span>
-                <div className="rounded-md border border-[color:var(--border-light)] bg-white p-2">
+                <div className="border-0 border-b border-[color:var(--border-light)] pb-2">
                   <input
                     id="billing-file-upload"
                     type="file"
@@ -466,9 +469,9 @@ export function ManualBillingUploadDialog({
                   />
                   <label
                     htmlFor="billing-file-upload"
-                    className="flex cursor-pointer items-center gap-3 rounded-md px-2 py-1.5 transition-colors hover:bg-[color:var(--bg-surface)]"
+                    className="flex cursor-pointer items-center gap-3 px-0 py-1.5 transition-colors"
                   >
-                    <span className="inline-flex h-8 items-center rounded-md border border-[color:var(--border-light)] bg-[color:var(--bg-surface)] px-3 text-sm font-medium text-text-primary">
+                    <span className="inline-flex h-8 items-center rounded-none border border-[color:var(--border-light)] bg-transparent px-3 text-sm font-medium text-text-primary">
                       Choose File
                     </span>
                     <span className="truncate text-sm text-text-secondary">{file?.name ?? "No file chosen"}</span>
@@ -488,10 +491,10 @@ export function ManualBillingUploadDialog({
               ) : null}
 
               <div className="flex justify-end gap-2">
-                <Button variant="outline" className="h-10 rounded-md" onClick={closeDialog} disabled={submitting}>
+                <Button variant="outline" className="h-10 rounded-none" onClick={closeDialog} disabled={submitting}>
                   Cancel
                 </Button>
-                <Button className="h-10 rounded-md" onClick={onSubmit} disabled={!localCanSubmit}>
+                <Button className="h-10 rounded-none" onClick={onSubmit} disabled={!localCanSubmit}>
                   {submitting ? (
                     <span className="inline-flex items-center gap-2">
                       <Loader2 className="h-4 w-4 animate-spin" />
@@ -520,7 +523,7 @@ export function ManualBillingUploadDialog({
                     <span className="text-xs font-semibold uppercase tracking-[0.08em] text-text-muted">Role ARN</span>
                     <input
                       type="text"
-                      className="h-10 w-full rounded-md border border-[color:var(--border-light)] bg-white px-3 text-sm outline-none focus:border-[color:var(--kcx-border-strong)]"
+                      className="h-10 w-full rounded-none border-0 border-b border-[color:var(--border-light)] bg-transparent px-0 text-sm outline-none focus:border-[color:var(--kcx-border-strong)]"
                       placeholder="arn:aws:iam::123456789012:role/kcx-billing-read-role"
                       value={s3RoleArn}
                       onChange={(event) => setS3RoleArn(event.target.value)}
@@ -531,7 +534,7 @@ export function ManualBillingUploadDialog({
                     <span className="text-xs font-semibold uppercase tracking-[0.08em] text-text-muted">Bucket Name</span>
                     <input
                       type="text"
-                      className="h-10 w-full rounded-md border border-[color:var(--border-light)] bg-white px-3 text-sm outline-none focus:border-[color:var(--kcx-border-strong)]"
+                      className="h-10 w-full rounded-none border-0 border-b border-[color:var(--border-light)] bg-transparent px-0 text-sm outline-none focus:border-[color:var(--kcx-border-strong)]"
                       placeholder="my-billing-exports"
                       value={s3Bucket}
                       onChange={(event) => setS3Bucket(event.target.value)}
@@ -542,7 +545,7 @@ export function ManualBillingUploadDialog({
                     <span className="text-xs font-semibold uppercase tracking-[0.08em] text-text-muted">Prefix</span>
                     <input
                       type="text"
-                      className="h-10 w-full rounded-md border border-[color:var(--border-light)] bg-white px-3 text-sm outline-none focus:border-[color:var(--kcx-border-strong)]"
+                      className="h-10 w-full rounded-none border-0 border-b border-[color:var(--border-light)] bg-transparent px-0 text-sm outline-none focus:border-[color:var(--kcx-border-strong)]"
                       placeholder="billing/exports/2026/"
                       value={s3Prefix}
                       onChange={(event) => setS3Prefix(event.target.value)}
@@ -553,7 +556,7 @@ export function ManualBillingUploadDialog({
                     <span className="text-xs font-semibold uppercase tracking-[0.08em] text-text-muted">External ID (Optional)</span>
                     <input
                       type="text"
-                      className="h-10 w-full rounded-md border border-[color:var(--border-light)] bg-white px-3 text-sm outline-none focus:border-[color:var(--kcx-border-strong)]"
+                      className="h-10 w-full rounded-none border-0 border-b border-[color:var(--border-light)] bg-transparent px-0 text-sm outline-none focus:border-[color:var(--kcx-border-strong)]"
                       placeholder="kcx-external-id"
                       value={s3ExternalId}
                       onChange={(event) => setS3ExternalId(event.target.value)}
@@ -563,10 +566,10 @@ export function ManualBillingUploadDialog({
                   {s3SetupError ? <p className="text-sm text-rose-600">{s3SetupError}</p> : null}
 
                   <div className="flex justify-end gap-2">
-                    <Button variant="outline" className="h-10 rounded-md" onClick={closeDialog}>
+                    <Button variant="outline" className="h-10 rounded-none" onClick={closeDialog}>
                       Back
                     </Button>
-                    <Button className="h-10 rounded-md" onClick={onValidateS3Access}>
+                    <Button className="h-10 rounded-none" onClick={onValidateS3Access}>
                       Validate Access
                     </Button>
                   </div>
@@ -587,7 +590,7 @@ export function ManualBillingUploadDialog({
                   <p className="text-sm font-medium text-amber-900">Your temporary S3 session has expired.</p>
                   <p className="text-sm text-amber-800">Revalidate access to continue browsing or importing files.</p>
                   <div className="flex justify-end gap-2">
-                    <Button variant="outline" className="h-10 rounded-md" onClick={onChangeS3AccessDetails}>
+                    <Button variant="outline" className="h-10 rounded-none" onClick={onChangeS3AccessDetails}>
                       Revalidate Access
                     </Button>
                   </div>
@@ -598,7 +601,7 @@ export function ManualBillingUploadDialog({
                 <div className="space-y-3 rounded-md border border-rose-200 bg-rose-50 px-4 py-4">
                   <p className="text-sm font-medium text-rose-700">{s3ExplorerError || "Unable to load explorer."}</p>
                   <div className="flex justify-end gap-2">
-                    <Button variant="outline" className="h-10 rounded-md" onClick={onChangeS3AccessDetails}>
+                    <Button variant="outline" className="h-10 rounded-none" onClick={onChangeS3AccessDetails}>
                       Change Access Details
                     </Button>
                   </div>
@@ -621,7 +624,7 @@ export function ManualBillingUploadDialog({
                     <div className="flex gap-2">
                       <Button
                         variant="outline"
-                        className="h-9 rounded-md"
+                        className="h-9 rounded-none"
                         onClick={() => {
                           if (!s3SessionId) return
                           onBrowseS3Folder(s3CurrentPrefix)
@@ -629,7 +632,7 @@ export function ManualBillingUploadDialog({
                       >
                         Refresh
                       </Button>
-                      <Button variant="outline" className="h-9 rounded-md" onClick={onChangeS3AccessDetails}>
+                      <Button variant="outline" className="h-9 rounded-none" onClick={onChangeS3AccessDetails}>
                         Change Access Details
                       </Button>
                     </div>
@@ -698,10 +701,10 @@ export function ManualBillingUploadDialog({
                   ) : null}
 
                   <div className="flex justify-end gap-2">
-                    <Button variant="outline" className="h-10 rounded-md" onClick={closeDialog}>
+                    <Button variant="outline" className="h-10 rounded-none" onClick={closeDialog}>
                       Cancel
                     </Button>
-                    <Button className="h-10 rounded-md" onClick={onImportSelectedS3Files} disabled={s3SelectedKeys.length === 0}>
+                    <Button className="h-10 rounded-none" onClick={onImportSelectedS3Files} disabled={s3SelectedKeys.length === 0}>
                       Import Selected Files
                     </Button>
                   </div>

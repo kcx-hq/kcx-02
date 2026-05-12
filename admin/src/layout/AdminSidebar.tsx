@@ -1,5 +1,4 @@
 import { NavLink } from "react-router-dom"
-import { LayoutGrid } from "lucide-react"
 import type { ReactNode } from "react"
 
 import { ADMIN_NAV } from "@/app/nav"
@@ -14,20 +13,11 @@ export function AdminSidebar({ mobile, onNavigate }: { mobile?: boolean; onNavig
         "relative flex flex-col",
         isMobile
           ? "h-full px-4 pb-6"
-          : "fixed bottom-0 left-0 top-0 z-30 w-[240px] bg-[linear-gradient(180deg,#0B1B2B_0%,#08192A_65%,#071625_100%)] pt-16 shadow-[0_18px_50px_-26px_rgba(2,6,23,0.65)] ring-1 ring-[color:rgba(148,163,184,0.14)]"
+          : "fixed bottom-0 left-0 top-0 z-30 w-[240px] border-r border-[rgba(132,165,157,0.24)] bg-[linear-gradient(180deg,#0f1a24_0%,#122432_100%)] pt-16 shadow-[0_18px_50px_-26px_rgba(2,6,23,0.65)]"
       )}
     >
       <div className={cn(isMobile ? "mt-6" : "mt-5 px-3 pt-3")}>
         <nav className={cn("grid", isMobile ? "gap-1.5" : "gap-1")}>
-          <SidebarItem
-            to="/"
-            label="Dashboard"
-            icon={<LayoutGrid className="h-4 w-4" aria-hidden="true" />}
-            isMobile={isMobile}
-            onNavigate={onNavigate}
-            end
-          />
-
           {ADMIN_NAV.map((item) => (
             <SidebarItem
               key={item.to}

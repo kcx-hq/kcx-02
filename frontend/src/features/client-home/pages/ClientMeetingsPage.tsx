@@ -163,7 +163,7 @@ export function ClientMeetingsPage() {
   }
 
   return (
-    <section className="rounded-[14px] border border-[color:var(--border-light)] bg-white px-5 py-5">
+    <section className="rounded-[14px] border border-[color:var(--border-light)] bg-[#f7fbfb] px-5 py-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="mt-2 text-2xl font-semibold text-text-primary">Meetings Workspace</h2>
@@ -192,7 +192,6 @@ export function ClientMeetingsPage() {
             </span>
           </div>
           <p className="mt-1 text-4xl font-semibold leading-none text-text-primary">{stats.total}</p>
-          <p className="mt-1 text-sm text-text-secondary">All scheduled sessions</p>
         </article>
 
         <article className="px-4 py-2">
@@ -203,7 +202,6 @@ export function ClientMeetingsPage() {
             </span>
           </div>
           <p className="mt-1 text-4xl font-semibold leading-none text-text-primary">{stats.upcoming}</p>
-          <p className="mt-1 text-sm text-text-secondary">Next sessions pending</p>
         </article>
 
         <article className="px-4 py-2">
@@ -214,7 +212,6 @@ export function ClientMeetingsPage() {
             </span>
           </div>
           <p className="mt-1 text-4xl font-semibold leading-none text-text-primary">{stats.completed}</p>
-          <p className="mt-1 text-sm text-text-secondary">Delivered sessions</p>
         </article>
 
         <article className="px-4 py-2 md:last:pr-0">
@@ -225,7 +222,6 @@ export function ClientMeetingsPage() {
             </span>
           </div>
           <p className="mt-1 text-4xl font-semibold leading-none text-text-primary">{stats.cancelled}</p>
-          <p className="mt-1 text-sm text-text-secondary">Requests cancelled</p>
         </article>
       </section>
 
@@ -281,13 +277,13 @@ export function ClientMeetingsPage() {
               value={search}
               onChange={(event) => setSearch(event.target.value)}
               placeholder="Search meeting title, requester, host"
-              className="h-10 w-full rounded-md border border-[color:var(--border-light)] bg-[color:var(--bg-surface)] pl-9 pr-3 text-sm text-text-primary outline-none transition-colors focus:border-[color:var(--kcx-border-strong)]"
+              className="h-10 w-full rounded-none border-0 border-b border-[color:var(--border-light)] bg-transparent pl-9 pr-3 text-sm text-text-primary outline-none transition-colors focus:border-[color:var(--kcx-border-strong)]"
             />
           </span>
           <select
             value={statusFilter}
             onChange={(event) => setStatusFilter(event.target.value as "ALL" | ClientSupportMeetingStatus)}
-            className="h-10 min-w-[190px] rounded-md border border-[color:var(--border-light)] bg-[color:var(--bg-surface)] px-3 text-sm text-text-primary outline-none transition-colors focus:border-[color:var(--kcx-border-strong)]"
+            className="h-10 min-w-[190px] rounded-none border-0 border-b border-[color:var(--border-light)] bg-transparent px-3 text-sm text-text-primary outline-none transition-colors focus:border-[color:var(--kcx-border-strong)]"
           >
             <option value="ALL">All Statuses</option>
             <option value="REQUESTED">Requested</option>
@@ -299,7 +295,7 @@ export function ClientMeetingsPage() {
           <button
             type="button"
             onClick={() => void loadMeetings()}
-            className="inline-flex h-10 w-10 items-center justify-center rounded-md border border-[color:var(--border-light)] bg-[color:var(--bg-surface)] text-text-secondary transition-colors hover:bg-[color:var(--bg-soft)]"
+            className="inline-flex h-10 w-10 items-center justify-center rounded-none border-0 border-b border-[color:var(--border-light)] bg-transparent text-text-secondary transition-colors hover:text-text-primary"
             aria-label="Refresh meetings"
           >
             <RefreshCw className="h-4 w-4" />
@@ -415,7 +411,7 @@ export function ClientMeetingsPage() {
           if (!open) resetScheduleForm()
         }}
       >
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-2xl rounded-none">
           <DialogHeader>
             <DialogTitle>Schedule Meeting</DialogTitle>
           </DialogHeader>
@@ -427,7 +423,7 @@ export function ClientMeetingsPage() {
                 <select
                   value={meetingType}
                   onChange={(event) => setMeetingType(event.target.value)}
-                  className="h-10 w-full rounded-md border border-[color:var(--border-light)] bg-[color:var(--bg-surface)] px-3 text-sm text-text-primary outline-none transition-colors focus:border-[color:var(--kcx-border-strong)]"
+                  className="h-10 w-full rounded-none border-0 border-b border-[color:var(--border-light)] bg-transparent px-0 text-sm text-text-primary outline-none transition-colors focus:border-[color:var(--kcx-border-strong)]"
                 >
                   {MEETING_TYPE_OPTIONS.map((item) => (
                     <option key={item} value={item}>{item}</option>
@@ -437,7 +433,7 @@ export function ClientMeetingsPage() {
 
               <label className="space-y-1.5">
                 <span className="text-xs font-semibold uppercase tracking-[0.12em] text-text-muted">Mode</span>
-                <div className="inline-flex h-10 w-full items-center rounded-md border border-[color:var(--border-light)] bg-[color:var(--bg-surface)] px-3 text-sm text-text-secondary">
+                <div className="inline-flex h-10 w-full items-center rounded-none border-0 border-b border-[color:var(--border-light)] bg-transparent px-0 text-sm text-text-secondary">
                   <Video className="mr-2 h-4 w-4" />
                   Google Meet
                 </div>
@@ -451,11 +447,11 @@ export function ClientMeetingsPage() {
                 onChange={(event) => setAgenda(event.target.value)}
                 rows={4}
                 placeholder="Write meeting agenda for KCX support..."
-                className="w-full rounded-md border border-[color:var(--border-light)] bg-[color:var(--bg-surface)] px-3 py-2 text-sm text-text-primary outline-none transition-colors focus:border-[color:var(--kcx-border-strong)]"
+                className="w-full rounded-none border border-[color:var(--border-light)] bg-transparent px-3 py-2 text-sm text-text-primary outline-none transition-colors focus:border-[color:var(--kcx-border-strong)]"
               />
             </label>
 
-            <div className="rounded-md border border-[color:var(--border-light)] bg-[color:var(--bg-surface)] p-3 text-sm text-text-secondary">
+            <div className="border-0 border-b border-[color:var(--border-light)] px-0 py-2 text-sm text-text-secondary">
               {slot ? (
                 <p>
                   Selected Slot: <span className="font-semibold text-text-primary">{toPrettyDateLabel(slot.date)} - {slot.time}</span> ({slot.timeZone})
@@ -469,17 +465,19 @@ export function ClientMeetingsPage() {
               <Button
                 type="button"
                 variant="outline"
+                className="rounded-none"
                 onClick={() => setSlotPickerOpen(true)}
               >
                 Select Time & Slot Booking
               </Button>
 
               <div className="flex items-center gap-2">
-                <Button type="button" variant="outline" onClick={() => setScheduleOpen(false)}>
+                <Button type="button" variant="outline" className="rounded-none" onClick={() => setScheduleOpen(false)}>
                   Cancel
                 </Button>
                 <Button
                   type="button"
+                  className="rounded-none"
                   disabled={!slot || !slot.slotStart || !slot.slotEnd || agenda.trim().length === 0 || saving}
                   onClick={() => void handleScheduleMeeting()}
                 >

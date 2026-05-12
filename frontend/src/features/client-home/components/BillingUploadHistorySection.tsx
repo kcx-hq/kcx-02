@@ -195,7 +195,7 @@ export function BillingUploadHistorySection({
                 setPage(1)
               }}
               placeholder="Search file name"
-              className="h-10 w-full rounded-md border border-[color:var(--border-light)] bg-[color:var(--bg-surface)] pl-8 pr-3 text-sm outline-none transition-colors focus:border-[color:var(--kcx-border-strong)]"
+              className="h-10 w-full rounded-none border-0 border-b border-[color:var(--border-light)] bg-transparent pl-8 pr-3 text-sm outline-none transition-colors focus:border-[color:var(--kcx-border-strong)]"
             />
           </label>
           <label className="inline-flex items-center gap-2 text-sm text-text-secondary">
@@ -206,7 +206,7 @@ export function BillingUploadHistorySection({
                 setStatusFilter(event.target.value as "all" | NormalizedStatus)
                 setPage(1)
               }}
-              className="h-10 rounded-md border border-[color:var(--border-light)] bg-[color:var(--bg-surface)] px-3 text-sm text-text-primary outline-none transition-colors focus:border-[color:var(--kcx-border-strong)]"
+              className="h-10 rounded-none border-0 border-b border-[color:var(--border-light)] bg-transparent px-3 text-sm text-text-primary outline-none transition-colors focus:border-[color:var(--kcx-border-strong)]"
               aria-label="Filter by status"
             >
               {FILTER_OPTIONS.map((option) => (
@@ -217,12 +217,10 @@ export function BillingUploadHistorySection({
             </select>
           </label>
           <Button
-            variant={selectedFileIds.length > 0 ? "default" : "outline"}
+            variant="outline"
             className={cn(
-              "h-10 rounded-md",
-              selectedFileIds.length > 0
-                ? "bg-[color:var(--brand-primary)] text-[color:var(--text-on-dark)] hover:bg-[color:var(--brand-primary-hover)]"
-                : ""
+              "h-10 rounded-none border-0 border-b border-[color:var(--border-light)] bg-transparent",
+              selectedFileIds.length > 0 ? "text-text-primary" : "text-text-muted"
             )}
             disabled={selectedFileIds.length === 0 || dashboardActionLoading}
             onClick={() => onOpenDashboard(selectedFileIds)}

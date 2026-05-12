@@ -1,5 +1,6 @@
 import type { RequestHandler } from "express";
 
+import env from "../config/env.js";
 import { UnauthorizedError, ForbiddenError } from "../errors/http-errors.js";
 import {
   AdminAuthSession,
@@ -8,8 +9,8 @@ import {
   User as UserModel,
 } from "../models/index.js";
 import type { AdminUser } from "../models/admin-user.js";
-import type { User } from "../models/user.js";
 import { hashToken } from "../utils/token.js";
+import { verifyJwt } from "../utils/jwt.js";
 
 const getBearerToken = (headerValue: string | undefined): string | null => {
   if (!headerValue) return null;
@@ -20,15 +21,35 @@ const getBearerToken = (headerValue: string | undefined): string | null => {
 };
 
 export const requireAuth: RequestHandler = async (req, _res, next) => {
+  if (!env.jwtSecret) {
+    next(new UnauthorizedError("JWT auth is not configured"));
+    return;
+  }
+
   const token = getBearerToken(req.header("authorization"));
   if (!token) {
     next(new UnauthorizedError("Missing Authorization header"));
     return;
   }
+  const payload = verifyJwt(token, env.jwtSecret);
+  if (!payload) {
+    next(new UnauthorizedError("Invalid or expired token"));
+    return;
+  }
+
+  if (payload.iss !== env.jwtIssuer || payload.type !== "user_access") {
+    next(new UnauthorizedError("Invalid token"));
+    return;
+  }
+
+  const userId = typeof payload.sub === "string" ? payload.sub : null;
+  if (!userId) {
+    next(new UnauthorizedError("Invalid token"));
+    return;
+  }
 
   const session = await AuthSession.findOne({
     where: { tokenHash: hashToken(token), revokedAt: null },
-    include: [{ model: UserModel }],
   });
 
   if (!session) {
@@ -42,9 +63,13 @@ export const requireAuth: RequestHandler = async (req, _res, next) => {
     return;
   }
 
-  const user = (session as unknown as { User?: User }).User;
+  const user = await UserModel.findByPk(userId);
   if (!user) {
     next(new UnauthorizedError("Invalid session"));
+    return;
+  }
+  if (user.status !== "active") {
+    next(new UnauthorizedError("User is not active"));
     return;
   }
 
@@ -62,7 +87,7 @@ export const requireAuth: RequestHandler = async (req, _res, next) => {
   next();
 };
 
-export const requireAdminAuth: RequestHandler = async (req, res, next) => {
+export const requireAdminAuth: RequestHandler = async (req, _res, next) => {
   const token = getBearerToken(req.header("authorization"));
   if (!token) {
     next(new UnauthorizedError("Missing Authorization header"));

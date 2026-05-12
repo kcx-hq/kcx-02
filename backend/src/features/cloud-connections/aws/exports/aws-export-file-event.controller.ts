@@ -1,5 +1,6 @@
 import type { Request, Response } from "express";
 
+import { BadRequestError, NotFoundError } from "../../../../errors/http-errors.js";
 import { sendSuccess } from "../../../../utils/api-response.js";
 import { logger } from "../../../../utils/logger.js";
 import { parseWithSchema } from "../../../_shared/validation/zod-validate.js";
@@ -109,48 +110,7 @@ export async function handleAwsFileEventArrived(
 
   let result: AwsFileEventResult;
 
-  if (isCloudTrailEvent) {
-    logger.info("AWS file callback: step=queue_call:start", {
-      queue_path: "registerCloudtrailObjectEvent",
-    });
-
-    const cloudtrailResult = await registerCloudtrailObjectEvent({
-      callbackToken: payload.callback_token,
-      eventId: payload.event_id,
-      accountId: payload.account_id,
-      region: payload.region,
-      roleArn: payload.role_arn,
-      bucketName: payload.bucket_name,
-      objectKey: normalizedObjectKey,
-      sourceType: payload.source_type,
-      schemaType: payload.schema_type,
-      cadence: payload.cadence,
-      rawPayload: payload,
-    });
-
-    result = {
-      ...cloudtrailResult,
-      eventKind: "cloudtrail_object",
-    };
-  } else if (isBillingManifestEvent) {
-    logger.info("AWS file callback: step=queue_call:start", {
-      queue_path: "queueExportManifestFromEvent",
-    });
-
-    const billingResult = await queueExportManifestFromEvent({
-      callbackToken: payload.callback_token,
-      accountId: payload.account_id,
-      region: payload.region,
-      roleArn: payload.role_arn,
-      bucketName: payload.bucket_name,
-      manifestKey: normalizedObjectKey,
-    });
-
-    result = {
-      ...billingResult,
-      eventKind: "billing_manifest",
-    };
-  } else {
+  if (!isCloudTrailEvent && !isBillingManifestEvent) {
     logger.warn("AWS file callback: unsupported payload", {
       trigger_type: payload.trigger_type,
       source_type: payload.source_type,
@@ -170,6 +130,75 @@ export async function handleAwsFileEventArrived(
       },
     });
     return;
+  }
+
+  try {
+    if (isCloudTrailEvent) {
+      logger.info("AWS file callback: step=queue_call:start", {
+        queue_path: "registerCloudtrailObjectEvent",
+      });
+
+      const cloudtrailResult = await registerCloudtrailObjectEvent({
+        callbackToken: payload.callback_token,
+        eventId: payload.event_id,
+        accountId: payload.account_id,
+        region: payload.region,
+        roleArn: payload.role_arn,
+        bucketName: payload.bucket_name,
+        objectKey: normalizedObjectKey,
+        sourceType: payload.source_type,
+        schemaType: payload.schema_type,
+        cadence: payload.cadence,
+        rawPayload: payload,
+      });
+
+      result = {
+        ...cloudtrailResult,
+        eventKind: "cloudtrail_object",
+      };
+    } else {
+      logger.info("AWS file callback: step=queue_call:start", {
+        queue_path: "queueExportManifestFromEvent",
+      });
+
+      const billingResult = await queueExportManifestFromEvent({
+        callbackToken: payload.callback_token,
+        accountId: payload.account_id,
+        region: payload.region,
+        roleArn: payload.role_arn,
+        bucketName: payload.bucket_name,
+        manifestKey: normalizedObjectKey,
+      });
+
+      result = {
+        ...billingResult,
+        eventKind: "billing_manifest",
+      };
+    }
+  } catch (error) {
+    if (error instanceof NotFoundError || error instanceof BadRequestError) {
+      logger.warn("AWS file callback: step=queue_call:skipped", {
+        reason: error.message,
+        trigger_type: payload.trigger_type,
+        source_type: payload.source_type,
+        bucket_name: payload.bucket_name,
+        object_key: normalizedObjectKey,
+      });
+
+      sendSuccess({
+        res,
+        req,
+        message: "AWS file event ignored",
+        data: {
+          queued: false,
+          skipped: true,
+          reason: error.message,
+        },
+      });
+      return;
+    }
+
+    throw error;
   }
 
   logger.info("AWS file callback: step=queue_call:done", {

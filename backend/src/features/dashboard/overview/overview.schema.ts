@@ -104,6 +104,24 @@ const parseSortOrder = (value: unknown): SortOrder => {
   return normalized === "asc" ? "asc" : "desc";
 };
 
+const parseForecastingEnabled = (value: unknown): boolean => {
+  if (typeof value === "undefined") {
+    return true;
+  }
+
+  const raw = Array.isArray(value) ? value[0] : value;
+  const normalized = String(raw ?? "").trim().toLowerCase();
+  if (normalized.length === 0) {
+    return true;
+  }
+
+  if (["false", "0", "off", "disabled", "none", "exclude", "no"].includes(normalized)) {
+    return false;
+  }
+
+  return true;
+};
+
 const computeDefaultBillingPeriod = (): { start: string; end: string } => {
   const now = new Date();
   const year = now.getUTCFullYear();
@@ -122,6 +140,7 @@ const overviewFiltersSchema = z
     billingSourceIds: z.array(z.number().int().positive()).optional(),
     billingPeriodStart: z.string().regex(DATE_ONLY_REGEX),
     billingPeriodEnd: z.string().regex(DATE_ONLY_REGEX),
+    forecastingEnabled: z.boolean(),
     accountKeys: z.array(z.number().int().positive()).optional(),
     serviceKeys: z.array(z.number().int().positive()).optional(),
     regionKeys: z.array(z.number().int().positive()).optional(),
@@ -152,6 +171,13 @@ export function buildOverviewFilters(req: Request): OverviewFilters {
   const billingSourceIds =
     parseOptionalIntArray(req.query.billingSourceIds, "billingSourceIds") ??
     parseOptionalIntArray(req.query.billingSourceId, "billingSourceId");
+  const forecastingEnabled = parseForecastingEnabled(
+    req.query.forecastingEnabled ??
+      req.query.forecasting ??
+      req.query.forecastEnabled ??
+      req.query.forecastFilter ??
+      req.query.forecastingFilter,
+  );
 
   const accountKeys =
     parseOptionalIntArray(req.query.accountKeys, "accountKeys") ??
@@ -177,6 +203,7 @@ export function buildOverviewFilters(req: Request): OverviewFilters {
     billingSourceIds,
     billingPeriodStart,
     billingPeriodEnd,
+    forecastingEnabled,
     accountKeys,
     serviceKeys,
     regionKeys,

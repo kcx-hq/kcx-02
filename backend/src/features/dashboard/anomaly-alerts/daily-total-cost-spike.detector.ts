@@ -37,7 +37,8 @@ export type DailyTotalCostSpikeDetectionResult = {
   guardrails: DailyTotalCostSpikeGuardrails;
 };
 
-const HISTORY_DAYS_REQUIRED = 7;
+const BASELINE_WINDOW_DAYS = 7;
+const MIN_HISTORY_DAYS_REQUIRED = 1;
 const MINIMUM_EXPECTED_BASELINE = 25;
 const MINIMUM_ABSOLUTE_DELTA = 50;
 const MINIMUM_PERCENTAGE_DELTA = 0.35;
@@ -177,7 +178,7 @@ export async function detectDailyTotalCostSpikesForSource({
       observedDaysInWindow: 0,
       candidates: [],
       guardrails: {
-        historyDaysRequired: HISTORY_DAYS_REQUIRED,
+        historyDaysRequired: MIN_HISTORY_DAYS_REQUIRED,
         minimumExpectedBaseline: MINIMUM_EXPECTED_BASELINE,
         minimumAbsoluteDelta: MINIMUM_ABSOLUTE_DELTA,
         minimumPercentageDelta: MINIMUM_PERCENTAGE_DELTA,
@@ -187,7 +188,7 @@ export async function detectDailyTotalCostSpikesForSource({
 
   const targetFrom = parseDateOnlyUtc(effectiveWindow.dateFrom);
   const targetTo = parseDateOnlyUtc(effectiveWindow.dateTo);
-  const historyStart = addDaysUtc(targetFrom, -HISTORY_DAYS_REQUIRED);
+  const historyStart = addDaysUtc(targetFrom, -BASELINE_WINDOW_DAYS);
 
   const points = await fetchDailyTotals({
     billingSourceId,
@@ -214,9 +215,9 @@ export async function detectDailyTotalCostSpikesForSource({
     const historicalValues = sortedPoints
       .filter((point) => point.usageDate < candidateDate)
       .map((point) => point.totalCost)
-      .slice(-HISTORY_DAYS_REQUIRED);
+      .slice(-BASELINE_WINDOW_DAYS);
 
-    if (historicalValues.length < HISTORY_DAYS_REQUIRED) {
+    if (historicalValues.length < MIN_HISTORY_DAYS_REQUIRED) {
       continue;
     }
 
@@ -266,7 +267,7 @@ export async function detectDailyTotalCostSpikesForSource({
     observedDaysInWindow,
     candidates,
     guardrails: {
-      historyDaysRequired: HISTORY_DAYS_REQUIRED,
+      historyDaysRequired: MIN_HISTORY_DAYS_REQUIRED,
       minimumExpectedBaseline: MINIMUM_EXPECTED_BASELINE,
       minimumAbsoluteDelta: MINIMUM_ABSOLUTE_DELTA,
       minimumPercentageDelta: MINIMUM_PERCENTAGE_DELTA,

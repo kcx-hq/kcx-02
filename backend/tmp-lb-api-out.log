@@ -1,0 +1,6 @@
+{"timestamp":"2026-05-07T07:24:24.957Z","level":"info","message":"Database connected"}
+{"timestamp":"2026-05-07T07:24:24.966Z","level":"info","message":"EC2 scheduled jobs scheduler started","metadata":{"pollIntervalMs":60000,"batchSize":10,"maxBatchesPerPoll":5}}
+{"timestamp":"2026-05-07T07:24:24.968Z","level":"info","message":"S3 bucket config scheduler started","metadata":{"intervalMs":86400000,"startupDelayMs":60000}}
+{"timestamp":"2026-05-07T07:24:24.977Z","level":"info","message":"Shutdown initiated","metadata":{"signal":"uncaughtException"}}
+{"timestamp":"2026-05-07T07:24:24.979Z","level":"info","message":"EC2 scheduled jobs scheduler stopped"}
+{"timestamp":"2026-05-07T07:24:24.980Z","level":"info","message":"S3 bucket config scheduler stopped"}

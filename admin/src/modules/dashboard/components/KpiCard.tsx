@@ -21,7 +21,7 @@ export function KpiCard({ label, value, helper, trend = "flat" }: KpiCardProps) 
           </div>
           <div
             className={cn(
-              "grid h-10 w-10 place-items-center rounded-xl ring-1",
+              "grid h-10 w-10 place-items-center rounded-none ring-1",
               trend === "up"
                 ? "bg-brand-primary-soft text-[color:rgba(38,107,90,0.98)] ring-[color:rgba(47,125,106,0.18)]"
                 : "bg-white text-[color:rgba(15,23,42,0.78)] ring-[color:rgba(15,23,42,0.10)]"

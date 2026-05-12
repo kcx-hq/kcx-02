@@ -60,7 +60,6 @@ export function TicketStatsRow({ total, open, underReview, resolved, closed }: T
             <div>
               <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-text-muted">{item.label}</p>
               <p className="mt-2 text-[34px] font-semibold leading-none text-text-primary">{item.value}</p>
-              <p className="mt-2 text-xs text-text-secondary">{item.helper}</p>
             </div>
             <span className={`inline-flex h-9 w-9 items-center justify-center rounded-xl ${item.tone}`}>
               <Icon className="h-4 w-4" />

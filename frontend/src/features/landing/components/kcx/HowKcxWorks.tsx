@@ -9,6 +9,7 @@ import {
   useTransform,
   MotionValue,
 } from "framer-motion"
+import { landingSectionIds } from "@/features/landing/utils/landingSectionIds"
 
 // --- Configuration & Design System ---
 
@@ -26,52 +27,72 @@ type StepConfig = {
 const KCX_STEPS: StepConfig[] = [
   {
     id: "connect",
-    title: "Connect your cloud",
-    subtitle: "Securely aggregate AWS, Azure, and GCP into a single intelligent control layer without agents.",
-    bullets: ["Multi-cloud API ingestion", "Read-only IAM role security", "Instant asset discovery"],
+    title: "Onboard billing data",
+    subtitle:
+      "Start with the path that fits your environment: upload billing files, import from S3, or use a guided AWS connection.",
+    bullets: [
+      "Upload files, import from S3, or connect AWS",
+      "Validated onboarding flows for production teams",
+      "Clear lineage from ingestion to analytics",
+    ],
     imageSide: "right",
-    insightLabel: "Data Ingestion",
+    insightLabel: "01 - Onboarding",
     cssThemeClass: "kcx-premium-card--teal",
     tone: { border: "rgba(62,138,118,0.42)", glow: "rgba(62,138,118,0.18)", activeIndicator: "#3e8a76" },
   },
   {
     id: "visibility",
-    title: "Gain full visibility",
-    subtitle: "Map raw billing metadata to real business units, engineering teams, and product features.",
-    bullets: ["Automated tag compliance", "Shared resource splitting", "Unit economics dashboard"],
+    title: "Validate and normalize",
+    subtitle:
+      "KCX converts fragmented raw billing inputs into validated, warehouse-backed cost intelligence teams can trust.",
+    bullets: [
+      "Validate billing inputs before operational use",
+      "Normalize provider records into a shared cost model",
+      "Aggregate spend into governance-ready analytics",
+    ],
     imageSide: "left",
-    insightLabel: "Cost Allocation",
+    insightLabel: "02 - Validation",
     cssThemeClass: "kcx-premium-card--blue",
     tone: { border: "rgba(56,189,248,0.38)", glow: "rgba(56,189,248,0.16)", activeIndicator: "#38bdf8" },
   },
   {
     id: "anomaly",
-    title: "Detect anomalies",
-    subtitle: "Identify cost spikes in real-time before they impact your end-of-month burn rate.",
-    bullets: ["ML baseline forecasting", "Slack & Teams alerting", "Drill-down root cause analysis"],
+    title: "Surface the signals that matter",
+    subtitle:
+      "Move from static reporting to active cost intelligence with dashboards, budgets, anomalies, and optimization recommendations.",
+    bullets: [
+      "Warehouse-backed dashboards for spend investigation",
+      "Budgets and anomaly detection with clearer prioritization",
+      "Rightsizing, idle, and commitment recommendations",
+    ],
     imageSide: "right",
-    insightLabel: "Risk Management",
+    insightLabel: "03 - Signals",
     cssThemeClass: "kcx-premium-card--rose",
     tone: { border: "rgba(244,63,94,0.38)", glow: "rgba(244,63,94,0.16)", activeIndicator: "#f43f5e" },
   },
   {
     id: "savings",
-    title: "Unlock savings",
-    subtitle: "One-click recommendations to right-size instances, upgrade plans, and delete idle waste.",
-    bullets: ["Reserved Instance planning", "Orphaned volume cleanup", "Compute rightsizing logic"],
+    title: "Execute selected AWS actions",
+    subtitle:
+      "Turn recommendations into accountable action in the same workspace, with selected AWS execution and tracked status.",
+    bullets: [
+      "Selected AWS execution for approved recommendations",
+      "Action tracking for governance and operational follow-through",
+      "Clear scope boundaries for safe enterprise adoption",
+    ],
     imageSide: "left",
-    insightLabel: "Optimization",
+    insightLabel: "04 - Action",
     cssThemeClass: "kcx-premium-card--emerald",
     tone: { border: "rgba(16,185,129,0.38)", glow: "rgba(16,185,129,0.16)", activeIndicator: "#10b981" },
   },
 ]
 
 const ANOMALY_LOG_LINES = [
-  "KCX-AGENT: Monitoring rds-prod-01 baseline drift...",
-  "KCX-AGENT: Checking read-iops anomaly confidence...",
-  "KCX-AGENT: Correlating spend variance with workload spikes...",
-  "KCX-AGENT: Root-cause trace initiated for cluster alpha...",
-  "KCX-AGENT: Alert routed to platform-oncall workflow...",
+  "KCX-PIPELINE: Evaluating budget variance thresholds...",
+  "KCX-PIPELINE: Checking anomaly confidence and contributors...",
+  "KCX-PIPELINE: Prioritizing rightsizing opportunities...",
+  "KCX-PIPELINE: Ranking idle and commitment recommendations...",
+  "KCX-PIPELINE: Routing signals into action workflow queue...",
 ]
 
 // --- Premium Visual Components ---
@@ -89,11 +110,11 @@ function MockUIConnect({ tone }: { tone: StepConfig["tone"] }) {
       <div className="relative z-10 flex w-full max-w-[280px] sm:max-w-sm items-center justify-between">
         {/* Cloud Sources */}
         <div className="flex flex-col gap-5 sm:gap-8 w-24 sm:w-32 z-20">
-          {["AWS", "AZURE", "GCP"].map((cloud, i) => (
+          {["UPLOAD", "S3 IMPORT", "AWS CONNECT"].map((cloud, i) => (
             <div key={cloud} className="relative flex items-center justify-end">
               <motion.div 
                 initial={{ opacity: 0, x: -20 }} whileInView={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.15 + 0.2 }}
-                className="relative z-10 flex h-10 sm:h-12 w-full items-center justify-between px-3 sm:px-4 rounded-xl border border-white/10 bg-gradient-to-br from-slate-800/90 to-slate-900/90 shadow-lg backdrop-blur-md"
+                className="relative z-10 flex h-10 sm:h-12 w-full items-center justify-between px-3 sm:px-4 rounded-none border border-white/10 bg-gradient-to-br from-slate-800/90 to-slate-900/90 shadow-lg backdrop-blur-md"
               >
                 <span className="text-[10px] sm:text-xs font-bold tracking-widest text-slate-300">{cloud}</span>
                 <div className="h-2 w-2 rounded-full" style={{ backgroundColor: tone.activeIndicator, boxShadow: `0 0 10px ${tone.activeIndicator}` }} />
@@ -136,12 +157,12 @@ function MockUIConnect({ tone }: { tone: StepConfig["tone"] }) {
           />
           
           <motion.div 
-            className="relative z-10 flex h-20 w-20 sm:h-24 sm:w-24 shrink-0 flex-col items-center justify-center rounded-2xl border border-white/20 bg-gradient-to-br from-slate-800 to-slate-950 shadow-[0_0_40px_rgba(0,0,0,0.5)] backdrop-blur-xl"
+            className="relative z-10 flex h-20 w-20 sm:h-24 sm:w-24 shrink-0 flex-col items-center justify-center rounded-none border border-white/20 bg-gradient-to-br from-slate-800 to-slate-950 shadow-[0_0_40px_rgba(0,0,0,0.5)] backdrop-blur-xl"
             initial={{ scale: 0.8, opacity: 0 }} whileInView={{ scale: 1, opacity: 1 }} transition={{ type: "spring", bounce: 0.4 }}
           >
-            <div className="absolute inset-0 rounded-2xl animate-pulse opacity-30" style={{ backgroundColor: tone.glow }} />
+          <div className="absolute inset-0 rounded-none animate-pulse opacity-30" style={{ backgroundColor: tone.glow }} />
             <motion.div 
-              className="absolute inset-0 rounded-2xl border-2" style={{ borderColor: tone.activeIndicator }}
+              className="absolute inset-0 rounded-none border-2" style={{ borderColor: tone.activeIndicator }}
               animate={{ opacity: [0.3, 1, 0.3] }} transition={{ repeat: Infinity, duration: 2 }}
             />
             <div className="mb-1 rounded p-1.5" style={{ backgroundColor: `${tone.activeIndicator}20` }}>
@@ -161,20 +182,20 @@ function MockUIVisibility({ tone }: { tone: StepConfig["tone"] }) {
       {/* Floating Header Widget */}
       <motion.div 
         initial={{ opacity: 0, y: -10 }} whileInView={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}
-        className="flex items-center justify-between z-20 bg-slate-800/50 border border-white/5 rounded-xl p-2.5 sm:p-4 backdrop-blur-md shadow-lg"
+        className="flex items-center justify-between z-20 bg-slate-800/50 border border-white/5 rounded-none p-2.5 sm:p-4 backdrop-blur-md shadow-lg"
       >
         <div>
-          <div className="text-[10px] sm:text-xs font-medium uppercase tracking-widest text-slate-400 mb-1">Total Allocated</div>
+          <div className="text-[10px] sm:text-xs font-medium uppercase tracking-widest text-slate-400 mb-1">Records Validated</div>
           <div className="text-lg sm:text-3xl font-bold text-white tracking-tight flex items-center gap-2">
-            $142,850 
-            <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 font-mono tracking-normal">+2.4%</span>
+            1,284,302
+            <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 font-mono tracking-normal">99.2%</span>
           </div>
         </div>
         <div className="hidden sm:block text-right">
-          <div className="text-[10px] sm:text-xs font-medium uppercase tracking-widest text-slate-400 mb-1">Top Cost Center</div>
+          <div className="text-[10px] sm:text-xs font-medium uppercase tracking-widest text-slate-400 mb-1">Normalization Status</div>
           <div className="text-sm font-bold text-white flex items-center justify-end gap-2">
             <div className="w-2 h-2 rounded-full" style={{ backgroundColor: tone.activeIndicator }} />
-            Engineering Team
+            Schema aligned
           </div>
         </div>
       </motion.div>
@@ -223,11 +244,11 @@ function MockUIVisibility({ tone }: { tone: StepConfig["tone"] }) {
 
         {/* Floating Tooltip at the Data Point */}
         <motion.div 
-          className="absolute z-30 bg-slate-900 border border-white/10 rounded-lg p-1.5 sm:p-2 shadow-2xl backdrop-blur-md left-1/2 top-1 -translate-x-1/2 sm:-top-4 sm:-translate-y-full"
+          className="absolute z-30 bg-slate-900 border border-white/10 rounded-none p-1.5 sm:p-2 shadow-2xl backdrop-blur-md left-1/2 top-1 -translate-x-1/2 sm:-top-4 sm:-translate-y-full"
           initial={{ opacity: 0, y: 10, scale: 0.9 }} whileInView={{ opacity: 1, y: 0, scale: 1 }} transition={{ delay: 1.6, type: "spring" }}
         >
-          <div className="text-[9px] text-slate-400 mb-0.5">May 14 - Proj_Alpha</div>
-          <div className="text-xs sm:text-sm font-bold text-white">$4,250.00</div>
+          <div className="text-[9px] text-slate-400 mb-0.5">Warehouse batch #214</div>
+          <div className="text-xs sm:text-sm font-bold text-white">Normalized + aggregated</div>
           <div className="absolute -bottom-1.5 left-1/2 hidden -translate-x-1/2 w-3 h-3 bg-slate-900 border-b border-r border-white/10 rotate-45 sm:block" />
         </motion.div>
       </div>
@@ -262,21 +283,21 @@ function MockUIAnomaly({ tone }: { tone: StepConfig["tone"] }) {
         
         {/* Mock Slack/Teams Alert Banner Sliding In */}
         <motion.div 
-          className="self-end max-w-[220px] sm:max-w-[240px] bg-slate-800/90 border border-white/10 rounded-xl p-2.5 sm:p-3 shadow-2xl backdrop-blur-xl flex gap-2.5 sm:gap-3 items-start"
+          className="self-end max-w-[220px] sm:max-w-[240px] bg-slate-800/90 border border-white/10 rounded-none p-2.5 sm:p-3 shadow-2xl backdrop-blur-xl flex gap-2.5 sm:gap-3 items-start"
           initial={{ opacity: 0, x: 50, y: -20 }} whileInView={{ opacity: 1, x: 0, y: 0 }} transition={{ delay: 1.5, type: "spring" }}
         >
           <div className="w-6 h-6 rounded bg-rose-500/20 flex items-center justify-center shrink-0 mt-0.5">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#f43f5e" strokeWidth="3"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
           </div>
           <div>
-            <div className="text-[10px] font-bold text-slate-300">KCX Alert Bot</div>
-            <div className="text-[10px] text-slate-400 mt-0.5 leading-snug">Unusual spike in <span className="text-rose-400 font-mono">rds-prod-01</span> detected. +340% above baseline.</div>
+            <div className="text-[10px] font-bold text-slate-300">KCX Signal Bot</div>
+            <div className="text-[10px] text-slate-400 mt-0.5 leading-snug">Budget anomaly detected for <span className="text-rose-400 font-mono">prod-data</span>. Recommendation queue reprioritized.</div>
           </div>
         </motion.div>
 
         {/* The Spike Graph */}
         <motion.div 
-          className="rounded-xl border border-white/10 bg-slate-900/60 p-2.5 sm:p-5 shadow-2xl backdrop-blur-md relative overflow-hidden"
+          className="rounded-none border border-white/10 bg-slate-900/60 p-2.5 sm:p-5 shadow-2xl backdrop-blur-md relative overflow-hidden"
           initial={{ y: 20, opacity: 0 }} whileInView={{ y: 0, opacity: 1 }} transition={{ delay: 0.3 }}
         >
           {/* Flashing Red Background on Spike */}
@@ -286,10 +307,10 @@ function MockUIAnomaly({ tone }: { tone: StepConfig["tone"] }) {
           />
 
           <div className="flex items-center gap-2 sm:gap-3 mb-2 sm:mb-4 relative z-10">
-            <div className="text-xs sm:text-sm font-bold text-white tracking-wide">Read IOPS Utilization</div>
+            <div className="text-xs sm:text-sm font-bold text-white tracking-wide">Budget + Anomaly Signals</div>
             <div className="ml-auto flex items-center gap-1.5 px-2 py-0.5 rounded bg-rose-500/10 border border-rose-500/20 text-rose-400 text-[10px] font-bold">
               <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse" />
-              ANOMALY
+              PRIORITY
             </div>
           </div>
           
@@ -322,9 +343,9 @@ function MockUISavings({ tone }: { tone: StepConfig["tone"] }) {
         className="mb-1 sm:mb-2"
         initial={{ opacity: 0, y: -10 }} whileInView={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}
       >
-        <div className="text-[9px] sm:text-[10px] font-bold tracking-widest text-slate-400 mb-1 uppercase">Potential Monthly Savings</div>
+        <div className="text-[9px] sm:text-[10px] font-bold tracking-widest text-slate-400 mb-1 uppercase">Selected AWS Actions</div>
         <div className="text-lg sm:text-4xl font-black text-white flex items-center gap-2 sm:gap-3">
-          $13,720
+          12 Ready
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={tone.activeIndicator} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="animate-bounce sm:h-6 sm:w-6"><path d="M12 5v14M19 12l-7 7-7-7"/></svg>
         </div>
       </motion.div>
@@ -332,13 +353,13 @@ function MockUISavings({ tone }: { tone: StepConfig["tone"] }) {
       {/* Interactive-looking Action Cards */}
       <div className="flex flex-col gap-2 sm:gap-3 z-10">
         {[
-          { t: "Downgrade Idle RDS", target: "db-analytics-02", save: "$800/mo" },
-          { t: "Clean Orphaned Volumes", target: "4 EBS Volumes", save: "$120/mo" },
-          { t: "Apply Reserved Instance", target: "c5.4xlarge x 8", save: "$3,200/mo" }
+          { t: "Apply rightsizing recommendation", target: "ec2 / app-cluster", save: "Pending" },
+          { t: "Remove idle storage resource", target: "4 EBS volumes", save: "Approved" },
+          { t: "Execute commitment adjustment", target: "compute plan scope", save: "In Progress" }
         ].map((action, i) => (
           <motion.div 
             key={i}
-            className="group relative overflow-hidden rounded-xl border border-white/10 bg-slate-800/60 p-2 sm:p-4 hover:bg-slate-700/60 transition-colors duration-300 backdrop-blur-md cursor-pointer flex items-center justify-between"
+            className="group relative overflow-hidden rounded-none border border-white/10 bg-slate-800/60 p-2 sm:p-4 hover:bg-slate-700/60 transition-colors duration-300 backdrop-blur-md cursor-pointer flex items-center justify-between"
             initial={{ opacity: 0, x: 20 }} whileInView={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.15 + 0.4 }}
           >
             {/* Hover Glow Effect */}
@@ -352,8 +373,8 @@ function MockUISavings({ tone }: { tone: StepConfig["tone"] }) {
             <div className="relative z-10 flex items-center gap-2 sm:gap-4">
               <span className="font-mono text-[11px] sm:text-sm font-bold" style={{ color: tone.activeIndicator }}>{action.save}</span>
               {/* Mock Action Button */}
-              <div className="hidden sm:flex px-3 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-bold tracking-wide group-hover:bg-emerald-500 group-hover:text-white transition-all duration-300">
-                APPLY
+              <div className="hidden sm:flex px-3 py-1.5 rounded-none bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-bold tracking-wide group-hover:bg-emerald-500 group-hover:text-white transition-all duration-300">
+                EXECUTE
               </div>
             </div>
           </motion.div>
@@ -382,7 +403,7 @@ function StackedCard({ step, index }: { step: StepConfig; index: number }) {
       }}
     >
       <motion.div 
-        className={`kcx-premium-card ${step.cssThemeClass} relative mx-auto w-full max-w-[70rem] overflow-hidden rounded-[18px] sm:rounded-[24px] border bg-[linear-gradient(180deg,rgba(15,23,34,0.96)_0%,rgba(9,14,20,0.98)_100%)] p-4 sm:p-7 lg:p-9 ring-1 ring-white/[0.04] backdrop-blur-2xl`}
+        className={`kcx-premium-card ${step.cssThemeClass} relative mx-auto w-full max-w-[70rem] overflow-hidden rounded-none sm:rounded-none border bg-[linear-gradient(180deg,rgba(15,23,34,0.96)_0%,rgba(9,14,20,0.98)_100%)] p-4 sm:p-7 lg:p-9 ring-1 ring-white/[0.04] backdrop-blur-2xl`}
         style={{ 
             borderColor: step.tone.border,
             scale: 1 - (index * 0.002)
@@ -417,7 +438,7 @@ function StackedCard({ step, index }: { step: StepConfig; index: number }) {
             </ul>
           </div>
 
-          <div className={`relative ${visualHeightClass} w-full overflow-hidden rounded-[14px] sm:rounded-[20px] border border-white/10 bg-[#0b1118] shadow-[inset_0_0_50px_rgba(0,0,0,0.5)] ${isLeft ? "lg:order-1" : "lg:order-2"}`}>
+          <div className={`relative ${visualHeightClass} w-full overflow-hidden rounded-none sm:rounded-none border border-white/10 bg-[#0b1118] shadow-[inset_0_0_50px_rgba(0,0,0,0.5)] ${isLeft ? "lg:order-1" : "lg:order-2"}`}>
              <div className="absolute inset-0 opacity-20 blur-[60px] transition-colors duration-700 pointer-events-none" style={{ backgroundColor: step.tone.glow }} />
              
              <div className={`relative z-10 h-full w-full ${visualScaleClass}`}>
@@ -491,6 +512,7 @@ export function HowKcxWorks() {
 
   return (
     <section 
+      id={landingSectionIds.works}
       ref={containerRef}
       data-header-theme="dark"
       className="relative w-full bg-[linear-gradient(180deg,#050b11_0%,#081520_50%,#081620_100%)] pb-12 sm:pb-16" 
@@ -519,7 +541,7 @@ export function HowKcxWorks() {
             viewport={{ once: true, margin: "-50px" }}
             className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[rgba(140,216,190,0.72)]"
           >
-            Platform Workflow
+            Operational Workflow
           </motion.p>
 
           <motion.h2 
@@ -529,7 +551,7 @@ export function HowKcxWorks() {
             transition={{ delay: 0.1 }}
             className="mt-4 text-[1.85rem] sm:text-[2.5rem] md:text-[3rem] lg:text-[3.5rem] font-semibold text-white tracking-tight"
           >
-            How <span className="text-transparent bg-clip-text bg-gradient-to-br from-[#3e8a76] to-emerald-400">KCX</span> Works
+            How <span className="text-transparent bg-clip-text bg-gradient-to-br from-[#3e8a76] to-emerald-400">KCX</span> Operationalizes FinOps
           </motion.h2>
 
           <motion.p 
@@ -539,7 +561,7 @@ export function HowKcxWorks() {
             transition={{ delay: 0.2 }}
             className="mt-5 max-w-2xl text-[0.9rem] sm:text-[0.95rem] lg:text-base text-slate-400 leading-[1.7] text-balance px-4"
           >
-            A seamless pipeline from raw cloud ingestion to actionable, unit-economic optimization. No agents required.
+            Follow the four-stage path from onboarding billing data to validated intelligence, prioritized optimization, and selected AWS execution.
           </motion.p>
           
         </div>
@@ -559,3 +581,4 @@ export function HowKcxWorks() {
     </section>
   )
 }
+

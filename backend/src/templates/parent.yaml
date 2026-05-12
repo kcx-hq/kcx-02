@@ -42,6 +42,16 @@ Parameters:
     Default: KCX-CUR2-Export
     Description: Name of the AWS Data Export
 
+  StorageLensExportPrefix:
+    Type: String
+    Default: kcx/storage-lens
+    Description: Prefix where S3 Storage Lens exports will be delivered
+
+  StorageLensConfigId:
+    Type: String
+    Default: ''
+    Description: Optional unique Storage Lens configuration ID
+
   EnableBillingExport:
     Type: String
     AllowedValues: ['true', 'false']
@@ -68,6 +78,16 @@ Parameters:
     Default: 'true'
 
   EnableEC2Module:
+    Type: String
+    AllowedValues: ['true', 'false']
+    Default: 'true'
+
+  EnableCloudWatchModule:
+    Type: String
+    AllowedValues: ['true', 'false']
+    Default: 'true'
+
+  EnableLoadBalancerModule:
     Type: String
     AllowedValues: ['true', 'false']
     Default: 'true'
@@ -101,6 +121,14 @@ Parameters:
     Type: String
     Description: S3 URL of ec2-module.yaml
 
+  CloudwatchModuleTemplateUrl:
+    Type: String
+    Description: S3 URL of cloudwatch-module.yaml
+
+  LoadBalancerModuleTemplateUrl:
+    Type: String
+    Description: S3 URL of load-balancer-module.yaml
+
 Conditions:
   CreateBillingExport: !Equals [!Ref EnableBillingExport, 'true']
   CreateCloudTrail: !Equals [!Ref EnableCloudTrail, 'true']
@@ -108,6 +136,12 @@ Conditions:
   CreateEC2Module: !And
     - !Equals [!Ref EnableActionRole, 'true']
     - !Equals [!Ref EnableEC2Module, 'true']
+  CreateCloudWatchModule: !And
+    - !Equals [!Ref EnableActionRole, 'true']
+    - !Equals [!Ref EnableCloudWatchModule, 'true']
+  CreateLoadBalancerModule: !And
+    - !Equals [!Ref EnableActionRole, 'true']
+    - !Equals [!Ref EnableLoadBalancerModule, 'true']
 
 Resources:
   ActionRoleStack:
@@ -134,6 +168,26 @@ Resources:
         ResourceTagKey: !Ref ResourceTagKey
         ResourceTagValue: !Ref ResourceTagValue
 
+  CloudWatchModuleStack:
+    Type: AWS::CloudFormation::Stack
+    Condition: CreateCloudWatchModule
+    DependsOn: ActionRoleStack
+    Properties:
+      TemplateURL: !Ref CloudwatchModuleTemplateUrl
+      Parameters:
+        ConnectionName: !Ref ConnectionName
+        ActionRoleName: !GetAtt ActionRoleStack.Outputs.ActionRoleName
+
+  LoadBalancerModuleStack:
+    Type: AWS::CloudFormation::Stack
+    Condition: CreateLoadBalancerModule
+    DependsOn: ActionRoleStack
+    Properties:
+      TemplateURL: !Ref LoadBalancerModuleTemplateUrl
+      Parameters:
+        ConnectionName: !Ref ConnectionName
+        ActionRoleName: !GetAtt ActionRoleStack.Outputs.ActionRoleName
+
   BillingExportStack:
     Type: AWS::CloudFormation::Stack
     Condition: CreateBillingExport
@@ -153,6 +207,8 @@ Resources:
           - ''
         ExportPrefix: !Ref ExportPrefix
         ExportName: !Ref ExportName
+        StorageLensExportPrefix: !Ref StorageLensExportPrefix
+        StorageLensConfigId: !Ref StorageLensConfigId
 
   CloudTrailStack:
     Type: AWS::CloudFormation::Stack

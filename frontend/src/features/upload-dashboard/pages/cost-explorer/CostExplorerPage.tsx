@@ -1,11 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { EChartsOption } from "echarts";
 
-import { useCostExplorerQuery } from "../../hooks/useDashboardQueries";
+import { useCostExplorerGroupOptionsQuery, useCostExplorerQuery } from "../../hooks/useDashboardQueries";
 import { useDashboardScope } from "../../hooks/useDashboardScope";
 import {
   COMPARE_OPTIONS,
-  GROUP_BY_OPTIONS,
   METRIC_OPTIONS,
   type ChartSeries,
   type CompareKey,
@@ -17,7 +16,8 @@ import {
 import {
   calculateDeltaPercent,
   compactCurrencyFormatter,
-  currencyFormatter,
+  formatAxisCost,
+  formatTooltipCost,
   percentFormatter,
   parseInputDate,
 } from "./costExplorer.utils";
@@ -50,31 +50,113 @@ const COMPARISON_SERIES_COLORS: Record<CompareKey, string> = {
   forecast: "#7e22ce",
 };
 
+const haveSameStringItems = (left: string[], right: string[]): boolean => {
+  if (left.length !== right.length) return false;
+  const rightSet = new Set(right);
+  return left.every((item) => rightSet.has(item));
+};
+
+type AllowedGroupId =
+  | "env"
+  | "app"
+  | "team"
+  | "cost-center"
+  | "project"
+  | "service"
+  | "region"
+  | "charge-type"
+  | "usage-type";
+
+const ALLOWED_GROUP_DIMENSIONS: Array<{ id: AllowedGroupId; label: string }> = [
+  { id: "env", label: "Env" },
+  { id: "app", label: "App" },
+  { id: "team", label: "Team" },
+  { id: "cost-center", label: "Cost Center" },
+  { id: "project", label: "Project" },
+  { id: "service", label: "Service" },
+  { id: "region", label: "Region" },
+  { id: "charge-type", label: "Charge Type" },
+  { id: "usage-type", label: "Usage Type" },
+];
+
+const detectAllowedGroupFromTagKey = (rawValue: string): AllowedGroupId | null => {
+  const raw = rawValue.trim().toLowerCase().replace(/^tag:/, "");
+  const stripped = raw
+    .replace(/^resourcetagsuser/, "")
+    .replace(/^resource_tags_user/, "")
+    .replace(/^resourcetags/, "")
+    .replace(/^resource_tags/, "")
+    .replace(/^tagsuser/, "")
+    .replace(/^taguser/, "")
+    .replace(/^tags/, "")
+    .replace(/^tag/, "")
+    .replace(/^user/, "");
+  const compact = (stripped.length > 0 ? stripped : raw).replace(/[^a-z0-9]/g, "");
+
+  if (!compact) return null;
+  if (compact.includes("costcenter") || compact.includes("costcentre")) return "cost-center";
+  if (compact.includes("usagetype") || compact === "usage") return "usage-type";
+  if (compact.includes("chargetype") || compact.includes("costtype") || compact.includes("lineitemtype")) {
+    return "charge-type";
+  }
+  if (compact.includes("environment") || compact === "env") return "env";
+  if (compact.includes("application") || compact === "app") return "app";
+  if (compact.includes("team")) return "team";
+  if (compact.includes("project")) return "project";
+  if (compact.includes("service")) return "service";
+  if (compact.includes("region")) return "region";
+  return null;
+};
+
 export default function CostExplorerPage() {
   const { scope } = useDashboardScope();
 
-  const [groupBy, setGroupBy] = useState<GroupBy>("none");
+  const [draftGroupBy, setDraftGroupBy] = useState<GroupBy>("service");
+  const [appliedGroupBy, setAppliedGroupBy] = useState<GroupBy>("service");
   const [selectedMetrics, setSelectedMetrics] = useState<Metric[]>(["billed"]);
   const [compare, setCompare] = useState<CompareKey[]>([]);
   const [granularity, setGranularity] = useState<Granularity>("daily");
-  const [chartMode, setChartMode] = useState<ChartMode>("line");
+  const [chartMode, setChartMode] = useState<ChartMode>("bar");
+  const [draftGroupValues, setDraftGroupValues] = useState<string[]>([]);
+  const [appliedGroupValues, setAppliedGroupValues] = useState<string[]>([]);
   const [rowsPerPage, setRowsPerPage] = useState<RowsPerPage>(5);
   const [breakdownPage, setBreakdownPage] = useState(1);
+  const draftTagKey = draftGroupBy.startsWith("tag:") ? draftGroupBy.slice(4) : null;
+  const groupOptionsQuery = useCostExplorerGroupOptionsQuery(draftGroupBy, draftTagKey);
 
   const multiMetricMode = selectedMetrics.length > 1;
-  const activeGroupBy: GroupBy = multiMetricMode ? "none" : groupBy;
+  const activeGroupBy: GroupBy = multiMetricMode ? "none" : appliedGroupBy;
+  const activeGroupValues = activeGroupBy !== "none" ? appliedGroupValues : [];
   const activeCompareKey: CompareKey | null = multiMetricMode ? null : (compare[0] ?? null);
 
   const billedQuery = useCostExplorerQuery(
-    { granularity, groupBy: activeGroupBy, metric: "billed", compareKey: activeCompareKey },
+    {
+      granularity,
+      groupBy: activeGroupBy,
+      metric: "billed",
+      compareKey: activeCompareKey,
+      groupValues: activeGroupValues,
+    },
     selectedMetrics.includes("billed"),
   );
   const effectiveQuery = useCostExplorerQuery(
-    { granularity, groupBy: activeGroupBy, metric: "effective", compareKey: activeCompareKey },
+    {
+      granularity,
+      groupBy: activeGroupBy,
+      metric: "effective",
+      compareKey: activeCompareKey,
+      groupValues: activeGroupValues,
+    },
     selectedMetrics.includes("effective"),
   );
   const listQuery = useCostExplorerQuery(
-    { granularity, groupBy: activeGroupBy, metric: "list", compareKey: activeCompareKey },
+    {
+      granularity,
+      groupBy: activeGroupBy,
+      metric: "list",
+      compareKey: activeCompareKey,
+      groupValues: activeGroupValues,
+    },
     selectedMetrics.includes("list"),
   );
 
@@ -106,6 +188,36 @@ export default function CostExplorerPage() {
 
   const effectiveGranularity = (primaryQuery.data?.filtersApplied.effectiveGranularity ??
     (granularity === "hourly" && days > 14 ? "daily" : granularity)) as Granularity;
+
+  const dynamicGroupOptions = useMemo<Array<{ key: GroupBy; label: string }>>(() => {
+    const keyByDimension = new Map<AllowedGroupId, GroupBy>([
+      ["service", "service"],
+      ["region", "region"],
+    ]);
+
+    (groupOptionsQuery.data?.tagKeyOptions ?? []).forEach((option) => {
+      const matched = detectAllowedGroupFromTagKey(option.normalizedKey || option.key);
+      if (!matched) return;
+
+      const existing = keyByDimension.get(matched);
+      if ((matched === "service" || matched === "region") && existing && !existing.startsWith("tag:")) {
+        return;
+      }
+      if (!existing || existing.startsWith("tag:")) {
+        keyByDimension.set(matched, option.key as GroupBy);
+      }
+    });
+
+    return ALLOWED_GROUP_DIMENSIONS.filter((item) => keyByDimension.has(item.id)).map((item) => ({
+      key: keyByDimension.get(item.id) as GroupBy,
+      label: item.label,
+    }));
+  }, [groupOptionsQuery.data?.tagKeyOptions]);
+
+  useEffect(() => {
+    const allowed = new Set((groupOptionsQuery.data?.groupValueOptions ?? []).map((option) => option.key));
+    setDraftGroupValues((current) => current.filter((value) => allowed.has(value)));
+  }, [draftGroupBy, groupOptionsQuery.data?.groupValueOptions]);
 
   const labels = primaryQuery.data?.chart.labels ?? [];
   const primarySeries = (primaryQuery.data?.chart.series ?? []) as ChartSeries[];
@@ -172,6 +284,54 @@ export default function CostExplorerPage() {
   }, [labels, series]);
 
   const seriesMeta = useMemo(() => new Map(series.map((item) => [item.name, item])), [series]);
+  const yAxisBounds = useMemo(() => {
+    if (!labels.length || !series.length) {
+      return { min: -1, max: 1 };
+    }
+
+    let maxPositive = 0;
+    let minNegative = 0;
+
+    if (chartMode === "bar") {
+      const nonComparisonSeries = series.filter((item) => item.kind !== "comparison");
+      for (let index = 0; index < labels.length; index += 1) {
+        let bucketPositive = 0;
+        let bucketNegative = 0;
+        nonComparisonSeries.forEach((item) => {
+          const value = Number(item.values[index] ?? 0);
+          if (value >= 0) {
+            bucketPositive += value;
+          } else {
+            bucketNegative += value;
+          }
+        });
+        if (bucketPositive > maxPositive) maxPositive = bucketPositive;
+        if (bucketNegative < minNegative) minNegative = bucketNegative;
+      }
+
+      series
+        .filter((item) => item.kind === "comparison")
+        .forEach((item) => {
+          item.values.forEach((value) => {
+            const numeric = Number(value ?? 0);
+            if (numeric > maxPositive) maxPositive = numeric;
+            if (numeric < minNegative) minNegative = numeric;
+          });
+        });
+    } else {
+      series.forEach((item) => {
+        item.values.forEach((value) => {
+          const numeric = Number(value ?? 0);
+          if (numeric > maxPositive) maxPositive = numeric;
+          if (numeric < minNegative) minNegative = numeric;
+        });
+      });
+    }
+
+    const maxAbs = Math.max(Math.abs(minNegative), Math.abs(maxPositive));
+    const padded = maxAbs === 0 ? 1 : maxAbs * 1.08;
+    return { min: -padded, max: padded };
+  }, [chartMode, labels, series]);
 
   const option = useMemo<EChartsOption>(
     () => ({
@@ -204,7 +364,7 @@ export default function CostExplorerPage() {
                   ? ` <span style="color:#b8c8d2;">(${calculateDeltaPercent(Number(point.value), base) >= 0 ? "+" : ""}${percentFormatter.format(calculateDeltaPercent(Number(point.value), base))}%)</span>`
                   : "";
 
-              return `<div style="display:flex; gap:6px; align-items:center; margin-top:4px;">${point.marker}<span>${point.seriesName}:</span><strong>${currencyFormatter.format(Number(point.value))}</strong>${comparisonDelta}</div>`;
+              return `<div style="display:flex; gap:6px; align-items:center; margin-top:4px;">${point.marker}<span>${point.seriesName}:</span><strong>${formatTooltipCost(Number(point.value))}</strong>${comparisonDelta}</div>`;
             })
             .join("");
 
@@ -237,27 +397,29 @@ export default function CostExplorerPage() {
       },
       yAxis: {
         type: "value",
+        min: yAxisBounds.min,
+        max: yAxisBounds.max,
         axisLine: { show: false },
-        splitLine: { lineStyle: { color: "#e5efec" } },
-        axisLabel: { color: "#6d837e", fontSize: 11, formatter: (value: number) => compactCurrencyFormatter.format(value) },
+        splitLine: { lineStyle: { color: "#e1eae7", type: "dashed" } },
+        axisLabel: { color: "#6d837e", fontSize: 11, formatter: (value: number) => formatAxisCost(value) },
       },
       dataZoom: labels.length > 45 ? [{ type: "inside", start: 0, end: 100 }] : undefined,
       series: series.map((item, index) => {
         const comparisonLineType = item.compareKey === "previous-month" ? "dashed" : item.compareKey === "budget" ? "dotted" : "solid";
         const isComparison = item.kind === "comparison";
-        const isBar = chartMode === "bar";
+        const renderAsBar = chartMode === "bar" && !isComparison;
         const seriesColor = seriesColorByName.get(item.name) ?? "#4f7088";
         return {
           name: item.name,
-          type: isBar ? "bar" : "line",
-          stack: undefined,
-          smooth: !isBar,
-          showSymbol: isBar ? false : labels.length <= 35,
+          type: renderAsBar ? "bar" : "line",
+          stack: renderAsBar ? "cost-stack" : undefined,
+          smooth: !renderAsBar,
+          showSymbol: renderAsBar ? false : labels.length <= 35,
           symbolSize: 5,
           emphasis: { focus: "series" },
           animationDurationUpdate: 220,
           animationEasingUpdate: "cubicOut",
-          lineStyle: isBar
+          lineStyle: renderAsBar
             ? undefined
             : {
                 color: seriesColor,
@@ -266,17 +428,19 @@ export default function CostExplorerPage() {
                 opacity: isComparison ? 0.9 : 1,
               },
           areaStyle:
-            chartMode === "line" && index === 0 && activeGroupBy === "none"
+            !renderAsBar && index === 0 && activeGroupBy === "none"
               ? { color: seriesColor, opacity: 0.08 }
               : undefined,
-          barMaxWidth: isBar ? 22 : undefined,
-          itemStyle: isBar ? { color: seriesColor, borderRadius: [4, 4, 0, 0] } : { color: seriesColor },
+          barMinHeight: renderAsBar ? 2 : undefined,
+          barMaxWidth: renderAsBar ? 24 : undefined,
+          barCategoryGap: renderAsBar ? "42%" : undefined,
+          itemStyle: renderAsBar ? { color: seriesColor, borderRadius: 0 } : { color: seriesColor },
           data: item.values.map((value) => Number(value ?? 0)),
-          z: isComparison ? 2 : 3,
+          z: isComparison ? 4 : 3,
         };
       }),
     }),
-    [activeGroupBy, baseValues, chartMode, labels, series, seriesColorByName, seriesMeta],
+    [activeGroupBy, baseValues, chartMode, labels, series, seriesColorByName, seriesMeta, yAxisBounds.max, yAxisBounds.min],
   );
 
   const compareLabel = activeCompareKey
@@ -485,7 +649,10 @@ export default function CostExplorerPage() {
     {
       key: "group",
       label: "Group",
-      value: GROUP_BY_OPTIONS.find((item) => item.key === activeGroupBy)?.label ?? "None",
+      value:
+        activeGroupBy !== "none" && activeGroupValues.length > 0
+          ? `${dynamicGroupOptions.find((item) => item.key === activeGroupBy)?.label ?? "None"} (${activeGroupValues.length})`
+          : (dynamicGroupOptions.find((item) => item.key === activeGroupBy)?.label ?? "None"),
     },
     {
       key: "compare",
@@ -519,7 +686,10 @@ export default function CostExplorerPage() {
       }
       const updated = [...current, next];
       if (updated.length > 1) {
-        setGroupBy("none");
+        setDraftGroupBy("none");
+        setAppliedGroupBy("none");
+        setDraftGroupValues([]);
+        setAppliedGroupValues([]);
         setCompare([]);
       }
       return updated;
@@ -530,12 +700,25 @@ export default function CostExplorerPage() {
     if (multiMetricMode && next !== "none") {
       setSelectedMetrics([selectedMetrics[0] ?? "billed"]);
     }
-    setGroupBy(next);
+    if (next !== draftGroupBy) {
+      setDraftGroupValues([]);
+    }
+    setDraftGroupBy(next);
+  };
+
+  const applyGroupFilters = () => {
+    const normalizedGroupBy: GroupBy = multiMetricMode ? "none" : draftGroupBy;
+    const normalizedGroupValues = normalizedGroupBy === "none" ? [] : draftGroupValues;
+    setAppliedGroupBy(normalizedGroupBy);
+    setAppliedGroupValues(normalizedGroupValues);
   };
 
   const clearAll = () => {
     setGranularity("daily");
-    setGroupBy("none");
+    setDraftGroupBy("service");
+    setAppliedGroupBy("service");
+    setDraftGroupValues([]);
+    setAppliedGroupValues([]);
     setSelectedMetrics(["billed"]);
     setCompare([]);
     setRowsPerPage(5);
@@ -564,7 +747,10 @@ export default function CostExplorerPage() {
       return;
     }
     if (key === "group") {
-      setGroupBy("none");
+      setDraftGroupBy("service");
+      setAppliedGroupBy("service");
+      setDraftGroupValues([]);
+      setAppliedGroupValues([]);
       return;
     }
     if (key === "compare") {
@@ -575,6 +761,11 @@ export default function CostExplorerPage() {
   };
 
   const chartReady = labels.length > 0 && series.some((item) => item.values.length > 0);
+  const normalizedDraftGroupBy: GroupBy = multiMetricMode ? "none" : draftGroupBy;
+  const normalizedDraftGroupValues = normalizedDraftGroupBy === "none" ? [] : draftGroupValues;
+  const hasPendingGroupChanges =
+    normalizedDraftGroupBy !== activeGroupBy || !haveSameStringItems(normalizedDraftGroupValues, activeGroupValues);
+  const groupValuesLoading = groupOptionsQuery.isFetching && normalizedDraftGroupBy !== "none";
   const isLoading = activeQueries.some((item) => item.isLoading);
   const isError = activeQueries.some((item) => item.isError);
   const firstError = activeQueries.find((item) => item.error);
@@ -587,7 +778,7 @@ export default function CostExplorerPage() {
         <CostExplorerFiltersPanel
           effectiveGranularity={effectiveGranularity}
           days={days}
-          groupBy={groupBy}
+          groupBy={draftGroupBy}
           selectedMetrics={selectedMetrics}
           compare={compare}
           chips={chips}
@@ -602,6 +793,18 @@ export default function CostExplorerPage() {
           groupRef={groupRef}
           compareRef={compareRef}
           metricRef={metricRef}
+          groupOptions={dynamicGroupOptions}
+          groupValueOptions={groupOptionsQuery.data?.groupValueOptions ?? []}
+          selectedGroupValues={draftGroupValues}
+          onToggleGroupValue={(value) =>
+            setDraftGroupValues((current) =>
+              current.includes(value) ? current.filter((entry) => entry !== value) : [...current, value],
+            )
+          }
+          onClearGroupValues={() => setDraftGroupValues([])}
+          onApplyGroupFilters={applyGroupFilters}
+          hasPendingGroupChanges={hasPendingGroupChanges}
+          groupValuesLoading={groupValuesLoading}
         />
 
         <div className="cost-explorer-unified-shell__divider" aria-hidden="true" />
@@ -612,6 +815,7 @@ export default function CostExplorerPage() {
           isError={isError}
           errorMessage={errorMessage}
           isFetching={isFetching}
+          showApplySkeleton={isFetching}
           chartReady={chartReady}
           chartMode={chartMode}
           onChartModeChange={setChartMode}
@@ -642,3 +846,4 @@ export default function CostExplorerPage() {
     </div>
   );
 }
+

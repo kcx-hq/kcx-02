@@ -7,7 +7,6 @@ import adminAnnouncementsRoutes from "../admin/admin-announcements/admin-announc
 import adminAuthRoutes from "../admin/admin-auth/admin-auth.routes.js";
 import authRoutes from "../auth/auth.routes.js";
 import awsAutoCloudConnectionsRoutes from "../cloud-connections/aws/auto-connection/cloud-connections.routes.js";
-import awsEc2Routes from "../cloud-connections/aws/ec2/ec2.routes.js";
 import awsManualConnectionRoutes from "../cloud-connections/aws/manual-connection/manual-connection.routes.js";
 import scheduleDemoRoutes from "../schedule-demo/schedule-demo.routes.js";
 import billingRoutes from "../billing/billing.routes.js";
@@ -20,6 +19,16 @@ import supportMeetingsRoutes from "../support-meetings/support-meetings.routes.j
 import anomalyRoutes from "../dashboard/anomaly-alerts/anomaly.routes.js";
 import organizationUsersRoutes from "../organization-users/organization-users.routes.js";
 import reportRoutes from "../dashboard/report/report.routes.js";
+import instancesInventoryRoutes from "../ec2/instances/instances-inventory.routes.js";
+import snapshotsInventoryRoutes from "../ec2/snapshots/snapshots-inventory.routes.js";
+import volumesInventoryRoutes from "../ec2/volumes/volumes-inventory.routes.js";
+import databaseRoutes from "../database/database.routes.js";
+import ec2OptimizationRoutes from "../ec2/optimization/ec2-optimization.routes.js";
+import ec2ExplorerRoutes from "../ec2/explorer/ec2-explorer.routes.js";
+import ec2DataTransferRoutes from "../ec2/data-transfer/ec2-data-transfer.routes.js";
+import ec2ElasticIpRoutes from "../ec2/eip/ec2-eip.routes.js";
+import loadBalancerExplorerRoutes from "../load-balancer/explorer/load-balancer-explorer.routes.js";
+import loadBalancerInventoryRoutes from "../load-balancer/inventory/load-balancer-inventory.routes.js";
 const router = Router();
 
 router.use(scheduleDemoRoutes);
@@ -27,7 +36,6 @@ router.use(authRoutes);
 router.use(adminAuthRoutes);
 router.use(awsAutoCloudConnectionsRoutes);
 router.use(awsManualConnectionRoutes);
-router.use(awsEc2Routes);
 router.use(billingRoutes);
 router.use(dashboardRoutes);
 router.use(uploadDashboardRoutes);
@@ -43,6 +51,17 @@ router.use(organizationUsersRoutes);
 router.use(awsExportFileEventRoutes);
 router.use(anomalyRoutes);
 router.use(reportRoutes);
+router.use(instancesInventoryRoutes);
+router.use(snapshotsInventoryRoutes);
+router.use(volumesInventoryRoutes);
+// router.use(ec2ReportsRoutes);
+router.use(databaseRoutes);
+router.use(ec2OptimizationRoutes);
+router.use(ec2ExplorerRoutes);
+router.use(ec2DataTransferRoutes);
+router.use(ec2ElasticIpRoutes);
+router.use(loadBalancerExplorerRoutes);
+router.use(loadBalancerInventoryRoutes);
 
 export default router;
 

@@ -1,4 +1,4 @@
-import { Bell, CalendarDays, ChevronDown, Funnel } from "lucide-react";
+import { Bell, CalendarDays, ChevronDown } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useTenantUploadHistory } from "@/features/client-home/hooks/useTenantUploadHistory";
@@ -19,7 +19,6 @@ const setOrDelete = (params: URLSearchParams, key: string, value: string) => {
 export function ManualDashboardGlobalHeader() {
   const location = useLocation();
   const navigate = useNavigate();
-  const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false);
   const [isRangeMenuOpen, setIsRangeMenuOpen] = useState(false);
 
   const searchParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
@@ -31,9 +30,6 @@ export function ManualDashboardGlobalHeader() {
 
   const [draftBillingStart, setDraftBillingStart] = useState(billingStart);
   const [draftBillingEnd, setDraftBillingEnd] = useState(billingEnd);
-  const [draftAccount, setDraftAccount] = useState(searchParams.get("subAccountKey") ?? "");
-  const [draftService, setDraftService] = useState(searchParams.get("serviceKey") ?? "");
-  const [draftRegion, setDraftRegion] = useState(searchParams.get("regionKey") ?? "");
 
   const filtersQuery = useUploadDashboardFiltersQuery(currentFilters);
   const uploadHistoryQuery = useTenantUploadHistory(rawBillingFileIds.length > 0);
@@ -73,33 +69,6 @@ export function ManualDashboardGlobalHeader() {
       setOrDelete(params, "billingPeriodEnd", draftBillingEnd);
     });
     setIsRangeMenuOpen(false);
-  };
-
-  const openFilterPanel = () => {
-    setDraftAccount(searchParams.get("subAccountKey") ?? "");
-    setDraftService(searchParams.get("serviceKey") ?? "");
-    setDraftRegion(searchParams.get("regionKey") ?? "");
-    setIsFilterPanelOpen(true);
-  };
-
-  const applyFilters = () => {
-    applySearchParams((params) => {
-      setOrDelete(params, "subAccountKey", draftAccount);
-      setOrDelete(params, "serviceKey", draftService);
-      setOrDelete(params, "regionKey", draftRegion);
-    });
-    setIsFilterPanelOpen(false);
-  };
-
-  const resetFilters = () => {
-    setDraftAccount("");
-    setDraftService("");
-    setDraftRegion("");
-    applySearchParams((params) => {
-      params.delete("subAccountKey");
-      params.delete("serviceKey");
-      params.delete("regionKey");
-    });
   };
 
   const rangeLabel = billingStart && billingEnd ? `${billingStart} - ${billingEnd}` : "Select date range";
@@ -179,90 +148,11 @@ export function ManualDashboardGlobalHeader() {
             ) : null}
           </div>
 
-          <button
-            type="button"
-            className="dashboard-header-action dashboard-header-action--filter"
-            onClick={openFilterPanel}
-            aria-haspopup="dialog"
-            aria-expanded={isFilterPanelOpen}
-            aria-controls="dashboard-filter-panel"
-          >
-            <Funnel className="dashboard-header-action__icon" aria-hidden="true" />
-            <span>Filter</span>
-          </button>
-
           <button type="button" className="dashboard-header-action dashboard-header-action--icon" aria-label="Notifications">
             <Bell className="dashboard-header-action__icon" aria-hidden="true" />
           </button>
         </div>
       </header>
-
-      <div className={`dashboard-filter-overlay${isFilterPanelOpen ? " is-open" : ""}`} onClick={() => setIsFilterPanelOpen(false)} aria-hidden={!isFilterPanelOpen} />
-
-      <aside
-        id="dashboard-filter-panel"
-        className={`dashboard-filter-panel${isFilterPanelOpen ? " is-open" : ""}`}
-        role="dialog"
-        aria-modal="true"
-        aria-label="Dashboard filters"
-      >
-        <div className="dashboard-filter-panel__header">
-          <div>
-            <h2 className="dashboard-filter-panel__title">Filters</h2>
-            <p className="dashboard-filter-panel__subtitle">Refine the current dashboard view</p>
-          </div>
-          <button type="button" className="dashboard-filter-panel__close" onClick={() => setIsFilterPanelOpen(false)} aria-label="Close filters">
-            Close
-          </button>
-        </div>
-
-        <div className="dashboard-filter-panel__body">
-          <label className="dashboard-filter-field">
-            <span className="dashboard-filter-field__label">Account</span>
-            <select className="dashboard-filter-field__control" value={draftAccount} onChange={(event) => setDraftAccount(event.target.value)}>
-              <option value="">All Accounts</option>
-              {(filtersQuery.data?.accounts ?? []).map((account) => (
-                <option key={account.key} value={String(account.key)}>
-                  {account.name}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label className="dashboard-filter-field">
-            <span className="dashboard-filter-field__label">Service</span>
-            <select className="dashboard-filter-field__control" value={draftService} onChange={(event) => setDraftService(event.target.value)}>
-              <option value="">All Services</option>
-              {(filtersQuery.data?.services ?? []).map((service) => (
-                <option key={service.key} value={String(service.key)}>
-                  {service.name}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label className="dashboard-filter-field">
-            <span className="dashboard-filter-field__label">Region</span>
-            <select className="dashboard-filter-field__control" value={draftRegion} onChange={(event) => setDraftRegion(event.target.value)}>
-              <option value="">All Regions</option>
-              {(filtersQuery.data?.regions ?? []).map((region) => (
-                <option key={region.key} value={String(region.key)}>
-                  {region.name}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-
-        <div className="dashboard-filter-panel__footer">
-          <button type="button" className="dashboard-filter-panel__btn dashboard-filter-panel__btn--ghost" onClick={resetFilters}>
-            Reset
-          </button>
-          <button type="button" className="dashboard-filter-panel__btn dashboard-filter-panel__btn--primary" onClick={applyFilters}>
-            Apply
-          </button>
-        </div>
-      </aside>
     </>
   );
 }
