@@ -2,6 +2,8 @@ import { QueryTypes } from "sequelize";
 
 import { sequelize } from "../../../models/index.js";
 import type {
+  DatabaseAssetDetailQueryParams,
+  DatabaseAssetDetailResponse,
   DatabaseAssetRow,
   DatabaseAssetsAccountOption,
   DatabaseAssetsFilterOptions,
@@ -19,6 +21,7 @@ type SqlWhere = {
 };
 
 type AssetQueryRow = {
+  cloudConnectionId: string | null;
   resourceId: string;
   resourceArn: string | null;
   resourceName: string | null;
@@ -87,6 +90,119 @@ type AccountOptionRow = {
   count: string | number | null;
 };
 
+type DetailIdentityRow = {
+  resourceId: string;
+  resourceArn: string | null;
+  resourceName: string | null;
+  dbIdentifier: string;
+  dbService: string | null;
+  dbEngine: string | null;
+  dbEngineVersion: string | null;
+  resourceType: string | null;
+  instanceClass: string | null;
+  capacityMode: string | null;
+  status: string | null;
+  clusterId: string | null;
+  isClusterResource: boolean | null;
+  regionKey: string | null;
+  regionName: string | null;
+  subAccountKey: string | null;
+  subAccountName: string | null;
+  cloudConnectionId: string;
+  latestUsageDate: string | Date | null;
+  discoveredAt: string | Date | null;
+  tags: Record<string, unknown> | null;
+  rawMetadata: Record<string, unknown> | null;
+};
+
+type DetailAggregateRow = {
+  totalCost: string | number | null;
+  totalBilledCost: string | number | null;
+  totalEffectiveCost: string | number | null;
+  totalListCost: string | number | null;
+  currencyCode: string | null;
+  dailyAverageCost: string | number | null;
+  computeCost: string | number | null;
+  storageCost: string | number | null;
+  ioCost: string | number | null;
+  backupCost: string | number | null;
+  dataTransferCost: string | number | null;
+  taxCost: string | number | null;
+  creditAmount: string | number | null;
+  refundAmount: string | number | null;
+  avgCpu: string | number | null;
+  maxCpu: string | number | null;
+  avgLoad: string | number | null;
+  maxLoad: string | number | null;
+  avgConnections: string | number | null;
+  maxConnections: string | number | null;
+  requestCount: string | number | null;
+  allocatedStorageGb: string | number | null;
+  storageUsedGb: string | number | null;
+  dataFootprintGb: string | number | null;
+  avgIops: string | number | null;
+  maxIops: string | number | null;
+  avgThroughputBytes: string | number | null;
+  maxThroughputBytes: string | number | null;
+  readIops: string | number | null;
+  writeIops: string | number | null;
+  readThroughputBytes: string | number | null;
+  writeThroughputBytes: string | number | null;
+  dayCount: string | number | null;
+};
+
+type RecommendationCountRow = {
+  recommendationCount: string | number | null;
+};
+
+type RelatedResourceCountRow = {
+  relatedResourceCount: string | number | null;
+};
+
+type CostTrendRow = {
+  date: string | Date;
+  totalCost: string | number | null;
+  compute: string | number | null;
+  storage: string | number | null;
+  io: string | number | null;
+  backup: string | number | null;
+  dataTransfer: string | number | null;
+  tax: string | number | null;
+  credit: string | number | null;
+  refund: string | number | null;
+  other: string | number | null;
+};
+
+type UsageTrendRow = {
+  date: string | Date;
+  avgCpu: string | number | null;
+  maxCpu: string | number | null;
+  avgLoad: string | number | null;
+  maxLoad: string | number | null;
+  avgConnections: string | number | null;
+  maxConnections: string | number | null;
+  requestCount: string | number | null;
+};
+
+type StorageTrendRow = {
+  date: string | Date;
+  allocatedStorageGb: string | number | null;
+  storageUsedGb: string | number | null;
+  dataFootprintGb: string | number | null;
+};
+
+type PerformanceTrendRow = {
+  date: string | Date;
+  readIops: string | number | null;
+  writeIops: string | number | null;
+  totalIops: string | number | null;
+  readThroughputBytes: string | number | null;
+  writeThroughputBytes: string | number | null;
+  totalThroughputBytes: string | number | null;
+  avgLoad: string | number | null;
+  avgConnections: string | number | null;
+};
+
 const toNumber = (value: string | number | null | undefined): number => {
   if (typeof value === "number") return Number.isFinite(value) ? value : 0;
   if (typeof value !== "string") return 0;
@@ -117,6 +233,34 @@ const toIsoTimestamp = (value: string | Date | null): string | null => {
   const date = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(date.getTime())) return null;
   return date.toISOString();
+};
+
+const toStorageUtilizationPct = (
+  usedStorageGb: number | null,
+  allocatedStorageGb: number | null,
+): number | null => {
+  if (
+    usedStorageGb === null
+    || allocatedStorageGb === null
+    || !Number.isFinite(usedStorageGb)
+    || !Number.isFinite(allocatedStorageGb)
+    || allocatedStorageGb <= 0
+  ) {
+    return null;
+  }
+  return (usedStorageGb / allocatedStorageGb) * 100;
+};
+
+const costDriverLabel = (row: DetailAggregateRow): string | null => {
+  const ranked = [
+    { label: "Compute", value: toNumber(row.computeCost) },
+    { label: "Storage", value: toNumber(row.storageCost) },
+    { label: "I/O", value: toNumber(row.ioCost) },
+    { label: "Backup", value: toNumber(row.backupCost) },
+    { label: "Data Transfer", value: toNumber(row.dataTransferCost) },
+  ].sort((a, b) => b.value - a.value);
+
+  return ranked[0] && ranked[0].value > 0 ? ranked[0].label : null;
 };
 
 const buildScopedFactWhere = (params: DatabaseAssetsQueryParams): SqlWhere => {
@@ -278,6 +422,7 @@ recommendation_counts AS (
 ),
 final_assets AS (
   SELECT
+    a.cloud_connection_id,
     a.resource_id,
     COALESCE(li.resource_arn, a.resource_arn) AS resource_arn,
     COALESCE(li.resource_name, a.resource_name) AS resource_name,
@@ -345,6 +490,7 @@ export class DatabaseAssetsRepository {
       `
 ${baseCtes(scoped.sql, postJoin.sql)}
 SELECT
+  fa.cloud_connection_id::text AS "cloudConnectionId",
   fa.resource_id AS "resourceId",
   fa.resource_arn AS "resourceArn",
   fa.resource_name AS "resourceName",
@@ -402,6 +548,7 @@ LIMIT :pageSize OFFSET :offset;
 
     return {
       assets: rows.map((row) => ({
+        cloudConnectionId: row.cloudConnectionId,
         resourceId: row.resourceId,
         resourceArn: row.resourceArn,
         resourceName: row.resourceName,
@@ -476,6 +623,455 @@ FROM final_assets fa;
       avgCpu: toNullableNumber(row?.avgCpu),
       totalStorageGb: toNullableNumber(row?.totalStorageGb),
       recommendationCount: toNumber(row?.recommendationCount),
+    };
+  }
+
+  async getAssetDetail(params: DatabaseAssetDetailQueryParams): Promise<DatabaseAssetDetailResponse | null> {
+    const replacements = {
+      tenantId: params.tenantId,
+      cloudConnectionId: params.cloudConnectionId,
+      resourceId: params.resourceId,
+      startDate: params.startDate,
+      endDate: params.endDate,
+    };
+
+    const [identityRows, aggregateRows, recommendationRows, topologyRows, costTrendRows, usageTrendRows, storageTrendRows, performanceTrendRows] =
+      await Promise.all([
+        sequelize.query<DetailIdentityRow>(
+          `
+WITH scoped_fact AS (
+  SELECT *
+  FROM fact_db_resource_daily f
+  WHERE f.tenant_id = CAST(:tenantId AS uuid)
+    AND f.cloud_connection_id = CAST(:cloudConnectionId AS uuid)
+    AND f.resource_id = :resourceId
+    AND f.usage_date BETWEEN CAST(:startDate AS date) AND CAST(:endDate AS date)
+),
+latest_inventory AS (
+  SELECT ranked.*
+  FROM (
+    SELECT
+      inv.*,
+      ROW_NUMBER() OVER (
+        PARTITION BY inv.tenant_id, inv.cloud_connection_id, inv.resource_id
+        ORDER BY CASE WHEN inv.is_current THEN 0 ELSE 1 END ASC, inv.discovered_at DESC, inv.updated_at DESC
+      ) AS row_num
+    FROM db_resource_inventory_snapshots inv
+    WHERE inv.tenant_id = CAST(:tenantId AS uuid)
+      AND inv.cloud_connection_id = CAST(:cloudConnectionId AS uuid)
+      AND inv.resource_id = :resourceId
+      AND inv.deleted_at IS NULL
+  ) ranked
+  WHERE ranked.row_num = 1
+),
+fact_identity AS (
+  SELECT
+    sf.resource_id,
+    MAX(sf.resource_arn) AS resource_arn,
+    MAX(sf.resource_name) AS resource_name,
+    MAX(sf.db_service) AS db_service,
+    MAX(sf.db_engine) AS db_engine,
+    MAX(sf.db_engine_version) AS db_engine_version,
+    MAX(sf.resource_type) AS resource_type,
+    MAX(sf.status) AS status,
+    MAX(sf.cluster_id) AS cluster_id,
+    COALESCE(BOOL_OR(COALESCE(sf.is_cluster_resource, false)), false) AS is_cluster_resource,
+    MAX(sf.region_key) AS region_key,
+    MAX(sf.sub_account_key) AS sub_account_key,
+    MAX(sf.usage_date) AS latest_usage_date
+  FROM scoped_fact sf
+  GROUP BY sf.resource_id
+)
+SELECT
+  fi.resource_id AS "resourceId",
+  COALESCE(li.resource_arn, fi.resource_arn) AS "resourceArn",
+  COALESCE(li.resource_name, fi.resource_name) AS "resourceName",
+  COALESCE(NULLIF(BTRIM(COALESCE(li.resource_name, fi.resource_name)), ''), fi.resource_id) AS "dbIdentifier",
+  COALESCE(li.db_service, fi.db_service) AS "dbService",
+  COALESCE(li.db_engine, fi.db_engine) AS "dbEngine",
+  COALESCE(li.db_engine_version, fi.db_engine_version) AS "dbEngineVersion",
+  COALESCE(li.resource_type, fi.resource_type) AS "resourceType",
+  li.instance_class AS "instanceClass",
+  li.capacity_mode AS "capacityMode",
+  COALESCE(li.status, fi.status) AS "status",
+  COALESCE(li.cluster_id, fi.cluster_id) AS "clusterId",
+  COALESCE(li.is_cluster_resource, fi.is_cluster_resource, false) AS "isClusterResource",
+  COALESCE(li.region_key::text, fi.region_key::text) AS "regionKey",
+  dr.region_name AS "regionName",
+  COALESCE(li.sub_account_key::text, fi.sub_account_key::text) AS "subAccountKey",
+  dsa.sub_account_name AS "subAccountName",
+  CAST(:cloudConnectionId AS text) AS "cloudConnectionId",
+  fi.latest_usage_date AS "latestUsageDate",
+  li.discovered_at AS "discoveredAt",
+  li.tags_json AS tags,
+  li.metadata_json AS "rawMetadata"
+FROM fact_identity fi
+LEFT JOIN latest_inventory li
+  ON li.resource_id = fi.resource_id
+LEFT JOIN dim_region dr
+  ON dr.id = COALESCE(li.region_key, fi.region_key)
+LEFT JOIN dim_sub_account dsa
+  ON dsa.id = COALESCE(li.sub_account_key, fi.sub_account_key);
+`,
+          { replacements, type: QueryTypes.SELECT },
+        ),
+        sequelize.query<DetailAggregateRow>(
+          `
+SELECT
+  COALESCE(SUM(f.total_effective_cost), 0) AS "totalCost",
+  COALESCE(SUM(f.total_billed_cost), 0) AS "totalBilledCost",
+  COALESCE(SUM(f.total_effective_cost), 0) AS "totalEffectiveCost",
+  COALESCE(SUM(f.total_list_cost), 0) AS "totalListCost",
+  MAX(f.currency_code) AS "currencyCode",
+  CASE WHEN COUNT(*) > 0 THEN COALESCE(SUM(f.total_effective_cost), 0) / COUNT(*) ELSE NULL END AS "dailyAverageCost",
+  COALESCE(SUM(f.compute_cost), 0) AS "computeCost",
+  COALESCE(SUM(f.storage_cost), 0) AS "storageCost",
+  COALESCE(SUM(f.io_cost), 0) AS "ioCost",
+  COALESCE(SUM(f.backup_cost), 0) AS "backupCost",
+  COALESCE(SUM(f.data_transfer_cost), 0) AS "dataTransferCost",
+  COALESCE(SUM(f.tax_cost), 0) AS "taxCost",
+  COALESCE(SUM(f.credit_amount), 0) AS "creditAmount",
+  COALESCE(SUM(f.refund_amount), 0) AS "refundAmount",
+  AVG(f.cpu_avg) AS "avgCpu",
+  MAX(f.cpu_max) AS "maxCpu",
+  AVG(f.load_avg) AS "avgLoad",
+  MAX(f.load_avg) AS "maxLoad",
+  AVG(f.connections_avg) AS "avgConnections",
+  MAX(f.connections_max) AS "maxConnections",
+  SUM(f.request_count) AS "requestCount",
+  MAX(f.allocated_storage_gb) AS "allocatedStorageGb",
+  MAX(f.storage_used_gb) AS "storageUsedGb",
+  MAX(f.data_footprint_gb) AS "dataFootprintGb",
+  AVG(COALESCE(f.read_iops, 0) + COALESCE(f.write_iops, 0)) AS "avgIops",
+  MAX(COALESCE(f.read_iops, 0) + COALESCE(f.write_iops, 0)) AS "maxIops",
+  AVG(COALESCE(f.read_throughput_bytes, 0) + COALESCE(f.write_throughput_bytes, 0)) AS "avgThroughputBytes",
+  MAX(COALESCE(f.read_throughput_bytes, 0) + COALESCE(f.write_throughput_bytes, 0)) AS "maxThroughputBytes",
+  AVG(f.read_iops) AS "readIops",
+  AVG(f.write_iops) AS "writeIops",
+  AVG(f.read_throughput_bytes) AS "readThroughputBytes",
+  AVG(f.write_throughput_bytes) AS "writeThroughputBytes",
+  COUNT(*) AS "dayCount"
+FROM fact_db_resource_daily f
+WHERE f.tenant_id = CAST(:tenantId AS uuid)
+  AND f.cloud_connection_id = CAST(:cloudConnectionId AS uuid)
+  AND f.resource_id = :resourceId
+  AND f.usage_date BETWEEN CAST(:startDate AS date) AND CAST(:endDate AS date);
+`,
+          { replacements, type: QueryTypes.SELECT },
+        ),
+        sequelize.query<RecommendationCountRow>(
+          `
+SELECT COUNT(*) AS "recommendationCount"
+FROM fact_recommendations fr
+WHERE fr.tenant_id = CAST(:tenantId AS uuid)
+  AND fr.cloud_connection_id = CAST(:cloudConnectionId AS uuid)
+  AND fr.resource_id = :resourceId
+  AND UPPER(COALESCE(fr.status, 'OPEN')) = 'OPEN';
+`,
+          { replacements, type: QueryTypes.SELECT },
+        ),
+        sequelize.query<RelatedResourceCountRow>(
+          `
+WITH latest_inventory AS (
+  SELECT ranked.*
+  FROM (
+    SELECT
+      inv.*,
+      ROW_NUMBER() OVER (
+        PARTITION BY inv.tenant_id, inv.cloud_connection_id, inv.resource_id
+        ORDER BY CASE WHEN inv.is_current THEN 0 ELSE 1 END ASC, inv.discovered_at DESC, inv.updated_at DESC
+      ) AS row_num
+    FROM db_resource_inventory_snapshots inv
+    WHERE inv.tenant_id = CAST(:tenantId AS uuid)
+      AND inv.cloud_connection_id = CAST(:cloudConnectionId AS uuid)
+      AND inv.deleted_at IS NULL
+  ) ranked
+  WHERE ranked.row_num = 1
+),
+target AS (
+  SELECT cluster_id
+  FROM latest_inventory
+  WHERE resource_id = :resourceId
+)
+SELECT
+  CASE
+    WHEN EXISTS (SELECT 1 FROM target WHERE cluster_id IS NOT NULL AND BTRIM(cluster_id) <> '')
+      THEN (
+        SELECT COUNT(*)::bigint
+        FROM latest_inventory li
+        WHERE li.cluster_id = (SELECT cluster_id FROM target LIMIT 1)
+      )
+    ELSE 1::bigint
+  END AS "relatedResourceCount";
+`,
+          { replacements, type: QueryTypes.SELECT },
+        ),
+        sequelize.query<CostTrendRow>(
+          `
+SELECT
+  f.usage_date AS date,
+  COALESCE(SUM(f.total_effective_cost), 0) AS "totalCost",
+  COALESCE(SUM(f.compute_cost), 0) AS compute,
+  COALESCE(SUM(f.storage_cost), 0) AS storage,
+  COALESCE(SUM(f.io_cost), 0) AS io,
+  COALESCE(SUM(f.backup_cost), 0) AS backup,
+  COALESCE(SUM(f.data_transfer_cost), 0) AS "dataTransfer",
+  COALESCE(SUM(f.tax_cost), 0) AS tax,
+  COALESCE(SUM(f.credit_amount), 0) AS credit,
+  COALESCE(SUM(f.refund_amount), 0) AS refund,
+  GREATEST(
+    COALESCE(SUM(f.total_effective_cost), 0)
+    - COALESCE(SUM(f.compute_cost), 0)
+    - COALESCE(SUM(f.storage_cost), 0)
+    - COALESCE(SUM(f.io_cost), 0)
+    - COALESCE(SUM(f.backup_cost), 0)
+    - COALESCE(SUM(f.data_transfer_cost), 0)
+    - COALESCE(SUM(f.tax_cost), 0)
+    - COALESCE(SUM(f.credit_amount), 0)
+    - COALESCE(SUM(f.refund_amount), 0),
+    0
+  ) AS other
+FROM fact_db_resource_daily f
+WHERE f.tenant_id = CAST(:tenantId AS uuid)
+  AND f.cloud_connection_id = CAST(:cloudConnectionId AS uuid)
+  AND f.resource_id = :resourceId
+  AND f.usage_date BETWEEN CAST(:startDate AS date) AND CAST(:endDate AS date)
+GROUP BY f.usage_date
+ORDER BY f.usage_date ASC;
+`,
+          { replacements, type: QueryTypes.SELECT },
+        ),
+        sequelize.query<UsageTrendRow>(
+          `
+SELECT
+  f.usage_date AS date,
+  AVG(f.cpu_avg) AS "avgCpu",
+  MAX(f.cpu_max) AS "maxCpu",
+  AVG(f.load_avg) AS "avgLoad",
+  MAX(f.load_avg) AS "maxLoad",
+  AVG(f.connections_avg) AS "avgConnections",
+  MAX(f.connections_max) AS "maxConnections",
+  SUM(f.request_count) AS "requestCount"
+FROM fact_db_resource_daily f
+WHERE f.tenant_id = CAST(:tenantId AS uuid)
+  AND f.cloud_connection_id = CAST(:cloudConnectionId AS uuid)
+  AND f.resource_id = :resourceId
+  AND f.usage_date BETWEEN CAST(:startDate AS date) AND CAST(:endDate AS date)
+GROUP BY f.usage_date
+ORDER BY f.usage_date ASC;
+`,
+          { replacements, type: QueryTypes.SELECT },
+        ),
+        sequelize.query<StorageTrendRow>(
+          `
+SELECT
+  f.usage_date AS date,
+  MAX(f.allocated_storage_gb) AS "allocatedStorageGb",
+  MAX(f.storage_used_gb) AS "storageUsedGb",
+  MAX(f.data_footprint_gb) AS "dataFootprintGb"
+FROM fact_db_resource_daily f
+WHERE f.tenant_id = CAST(:tenantId AS uuid)
+  AND f.cloud_connection_id = CAST(:cloudConnectionId AS uuid)
+  AND f.resource_id = :resourceId
+  AND f.usage_date BETWEEN CAST(:startDate AS date) AND CAST(:endDate AS date)
+GROUP BY f.usage_date
+ORDER BY f.usage_date ASC;
+`,
+          { replacements, type: QueryTypes.SELECT },
+        ),
+        sequelize.query<PerformanceTrendRow>(
+          `
+SELECT
+  f.usage_date AS date,
+  AVG(f.read_iops) AS "readIops",
+  AVG(f.write_iops) AS "writeIops",
+  AVG(COALESCE(f.read_iops, 0) + COALESCE(f.write_iops, 0)) AS "totalIops",
+  AVG(f.read_throughput_bytes) AS "readThroughputBytes",
+  AVG(f.write_throughput_bytes) AS "writeThroughputBytes",
+  AVG(COALESCE(f.read_throughput_bytes, 0) + COALESCE(f.write_throughput_bytes, 0)) AS "totalThroughputBytes",
+  AVG(f.load_avg) AS "avgLoad",
+  AVG(f.connections_avg) AS "avgConnections"
+FROM fact_db_resource_daily f
+WHERE f.tenant_id = CAST(:tenantId AS uuid)
+  AND f.cloud_connection_id = CAST(:cloudConnectionId AS uuid)
+  AND f.resource_id = :resourceId
+  AND f.usage_date BETWEEN CAST(:startDate AS date) AND CAST(:endDate AS date)
+GROUP BY f.usage_date
+ORDER BY f.usage_date ASC;
+`,
+          { replacements, type: QueryTypes.SELECT },
+        ),
+      ]);
+
+    const identity = identityRows[0];
+    if (!identity) {
+      return null;
+    }
+
+    const aggregate = aggregateRows[0];
+    const recommendationCount = toNumber(recommendationRows[0]?.recommendationCount);
+    const relatedResourceCount = toNullableNumber(topologyRows[0]?.relatedResourceCount);
+    const storageUtilizationPct = toStorageUtilizationPct(
+      toNullableNumber(aggregate?.storageUsedGb),
+      toNullableNumber(aggregate?.allocatedStorageGb),
+    );
+
+    const availabilityChecks = [
+      costTrendRows.length > 0,
+      usageTrendRows.some((row) => toNullableNumber(row.avgLoad) !== null || toNullableNumber(row.avgCpu) !== null),
+      storageTrendRows.some((row) => toNullableNumber(row.allocatedStorageGb) !== null || toNullableNumber(row.storageUsedGb) !== null),
+      performanceTrendRows.some((row) => toNullableNumber(row.totalIops) !== null || toNullableNumber(row.totalThroughputBytes) !== null),
+    ];
+    const availableSignalCount = availabilityChecks.filter(Boolean).length;
+    const signalCompleteness = Math.round((availableSignalCount / availabilityChecks.length) * 100);
+    const readinessNotes: string[] = [];
+    if (!availabilityChecks[1]) readinessNotes.push("Load and connection signals are not available from current billing and usage data.");
+    if (!availabilityChecks[2]) readinessNotes.push("Storage allocation and usage history are not available from current billing and inventory data.");
+    if (!availabilityChecks[3]) readinessNotes.push("Performance throughput and IOPS signals are not available from current billing and usage data.");
+    if (recommendationCount === 0) readinessNotes.push("No open database recommendations are currently available for this resource.");
+
+    return {
+      identity: {
+        resourceId: identity.resourceId,
+        resourceArn: identity.resourceArn,
+        resourceName: identity.resourceName,
+        dbIdentifier: identity.dbIdentifier,
+        dbService: identity.dbService,
+        dbEngine: identity.dbEngine,
+        dbEngineVersion: identity.dbEngineVersion,
+        resourceType: identity.resourceType,
+        instanceClass: identity.instanceClass,
+        capacityMode: identity.capacityMode,
+        status: identity.status,
+        clusterId: identity.clusterId,
+        isClusterResource: Boolean(identity.isClusterResource),
+        regionKey: toNullableString(identity.regionKey),
+        regionName: identity.regionName,
+        subAccountKey: toNullableString(identity.subAccountKey),
+        subAccountName: identity.subAccountName,
+        cloudConnectionId: identity.cloudConnectionId,
+        latestUsageDate: identity.latestUsageDate ? toDateOnly(identity.latestUsageDate) : null,
+        discoveredAt: toIsoTimestamp(identity.discoveredAt),
+      },
+      costSummary: {
+        totalCost: toNumber(aggregate?.totalCost),
+        totalBilledCost: toNumber(aggregate?.totalBilledCost),
+        totalEffectiveCost: toNumber(aggregate?.totalEffectiveCost),
+        totalListCost: toNumber(aggregate?.totalListCost),
+        currencyCode: aggregate?.currencyCode ?? null,
+        dailyAverageCost: toNullableNumber(aggregate?.dailyAverageCost),
+        primaryCostDriver: aggregate ? costDriverLabel(aggregate) : null,
+      },
+      costBreakdown: {
+        compute: toNumber(aggregate?.computeCost),
+        storage: toNumber(aggregate?.storageCost),
+        io: toNumber(aggregate?.ioCost),
+        backup: toNumber(aggregate?.backupCost),
+        dataTransfer: toNumber(aggregate?.dataTransferCost),
+        tax: toNumber(aggregate?.taxCost),
+        credit: toNumber(aggregate?.creditAmount),
+        refund: toNumber(aggregate?.refundAmount),
+        other: Math.max(
+          0,
+          toNumber(aggregate?.totalCost)
+          - toNumber(aggregate?.computeCost)
+          - toNumber(aggregate?.storageCost)
+          - toNumber(aggregate?.ioCost)
+          - toNumber(aggregate?.backupCost)
+          - toNumber(aggregate?.dataTransferCost)
+          - toNumber(aggregate?.taxCost)
+          - toNumber(aggregate?.creditAmount)
+          - toNumber(aggregate?.refundAmount),
+        ),
+      },
+      usageSummary: {
+        avgCpu: toNullableNumber(aggregate?.avgCpu),
+        maxCpu: toNullableNumber(aggregate?.maxCpu),
+        avgLoad: toNullableNumber(aggregate?.avgLoad),
+        maxLoad: toNullableNumber(aggregate?.maxLoad),
+        avgConnections: toNullableNumber(aggregate?.avgConnections),
+        maxConnections: toNullableNumber(aggregate?.maxConnections),
+        requestCount: toNullableNumber(aggregate?.requestCount),
+      },
+      storageSummary: {
+        allocatedStorageGb: toNullableNumber(aggregate?.allocatedStorageGb),
+        storageUsedGb: toNullableNumber(aggregate?.storageUsedGb),
+        dataFootprintGb: toNullableNumber(aggregate?.dataFootprintGb),
+        storageUtilizationPct,
+      },
+      performanceSummary: {
+        avgIops: toNullableNumber(aggregate?.avgIops),
+        maxIops: toNullableNumber(aggregate?.maxIops),
+        avgThroughputBytes: toNullableNumber(aggregate?.avgThroughputBytes),
+        maxThroughputBytes: toNullableNumber(aggregate?.maxThroughputBytes),
+        readIops: toNullableNumber(aggregate?.readIops),
+        writeIops: toNullableNumber(aggregate?.writeIops),
+        readThroughputBytes: toNullableNumber(aggregate?.readThroughputBytes),
+        writeThroughputBytes: toNullableNumber(aggregate?.writeThroughputBytes),
+      },
+      topology: {
+        clusterId: identity.clusterId,
+        isClusterResource: Boolean(identity.isClusterResource),
+        resourceType: identity.resourceType,
+        relatedResourceCount,
+      },
+      optimizationReadiness: {
+        recommendationCount,
+        signalCompleteness,
+        confidenceLabel: signalCompleteness >= 75 ? "high" : signalCompleteness >= 50 ? "medium" : "low",
+        notes: readinessNotes,
+      },
+      trends: {
+        cost: costTrendRows.map((row) => ({
+          date: toDateOnly(row.date),
+          totalCost: toNumber(row.totalCost),
+          compute: toNumber(row.compute),
+          storage: toNumber(row.storage),
+          io: toNumber(row.io),
+          backup: toNumber(row.backup),
+          dataTransfer: toNumber(row.dataTransfer),
+          tax: toNumber(row.tax),
+          credit: toNumber(row.credit),
+          refund: toNumber(row.refund),
+          other: toNumber(row.other),
+        })),
+        usage: usageTrendRows.map((row) => ({
+          date: toDateOnly(row.date),
+          avgCpu: toNullableNumber(row.avgCpu),
+          maxCpu: toNullableNumber(row.maxCpu),
+          avgLoad: toNullableNumber(row.avgLoad),
+          maxLoad: toNullableNumber(row.maxLoad),
+          avgConnections: toNullableNumber(row.avgConnections),
+          maxConnections: toNullableNumber(row.maxConnections),
+          requestCount: toNullableNumber(row.requestCount),
+        })),
+        storage: storageTrendRows.map((row) => {
+          const allocatedStorageGb = toNullableNumber(row.allocatedStorageGb);
+          const storageUsedGb = toNullableNumber(row.storageUsedGb);
+          return {
+            date: toDateOnly(row.date),
+            allocatedStorageGb,
+            storageUsedGb,
+            dataFootprintGb: toNullableNumber(row.dataFootprintGb),
+            storageUtilizationPct: toStorageUtilizationPct(storageUsedGb, allocatedStorageGb),
+          };
+        }),
+        performance: performanceTrendRows.map((row) => ({
+          date: toDateOnly(row.date),
+          readIops: toNullableNumber(row.readIops),
+          writeIops: toNullableNumber(row.writeIops),
+          totalIops: toNullableNumber(row.totalIops),
+          readThroughputBytes: toNullableNumber(row.readThroughputBytes),
+          writeThroughputBytes: toNullableNumber(row.writeThroughputBytes),
+          totalThroughputBytes: toNullableNumber(row.totalThroughputBytes),
+          avgLoad: toNullableNumber(row.avgLoad),
+          avgConnections: toNullableNumber(row.avgConnections),
+        })),
+      },
+      metadata: {
+        tags: identity.tags ?? null,
+        rawMetadata: identity.rawMetadata ?? null,
+      },
     };
   }
 

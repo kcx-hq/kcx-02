@@ -37,6 +37,7 @@ import type {
   DatabaseExplorerResponse,
   DatabaseAssetsFilters,
   DatabaseAssetsResponse,
+  DatabaseAssetDetail,
 
   S3CostInsightsFiltersQuery,
   S3CostInsightsResponse,
@@ -230,6 +231,19 @@ function withDatabaseAssetsFilters(
 
   const query = params.toString();
   return query.length > 0 ? `${path}?${query}` : path;
+}
+
+function withDatabaseAssetDetailQuery(
+  path: string,
+  scope: DashboardResolvedScope,
+  params: { cloudConnectionId: string; startDate?: string; endDate?: string },
+): string {
+  const query = new URLSearchParams();
+  query.set("cloud_connection_id", params.cloudConnectionId);
+  query.set("start_date", params.startDate ?? scope.from);
+  query.set("end_date", params.endDate ?? scope.to);
+  const queryString = query.toString();
+  return queryString.length > 0 ? `${path}?${queryString}` : path;
 }
 
 function withOptimizationFilters(
@@ -555,6 +569,15 @@ export const dashboardApi = {
   getDatabaseAssets(scope: DashboardResolvedScope, filters?: DatabaseAssetsFilters) {
     return apiGet<DatabaseAssetsResponse>(withDatabaseAssetsFilters("/services/database/assets", scope, filters));
   },
+  getDatabaseAssetDetail(
+    scope: DashboardResolvedScope,
+    resourceId: string,
+    params: { cloudConnectionId: string; startDate?: string; endDate?: string },
+  ) {
+    return apiGet<DatabaseAssetDetail>(
+      withDatabaseAssetDetailQuery(`/services/database/assets/${encodeURIComponent(resourceId)}/details`, scope, params),
+    );
+  },
 
   getResources(scope: DashboardResolvedScope) {
     return apiGet<DashboardSectionData>(withDashboardQuery("/dashboard/resources", scope));
@@ -798,6 +821,7 @@ export type {
   DatabaseExplorerTableRow,
   DatabaseExplorerUsageTrendItem,
   DatabaseAssetsFilters,
+  DatabaseAssetDetail,
   DatabaseAssetsResponse,
   DashboardOverviewResponse,
   OverviewAnomaliesResponse,

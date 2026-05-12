@@ -18,6 +18,7 @@ type DatabaseAssetsTableProps = {
   rows: DatabaseAssetRow[];
   pagination: DatabaseAssetsPagination;
   isLoading?: boolean;
+  onRowClick?: (row: DatabaseAssetRow) => void;
   onFirstPage: () => void;
   onPrevPage: () => void;
   onNextPage: () => void;
@@ -36,6 +37,7 @@ export function DatabaseAssetsTable({
   rows,
   pagination,
   isLoading = false,
+  onRowClick,
   onFirstPage,
   onPrevPage,
   onNextPage,
@@ -167,7 +169,12 @@ export function DatabaseAssetsTable({
     <TableShell title="Assets" subtitle="Database assets list across connected services">
       {isLoading ? <p className="dashboard-note">Loading assets...</p> : null}
       <div className="db-assets-table-wrap">
-        <BaseDataTable columnDefs={columnDefs} rowData={rows} emptyMessage="No database assets found for current filters." />
+        <BaseDataTable
+          columnDefs={columnDefs}
+          rowData={rows}
+          emptyMessage="No database assets found for current filters."
+          onRowClick={onRowClick}
+        />
       </div>
       <div className="db-assets-pagination">
         <div className="db-assets-pagination__left">

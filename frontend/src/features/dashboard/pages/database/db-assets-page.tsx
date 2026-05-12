@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 
 import { useDatabaseAssetsQuery } from "../../hooks/useDashboardQueries";
+import { useDashboardScope } from "../../hooks/useDashboardScope";
 import type { DatabaseAssetsFilters as DatabaseAssetsQueryFilters } from "../../api/dashboardTypes";
 import { DatabaseAssetsCards } from "./components/db-assets-cards";
 import {
@@ -25,6 +26,8 @@ const buildFilterStateFromSearch = (search: string): DatabaseAssetsFiltersValue 
 
 export default function DatabaseAssetsPage() {
   const location = useLocation();
+  const navigate = useNavigate();
+  const { scope } = useDashboardScope();
   const [filterState, setFilterState] = useState<DatabaseAssetsFiltersValue>(() => buildFilterStateFromSearch(location.search));
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
@@ -92,6 +95,20 @@ export default function DatabaseAssetsPage() {
           <DatabaseAssetsCards summary={summary} isLoading={pageLoading} />
           <DatabaseAssetsTable
             rows={data?.assets ?? []}
+            onRowClick={(row) => {
+              if (!row.resourceId || !row.cloudConnectionId) return;
+              const next = new URLSearchParams(location.search);
+              next.set("cloud_connection_id", row.cloudConnectionId);
+              next.set("resourceId", row.resourceId);
+              const startDate = next.get("start_date") ?? scope?.from ?? null;
+              const endDate = next.get("end_date") ?? scope?.to ?? null;
+              if (startDate) next.set("start_date", startDate);
+              if (endDate) next.set("end_date", endDate);
+              navigate({
+                pathname: `/dashboard/services/database/assets/${encodeURIComponent(row.resourceId)}`,
+                search: next.toString(),
+              });
+            }}
             pagination={
               data?.pagination ?? {
                 page,

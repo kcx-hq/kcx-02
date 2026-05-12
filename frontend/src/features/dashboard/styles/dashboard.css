@@ -11640,6 +11640,132 @@
   min-height: 420px;
 }
 
+.database-asset-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.database-asset-detail__header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.database-asset-detail__eyebrow {
+  margin: 0 0 4px;
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #56716d;
+}
+
+.database-asset-detail__title {
+  margin: 0;
+  font-size: 1.5rem;
+  color: #203736;
+}
+
+.database-asset-detail__subtitle {
+  margin: 6px 0 0;
+  color: #536b67;
+}
+
+.database-asset-detail__header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.database-asset-detail__range-chip {
+  border: 1px solid #d7e4e1;
+  background: #f7fbfa;
+  color: #315450;
+  border-radius: 999px;
+  padding: 7px 12px;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.database-asset-detail__stack {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.database-asset-detail__summary-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.database-asset-detail__summary-grid--text {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.database-asset-detail__summary-card,
+.database-asset-detail__mini-kpi {
+  border: 1px solid #deebe8;
+  background: #f9fcfc;
+  border-radius: 10px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.database-asset-detail__summary-card span,
+.database-asset-detail__mini-kpi span {
+  color: #617774;
+  font-size: 0.75rem;
+}
+
+.database-asset-detail__summary-card strong,
+.database-asset-detail__mini-kpi strong {
+  color: #274340;
+}
+
+.database-asset-detail__mini-kpis {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.database-asset-detail__notes {
+  display: grid;
+  gap: 6px;
+}
+
+.database-asset-detail__meta-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.database-asset-detail__meta-grid div {
+  border: 1px solid #deebe8;
+  border-radius: 10px;
+  padding: 10px;
+  background: #f9fcfc;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.database-asset-detail__meta-grid span {
+  color: #617774;
+  font-size: 0.75rem;
+}
+
+.database-asset-detail__meta-grid strong {
+  color: #274340;
+}
+
 @media (max-width: 900px) {
   .database-assets-page .db-assets-filters-row__clear-wrap {
     margin-left: 0;
@@ -11649,6 +11775,21 @@
   .database-assets-page .db-assets-table-wrap .dashboard-data-table {
     height: 52vh !important;
     min-height: 360px;
+  }
+
+  .database-asset-detail__header {
+    flex-direction: column;
+  }
+
+  .database-asset-detail__header-actions {
+    justify-content: flex-start;
+  }
+
+  .database-asset-detail__summary-grid,
+  .database-asset-detail__summary-grid--text,
+  .database-asset-detail__mini-kpis,
+  .database-asset-detail__meta-grid {
+    grid-template-columns: 1fr;
   }
 }
 
