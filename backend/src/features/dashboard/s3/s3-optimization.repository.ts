@@ -158,6 +158,15 @@ export class S3OptimizationRepository {
       { bind: binds, type: QueryTypes.SELECT },
     );
 
+    const bucketCostMap = await this.getBucketStorageCostsForDaysSafe(
+      scope.tenantId,
+      rows.map((row) => ({
+        bucketName: String(row.bucket_name ?? "").trim(),
+        accountId: String(row.account_id ?? "").trim(),
+      })),
+      30,
+    );
+
     const mapped = await Promise.all(
       rows.map(async (row) => {
         const replicationStatus = toReplicationStatus(row.replication_status);
@@ -194,12 +203,8 @@ export class S3OptimizationRepository {
             : "cross_account"
           : "unknown";
 
-        const monthlyStorageCost = await this.getBucketStorageCostForDaysSafe(
-          scope.tenantId,
-          String(row.bucket_name ?? "").trim(),
-          String(row.account_id ?? "").trim(),
-          30,
-        );
+        const monthlyStorageCost =
+          bucketCostMap.get(`${String(row.bucket_name ?? "").trim().toLowerCase()}::${String(row.account_id ?? "").trim()}`) ?? null;
         const isImportantBucket = monthlyStorageCost != null && monthlyStorageCost >= 100;
         const recommendation = replicationStatus === "absent" && isImportantBucket
           ? "This bucket has no replication configured. Consider replication for critical data, disaster recovery, or cross-region backup."
@@ -811,6 +816,70 @@ export class S3OptimizationRepository {
           accountId,
         });
         return null;
+      }
+      throw error;
+    }
+  }
+
+  private async getBucketStorageCostsForDaysSafe(
+    tenantId: string,
+    pairs: Array<{ bucketName: string; accountId: string }>,
+    days: number,
+  ): Promise<Map<string, number | null>> {
+    const result = new Map<string, number | null>();
+    const normalized = pairs
+      .map((item) => ({
+        bucketName: String(item.bucketName ?? "").trim(),
+        accountId: String(item.accountId ?? "").trim(),
+      }))
+      .filter((item) => item.bucketName.length > 0);
+    if (normalized.length === 0) return result;
+
+    const end = new Date();
+    const start = new Date();
+    start.setUTCDate(start.getUTCDate() - days);
+    const keys = normalized.map((item) => item.bucketName.toLowerCase());
+    const accounts = [...new Set(normalized.map((item) => item.accountId))];
+    try {
+      const rows = await sequelize.query<{ bucket_name: string; account_id: string; total_cost: number | string | null }>(
+        `
+        SELECT
+          LOWER(bucket_name)::text AS bucket_name,
+          COALESCE(NULLIF(account_id, ''), '')::text AS account_id,
+          COALESCE(SUM(total_cost), 0)::double precision AS total_cost
+        FROM s3_cost_daily
+        WHERE tenant_id = $1::uuid
+          AND usage_date >= $2::date
+          AND usage_date <= $3::date
+          AND LOWER(bucket_name) = ANY($4::text[])
+          AND COALESCE(NULLIF(account_id, ''), '') = ANY($5::text[])
+          AND cost_category = 'Storage'
+        GROUP BY LOWER(bucket_name), COALESCE(NULLIF(account_id, ''), '')
+        `,
+        {
+          bind: [tenantId, start.toISOString().slice(0, 10), end.toISOString().slice(0, 10), keys, accounts],
+          type: QueryTypes.SELECT,
+        },
+      );
+
+      for (const row of rows) {
+        result.set(`${String(row.bucket_name ?? "").toLowerCase()}::${String(row.account_id ?? "")}`, toNumber(row.total_cost) ?? 0);
+      }
+      for (const pair of normalized) {
+        const key = `${pair.bucketName.toLowerCase()}::${pair.accountId}`;
+        if (!result.has(key)) result.set(key, 0);
+      }
+      return result;
+    } catch (error) {
+      const errorCode =
+        error && typeof error === "object" && "original" in error && (error as { original?: { code?: string } }).original
+          ? String((error as { original?: { code?: string } }).original?.code ?? "")
+          : "";
+      if (errorCode === "42P01") {
+        for (const pair of normalized) {
+          result.set(`${pair.bucketName.toLowerCase()}::${pair.accountId}`, null);
+        }
+        return result;
       }
       throw error;
     }

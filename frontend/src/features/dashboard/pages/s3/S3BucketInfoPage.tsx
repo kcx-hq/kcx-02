@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useS3CostInsightsQuery, useS3OptimizationQuery } from "../../hooks/useDashboardQueries";
 import { S3BucketCombinedTable, type S3BucketCombinedRow } from "./components/S3BucketCombinedTable";
@@ -168,10 +168,28 @@ export default function S3BucketInfoPage() {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const query = useS3CostInsightsQuery();
+  const overviewQuery = useS3CostInsightsQuery({ responseMode: "overview" }, { staleTime: 120_000 });
+  const deepInsightsQuery = useS3CostInsightsQuery(undefined, {
+    enabled: Boolean(overviewQuery.data) && !overviewQuery.isError,
+    staleTime: 180_000,
+  });
   const optimizationQuery = useS3OptimizationQuery();
 
-  const rows = useMemo(() => query.data?.bucketTable ?? [], [query.data?.bucketTable]);
+  const [showSlowLoadingHint, setShowSlowLoadingHint] = useState(false);
+  useEffect(() => {
+    if (!overviewQuery.isLoading || overviewQuery.data || overviewQuery.isError) {
+      setShowSlowLoadingHint(false);
+      return;
+    }
+    const timeout = window.setTimeout(() => setShowSlowLoadingHint(true), 12_000);
+    return () => window.clearTimeout(timeout);
+  }, [overviewQuery.data, overviewQuery.isError, overviewQuery.isLoading]);
+
+  const baseData = overviewQuery.data;
+  const deepData = deepInsightsQuery.data;
+  const insightsData = deepData ?? baseData;
+
+  const rows = useMemo(() => insightsData?.bucketTable ?? [], [insightsData?.bucketTable]);
   const scopedRows = useMemo(
     () =>
       rows.filter(
@@ -197,43 +215,43 @@ export default function S3BucketInfoPage() {
 
   const savingsByBucket = useMemo(() => {
     const map = new Map<string, number>();
-    for (const item of query.data?.estimatedSavings.items ?? []) {
+    for (const item of deepData?.estimatedSavings.items ?? []) {
       const bucketKey = toBucketKey(item.bucketName);
       if (!bucketKey) continue;
       map.set(bucketKey, (map.get(bucketKey) ?? 0) + Number(item.estimatedMonthlySaving ?? 0));
     }
     return map;
-  }, [query.data?.estimatedSavings.items]);
+  }, [deepData?.estimatedSavings.items]);
 
   const optimizationScoreByBucket = useMemo(() => {
     const map = new Map<string, number>();
-    for (const item of query.data?.bucketOptimizationScores.items ?? []) {
+    for (const item of deepData?.bucketOptimizationScores.items ?? []) {
       const bucketKey = toBucketKey(item.bucketName);
       if (!bucketKey) continue;
       map.set(bucketKey, Number(item.score ?? 0));
     }
     return map;
-  }, [query.data?.bucketOptimizationScores.items]);
+  }, [deepData?.bucketOptimizationScores.items]);
 
   const optimizationSavingsByBucket = useMemo(() => {
     const map = new Map<string, number>();
-    for (const item of query.data?.bucketOptimizationScores.items ?? []) {
+    for (const item of deepData?.bucketOptimizationScores.items ?? []) {
       const bucketKey = toBucketKey(item.bucketName);
       if (!bucketKey) continue;
       map.set(bucketKey, Math.max(map.get(bucketKey) ?? 0, Number(item.estimatedMonthlySaving ?? 0)));
     }
     return map;
-  }, [query.data?.bucketOptimizationScores.items]);
+  }, [deepData?.bucketOptimizationScores.items]);
 
   const healthScoreByBucket = useMemo(() => {
     const map = new Map<string, number>();
-    for (const item of query.data?.bucketHealthScores.items ?? []) {
+    for (const item of deepData?.bucketHealthScores.items ?? []) {
       const bucketKey = toBucketKey(item.bucketName);
       if (!bucketKey) continue;
       map.set(bucketKey, Number(item.score ?? 0));
     }
     return map;
-  }, [query.data?.bucketHealthScores.items]);
+  }, [deepData?.bucketHealthScores.items]);
 
   const storageClassEfficiencyByBucket = useMemo(() => {
     const map = new Map<
@@ -248,7 +266,7 @@ export default function S3BucketInfoPage() {
       }
     >();
 
-    for (const item of query.data?.storageClassEfficiency.items ?? []) {
+    for (const item of deepData?.storageClassEfficiency.items ?? []) {
       const bucketKey = toBucketKey(item.bucketName);
       if (!bucketKey) continue;
       const totalGib =
@@ -268,7 +286,7 @@ export default function S3BucketInfoPage() {
     }
 
     return map;
-  }, [query.data?.storageClassEfficiency.items]);
+  }, [deepData?.storageClassEfficiency.items]);
 
   const combinedRows = useMemo<S3BucketCombinedRow[]>(() => {
     return scopedRows.map((row) => {
@@ -387,10 +405,13 @@ export default function S3BucketInfoPage() {
 
   return (
     <div className="dashboard-page">
-      {query.isLoading ? <p className="dashboard-note">Loading S3 bucket insights...</p> : null}
-      {query.isError ? <p className="dashboard-note">Failed to load S3 bucket insights: {query.error.message}</p> : null}
+      {overviewQuery.isLoading && !baseData ? <p className="dashboard-note">Loading S3 bucket insights...</p> : null}
+      {showSlowLoadingHint && !baseData ? (
+        <p className="dashboard-note">Still loading bucket insights. This is taking longer than expected.</p>
+      ) : null}
+      {overviewQuery.isError ? <p className="dashboard-note">Failed to load S3 bucket insights: {overviewQuery.error.message}</p> : null}
 
-      {!query.isLoading && !query.isError ? (
+      {!overviewQuery.isLoading && !overviewQuery.isError ? (
         <div className="s3-bucket-section">
           <section className="cost-explorer-widget-shell s3-bucket-kpi-shell">
             <div className="s3-bucket-kpi-row" aria-label="S3 bucket KPI summary">
@@ -414,6 +435,16 @@ export default function S3BucketInfoPage() {
             {optimizationQuery.isError ? (
               <p className="dashboard-note" style={{ marginTop: 10 }}>
                 Lifecycle status is partially unavailable: {optimizationQuery.error.message}
+              </p>
+            ) : null}
+            {deepInsightsQuery.isFetching && !deepData ? (
+              <p className="dashboard-note" style={{ marginTop: 10 }}>
+                Loading optimization scores and savings in background...
+              </p>
+            ) : null}
+            {deepInsightsQuery.isError ? (
+              <p className="dashboard-note" style={{ marginTop: 10 }}>
+                Detailed optimization insights are temporarily unavailable: {deepInsightsQuery.error.message}
               </p>
             ) : null}
           </section>

@@ -14,20 +14,6 @@ type BreadcrumbItem = {
   path?: string;
 };
 
-const getLoadBalancerBreadcrumbLabel = (routeValue: string, searchParams: URLSearchParams): string => {
-  const nameFromQuery = searchParams.get("loadBalancerName")?.trim();
-  if (nameFromQuery) return nameFromQuery;
-
-  const decoded = decodeURIComponent(routeValue);
-  const loadBalancerPart = decoded.match(/loadbalancer\/(?:(?:app|net|gwy)\/)?([^/]+)/i)?.[1];
-  if (loadBalancerPart) return loadBalancerPart;
-
-  const arnName = decoded.match(/:loadbalancer\/([^/]+)$/i)?.[1];
-  if (arnName) return arnName;
-
-  return decoded;
-};
-
 const parseDateValue = (value: string | null): string => {
   if (!value) return "";
   return /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : "";

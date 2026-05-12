@@ -545,7 +545,12 @@ export class S3OptimizationService {
   }
 
   async getReplicationVisibility(scope: DashboardScope): Promise<S3ReplicationVisibilityResponse> {
-    await this.refreshReplicationSnapshotsForScope(scope);
+    void this.refreshReplicationSnapshotsForScope(scope).catch((error) => {
+      logger.warn("S3 replication refresh scheduled in background failed", {
+        tenantId: scope.tenantId,
+        reason: error instanceof Error ? error.message : String(error),
+      });
+    });
     const buckets = await this.repository.getReplicationVisibilityRows(scope);
     return {
       section: "s3-replication",

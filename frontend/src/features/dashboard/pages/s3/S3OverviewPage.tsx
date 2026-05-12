@@ -117,6 +117,39 @@ const parseFiltersFromSearch = (search: string): S3OverviewFilterValue => {
   };
 };
 
+const normalizeOverviewFilters = (
+  current: S3OverviewFilterValue,
+  next: S3OverviewFilterValue,
+): S3OverviewFilterValue => {
+  const enteringCompare = current.compareMode !== "previous_period" && next.compareMode === "previous_period";
+  const isCompare = next.compareMode === "previous_period";
+
+  if (isCompare) {
+    return {
+      ...next,
+      // Compare mode is a fixed trend comparison view (current vs previous).
+      seriesBy: "none",
+      seriesValues: [],
+      costBy: "date",
+      yAxisMetric: "billed_cost",
+      chartType: "line",
+    };
+  }
+
+  return {
+    ...next,
+    seriesValues: next.seriesBy === "none" ? [] : next.seriesValues,
+    costBy: next.seriesBy === "none" ? "date" : next.costBy,
+    yAxisMetric: next.seriesBy === "none" ? "billed_cost" : next.yAxisMetric,
+    chartType:
+      next.seriesBy === "none"
+        ? "line"
+        : enteringCompare
+          ? "line"
+          : next.chartType,
+  };
+};
+
 const uniqueNonEmpty = (values: Array<string | null | undefined>): string[] =>
   [...new Set(values.map((item) => String(item ?? "").trim()).filter((item) => item.length > 0))].sort((a, b) =>
     a.localeCompare(b),
@@ -171,20 +204,7 @@ export default function S3OverviewPage() {
   }, [location.pathname, location.search, navigate]);
 
   const applyFiltersToUrl = (nextFilters: S3OverviewFilterValue) => {
-    const enteringCompare =
-      filters.compareMode !== "previous_period" && nextFilters.compareMode === "previous_period";
-    const normalizedNext: S3OverviewFilterValue = {
-      ...nextFilters,
-      seriesValues: nextFilters.seriesBy === "none" ? [] : nextFilters.seriesValues,
-      costBy: nextFilters.seriesBy === "none" ? "date" : nextFilters.costBy,
-      yAxisMetric: nextFilters.seriesBy === "none" ? "billed_cost" : nextFilters.yAxisMetric,
-      chartType:
-        nextFilters.seriesBy === "none"
-          ? "line"
-          : enteringCompare
-            ? "line"
-            : nextFilters.chartType,
-    };
+    const normalizedNext = normalizeOverviewFilters(filters, nextFilters);
     const params = new URLSearchParams(location.search);
     if (normalizedNext.seriesBy !== DEFAULT_FILTERS.seriesBy) params.set("s3SeriesBy", normalizedNext.seriesBy);
     else params.delete("s3SeriesBy");
@@ -212,6 +232,18 @@ export default function S3OverviewPage() {
     }
   };
 
+  useEffect(() => {
+    const normalized = normalizeOverviewFilters(filters, filters);
+    const hasDrift =
+      normalized.seriesBy !== filters.seriesBy ||
+      normalized.costBy !== filters.costBy ||
+      normalized.yAxisMetric !== filters.yAxisMetric ||
+      normalized.chartType !== filters.chartType ||
+      normalized.seriesValues.join("|") !== filters.seriesValues.join("|");
+    if (!hasDrift) return;
+    applyFiltersToUrl(normalized);
+  }, [filters]);
+
   const queryFilters = useMemo<S3CostInsightsFiltersQuery>(
     () => ({
       ...(debouncedFilters.seriesBy === "cost_category" && debouncedFilters.seriesValues.length > 0
@@ -230,21 +262,15 @@ export default function S3OverviewPage() {
     [debouncedFilters],
   );
 
-  const quickFilters = useMemo<S3CostInsightsFiltersQuery>(
-    () => ({ ...queryFilters, responseMode: "quick" }),
-    [queryFilters],
-  );
-  const fullFilters = useMemo<S3CostInsightsFiltersQuery>(
+  const overviewFilters = useMemo<S3CostInsightsFiltersQuery>(
     () => ({ ...queryFilters, responseMode: "overview" }),
     [queryFilters],
   );
+  const overviewQuery = useS3CostInsightsQuery(overviewFilters, { staleTime: 120_000 });
 
-  const quickQuery = useS3CostInsightsQuery(quickFilters, { staleTime: 60_000 });
-  const fullQuery = useS3CostInsightsQuery(fullFilters, { staleTime: 120_000 });
-
-  const graphSource = quickQuery.data ?? fullQuery.data;
-  const tableSource = fullQuery.data ?? null;
-  const filterOptions = fullQuery.data?.filterOptions ?? quickQuery.data?.filterOptions;
+  const graphSource = overviewQuery.data ?? null;
+  const tableSource = overviewQuery.data ?? null;
+  const filterOptions = overviewQuery.data?.filterOptions;
 
   const breakdown = graphSource?.chart.breakdown;
   const bucketRows = useMemo(
@@ -324,11 +350,11 @@ export default function S3OverviewPage() {
   const showUsageOperationTable = filters.seriesBy === "usage_type" || filters.seriesBy === "operation";
 
   const hasAnyData = Boolean(graphSource || tableSource);
-  const isInitialLoading = !hasAnyData && (quickQuery.isLoading || fullQuery.isLoading);
-  const isRefreshing = hasAnyData && (quickQuery.isFetching || fullQuery.isFetching);
-  const isGraphLoading = !graphSource && (quickQuery.isLoading || fullQuery.isLoading || isDebouncingFilters);
-  const isTableLoading = !tableSource && (fullQuery.isLoading || fullQuery.isFetching || isDebouncingFilters);
-  const hasBlockingError = quickQuery.isError && fullQuery.isError && !graphSource && !tableSource;
+  const isInitialLoading = !hasAnyData && overviewQuery.isLoading;
+  const isRefreshing = hasAnyData && overviewQuery.isFetching;
+  const isGraphLoading = !graphSource && (overviewQuery.isLoading || isDebouncingFilters);
+  const isTableLoading = !tableSource && (overviewQuery.isLoading || overviewQuery.isFetching || isDebouncingFilters);
+  const hasBlockingError = overviewQuery.isError && !graphSource && !tableSource;
 
   const previousRange = useMemo(() => {
     if (!scope?.from || !scope?.to) return null;
@@ -350,11 +376,15 @@ export default function S3OverviewPage() {
     if (!scope || !previousRange) return null;
     return { ...scope, from: previousRange.from, to: previousRange.to };
   }, [previousRange, scope]);
+  const quickComparisonFilters = useMemo<S3CostInsightsFiltersQuery>(
+    () => ({ ...queryFilters, responseMode: "quick" }),
+    [queryFilters],
+  );
 
   const comparisonQuery = useQuery({
-    queryKey: ["dashboard", "s3", "cost-insights", "previous-period", previousScope, quickFilters, filters.compareMode],
+    queryKey: ["dashboard", "s3", "cost-insights", "previous-period", previousScope, quickComparisonFilters, filters.compareMode],
     queryFn: ({ signal }) =>
-      dashboardApi.getS3CostInsights(previousScope as NonNullable<typeof previousScope>, quickFilters, { signal }),
+      dashboardApi.getS3CostInsights(previousScope as NonNullable<typeof previousScope>, quickComparisonFilters, { signal }),
     enabled: filters.compareMode === "previous_period" && Boolean(previousScope),
     placeholderData: (previousData) => previousData,
     staleTime: 90_000,
@@ -371,10 +401,9 @@ export default function S3OverviewPage() {
         filterOptions={resolvedFilterOptions}
         isLoading={isInitialLoading}
         isError={hasBlockingError}
-        errorMessage={quickQuery.error?.message ?? fullQuery.error?.message}
+        errorMessage={overviewQuery.error?.message}
         onRetry={() => {
-          void quickQuery.refetch();
-          void fullQuery.refetch();
+          void overviewQuery.refetch();
         }}
       />
 
@@ -403,10 +432,9 @@ export default function S3OverviewPage() {
           isLoading={isGraphLoading}
           isRefreshing={isRefreshing}
           isError={hasBlockingError}
-          errorMessage={quickQuery.error?.message ?? fullQuery.error?.message}
+          errorMessage={overviewQuery.error?.message}
           onRetry={() => {
-            void quickQuery.refetch();
-            void fullQuery.refetch();
+            void overviewQuery.refetch();
             if (filters.compareMode === "previous_period") {
               void comparisonQuery.refetch();
             }

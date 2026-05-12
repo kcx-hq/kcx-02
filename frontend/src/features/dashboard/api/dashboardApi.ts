@@ -823,6 +823,21 @@ export const dashboardApi = {
   getEc2ElasticIps(scope: DashboardResolvedScope, filters?: Ec2ElasticIpFiltersQuery) {
     return apiGet<Ec2ElasticIpResponse>(withEc2ElasticIpFilters("/dashboard/ec2/elastic-ips", scope, filters));
   },
+  getLoadBalancerExplorerSummary(scope: DashboardResolvedScope, filters: LoadBalancerExplorerFiltersQuery) {
+    return apiGet<LoadBalancerExplorerSummaryResponse>(
+      withLoadBalancerExplorerFilters("/dashboard/load-balancer/explorer/summary", scope, filters),
+    );
+  },
+  getLoadBalancerExplorerTrend(scope: DashboardResolvedScope, filters: LoadBalancerExplorerFiltersQuery) {
+    return apiGet<LoadBalancerExplorerTrendResponse>(
+      withLoadBalancerExplorerFilters("/dashboard/load-balancer/explorer/trend", scope, filters),
+    );
+  },
+  getLoadBalancerExplorerGroupBy(scope: DashboardResolvedScope, filters: LoadBalancerExplorerFiltersQuery) {
+    return apiGet<LoadBalancerExplorerGroupByResponse>(
+      withLoadBalancerExplorerFilters("/dashboard/load-balancer/explorer/group-by", scope, filters),
+    );
+  },
   getS3CostInsights(scope: DashboardResolvedScope, filters?: S3CostInsightsFiltersQuery, init?: RequestInit) {
     return apiGet<S3CostInsightsResponse>(withS3CostInsightsFilters("/dashboard/s3/cost-insights", scope, filters), init);
   },
