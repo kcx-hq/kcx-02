@@ -53,10 +53,23 @@ Resources:
               - Sid: AllowS3LifecyclePolicyActions
                 Effect: Allow
                 Action:
+                  - s3:ListAllMyBuckets
                   - s3:GetLifecycleConfiguration
                   - s3:PutLifecycleConfiguration
                   - s3:DeleteLifecycleConfiguration
+                  - s3:GetReplicationConfiguration
+                  - s3:PutReplicationConfiguration
+                  - s3:GetBucketVersioning
+                  - s3:PutBucketVersioning
                   - s3:GetBucketLocation
+                Resource: "*"
+              - Sid: AllowReplicationRolePass
+                Effect: Allow
+                Action:
+                  - iam:PassRole
+                  - iam:CreateRole
+                  - iam:GetRole
+                  - iam:PutRolePolicy
                 Resource: "*"
               - Sid: AllowEc2RuntimeActions
                 Effect: Allow

@@ -35,7 +35,7 @@ export function BaseEChart({ option, height = 260, className, onPointClick }: Ba
       return;
     }
 
-    chartRef.current = echarts.init(node, undefined, { renderer: "canvas" });
+    chartRef.current = echarts.init(node, undefined, { renderer: "canvas", useDirtyRect: true });
 
     const resizeObserver = new ResizeObserver(() => {
       chartRef.current?.resize();
@@ -60,7 +60,10 @@ export function BaseEChart({ option, height = 260, className, onPointClick }: Ba
         ...sharedOption,
         ...option,
       },
-      true,
+      {
+        notMerge: false,
+        lazyUpdate: true,
+      },
     );
   }, [option]);
 
@@ -80,5 +83,5 @@ export function BaseEChart({ option, height = 260, className, onPointClick }: Ba
 
   const containerClassName = className ? `dashboard-echart ${className}` : "dashboard-echart";
 
-  return <div ref={chartContainerRef} className={containerClassName} style={{ height }} aria-hidden="true" />;
+  return <div ref={chartContainerRef} className={containerClassName} style={{ height, cursor: onPointClick ? "pointer" : undefined }} aria-hidden="true" />;
 }

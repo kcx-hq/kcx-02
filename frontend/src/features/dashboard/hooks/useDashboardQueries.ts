@@ -26,6 +26,7 @@ import {
   type DatabaseExplorerResponse,
   type DatabaseAssetsFilters,
   type DatabaseAssetsResponse,
+  type DatabaseAssetDetail,
 
   type S3CostInsightsFiltersQuery,
   type S3CostInsightsResponse,
@@ -36,6 +37,13 @@ import {
   type S3LifecyclePolicyDeleteResponse,
   type S3PolicyActionHistoryResponse,
   type S3OptimizationResponse,
+  type S3ReplicationDestinationBucketsResponse,
+  type S3ReplicationResponse,
+  type S3ReplicationRoleAutoCreateRequest,
+  type S3ReplicationRoleAutoCreateResponse,
+  type S3ReplicationSetupApplyResponse,
+  type S3ReplicationSetupPreviewResponse,
+  type S3ReplicationSetupRequest,
   type OptimizationIdleOverview,
   type OptimizationCommitmentOverview,
   type OptimizationIdleRecommendationDetail,
@@ -133,6 +141,24 @@ export function useDatabaseAssetsQuery(filters: DatabaseAssetsFilters) {
     queryKey: ["dashboard", "services", "database", "assets", scope, filters],
     queryFn: () => dashboardApi.getDatabaseAssets(assertScope(scope), filters),
     enabled: Boolean(scope?.from && scope?.to),
+    placeholderData: (previousData) => previousData,
+    staleTime: 30_000,
+  });
+}
+
+export function useDatabaseAssetDetailQuery(
+  resourceId: string | null,
+  params: { cloudConnectionId: string | null; startDate?: string | null; endDate?: string | null },
+) {
+  const { scope } = useDashboardScope();
+  return useQuery<DatabaseAssetDetail, Error>({
+    queryKey: ["dashboard", "services", "database", "asset-detail", scope, resourceId, params],
+    queryFn: () => dashboardApi.getDatabaseAssetDetail(assertScope(scope), resourceId as string, {
+      cloudConnectionId: params.cloudConnectionId as string,
+      startDate: params.startDate ?? undefined,
+      endDate: params.endDate ?? undefined,
+    }),
+    enabled: Boolean(scope?.from && scope?.to && resourceId && params.cloudConnectionId),
     placeholderData: (previousData) => previousData,
     staleTime: 30_000,
   });
@@ -432,25 +458,30 @@ export function useLoadBalancerExplorerGroupByQuery(filters: LoadBalancerExplore
 
 export function useS3CostInsightsQuery(
   filters?: S3CostInsightsFiltersQuery,
-  options?: { enabled?: boolean },
+  options?: {
+    enabled?: boolean;
+    staleTime?: number;
+    refetchInterval?: number | false;
+  },
 ) {
   const { scope } = useDashboardScope();
   return useQuery<S3CostInsightsResponse, Error>({
     queryKey: ["dashboard", "s3", "cost-insights", scope, filters],
-    queryFn: () => dashboardApi.getS3CostInsights(assertScope(scope), filters),
+    queryFn: ({ signal }) => dashboardApi.getS3CostInsights(assertScope(scope), filters, { signal }),
     enabled: Boolean(scope) && (options?.enabled ?? true),
     placeholderData: (previous) => previous,
-    staleTime: 90_000,
+    staleTime: options?.staleTime ?? 90_000,
     refetchOnWindowFocus: false,
+    refetchInterval: options?.refetchInterval ?? false,
   });
 }
 
-export function useS3OptimizationQuery() {
+export function useS3OptimizationQuery(enabledOverride: boolean = true) {
   const { scope } = useDashboardScope();
   return useQuery<S3OptimizationResponse, Error>({
     queryKey: ["dashboard", "s3", "optimization", scope],
     queryFn: () => dashboardApi.getS3Optimization(assertScope(scope)),
-    enabled: Boolean(scope),
+    enabled: Boolean(scope) && enabledOverride,
     placeholderData: (previous) => previous,
     staleTime: 90_000,
     refetchOnWindowFocus: false,
@@ -483,6 +514,65 @@ export function useApplyS3LifecyclePolicyMutation() {
       await queryClient.invalidateQueries({
         queryKey: ["dashboard", "policy", "actions"],
       });
+    },
+  });
+}
+
+export function useS3ReplicationQuery(enabledOverride: boolean = true) {
+  const { scope } = useDashboardScope();
+  return useQuery<S3ReplicationResponse, Error>({
+    queryKey: ["dashboard", "s3", "replication", scope],
+    queryFn: () => dashboardApi.getS3Replication(assertScope(scope)),
+    enabled: Boolean(scope) && enabledOverride,
+    placeholderData: (previous) => previous,
+    staleTime: 90_000,
+    refetchOnWindowFocus: false,
+  });
+}
+
+export function useS3ReplicationDestinationBucketsQuery(sourceBucketName: string | null, enabledOverride: boolean = true) {
+  const { scope } = useDashboardScope();
+  const normalizedSourceBucketName = String(sourceBucketName ?? "").trim();
+  return useQuery<S3ReplicationDestinationBucketsResponse, Error>({
+    queryKey: ["dashboard", "s3", "replication", "destination-buckets", scope, normalizedSourceBucketName],
+    queryFn: () => dashboardApi.getS3ReplicationDestinationBuckets(assertScope(scope), normalizedSourceBucketName),
+    enabled: Boolean(scope) && Boolean(normalizedSourceBucketName) && enabledOverride,
+    placeholderData: (previous) => previous,
+    staleTime: 90_000,
+    refetchOnWindowFocus: false,
+  });
+}
+
+export function usePreviewS3ReplicationSetupMutation() {
+  const { scope } = useDashboardScope();
+  return useMutation<S3ReplicationSetupPreviewResponse, Error, S3ReplicationSetupRequest>({
+    mutationFn: (payload) => {
+      if (!scope) throw new Error("Dashboard scope is not resolved yet");
+      return dashboardApi.previewS3ReplicationSetup(scope, payload);
+    },
+  });
+}
+
+export function useApplyS3ReplicationSetupMutation() {
+  const { scope } = useDashboardScope();
+  const queryClient = useQueryClient();
+  return useMutation<S3ReplicationSetupApplyResponse, Error, S3ReplicationSetupRequest>({
+    mutationFn: (payload) => {
+      if (!scope) throw new Error("Dashboard scope is not resolved yet");
+      return dashboardApi.applyS3ReplicationSetup(scope, payload);
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["dashboard", "s3", "replication"] });
+    },
+  });
+}
+
+export function useAutoCreateS3ReplicationRoleMutation() {
+  const { scope } = useDashboardScope();
+  return useMutation<S3ReplicationRoleAutoCreateResponse, Error, S3ReplicationRoleAutoCreateRequest>({
+    mutationFn: (payload) => {
+      if (!scope) throw new Error("Dashboard scope is not resolved yet");
+      return dashboardApi.autoCreateS3ReplicationRole(scope, payload);
     },
   });
 }

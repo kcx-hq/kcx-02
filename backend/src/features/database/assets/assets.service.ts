@@ -1,5 +1,10 @@
 import { DatabaseAssetsRepository } from "./assets.repository.js";
-import type { DatabaseAssetsQueryParams, DatabaseAssetsResponse } from "./assets.types.js";
+import type {
+  DatabaseAssetDetailQueryParams,
+  DatabaseAssetDetailResponse,
+  DatabaseAssetsQueryParams,
+  DatabaseAssetsResponse,
+} from "./assets.types.js";
 
 export class DatabaseAssetsService {
   constructor(
@@ -24,5 +29,9 @@ export class DatabaseAssetsService {
         totalPages: paged.total === 0 ? 0 : Math.ceil(paged.total / params.pageSize),
       },
     };
+  }
+
+  async getAssetDetail(params: DatabaseAssetDetailQueryParams): Promise<DatabaseAssetDetailResponse | null> {
+    return this.assetsRepository.getAssetDetail(params);
   }
 }

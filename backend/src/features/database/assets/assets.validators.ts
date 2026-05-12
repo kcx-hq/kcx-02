@@ -3,7 +3,7 @@ import { z } from "zod";
 
 import { BadRequestError } from "../../../errors/http-errors.js";
 import { parseWithSchema } from "../../_shared/validation/zod-validate.js";
-import type { DatabaseAssetsQueryParams } from "./assets.types.js";
+import type { DatabaseAssetDetailQueryParams, DatabaseAssetsQueryParams } from "./assets.types.js";
 
 const firstValue = (value: unknown): unknown => (Array.isArray(value) ? value[0] : value);
 
@@ -41,6 +41,19 @@ const querySchema = z
     path: ["startDate"],
   });
 
+const detailQuerySchema = z
+  .object({
+    tenantId: z.string().trim().min(1),
+    resourceId: z.string().trim().min(1),
+    cloudConnectionId: z.string().uuid(),
+    startDate: requiredDateString("start_date"),
+    endDate: requiredDateString("end_date"),
+  })
+  .refine((value) => Date.parse(value.startDate) <= Date.parse(value.endDate), {
+    message: "start_date must be less than or equal to end_date",
+    path: ["startDate"],
+  });
+
 const resolveTenantId = (req: Request): string => {
   const tenantId = req.auth?.user.tenantId?.trim();
   if (!tenantId) {
@@ -64,5 +77,15 @@ export function parseAssetsQuery(req: Request): DatabaseAssetsQueryParams {
     search: optionalString(req.query.search),
     page: firstValue(req.query.page) ?? 1,
     pageSize: firstValue(req.query.pageSize) ?? firstValue(req.query.page_size) ?? 20,
+  });
+}
+
+export function parseAssetDetailQuery(req: Request): DatabaseAssetDetailQueryParams {
+  return parseWithSchema(detailQuerySchema, {
+    tenantId: resolveTenantId(req),
+    resourceId: req.params.resourceId,
+    cloudConnectionId: optionalString(req.query.cloud_connection_id) ?? optionalString(req.query.cloudConnectionId),
+    startDate: firstValue(req.query.start_date) ?? firstValue(req.query.startDate),
+    endDate: firstValue(req.query.end_date) ?? firstValue(req.query.endDate),
   });
 }

@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import type { ColDef, ICellRendererParams } from "ag-grid-community";
+import { ChevronsLeft, ChevronLeft, ChevronRight, ChevronsRight } from "lucide-react";
 
 import { BaseDataTable } from "../../../common/tables/BaseDataTable";
 import { TableShell } from "../../../common/tables/TableShell";
@@ -17,6 +18,7 @@ type DatabaseAssetsTableProps = {
   rows: DatabaseAssetRow[];
   pagination: DatabaseAssetsPagination;
   isLoading?: boolean;
+  onRowClick?: (row: DatabaseAssetRow) => void;
   onFirstPage: () => void;
   onPrevPage: () => void;
   onNextPage: () => void;
@@ -35,6 +37,7 @@ export function DatabaseAssetsTable({
   rows,
   pagination,
   isLoading = false,
+  onRowClick,
   onFirstPage,
   onPrevPage,
   onNextPage,
@@ -165,11 +168,18 @@ export function DatabaseAssetsTable({
   return (
     <TableShell title="Assets" subtitle="Database assets list across connected services">
       {isLoading ? <p className="dashboard-note">Loading assets...</p> : null}
-      <BaseDataTable columnDefs={columnDefs} rowData={rows} emptyMessage="No database assets found for current filters." />
-      <div className="optimization-rightsizing-pagination" style={{ marginTop: 12, alignItems: "center", justifyContent: "space-between" }}>
-        <div className="optimization-rightsizing-pagination__actions" style={{ gap: 10, alignItems: "center" }}>
-          <span>Page Size:</span>
-          <label className="cost-explorer-field" style={{ minWidth: 100 }}>
+      <div className="db-assets-table-wrap">
+        <BaseDataTable
+          columnDefs={columnDefs}
+          rowData={rows}
+          emptyMessage="No database assets found for current filters."
+          onRowClick={onRowClick}
+        />
+      </div>
+      <div className="db-assets-pagination">
+        <div className="db-assets-pagination__left">
+          <span className="db-assets-pagination__label">Page Size:</span>
+          <label className="cost-explorer-field db-assets-pagination__size-field">
             <select
               className="cost-explorer-field__control"
               aria-label="Page size"
@@ -178,26 +188,26 @@ export function DatabaseAssetsTable({
             >
               {[10, 20, 50].map((size) => (
                 <option key={size} value={size}>
-                  {size} / page
+                  {size}
                 </option>
               ))}
             </select>
           </label>
-          <span>{formatInteger(start)} to {formatInteger(end)} of {formatInteger(total)}</span>
+          <span className="db-assets-pagination__meta">{formatInteger(start)} to {formatInteger(end)} of {formatInteger(total)}</span>
         </div>
-        <div className="optimization-rightsizing-pagination__actions" style={{ gap: 10, alignItems: "center" }}>
-          <button type="button" className="optimization-rightsizing-pagination__btn" onClick={onFirstPage} disabled={!hasPrev} aria-label="First page">
-            {"|<"}
+        <div className="db-assets-pagination__right">
+          <span className="db-assets-pagination__page">Page {currentPage} of {totalPages}</span>
+          <button type="button" className="db-assets-pagination__icon-btn" onClick={onFirstPage} disabled={!hasPrev} aria-label="First page">
+            <ChevronsLeft size={16} />
           </button>
-          <button type="button" className="optimization-rightsizing-pagination__btn" onClick={onPrevPage} disabled={!hasPrev} aria-label="Previous page">
-            {"<"}
+          <button type="button" className="db-assets-pagination__icon-btn" onClick={onPrevPage} disabled={!hasPrev} aria-label="Previous page">
+            <ChevronLeft size={16} />
           </button>
-          <span>Page {currentPage} of {totalPages}</span>
-          <button type="button" className="optimization-rightsizing-pagination__btn" onClick={onNextPage} disabled={!hasNext} aria-label="Next page">
-            {">"}
+          <button type="button" className="db-assets-pagination__icon-btn" onClick={onNextPage} disabled={!hasNext} aria-label="Next page">
+            <ChevronRight size={16} />
           </button>
-          <button type="button" className="optimization-rightsizing-pagination__btn" onClick={onLastPage} disabled={!hasNext} aria-label="Last page">
-            {">|"}
+          <button type="button" className="db-assets-pagination__icon-btn" onClick={onLastPage} disabled={!hasNext} aria-label="Last page">
+            <ChevronsRight size={16} />
           </button>
         </div>
       </div>

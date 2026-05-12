@@ -1,8 +1,8 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 
-import { DashboardPageHeader } from "../../components/DashboardPageHeader";
-import { useDashboardScope } from "../../hooks/useDashboardScope";
 import { useDatabaseAssetsQuery } from "../../hooks/useDashboardQueries";
+import { useDashboardScope } from "../../hooks/useDashboardScope";
 import type { DatabaseAssetsFilters as DatabaseAssetsQueryFilters } from "../../api/dashboardTypes";
 import { DatabaseAssetsCards } from "./components/db-assets-cards";
 import {
@@ -13,26 +13,36 @@ import { DatabaseAssetsTable } from "./components/db-assets-table";
 
 const DEFAULT_PAGE_SIZE = 20;
 
+const buildFilterStateFromSearch = (search: string): DatabaseAssetsFiltersValue => {
+  const params = new URLSearchParams(search);
+  return {
+    search: params.get("search") ?? "",
+    regionKey: params.get("region_key") ?? params.get("regionKey") ?? "",
+    dbService: params.get("db_service") ?? params.get("dbService") ?? "",
+    dbEngine: params.get("db_engine") ?? params.get("dbEngine") ?? "",
+    instanceClass: params.get("instance_class") ?? params.get("instanceClass") ?? "",
+  };
+};
+
 export default function DatabaseAssetsPage() {
+  const location = useLocation();
+  const navigate = useNavigate();
   const { scope } = useDashboardScope();
-  const [filterState, setFilterState] = useState<DatabaseAssetsFiltersValue>({
-    search: "",
-    regionKey: "",
-    dbEngine: "",
-    instanceClass: "",
-    status: "",
-    subAccountKey: "",
-  });
+  const [filterState, setFilterState] = useState<DatabaseAssetsFiltersValue>(() => buildFilterStateFromSearch(location.search));
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+
+  useEffect(() => {
+    setFilterState(buildFilterStateFromSearch(location.search));
+    setPage(1);
+  }, [location.search]);
 
   const filters = useMemo<DatabaseAssetsQueryFilters>(
     () => ({
       ...(filterState.regionKey ? { regionKey: filterState.regionKey } : {}),
+      ...(filterState.dbService ? { dbService: filterState.dbService } : {}),
       ...(filterState.dbEngine ? { dbEngine: filterState.dbEngine } : {}),
       ...(filterState.instanceClass ? { instanceClass: filterState.instanceClass } : {}),
-      ...(filterState.status ? { status: filterState.status } : {}),
-      ...(filterState.subAccountKey ? { subAccountKey: filterState.subAccountKey } : {}),
       ...(filterState.search.trim() ? { search: filterState.search.trim() } : {}),
       page,
       pageSize,
@@ -54,22 +64,8 @@ export default function DatabaseAssetsPage() {
     recommendationCount: 0,
   };
 
-  const scopeLabel = scope?.from && scope?.to ? `${scope.from} to ${scope.to}` : scope?.title ?? "";
-
   return (
     <div className="dashboard-page database-assets-page cost-explorer-page">
-      <DashboardPageHeader
-        title={
-          <div>
-            <h1 className="dashboard-page-header__title">Assets</h1>
-            <p className="dashboard-note" style={{ margin: "6px 0 0" }}>
-              Unified view of database assets across active database services
-              {scopeLabel ? ` (${scopeLabel})` : ""}
-            </p>
-          </div>
-        }
-      />
-
       <DatabaseAssetsFilters
         value={filterState}
         filterOptions={
@@ -79,7 +75,6 @@ export default function DatabaseAssetsPage() {
             classes: [],
             statuses: [],
             regions: [],
-            accounts: [],
           }
         }
         onChange={(next) => {
@@ -87,9 +82,8 @@ export default function DatabaseAssetsPage() {
           setPage(1);
         }}
         onClear={() => {
-          setFilterState({ search: "", regionKey: "", dbEngine: "", instanceClass: "", status: "", subAccountKey: "" });
+          setFilterState({ search: "", regionKey: "", dbService: "", dbEngine: "", instanceClass: "" });
           setPage(1);
-          setPageSize(DEFAULT_PAGE_SIZE);
         }}
       />
 
@@ -101,6 +95,20 @@ export default function DatabaseAssetsPage() {
           <DatabaseAssetsCards summary={summary} isLoading={pageLoading} />
           <DatabaseAssetsTable
             rows={data?.assets ?? []}
+            onRowClick={(row) => {
+              if (!row.resourceId || !row.cloudConnectionId) return;
+              const next = new URLSearchParams(location.search);
+              next.set("cloud_connection_id", row.cloudConnectionId);
+              next.set("resourceId", row.resourceId);
+              const startDate = next.get("start_date") ?? scope?.from ?? null;
+              const endDate = next.get("end_date") ?? scope?.to ?? null;
+              if (startDate) next.set("start_date", startDate);
+              if (endDate) next.set("end_date", endDate);
+              navigate({
+                pathname: `/dashboard/services/database/assets/${encodeURIComponent(row.resourceId)}`,
+                search: next.toString(),
+              });
+            }}
             pagination={
               data?.pagination ?? {
                 page,

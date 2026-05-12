@@ -93,16 +93,25 @@ export async function apiPost<TData>(path: string, body: unknown, init?: Request
   const url = joinUrl(appEnv.apiBaseUrl, path)
   const token = getAuthToken()
   const { headers: initHeaders, ...restInit } = init ?? {}
-  const response = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(initHeaders ?? {}),
-    },
-    body: JSON.stringify(body),
-    ...restInit,
-  })
+  let response: Response
+  try {
+    response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(initHeaders ?? {}),
+      },
+      body: JSON.stringify(body),
+      ...restInit,
+    })
+  } catch (error) {
+    throw new ApiError(
+      `Network error while calling ${url}. Check backend server, VITE_API_BASE_URL, and CORS settings.`,
+      0,
+      error,
+    )
+  }
 
   const payload = (await parseResponseBody(response)) as ApiResponse<TData> | null
 
@@ -122,14 +131,23 @@ export async function apiGet<TData>(path: string, init?: RequestInit): Promise<T
   const url = joinUrl(appEnv.apiBaseUrl, path)
   const token = getAuthToken()
   const { headers: initHeaders, ...restInit } = init ?? {}
-  const response = await fetch(url, {
-    method: "GET",
-    headers: {
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(initHeaders ?? {}),
-    },
-    ...restInit,
-  })
+  let response: Response
+  try {
+    response = await fetch(url, {
+      method: "GET",
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(initHeaders ?? {}),
+      },
+      ...restInit,
+    })
+  } catch (error) {
+    throw new ApiError(
+      `Network error while calling ${url}. Check backend server, VITE_API_BASE_URL, and CORS settings.`,
+      0,
+      error,
+    )
+  }
 
   const payload = (await parseResponseBody(response)) as ApiResponse<TData> | null
 
@@ -149,16 +167,25 @@ export async function apiPatch<TData>(path: string, body: unknown, init?: Reques
   const url = joinUrl(appEnv.apiBaseUrl, path)
   const token = getAuthToken()
   const { headers: initHeaders, ...restInit } = init ?? {}
-  const response = await fetch(url, {
-    method: "PATCH",
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(initHeaders ?? {}),
-    },
-    body: JSON.stringify(body),
-    ...restInit,
-  })
+  let response: Response
+  try {
+    response = await fetch(url, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(initHeaders ?? {}),
+      },
+      body: JSON.stringify(body),
+      ...restInit,
+    })
+  } catch (error) {
+    throw new ApiError(
+      `Network error while calling ${url}. Check backend server, VITE_API_BASE_URL, and CORS settings.`,
+      0,
+      error,
+    )
+  }
 
   const payload = (await parseResponseBody(response)) as ApiResponse<TData> | null
 
@@ -178,15 +205,24 @@ export async function apiPostForm<TData>(path: string, formData: FormData, init?
   const url = joinUrl(appEnv.apiBaseUrl, path)
   const token = getAuthToken()
   const { headers: initHeaders, ...restInit } = init ?? {}
-  const response = await fetch(url, {
-    method: "POST",
-    headers: {
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(initHeaders ?? {}),
-    },
-    body: formData,
-    ...restInit,
-  })
+  let response: Response
+  try {
+    response = await fetch(url, {
+      method: "POST",
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(initHeaders ?? {}),
+      },
+      body: formData,
+      ...restInit,
+    })
+  } catch (error) {
+    throw new ApiError(
+      `Network error while calling ${url}. Check backend server, VITE_API_BASE_URL, and CORS settings.`,
+      0,
+      error,
+    )
+  }
 
   const payload = (await parseResponseBody(response)) as (ApiResponse<TData> | TData | { message?: string } | null)
 

@@ -5,7 +5,6 @@ import { useCostExplorerGroupOptionsQuery, useCostExplorerQuery } from "../../ho
 import { useDashboardScope } from "../../hooks/useDashboardScope";
 import {
   COMPARE_OPTIONS,
-  GROUP_BY_OPTIONS,
   METRIC_OPTIONS,
   type ChartSeries,
   type CompareKey,
@@ -17,7 +16,8 @@ import {
 import {
   calculateDeltaPercent,
   compactCurrencyFormatter,
-  currencyFormatter,
+  formatAxisCost,
+  formatTooltipCost,
   percentFormatter,
   parseInputDate,
 } from "./costExplorer.utils";
@@ -56,15 +56,67 @@ const haveSameStringItems = (left: string[], right: string[]): boolean => {
   return left.every((item) => rightSet.has(item));
 };
 
+type AllowedGroupId =
+  | "env"
+  | "app"
+  | "team"
+  | "cost-center"
+  | "project"
+  | "service"
+  | "region"
+  | "charge-type"
+  | "usage-type";
+
+const ALLOWED_GROUP_DIMENSIONS: Array<{ id: AllowedGroupId; label: string }> = [
+  { id: "env", label: "Env" },
+  { id: "app", label: "App" },
+  { id: "team", label: "Team" },
+  { id: "cost-center", label: "Cost Center" },
+  { id: "project", label: "Project" },
+  { id: "service", label: "Service" },
+  { id: "region", label: "Region" },
+  { id: "charge-type", label: "Charge Type" },
+  { id: "usage-type", label: "Usage Type" },
+];
+
+const detectAllowedGroupFromTagKey = (rawValue: string): AllowedGroupId | null => {
+  const raw = rawValue.trim().toLowerCase().replace(/^tag:/, "");
+  const stripped = raw
+    .replace(/^resourcetagsuser/, "")
+    .replace(/^resource_tags_user/, "")
+    .replace(/^resourcetags/, "")
+    .replace(/^resource_tags/, "")
+    .replace(/^tagsuser/, "")
+    .replace(/^taguser/, "")
+    .replace(/^tags/, "")
+    .replace(/^tag/, "")
+    .replace(/^user/, "");
+  const compact = (stripped.length > 0 ? stripped : raw).replace(/[^a-z0-9]/g, "");
+
+  if (!compact) return null;
+  if (compact.includes("costcenter") || compact.includes("costcentre")) return "cost-center";
+  if (compact.includes("usagetype") || compact === "usage") return "usage-type";
+  if (compact.includes("chargetype") || compact.includes("costtype") || compact.includes("lineitemtype")) {
+    return "charge-type";
+  }
+  if (compact.includes("environment") || compact === "env") return "env";
+  if (compact.includes("application") || compact === "app") return "app";
+  if (compact.includes("team")) return "team";
+  if (compact.includes("project")) return "project";
+  if (compact.includes("service")) return "service";
+  if (compact.includes("region")) return "region";
+  return null;
+};
+
 export default function CostExplorerPage() {
   const { scope } = useDashboardScope();
 
-  const [draftGroupBy, setDraftGroupBy] = useState<GroupBy>("none");
-  const [appliedGroupBy, setAppliedGroupBy] = useState<GroupBy>("none");
+  const [draftGroupBy, setDraftGroupBy] = useState<GroupBy>("service");
+  const [appliedGroupBy, setAppliedGroupBy] = useState<GroupBy>("service");
   const [selectedMetrics, setSelectedMetrics] = useState<Metric[]>(["billed"]);
   const [compare, setCompare] = useState<CompareKey[]>([]);
   const [granularity, setGranularity] = useState<Granularity>("daily");
-  const [chartMode, setChartMode] = useState<ChartMode>("line");
+  const [chartMode, setChartMode] = useState<ChartMode>("bar");
   const [draftGroupValues, setDraftGroupValues] = useState<string[]>([]);
   const [appliedGroupValues, setAppliedGroupValues] = useState<string[]>([]);
   const [rowsPerPage, setRowsPerPage] = useState<RowsPerPage>(5);
@@ -138,18 +190,28 @@ export default function CostExplorerPage() {
     (granularity === "hourly" && days > 14 ? "daily" : granularity)) as Granularity;
 
   const dynamicGroupOptions = useMemo<Array<{ key: GroupBy; label: string }>>(() => {
-    const base = GROUP_BY_OPTIONS.map((item) => ({ key: item.key as GroupBy, label: item.label }));
-    const noneOption = base.find((item) => item.key === "none") ?? { key: "none" as GroupBy, label: "None" };
-    const baseWithoutNone = base.filter((item) => item.key !== "none");
-    const tags =
-      groupOptionsQuery.data?.tagKeyOptions.map((option) => ({
-        key: option.key as GroupBy,
-        label:
-          option.normalizedKey.length > 0
-            ? option.normalizedKey[0].toUpperCase() + option.normalizedKey.slice(1)
-            : option.normalizedKey,
-      })) ?? [];
-    return [noneOption, ...tags, ...baseWithoutNone];
+    const keyByDimension = new Map<AllowedGroupId, GroupBy>([
+      ["service", "service"],
+      ["region", "region"],
+    ]);
+
+    (groupOptionsQuery.data?.tagKeyOptions ?? []).forEach((option) => {
+      const matched = detectAllowedGroupFromTagKey(option.normalizedKey || option.key);
+      if (!matched) return;
+
+      const existing = keyByDimension.get(matched);
+      if ((matched === "service" || matched === "region") && existing && !existing.startsWith("tag:")) {
+        return;
+      }
+      if (!existing || existing.startsWith("tag:")) {
+        keyByDimension.set(matched, option.key as GroupBy);
+      }
+    });
+
+    return ALLOWED_GROUP_DIMENSIONS.filter((item) => keyByDimension.has(item.id)).map((item) => ({
+      key: keyByDimension.get(item.id) as GroupBy,
+      label: item.label,
+    }));
   }, [groupOptionsQuery.data?.tagKeyOptions]);
 
   useEffect(() => {
@@ -222,6 +284,54 @@ export default function CostExplorerPage() {
   }, [labels, series]);
 
   const seriesMeta = useMemo(() => new Map(series.map((item) => [item.name, item])), [series]);
+  const yAxisBounds = useMemo(() => {
+    if (!labels.length || !series.length) {
+      return { min: -1, max: 1 };
+    }
+
+    let maxPositive = 0;
+    let minNegative = 0;
+
+    if (chartMode === "bar") {
+      const nonComparisonSeries = series.filter((item) => item.kind !== "comparison");
+      for (let index = 0; index < labels.length; index += 1) {
+        let bucketPositive = 0;
+        let bucketNegative = 0;
+        nonComparisonSeries.forEach((item) => {
+          const value = Number(item.values[index] ?? 0);
+          if (value >= 0) {
+            bucketPositive += value;
+          } else {
+            bucketNegative += value;
+          }
+        });
+        if (bucketPositive > maxPositive) maxPositive = bucketPositive;
+        if (bucketNegative < minNegative) minNegative = bucketNegative;
+      }
+
+      series
+        .filter((item) => item.kind === "comparison")
+        .forEach((item) => {
+          item.values.forEach((value) => {
+            const numeric = Number(value ?? 0);
+            if (numeric > maxPositive) maxPositive = numeric;
+            if (numeric < minNegative) minNegative = numeric;
+          });
+        });
+    } else {
+      series.forEach((item) => {
+        item.values.forEach((value) => {
+          const numeric = Number(value ?? 0);
+          if (numeric > maxPositive) maxPositive = numeric;
+          if (numeric < minNegative) minNegative = numeric;
+        });
+      });
+    }
+
+    const maxAbs = Math.max(Math.abs(minNegative), Math.abs(maxPositive));
+    const padded = maxAbs === 0 ? 1 : maxAbs * 1.08;
+    return { min: -padded, max: padded };
+  }, [chartMode, labels, series]);
 
   const option = useMemo<EChartsOption>(
     () => ({
@@ -254,7 +364,7 @@ export default function CostExplorerPage() {
                   ? ` <span style="color:#b8c8d2;">(${calculateDeltaPercent(Number(point.value), base) >= 0 ? "+" : ""}${percentFormatter.format(calculateDeltaPercent(Number(point.value), base))}%)</span>`
                   : "";
 
-              return `<div style="display:flex; gap:6px; align-items:center; margin-top:4px;">${point.marker}<span>${point.seriesName}:</span><strong>${currencyFormatter.format(Number(point.value))}</strong>${comparisonDelta}</div>`;
+              return `<div style="display:flex; gap:6px; align-items:center; margin-top:4px;">${point.marker}<span>${point.seriesName}:</span><strong>${formatTooltipCost(Number(point.value))}</strong>${comparisonDelta}</div>`;
             })
             .join("");
 
@@ -287,9 +397,11 @@ export default function CostExplorerPage() {
       },
       yAxis: {
         type: "value",
+        min: yAxisBounds.min,
+        max: yAxisBounds.max,
         axisLine: { show: false },
         splitLine: { lineStyle: { color: "#e1eae7", type: "dashed" } },
-        axisLabel: { color: "#6d837e", fontSize: 11, formatter: (value: number) => compactCurrencyFormatter.format(value) },
+        axisLabel: { color: "#6d837e", fontSize: 11, formatter: (value: number) => formatAxisCost(value) },
       },
       dataZoom: labels.length > 45 ? [{ type: "inside", start: 0, end: 100 }] : undefined,
       series: series.map((item, index) => {
@@ -319,6 +431,7 @@ export default function CostExplorerPage() {
             !renderAsBar && index === 0 && activeGroupBy === "none"
               ? { color: seriesColor, opacity: 0.08 }
               : undefined,
+          barMinHeight: renderAsBar ? 2 : undefined,
           barMaxWidth: renderAsBar ? 24 : undefined,
           barCategoryGap: renderAsBar ? "42%" : undefined,
           itemStyle: renderAsBar ? { color: seriesColor, borderRadius: 0 } : { color: seriesColor },
@@ -327,7 +440,7 @@ export default function CostExplorerPage() {
         };
       }),
     }),
-    [activeGroupBy, baseValues, chartMode, labels, series, seriesColorByName, seriesMeta],
+    [activeGroupBy, baseValues, chartMode, labels, series, seriesColorByName, seriesMeta, yAxisBounds.max, yAxisBounds.min],
   );
 
   const compareLabel = activeCompareKey
@@ -602,8 +715,8 @@ export default function CostExplorerPage() {
 
   const clearAll = () => {
     setGranularity("daily");
-    setDraftGroupBy("none");
-    setAppliedGroupBy("none");
+    setDraftGroupBy("service");
+    setAppliedGroupBy("service");
     setDraftGroupValues([]);
     setAppliedGroupValues([]);
     setSelectedMetrics(["billed"]);
@@ -634,8 +747,8 @@ export default function CostExplorerPage() {
       return;
     }
     if (key === "group") {
-      setDraftGroupBy("none");
-      setAppliedGroupBy("none");
+      setDraftGroupBy("service");
+      setAppliedGroupBy("service");
       setDraftGroupValues([]);
       setAppliedGroupValues([]);
       return;
@@ -733,3 +846,4 @@ export default function CostExplorerPage() {
     </div>
   );
 }
+

@@ -1,5 +1,5 @@
 import { useLocation, useNavigate } from "react-router-dom";
-import S3OverviewPage from "./S3OverviewPage";
+import S3CostPage from "./S3CostPage";
 import S3UsagePage from "./S3UsagePage";
 
 type S3BucketView = "cost" | "usage";
@@ -45,7 +45,7 @@ export default function S3BucketPage() {
           Usage
         </button>
       </div>
-      {activeView === "cost" ? <S3OverviewPage /> : <S3UsagePage />}
+      {activeView === "cost" ? <S3CostPage /> : <S3UsagePage />}
     </div>
   );
 }

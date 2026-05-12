@@ -41,6 +41,7 @@ import type {
   DatabaseExplorerResponse,
   DatabaseAssetsFilters,
   DatabaseAssetsResponse,
+  DatabaseAssetDetail,
 
   S3CostInsightsFiltersQuery,
   S3CostInsightsResponse,
@@ -51,6 +52,13 @@ import type {
   S3LifecyclePolicyDeleteResponse,
   S3PolicyActionHistoryResponse,
   S3OptimizationResponse,
+  S3ReplicationDestinationBucketsResponse,
+  S3ReplicationResponse,
+  S3ReplicationRoleAutoCreateRequest,
+  S3ReplicationRoleAutoCreateResponse,
+  S3ReplicationSetupApplyResponse,
+  S3ReplicationSetupPreviewResponse,
+  S3ReplicationSetupRequest,
   OptimizationIdleOverview,
   OptimizationCommitmentOverview,
   OptimizationIdleRecommendationsResponse,
@@ -172,6 +180,9 @@ function withDatabaseExplorerFilters(
   if (scope.to) params.set("end_date", scope.to);
   if (filters.metric) params.set("metric", filters.metric);
   if (filters.groupBy) params.set("group_by", filters.groupBy);
+  if (typeof filters.databaseScope === "string" && filters.databaseScope.trim().length > 0 && filters.databaseScope !== "all") {
+    params.set("database_scope", filters.databaseScope.trim());
+  }
   if (typeof filters.regionKey !== "undefined" && filters.regionKey !== null && String(filters.regionKey).trim().length > 0) {
     params.set("region_key", String(filters.regionKey).trim());
   }
@@ -231,6 +242,19 @@ function withDatabaseAssetsFilters(
 
   const query = params.toString();
   return query.length > 0 ? `${path}?${query}` : path;
+}
+
+function withDatabaseAssetDetailQuery(
+  path: string,
+  scope: DashboardResolvedScope,
+  params: { cloudConnectionId: string; startDate?: string; endDate?: string },
+): string {
+  const query = new URLSearchParams();
+  query.set("cloud_connection_id", params.cloudConnectionId);
+  query.set("start_date", params.startDate ?? scope.from);
+  query.set("end_date", params.endDate ?? scope.to);
+  const queryString = query.toString();
+  return queryString.length > 0 ? `${path}?${queryString}` : path;
 }
 
 function withOptimizationFilters(
@@ -516,6 +540,9 @@ function withS3CostInsightsFilters(
   if (filters?.yAxisMetric) {
     params.set("yAxisMetric", filters.yAxisMetric);
   }
+  if (filters?.responseMode) {
+    params.set("responseMode", filters.responseMode);
+  }
 
   const query = params.toString();
   return query.length > 0 ? `${path}?${query}` : path;
@@ -591,6 +618,15 @@ export const dashboardApi = {
   },
   getDatabaseAssets(scope: DashboardResolvedScope, filters?: DatabaseAssetsFilters) {
     return apiGet<DatabaseAssetsResponse>(withDatabaseAssetsFilters("/services/database/assets", scope, filters));
+  },
+  getDatabaseAssetDetail(
+    scope: DashboardResolvedScope,
+    resourceId: string,
+    params: { cloudConnectionId: string; startDate?: string; endDate?: string },
+  ) {
+    return apiGet<DatabaseAssetDetail>(
+      withDatabaseAssetDetailQuery(`/services/database/assets/${encodeURIComponent(resourceId)}/details`, scope, params),
+    );
   },
 
   getResources(scope: DashboardResolvedScope) {
@@ -787,26 +823,37 @@ export const dashboardApi = {
   getEc2ElasticIps(scope: DashboardResolvedScope, filters?: Ec2ElasticIpFiltersQuery) {
     return apiGet<Ec2ElasticIpResponse>(withEc2ElasticIpFilters("/dashboard/ec2/elastic-ips", scope, filters));
   },
-  getLoadBalancerExplorerSummary(scope: DashboardResolvedScope, filters: LoadBalancerExplorerFiltersQuery) {
-    return apiGet<LoadBalancerExplorerSummaryResponse>(
-      withLoadBalancerExplorerFilters("/dashboard/load-balancer/explorer/summary", scope, filters),
-    );
-  },
-  getLoadBalancerExplorerTrend(scope: DashboardResolvedScope, filters: LoadBalancerExplorerFiltersQuery) {
-    return apiGet<LoadBalancerExplorerTrendResponse>(
-      withLoadBalancerExplorerFilters("/dashboard/load-balancer/explorer/trend", scope, filters),
-    );
-  },
-  getLoadBalancerExplorerGroupBy(scope: DashboardResolvedScope, filters: LoadBalancerExplorerFiltersQuery) {
-    return apiGet<LoadBalancerExplorerGroupByResponse>(
-      withLoadBalancerExplorerFilters("/dashboard/load-balancer/explorer/group-by", scope, filters),
-    );
-  },
-  getS3CostInsights(scope: DashboardResolvedScope, filters?: S3CostInsightsFiltersQuery) {
-    return apiGet<S3CostInsightsResponse>(withS3CostInsightsFilters("/dashboard/s3/cost-insights", scope, filters));
+  getS3CostInsights(scope: DashboardResolvedScope, filters?: S3CostInsightsFiltersQuery, init?: RequestInit) {
+    return apiGet<S3CostInsightsResponse>(withS3CostInsightsFilters("/dashboard/s3/cost-insights", scope, filters), init);
   },
   getS3Optimization(scope: DashboardResolvedScope) {
     return apiGet<S3OptimizationResponse>(withDashboardQuery("/dashboard/s3/optimization", scope));
+  },
+  getS3Replication(scope: DashboardResolvedScope) {
+    return apiGet<S3ReplicationResponse>(withDashboardQuery("/dashboard/s3/replication", scope));
+  },
+  getS3ReplicationDestinationBuckets(scope: DashboardResolvedScope, sourceBucketName: string) {
+    const params = new URLSearchParams(buildDashboardQueryParams(scope));
+    params.set("sourceBucketName", sourceBucketName);
+    return apiGet<S3ReplicationDestinationBucketsResponse>(`/dashboard/s3/replication/destination-buckets?${params.toString()}`);
+  },
+  previewS3ReplicationSetup(scope: DashboardResolvedScope, payload: S3ReplicationSetupRequest) {
+    return apiPost<S3ReplicationSetupPreviewResponse>(
+      withDashboardQuery("/dashboard/s3/replication/setup/preview", scope),
+      payload,
+    );
+  },
+  applyS3ReplicationSetup(scope: DashboardResolvedScope, payload: S3ReplicationSetupRequest) {
+    return apiPost<S3ReplicationSetupApplyResponse>(
+      withDashboardQuery("/dashboard/s3/replication/setup/apply", scope),
+      payload,
+    );
+  },
+  autoCreateS3ReplicationRole(scope: DashboardResolvedScope, payload: S3ReplicationRoleAutoCreateRequest) {
+    return apiPost<S3ReplicationRoleAutoCreateResponse>(
+      withDashboardQuery("/dashboard/s3/replication/role/auto-create", scope),
+      payload,
+    );
   },
 
   getS3BucketLifecycleInsight(scope: DashboardResolvedScope, bucketName: string) {
@@ -854,6 +901,7 @@ export type {
   DatabaseExplorerTableRow,
   DatabaseExplorerUsageTrendItem,
   DatabaseAssetsFilters,
+  DatabaseAssetDetail,
   DatabaseAssetsResponse,
   DashboardOverviewResponse,
   OverviewAnomaliesResponse,
@@ -899,6 +947,13 @@ export type {
   S3CostInsightsResponse,
   S3BucketLifecycleInsightResponse,
   S3OptimizationResponse,
+  S3ReplicationDestinationBucketsResponse,
+  S3ReplicationResponse,
+  S3ReplicationRoleAutoCreateRequest,
+  S3ReplicationRoleAutoCreateResponse,
+  S3ReplicationSetupApplyResponse,
+  S3ReplicationSetupPreviewResponse,
+  S3ReplicationSetupRequest,
   S3LifecyclePolicyApplyRequest,
   S3LifecyclePolicyApplyResponse,
   S3LifecyclePolicyDeleteRequest,

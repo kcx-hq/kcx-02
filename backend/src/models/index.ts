@@ -19,6 +19,8 @@ import createBillingSourceModel from "./billing-source.js";
 import createBillingIngestionRunModel from "./billing-ingestion-run.js";
 import createBillingIngestionRunFileModel from "./billing-ingestion-run-file.js";
 import createAnomalyDetectionRunModel from "./anomaly-detection-run.js";
+import createStorageLensRawFileModel from "./storage-lens-raw-file.js";
+import createStorageLensIngestionRunModel from "./storage-lens-ingestion-run.js";
 import createManualCloudConnectionModel from "./manual-cloud-connection.js";
 import createS3UploadConnectionModel from "./s3-upload-connection.js";
 import createSupportTicketModel from "./support-ticket.js";
@@ -118,6 +120,8 @@ const BillingSource = createBillingSourceModel(sequelize);
 const BillingIngestionRun = createBillingIngestionRunModel(sequelize);
 const BillingIngestionRunFile = createBillingIngestionRunFileModel(sequelize);
 const AnomalyDetectionRun = createAnomalyDetectionRunModel(sequelize);
+const StorageLensRawFile = createStorageLensRawFileModel(sequelize);
+const StorageLensIngestionRun = createStorageLensIngestionRunModel(sequelize);
 const ManualCloudConnection = createManualCloudConnectionModel(sequelize);
 const S3UploadConnection = createS3UploadConnectionModel(sequelize);
 const SupportTicket = createSupportTicketModel(sequelize);
@@ -229,6 +233,12 @@ BillingIngestionRun.hasMany(AnomalyDetectionRun, { foreignKey: "ingestionRunId" 
 AnomalyDetectionRun.belongsTo(BillingIngestionRun, { foreignKey: "ingestionRunId" });
 RawBillingFile.hasMany(BillingIngestionRunFile, { foreignKey: "rawBillingFileId" });
 BillingIngestionRunFile.belongsTo(RawBillingFile, { foreignKey: "rawBillingFileId" });
+BillingSource.hasMany(StorageLensIngestionRun, { foreignKey: "billingSourceId" });
+StorageLensIngestionRun.belongsTo(BillingSource, { foreignKey: "billingSourceId" });
+BillingSource.hasMany(StorageLensRawFile, { foreignKey: "billingSourceId" });
+StorageLensRawFile.belongsTo(BillingSource, { foreignKey: "billingSourceId" });
+StorageLensIngestionRun.hasMany(StorageLensRawFile, { foreignKey: "ingestionRunId" });
+StorageLensRawFile.belongsTo(StorageLensIngestionRun, { foreignKey: "ingestionRunId" });
 Tenant.hasMany(ManualCloudConnection, { foreignKey: "tenantId" });
 ManualCloudConnection.belongsTo(Tenant, { foreignKey: "tenantId" });
 User.hasMany(ManualCloudConnection, { foreignKey: "createdBy" });
@@ -717,6 +727,8 @@ export {
   BillingIngestionRun,
   BillingIngestionRunFile,
   AnomalyDetectionRun,
+  StorageLensRawFile,
+  StorageLensIngestionRun,
   ManualCloudConnection,
   S3UploadConnection,
   SupportTicket,

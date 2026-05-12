@@ -84,11 +84,13 @@ export function parseDashboardScopeInputFromSearch(search: string): DashboardSco
   const from =
     params.get("from") ??
     params.get("billingPeriodStart") ??
-    params.get("startDate");
+    params.get("startDate") ??
+    params.get("start_date");
   const to =
     params.get("to") ??
     params.get("billingPeriodEnd") ??
-    params.get("endDate");
+    params.get("endDate") ??
+    params.get("end_date");
   const rawBillingFileIdsParamValues = params.getAll("rawBillingFileIds");
   const rawBillingFileIds = rawBillingFileIdsParamValues
     .flatMap((entry) => entry.split(","))
