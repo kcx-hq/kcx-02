@@ -76,8 +76,27 @@ export type Ec2OptimizationSummaryFiltersQuery = {
 };
 
 export type DatabaseExplorerMetric = "cost" | "usage";
+
+/** Must stay aligned with backend `database_scope` query param. */
+export const DATABASE_EXPLORER_SCOPES = [
+  "all",
+  "relational",
+  "relational_rds",
+  "relational_aurora",
+  "key_value",
+  "key_value_dynamodb",
+  "in_memory",
+  "in_memory_elasticache",
+  "in_memory_memorydb",
+  "document",
+  "graph",
+  "wide_column",
+  "time_series",
+] as const;
+
+export type DatabaseExplorerScopeValue = (typeof DATABASE_EXPLORER_SCOPES)[number];
+
 export type DatabaseExplorerGroupBy =
-  | "database_type"
   | "db_service"
   | "db_engine"
   | "region"
@@ -89,7 +108,8 @@ export type DatabaseExplorerGroupBy =
 export type DatabaseExplorerFilters = {
   metric: DatabaseExplorerMetric;
   groupBy: DatabaseExplorerGroupBy;
-  databaseType?: string;
+  /** Filters which db_service rows are included (independent from `groupBy`). */
+  databaseScope?: DatabaseExplorerScopeValue;
   regionKey?: number | string;
   dbService?: string;
   dbEngine?: string;
@@ -102,7 +122,7 @@ export type DatabaseExplorerAppliedFilters = {
   endDate: string;
   cloudConnectionId?: string;
   regionKey?: string;
-  databaseType?: string;
+  databaseScope?: DatabaseExplorerScopeValue;
   dbService?: string;
   dbEngine?: string;
   metric: DatabaseExplorerMetric;
@@ -148,6 +168,8 @@ export type DatabaseExplorerTableRow = {
 export type DatabaseExplorerFilterOptions = {
   dbServices: string[];
   dbEngines: string[];
+  /** Scopes with ≥1 fact row in the current window (always includes `all`). */
+  availableDatabaseScopes: DatabaseExplorerScopeValue[];
 };
 
 export type DatabaseExplorerTrendGroupedPoint = {

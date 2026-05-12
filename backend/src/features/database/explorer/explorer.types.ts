@@ -1,6 +1,25 @@
 export const EXPLORER_METRICS = ["cost", "usage"] as const;
+
+/** Canonical scope slugs accepted on `database_scope` query param. */
+export const EXPLORER_DATABASE_SCOPES = [
+  "all",
+  "relational",
+  "relational_rds",
+  "relational_aurora",
+  "key_value",
+  "key_value_dynamodb",
+  "in_memory",
+  "in_memory_elasticache",
+  "in_memory_memorydb",
+  "document",
+  "graph",
+  "wide_column",
+  "time_series",
+] as const;
+
+export type ExplorerDatabaseScope = (typeof EXPLORER_DATABASE_SCOPES)[number];
+
 export const EXPLORER_GROUP_BY = [
-  "database_type",
   "db_service",
   "db_engine",
   "region",
@@ -19,14 +38,8 @@ export type ExplorerQueryParams = {
   endDate: string;
   cloudConnectionId?: string;
   regionKey?: string;
-  databaseType?:
-    | "relational"
-    | "key_value"
-    | "in_memory"
-    | "document"
-    | "graph"
-    | "wide_column"
-    | "time_series";
+  /** Filters fact rows to a database taxonomy bucket (independent from `groupBy`). */
+  databaseScope?: ExplorerDatabaseScope;
   dbService?: string;
   dbEngine?: string;
   metric: ExplorerMetric;
@@ -95,6 +108,8 @@ export type ExplorerTableRow = {
 export type ExplorerFilterOptions = {
   dbServices: string[];
   dbEngines: string[];
+  /** Scopes that have ≥1 fact row in the requested window (plus always `all`). */
+  availableDatabaseScopes: ExplorerDatabaseScope[];
 };
 
 export type ExplorerResponse = {

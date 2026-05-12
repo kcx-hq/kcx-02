@@ -6,6 +6,7 @@ import type {
   DatabaseExplorerFilters as DatabaseExplorerFiltersQuery,
   DatabaseExplorerGroupBy,
   DatabaseExplorerMetric,
+  DatabaseExplorerScopeValue,
 } from "../../api/dashboardTypes";
 import {
   DatabaseExplorerCards,
@@ -13,10 +14,7 @@ import {
   DatabaseExplorerGroupedTable,
   DatabaseExplorerTrend,
 } from "./components";
-import {
-  deriveAutoGroupBy,
-  type DatabaseTypeValue,
-} from "./databaseExplorer.taxonomy";
+import { deriveAutoGroupBy } from "./databaseExplorer.taxonomy";
 
 const metricOptions: Array<{ value: DatabaseExplorerMetric; label: string }> = [
   { value: "cost", label: "Cost" },
@@ -26,24 +24,24 @@ const metricOptions: Array<{ value: DatabaseExplorerMetric; label: string }> = [
 export default function DatabaseExplorerPage() {
   const [metric, setMetric] = useState<DatabaseExplorerMetric>("cost");
   const [groupBy, setGroupBy] = useState<"auto" | DatabaseExplorerGroupBy>("auto");
-  const [databaseType, setDatabaseType] = useState<DatabaseTypeValue>("all");
+  const [databaseScope, setDatabaseScope] = useState<DatabaseExplorerScopeValue>("all");
   const [dbService, setDbService] = useState("");
   const [dbEngine, setDbEngine] = useState("");
 
   const effectiveGroupBy = useMemo<DatabaseExplorerGroupBy>(
-    () => (groupBy === "auto" ? deriveAutoGroupBy(databaseType, dbService, dbEngine) : groupBy),
-    [databaseType, dbEngine, dbService, groupBy],
+    () => (groupBy === "auto" ? deriveAutoGroupBy(databaseScope, dbService, dbEngine) : groupBy),
+    [databaseScope, dbEngine, dbService, groupBy],
   );
 
   const filters = useMemo<DatabaseExplorerFiltersQuery>(
     () => ({
       metric,
       groupBy: effectiveGroupBy,
-      ...(databaseType !== "all" ? { databaseType } : {}),
+      ...(databaseScope !== "all" ? { databaseScope } : {}),
       ...(dbService.trim() ? { dbService: dbService.trim() } : {}),
       ...(dbEngine.trim() ? { dbEngine: dbEngine.trim() } : {}),
     }),
-    [databaseType, dbEngine, dbService, effectiveGroupBy, metric],
+    [databaseScope, dbEngine, dbService, effectiveGroupBy, metric],
   );
 
   const query = useDatabaseExplorerQuery(filters);
@@ -60,22 +58,23 @@ export default function DatabaseExplorerPage() {
 
   const handleClearAll = () => {
     setGroupBy("auto");
-    setDatabaseType("all");
+    setDatabaseScope("all");
     setDbService("");
     setDbEngine("");
   };
 
-  const handleApplyGroupBy = (next: {
-    groupBy: "auto" | DatabaseExplorerGroupBy;
-    databaseType: DatabaseTypeValue;
-    dbService: string;
-    dbEngine: string;
-  }) => {
-    setGroupBy(next.groupBy);
-    setDatabaseType(next.databaseType);
+  const handleApplyScope = (next: { databaseScope: DatabaseExplorerScopeValue; dbService: string; dbEngine: string }) => {
+    setDatabaseScope(next.databaseScope);
     setDbService(next.dbService);
     setDbEngine(next.dbEngine);
   };
+
+  const handleApplyGroupBy = (next: { groupBy: "auto" | DatabaseExplorerGroupBy }) => {
+    setGroupBy(next.groupBy);
+  };
+
+  const availableDatabaseScopes = data?.filterOptions?.availableDatabaseScopes ?? ["all"];
+  const backendEngineOptions = data?.filterOptions?.dbEngines ?? [];
 
   return (
     <div className="dashboard-page database-explorer-page cost-explorer-page">
@@ -107,11 +106,14 @@ export default function DatabaseExplorerPage() {
 
       <DatabaseExplorerFilters
         metric={metric}
-        groupBy={groupBy}
-        effectiveGroupBy={effectiveGroupBy}
-        databaseType={databaseType}
+        databaseScope={databaseScope}
         dbService={dbService}
         dbEngine={dbEngine}
+        groupBy={groupBy}
+        effectiveGroupBy={effectiveGroupBy}
+        availableDatabaseScopes={availableDatabaseScopes}
+        backendEngineOptions={backendEngineOptions}
+        onApplyScope={handleApplyScope}
         onApplyGroupBy={handleApplyGroupBy}
         onClearAll={handleClearAll}
       />

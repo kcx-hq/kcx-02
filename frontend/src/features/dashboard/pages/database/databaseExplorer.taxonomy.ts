@@ -1,3 +1,5 @@
+import type { DatabaseExplorerScopeValue } from "../../api/dashboardTypes";
+
 export type DatabaseTypeValue =
   | "all"
   | "relational"
@@ -219,12 +221,77 @@ export const resolveHierarchyFromEngine = (
 };
 
 export const deriveAutoGroupBy = (
-  databaseType: DatabaseTypeValue,
+  databaseScope: DatabaseExplorerScopeValue,
   dbService: string,
   dbEngine: string,
-): "database_type" | "db_service" | "db_engine" => {
+): "db_service" | "db_engine" => {
   if (dbEngine.trim()) return "db_engine";
   if (dbService.trim()) return "db_engine";
-  if (databaseType !== "all") return "db_service";
-  return "database_type";
+  if (databaseScope !== "all") return "db_service";
+  return "db_service";
+};
+
+export const getEnginesForDatabaseScope = (scope: DatabaseExplorerScopeValue): string[] => {
+  if (scope === "all") return [];
+
+  const rel = DATABASE_TYPE_TAXONOMY.relational;
+  const rdsSvc = rel.services.find((s) => s.canonical === "AmazonRDS");
+  const auroraSvc = rel.services.find((s) => s.canonical === "Aurora");
+
+  switch (scope) {
+    case "relational":
+      return rel.engines;
+    case "relational_rds":
+      return rdsSvc?.engines?.length ? rdsSvc.engines : rel.engines;
+    case "relational_aurora":
+      return auroraSvc?.engines?.length ? auroraSvc.engines : rel.engines;
+    case "key_value":
+    case "key_value_dynamodb":
+      return DATABASE_TYPE_TAXONOMY.key_value.engines;
+    case "in_memory":
+      return DATABASE_TYPE_TAXONOMY.in_memory.engines;
+    case "in_memory_elasticache": {
+      const s = DATABASE_TYPE_TAXONOMY.in_memory.services.find((x) => x.canonical === "ElastiCache");
+      return s?.engines?.length ? s.engines : DATABASE_TYPE_TAXONOMY.in_memory.engines;
+    }
+    case "in_memory_memorydb": {
+      const s = DATABASE_TYPE_TAXONOMY.in_memory.services.find((x) => x.canonical === "MemoryDB");
+      return s?.engines?.length ? s.engines : DATABASE_TYPE_TAXONOMY.in_memory.engines;
+    }
+    case "document":
+      return DATABASE_TYPE_TAXONOMY.document.engines;
+    case "graph":
+      return DATABASE_TYPE_TAXONOMY.graph.engines;
+    case "wide_column":
+      return DATABASE_TYPE_TAXONOMY.wide_column.engines;
+    case "time_series":
+      return DATABASE_TYPE_TAXONOMY.time_series.engines;
+    default:
+      return [];
+  }
+};
+
+export const scopeValueFromTaxonomy = (
+  type: Exclude<DatabaseTypeValue, "all">,
+  serviceCanonical: string,
+): DatabaseExplorerScopeValue => {
+  const svcKey = normalize(serviceCanonical);
+  if (type === "relational") {
+    const auroraSvc = DATABASE_TYPE_TAXONOMY.relational.services.find((s) => s.canonical === "Aurora");
+    const isAurora =
+      auroraSvc !== undefined && [auroraSvc.canonical, ...auroraSvc.aliases].map(normalize).includes(svcKey);
+    if (isAurora) return "relational_aurora";
+    return "relational_rds";
+  }
+  if (type === "key_value") return "key_value_dynamodb";
+  if (type === "in_memory") {
+    const memSvc = DATABASE_TYPE_TAXONOMY.in_memory.services.find((s) => s.canonical === "MemoryDB");
+    const isMem = memSvc !== undefined && [memSvc.canonical, ...memSvc.aliases].map(normalize).includes(svcKey);
+    if (isMem) return "in_memory_memorydb";
+    return "in_memory_elasticache";
+  }
+  if (type === "document") return "document";
+  if (type === "graph") return "graph";
+  if (type === "wide_column") return "wide_column";
+  return "time_series";
 };

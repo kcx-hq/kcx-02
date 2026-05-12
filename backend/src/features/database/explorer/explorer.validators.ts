@@ -3,15 +3,13 @@ import { z } from "zod";
 
 import { parseWithSchema } from "../../_shared/validation/zod-validate.js";
 import { BadRequestError } from "../../../errors/http-errors.js";
-import type { ExplorerQueryParams } from "./explorer.types.js";
+import { isExplorerDatabaseScope, legacyDatabaseTypeToScope } from "./explorer.database-scope.js";
+import type { ExplorerDatabaseScope, ExplorerQueryParams } from "./explorer.types.js";
 
 const metricSchema = z.enum(["cost", "usage"]).default("cost");
 const groupBySchema = z
-  .enum(["database_type", "db_service", "db_engine", "region", "resource_type", "instance_class", "cluster", "cost_category"])
-  .default("database_type");
-const databaseTypeSchema = z
-  .enum(["relational", "key_value", "in_memory", "document", "graph", "wide_column", "time_series"])
-  .optional();
+  .enum(["db_service", "db_engine", "region", "resource_type", "instance_class", "cluster", "cost_category"])
+  .default("db_service");
 
 const requiredDateString = (fieldName: string) =>
   z.preprocess(
@@ -31,6 +29,30 @@ const optionalString = (value: unknown): string | undefined => {
   return trimmed.length > 0 ? trimmed : undefined;
 };
 
+const normalizeGroupByInput = (raw: unknown): string => {
+  const value = typeof raw === "string" ? raw.trim().toLowerCase() : "";
+  if (value === "database_type") {
+    return "db_service";
+  }
+  return value.length > 0 ? value : "db_service";
+};
+
+const resolveDatabaseScope = (
+  scopeRaw: string | undefined,
+  legacyTypeRaw: string | undefined,
+): ExplorerDatabaseScope | undefined => {
+  if (scopeRaw) {
+    if (!isExplorerDatabaseScope(scopeRaw)) {
+      throw new BadRequestError("database_scope must be a supported scope value");
+    }
+    return scopeRaw;
+  }
+  if (legacyTypeRaw) {
+    return legacyDatabaseTypeToScope(legacyTypeRaw);
+  }
+  return undefined;
+};
+
 const explorerQuerySchema = z
   .object({
     tenantId: z.string().trim().min(1),
@@ -38,11 +60,10 @@ const explorerQuerySchema = z
     endDate: requiredDateString("end_date"),
     cloudConnectionId: z.string().trim().min(1).optional(),
     regionKey: z.string().trim().min(1).optional(),
-    databaseType: databaseTypeSchema,
     dbService: z.string().trim().min(1).optional(),
     dbEngine: z.string().trim().min(1).optional(),
     metric: metricSchema,
-    groupBy: groupBySchema,
+    groupBy: z.preprocess((value) => normalizeGroupByInput(value), groupBySchema),
   })
   .refine((value) => Date.parse(value.startDate) <= Date.parse(value.endDate), {
     message: "start_date must be less than or equal to end_date",
@@ -58,16 +79,24 @@ const resolveTenantId = (req: Request): string => {
 };
 
 export function parseExplorerQuery(req: Request): ExplorerQueryParams {
-  return parseWithSchema(explorerQuerySchema, {
+  const scopeRaw = optionalString(req.query.database_scope);
+  const legacyTypeRaw = optionalString(req.query.database_type);
+  const databaseScope = resolveDatabaseScope(scopeRaw, legacyTypeRaw);
+
+  const parsed = parseWithSchema(explorerQuerySchema, {
     tenantId: resolveTenantId(req),
     startDate: firstValue(req.query.start_date),
     endDate: firstValue(req.query.end_date),
     cloudConnectionId: optionalString(req.query.cloud_connection_id),
     regionKey: optionalString(req.query.region_key),
-    databaseType: optionalString(req.query.database_type),
     dbService: optionalString(req.query.db_service),
     dbEngine: optionalString(req.query.db_engine),
     metric: firstValue(req.query.metric) ?? "cost",
-    groupBy: firstValue(req.query.group_by) ?? "database_type",
+    groupBy: firstValue(req.query.group_by) ?? "db_service",
   });
+
+  return {
+    ...parsed,
+    databaseScope,
+  };
 }

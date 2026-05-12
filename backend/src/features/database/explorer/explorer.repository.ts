@@ -2,6 +2,11 @@ import { QueryTypes } from "sequelize";
 
 import { BadRequestError } from "../../../errors/http-errors.js";
 import { sequelize } from "../../../models/index.js";
+import {
+  buildExplorerScopeReplacements,
+  buildScopeDiscoveryFilters,
+  servicesToAvailableDatabaseScopes,
+} from "./explorer.database-scope.js";
 import type {
   ExplorerCards,
   ExplorerFilterOptions,
@@ -82,32 +87,6 @@ type ExplorerCardsQueryParams = ExplorerQueryParams & {
   previousStartDate: string;
   previousEndDate: string;
 };
-
-const DATABASE_TYPE_TO_DB_SERVICES: Record<
-  NonNullable<ExplorerQueryParams["databaseType"]>,
-  string[]
-> = {
-  relational: ["AmazonRDS", "Aurora", "Amazon RDS", "Amazon Aurora"],
-  key_value: ["DynamoDB", "Amazon DynamoDB"],
-  in_memory: ["ElastiCache", "MemoryDB", "Amazon ElastiCache", "Amazon MemoryDB"],
-  document: ["DocumentDB", "Amazon DocumentDB"],
-  graph: ["Neptune", "Amazon Neptune"],
-  wide_column: ["Keyspaces", "Amazon Keyspaces"],
-  time_series: ["Timestream", "Amazon Timestream"],
-};
-
-const DATABASE_TYPE_LABEL_CASE_FOR_FACT = `
-CASE
-  WHEN f.db_service IN ('AmazonRDS', 'Amazon RDS', 'Aurora', 'Amazon Aurora') THEN 'Relational'
-  WHEN f.db_service IN ('DynamoDB', 'Amazon DynamoDB') THEN 'Key-value'
-  WHEN f.db_service IN ('ElastiCache', 'Amazon ElastiCache', 'MemoryDB', 'Amazon MemoryDB') THEN 'In-memory'
-  WHEN f.db_service IN ('DocumentDB', 'Amazon DocumentDB') THEN 'Document'
-  WHEN f.db_service IN ('Neptune', 'Amazon Neptune') THEN 'Graph'
-  WHEN f.db_service IN ('Keyspaces', 'Amazon Keyspaces') THEN 'Wide column'
-  WHEN f.db_service IN ('Timestream', 'Amazon Timestream') THEN 'Time series'
-  ELSE 'Other'
-END
-`;
 
 const toNumber = (value: string | number | null | undefined): number => {
   if (typeof value === "number") {
@@ -207,8 +186,8 @@ const buildFactFilters = (
     filters.push(`${pref}db_service = :dbService`);
   }
 
-  if (params.databaseType) {
-    filters.push(`${pref}db_service IN (:databaseTypeServices)`);
+  if (params.databaseScope && params.databaseScope !== "all") {
+    filters.push(`${pref}db_service IN (:scopeDbServices)`);
   }
 
   if (params.dbEngine) {
@@ -237,8 +216,8 @@ const buildTrendFilters = (params: ExplorerQueryParams, tableAlias = ""): string
     filters.push(`${pref}db_service = :dbService`);
   }
 
-  if (params.databaseType) {
-    filters.push(`${pref}db_service IN (:databaseTypeServices)`);
+  if (params.databaseScope && params.databaseScope !== "all") {
+    filters.push(`${pref}db_service IN (:scopeDbServices)`);
   }
 
   if (params.dbEngine) {
@@ -251,7 +230,7 @@ const buildTrendFilters = (params: ExplorerQueryParams, tableAlias = ""): string
 const buildFilterOptionsFilters = (
   params: Pick<
     ExplorerQueryParams,
-    "tenantId" | "startDate" | "endDate" | "cloudConnectionId" | "regionKey" | "databaseType"
+    "tenantId" | "startDate" | "endDate" | "cloudConnectionId" | "regionKey" | "databaseScope"
   >,
 ): string => {
   const filters = [
@@ -267,8 +246,8 @@ const buildFilterOptionsFilters = (
     filters.push("region_key = CAST(:regionKey AS bigint)");
   }
 
-  if (params.databaseType) {
-    filters.push("db_service IN (:databaseTypeServices)");
+  if (params.databaseScope && params.databaseScope !== "all") {
+    filters.push("db_service IN (:scopeDbServices)");
   }
 
   return filters.join("\n    AND ");
@@ -280,16 +259,7 @@ const buildTrendQueryParams = (params: ExplorerQueryParams): ExplorerQueryParams
   endDate: toUtcDateOnly(params.endDate, "end_date"),
 });
 
-const buildExplorerReplacements = <T extends ExplorerQueryParams>(params: T): T & { databaseTypeServices?: string[] } => {
-  if (!params.databaseType) {
-    return params;
-  }
-
-  return {
-    ...params,
-    databaseTypeServices: DATABASE_TYPE_TO_DB_SERVICES[params.databaseType],
-  };
-};
+const buildExplorerReplacements = <T extends ExplorerQueryParams>(params: T) => buildExplorerScopeReplacements(params);
 
 const latestInventoryCteSql = `
 latest_inventory AS (
@@ -321,13 +291,6 @@ ${options.withInventory ? `LEFT JOIN latest_inventory li
 `;
 
 const GROUP_BY_COLUMNS = {
-  database_type: {
-    selectExpression: DATABASE_TYPE_LABEL_CASE_FOR_FACT,
-    groupExpression: DATABASE_TYPE_LABEL_CASE_FOR_FACT,
-    keyExpression: `LOWER(REPLACE(${DATABASE_TYPE_LABEL_CASE_FOR_FACT}, '-', '_'))`,
-    requiresInventory: false,
-    requiresRegion: false,
-  },
   db_service: {
     selectExpression: "COALESCE(NULLIF(BTRIM(f.db_service), ''), 'Unknown service')",
     groupExpression: "COALESCE(NULLIF(BTRIM(f.db_service), ''), 'Unknown service')",
@@ -373,7 +336,6 @@ const GROUP_BY_COLUMNS = {
 } as const;
 
 const GROUPED_UNKNOWN_LABELS: Record<ExplorerGroupBy, string> = {
-  database_type: "Other",
   db_service: "Unknown service",
   db_engine: "Unknown engine",
   region: "Unknown region",
@@ -397,12 +359,36 @@ CASE
 END
 `;
 
+const OPERATIONAL_COST_CATEGORIES = ["compute", "storage", "io", "backup", "data_transfer"] as const;
+
 export class DatabaseExplorerRepository {
   async getFilterOptions(params: ExplorerQueryParams): Promise<ExplorerFilterOptions> {
     const queryParams = buildExplorerReplacements(buildTrendQueryParams(params));
     const filters = buildFilterOptionsFilters(queryParams);
 
-    const [serviceRows, engineRows] = await Promise.all([
+    const discoveryParams = buildExplorerReplacements(
+      buildTrendQueryParams({
+        ...params,
+        databaseScope: "all",
+      }),
+    );
+    const discoveryFilters = buildScopeDiscoveryFilters(discoveryParams);
+
+    const [discoveryServiceRows, serviceRows, engineRows] = await Promise.all([
+      sequelize.query<FilterOptionValueRow>(
+        `
+SELECT DISTINCT db_service AS value
+FROM fact_db_resource_daily
+WHERE ${discoveryFilters}
+  AND db_service IS NOT NULL
+  AND BTRIM(db_service) <> ''
+ORDER BY value ASC;
+`,
+        {
+          replacements: discoveryParams,
+          type: QueryTypes.SELECT,
+        },
+      ),
       sequelize.query<FilterOptionValueRow>(
         `
 SELECT DISTINCT db_service AS value
@@ -434,6 +420,10 @@ ORDER BY value ASC;
       ),
     ]);
 
+    const discoveryServices = discoveryServiceRows
+      .map((row) => (typeof row.value === "string" ? row.value.trim() : ""))
+      .filter((value) => value.length > 0);
+
     return {
       dbServices: serviceRows
         .map((row) => (typeof row.value === "string" ? row.value.trim() : ""))
@@ -441,6 +431,7 @@ ORDER BY value ASC;
       dbEngines: engineRows
         .map((row) => (typeof row.value === "string" ? row.value.trim() : ""))
         .filter((value) => value.length > 0),
+      availableDatabaseScopes: servicesToAvailableDatabaseScopes(discoveryServices),
     };
   }
 
@@ -667,11 +658,15 @@ SELECT
   COALESCE(SUM(ch.effective_cost), SUM(ch.billed_cost), 0) AS "totalCost"
 FROM db_cost_history_daily ch
 WHERE ${filters}
+  AND LOWER(BTRIM(COALESCE(ch.cost_category, ''))) IN (:operationalCostCategories)
 GROUP BY ch.usage_date, LOWER(BTRIM(COALESCE(ch.cost_category, ''))), ${COST_CATEGORY_LABEL_CASE}
 ORDER BY ch.usage_date ASC;
 `,
         {
-          replacements: queryParams,
+          replacements: {
+            ...queryParams,
+            operationalCostCategories: [...OPERATIONAL_COST_CATEGORIES],
+          },
           type: QueryTypes.SELECT,
         },
       );
