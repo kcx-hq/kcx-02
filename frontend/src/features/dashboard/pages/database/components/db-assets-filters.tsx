@@ -3,7 +3,9 @@ import type { DatabaseAssetsFilterOptions } from "../../../api/dashboardTypes";
 type DatabaseAssetsFiltersValue = {
   search: string;
   regionKey: string;
+  dbService: string;
   dbEngine: string;
+  instanceClass: string;
 };
 
 type DatabaseAssetsFiltersProps = {
@@ -61,7 +63,9 @@ const normalizeFilterOptions = (options: unknown): NormalizedOption[] => {
 
 export function DatabaseAssetsFilters({ value, filterOptions, onChange, onClear }: DatabaseAssetsFiltersProps) {
   const regions = normalizeFilterOptions(filterOptions.regions);
+  const services = normalizeFilterOptions(filterOptions.dbServices);
   const engines = normalizeFilterOptions(filterOptions.dbEngines);
+  const classes = normalizeFilterOptions(filterOptions.classes);
 
   return (
     <section className="cost-explorer-control-surface" aria-label="Database assets controls">
@@ -89,10 +93,34 @@ export function DatabaseAssetsFilters({ value, filterOptions, onChange, onClear 
         </label>
 
         <label className="cost-explorer-toolbar-item cost-explorer-field">
+          <span className="cost-explorer-field__label">DB Service</span>
+          <select className="cost-explorer-field__control" value={value.dbService} onChange={(event) => onChange({ ...value, dbService: event.target.value })}>
+            <option value="">All Services</option>
+            {services.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="cost-explorer-toolbar-item cost-explorer-field">
           <span className="cost-explorer-field__label">Engine</span>
           <select className="cost-explorer-field__control" value={value.dbEngine} onChange={(event) => onChange({ ...value, dbEngine: event.target.value })}>
             <option value="">All Engines</option>
             {engines.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="cost-explorer-toolbar-item cost-explorer-field">
+          <span className="cost-explorer-field__label">Instance Class</span>
+          <select className="cost-explorer-field__control" value={value.instanceClass} onChange={(event) => onChange({ ...value, instanceClass: event.target.value })}>
+            <option value="">All Classes</option>
+            {classes.map((option) => (
               <option key={option.value} value={option.value}>
                 {option.label}
               </option>

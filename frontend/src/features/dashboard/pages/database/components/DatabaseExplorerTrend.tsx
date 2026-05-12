@@ -19,6 +19,7 @@ type DatabaseExplorerTrendProps = {
   trend: DatabaseExplorerResponse["trend"];
   trendGrouped?: DatabaseExplorerTrendGrouped;
   isLoading?: boolean;
+  onDrilldown?: (payload: { rawValue: string; clickedLabel: string }) => void;
 };
 
 const dateFormatter = new Intl.DateTimeFormat("en-US", {
@@ -48,7 +49,14 @@ const toGroupByLabel = (groupBy: DatabaseExplorerGroupBy): string => {
   return "Region";
 };
 
-export function DatabaseExplorerTrend({ metric, groupBy, trend, trendGrouped, isLoading = false }: DatabaseExplorerTrendProps) {
+export function DatabaseExplorerTrend({
+  metric,
+  groupBy,
+  trend,
+  trendGrouped,
+  isLoading = false,
+  onDrilldown,
+}: DatabaseExplorerTrendProps) {
   const activeTrend = useMemo(
     () => (metric === "usage" ? trend.filter(isUsageTrendItem) : trend.filter(isCostTrendItem)),
     [metric, trend],
@@ -295,11 +303,28 @@ export function DatabaseExplorerTrend({ metric, groupBy, trend, trendGrouped, is
       {isLoading ? (
         <div className="cost-explorer-chart-skeleton" style={{ minHeight: 420 }} aria-hidden="true" />
       ) : chartReady ? (
-        <BaseEChart option={option} height={420} />
+        <BaseEChart
+          option={option}
+          height={420}
+          onPointClick={
+            activeGrouped && onDrilldown
+              ? (event) => {
+                  const point = event as { seriesIndex?: number; seriesName?: string };
+                  const series = typeof point.seriesIndex === "number" ? activeGrouped.series[point.seriesIndex] : null;
+                  if (!series) return;
+                  onDrilldown({
+                    rawValue: series.key,
+                    clickedLabel: typeof point.seriesName === "string" && point.seriesName.trim().length > 0
+                      ? point.seriesName
+                      : series.label,
+                  });
+                }
+              : undefined
+          }
+        />
       ) : (
         <EmptyStateBlock title="No data available" message="No database trend rows are available for the selected filters." />
       )}
     </WidgetShell>
   );
 }
-

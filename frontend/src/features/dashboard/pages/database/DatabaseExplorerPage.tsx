@@ -1,6 +1,8 @@
 import { useMemo, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 
 import { DashboardPageHeader } from "../../components/DashboardPageHeader";
+import { useDashboardScope } from "../../hooks/useDashboardScope";
 import { useDatabaseExplorerQuery } from "../../hooks/useDashboardQueries";
 import type {
   DatabaseExplorerFilters as DatabaseExplorerFiltersQuery,
@@ -21,7 +23,19 @@ const metricOptions: Array<{ value: DatabaseExplorerMetric; label: string }> = [
   { value: "usage", label: "Usage" },
 ];
 
+const DATABASE_ASSETS_PATH = "/dashboard/services/database/assets";
+
+type DrilldownSource = "database-explorer-chart" | "database-explorer-table";
+
+type ExplorerDrilldownPayload = {
+  rawValue: string;
+  clickedLabel: string;
+};
+
 export default function DatabaseExplorerPage() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const { scope } = useDashboardScope();
   const [metric, setMetric] = useState<DatabaseExplorerMetric>("cost");
   const [groupBy, setGroupBy] = useState<"auto" | DatabaseExplorerGroupBy>("auto");
   const [databaseScope, setDatabaseScope] = useState<DatabaseExplorerScopeValue>("all");
@@ -75,6 +89,63 @@ export default function DatabaseExplorerPage() {
 
   const availableDatabaseScopes = data?.filterOptions?.availableDatabaseScopes ?? ["all"];
   const backendEngineOptions = data?.filterOptions?.dbEngines ?? [];
+
+  const navigateToAssets = (source: DrilldownSource, payload: ExplorerDrilldownPayload) => {
+    const next = new URLSearchParams(location.search);
+    const rawValue = payload.rawValue.trim();
+    const clickedLabel = payload.clickedLabel.trim();
+
+    next.set("source", source);
+    next.set("metric", metric);
+    next.set("group_by", effectiveGroupBy);
+    next.set("groupValue", rawValue || clickedLabel);
+    next.set("clickedLabel", clickedLabel || rawValue);
+
+    if (scope?.from) {
+      next.set("from", scope.from);
+      next.set("start_date", scope.from);
+    }
+    if (scope?.to) {
+      next.set("to", scope.to);
+      next.set("end_date", scope.to);
+    }
+
+    if (databaseScope !== "all") {
+      next.set("database_scope", databaseScope);
+    } else {
+      next.delete("database_scope");
+    }
+
+    if (dbService.trim().length > 0) {
+      next.set("db_service", dbService.trim());
+    } else if (effectiveGroupBy !== "db_service") {
+      next.delete("db_service");
+    }
+
+    if (dbEngine.trim().length > 0) {
+      next.set("db_engine", dbEngine.trim());
+    } else if (effectiveGroupBy !== "db_engine") {
+      next.delete("db_engine");
+    }
+
+    if (effectiveGroupBy === "db_service" && rawValue.length > 0) {
+      next.set("db_service", rawValue);
+    }
+    if (effectiveGroupBy === "db_engine" && rawValue.length > 0) {
+      next.set("db_engine", rawValue);
+    }
+    if (effectiveGroupBy === "instance_class" && rawValue.length > 0) {
+      next.set("instance_class", rawValue);
+    } else if (effectiveGroupBy !== "instance_class") {
+      next.delete("instance_class");
+    }
+
+    if (effectiveGroupBy !== "region") {
+      next.delete("region_key");
+    }
+
+    navigate({ pathname: DATABASE_ASSETS_PATH, search: next.toString() });
+  };
 
   return (
     <div className="dashboard-page database-explorer-page cost-explorer-page">
@@ -142,8 +213,20 @@ export default function DatabaseExplorerPage() {
             trend={data?.trend ?? []}
             trendGrouped={data?.trendGrouped}
             isLoading={pageLoading}
+            onDrilldown={({ rawValue, clickedLabel }) => {
+              navigateToAssets("database-explorer-chart", { rawValue, clickedLabel });
+            }}
           />
-          <DatabaseExplorerGroupedTable rows={data?.table ?? []} isLoading={pageLoading} />
+          <DatabaseExplorerGroupedTable
+            rows={data?.table ?? []}
+            isLoading={pageLoading}
+            onRowClick={(row) => {
+              navigateToAssets("database-explorer-table", {
+                rawValue: row.group,
+                clickedLabel: row.group,
+              });
+            }}
+          />
         </>
       ) : null}
     </div>

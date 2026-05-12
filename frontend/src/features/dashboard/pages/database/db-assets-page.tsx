@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useLocation } from "react-router-dom";
 
 import { useDatabaseAssetsQuery } from "../../hooks/useDashboardQueries";
 import type { DatabaseAssetsFilters as DatabaseAssetsQueryFilters } from "../../api/dashboardTypes";
@@ -11,19 +12,34 @@ import { DatabaseAssetsTable } from "./components/db-assets-table";
 
 const DEFAULT_PAGE_SIZE = 20;
 
+const buildFilterStateFromSearch = (search: string): DatabaseAssetsFiltersValue => {
+  const params = new URLSearchParams(search);
+  return {
+    search: params.get("search") ?? "",
+    regionKey: params.get("region_key") ?? params.get("regionKey") ?? "",
+    dbService: params.get("db_service") ?? params.get("dbService") ?? "",
+    dbEngine: params.get("db_engine") ?? params.get("dbEngine") ?? "",
+    instanceClass: params.get("instance_class") ?? params.get("instanceClass") ?? "",
+  };
+};
+
 export default function DatabaseAssetsPage() {
-  const [filterState, setFilterState] = useState<DatabaseAssetsFiltersValue>({
-    search: "",
-    regionKey: "",
-    dbEngine: "",
-  });
+  const location = useLocation();
+  const [filterState, setFilterState] = useState<DatabaseAssetsFiltersValue>(() => buildFilterStateFromSearch(location.search));
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+
+  useEffect(() => {
+    setFilterState(buildFilterStateFromSearch(location.search));
+    setPage(1);
+  }, [location.search]);
 
   const filters = useMemo<DatabaseAssetsQueryFilters>(
     () => ({
       ...(filterState.regionKey ? { regionKey: filterState.regionKey } : {}),
+      ...(filterState.dbService ? { dbService: filterState.dbService } : {}),
       ...(filterState.dbEngine ? { dbEngine: filterState.dbEngine } : {}),
+      ...(filterState.instanceClass ? { instanceClass: filterState.instanceClass } : {}),
       ...(filterState.search.trim() ? { search: filterState.search.trim() } : {}),
       page,
       pageSize,
@@ -63,7 +79,7 @@ export default function DatabaseAssetsPage() {
           setPage(1);
         }}
         onClear={() => {
-          setFilterState({ search: "", regionKey: "", dbEngine: "" });
+          setFilterState({ search: "", regionKey: "", dbService: "", dbEngine: "", instanceClass: "" });
           setPage(1);
         }}
       />
