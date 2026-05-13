@@ -12,6 +12,7 @@ import type {
   S3OptimizationBucketRow,
   S3PolicyActionHistoryItem,
   S3PolicyActionStatus,
+  S3BucketReplicationRow,
 } from "./s3-optimization.types.js";
 import { logger } from "../../../utils/logger.js";
 
@@ -76,6 +77,16 @@ type S3PolicyActionHistoryDbRow = {
   created_by_user_id: string | null;
 };
 
+type S3ReplicationVisibilityDbRow = {
+  bucket_name: string | null;
+  account_id: string | null;
+  region: string | null;
+  replication_status: string | null;
+  replication_rules_count: number | string | null;
+  replication_config_json: unknown;
+  scan_time: string | null;
+};
+
 export type S3BucketLifecycleExecutionContext = {
   bucketName: string;
   accountId: string;
@@ -96,7 +107,144 @@ const hasLifecyclePolicy = (status: string | null, rulesCount: number | null): b
   return normalizedStatus === "present" || normalizedStatus === "enabled" || normalizedStatus === "configured";
 };
 
+const normalizeReplicationStatus = (value: string | null): "present" | "absent" | "unknown" => {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  if (normalized === "present" || normalized === "enabled" || normalized === "configured") return "present";
+  if (normalized === "absent" || normalized === "disabled" || normalized === "none") return "absent";
+  return "unknown";
+};
+
+const normalizeReplicationExecutionStatus = (
+  value: string | null,
+): "enabled" | "disabled" | "mixed" | "unknown" => {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  if (normalized === "enabled") return "enabled";
+  if (normalized === "disabled") return "disabled";
+  if (normalized === "mixed") return "mixed";
+  return "unknown";
+};
+
 export class S3OptimizationRepository {
+  async getReplicationVisibilityRows(scope: DashboardScope): Promise<S3BucketReplicationRow[]> {
+    const binds: unknown[] = [scope.tenantId];
+    const where: string[] = ["tenant_id = $1::uuid"];
+
+    if (scope.scopeType === "global") {
+      if (typeof scope.providerId === "number") {
+        binds.push(scope.providerId);
+        where.push(`provider_id = $${binds.length}`);
+      }
+      if (Array.isArray(scope.billingSourceIds) && scope.billingSourceIds.length > 0) {
+        binds.push(scope.billingSourceIds);
+        where.push(`(billing_source_id IS NULL OR billing_source_id = ANY($${binds.length}::bigint[]))`);
+      }
+    }
+
+    const rows = await sequelize.query<S3ReplicationVisibilityDbRow>(
+      `
+      SELECT
+        latest.bucket_name,
+        latest.account_id,
+        latest.region,
+        latest.replication_status,
+        latest.replication_rules_count,
+        latest.replication_config_json,
+        latest.scan_time::text AS scan_time
+      FROM (
+        SELECT DISTINCT ON (bucket_name, account_id)
+          bucket_name,
+          account_id,
+          region,
+          replication_status,
+          replication_rules_count,
+          replication_config_json,
+          scan_time
+        FROM s3_bucket_config_snapshot
+        WHERE ${where.join("\n          AND ")}
+        ORDER BY bucket_name ASC, account_id ASC, scan_time DESC
+      ) AS latest
+      ORDER BY latest.bucket_name ASC, latest.account_id ASC;
+      `,
+      { bind: binds, type: QueryTypes.SELECT },
+    );
+
+    return rows.map((row) => {
+      const bucketName = String(row.bucket_name ?? "").trim();
+      const accountId = String(row.account_id ?? "").trim();
+      const region = row.region ? String(row.region).trim() : null;
+      const rulesCount = Math.max(0, toNumber(row.replication_rules_count) ?? 0);
+      const replicationStatus = normalizeReplicationStatus(row.replication_status);
+
+      let destinationBucket: string | null = null;
+      let destinationRegion: string | null = null;
+      let executionStatus: "enabled" | "disabled" | "mixed" | "unknown" = "unknown";
+      let replicationType: "same_account" | "cross_account" | "unknown" = "unknown";
+
+      const configRoot =
+        row.replication_config_json && typeof row.replication_config_json === "object"
+          ? (row.replication_config_json as { Rules?: unknown })
+          : null;
+      const rules = Array.isArray(configRoot?.Rules) ? configRoot.Rules : [];
+      const typedRules = rules.filter(
+        (item): item is Record<string, unknown> => Boolean(item) && typeof item === "object",
+      );
+
+      if (typedRules.length > 0) {
+        const statuses = typedRules.map((rule) => String(rule.Status ?? "").trim().toLowerCase());
+        const hasEnabled = statuses.some((status) => status === "enabled");
+        const hasDisabled = statuses.some((status) => status === "disabled");
+        executionStatus = hasEnabled && hasDisabled ? "mixed" : hasEnabled ? "enabled" : hasDisabled ? "disabled" : "unknown";
+
+        const firstRule = typedRules[0];
+        const destination =
+          firstRule && typeof firstRule.Destination === "object" && firstRule.Destination
+            ? (firstRule.Destination as Record<string, unknown>)
+            : null;
+        const bucketArn = destination && typeof destination.Bucket === "string" ? destination.Bucket : "";
+        if (bucketArn.startsWith("arn:aws:s3:::")) {
+          destinationBucket = bucketArn.slice("arn:aws:s3:::".length).trim() || null;
+        }
+        if (!destinationBucket && destination && typeof destination.BucketName === "string") {
+          destinationBucket = destination.BucketName.trim() || null;
+        }
+        if (destination && typeof destination.Region === "string") {
+          destinationRegion = destination.Region.trim() || null;
+        }
+
+        const destinationAccountId =
+          destination && typeof destination.Account === "string" ? destination.Account.trim() : "";
+        if (destinationAccountId && accountId) {
+          replicationType = destinationAccountId === accountId ? "same_account" : "cross_account";
+        }
+      }
+
+      const recommendation =
+        replicationStatus === "absent"
+          ? "Configure replication for resilience and cross-region recovery requirements."
+          : replicationStatus === "present" && executionStatus !== "enabled"
+            ? "Review replication rule status and ensure active rules are enabled."
+            : null;
+
+      return {
+        bucketName,
+        accountId,
+        region,
+        replicationStatus,
+        rulesCount,
+        destinationBucket,
+        destinationRegion,
+        replicationType,
+        status: normalizeReplicationExecutionStatus(executionStatus),
+        lastChecked: String(row.scan_time ?? ""),
+        recommendation,
+        actions:
+          replicationStatus === "absent"
+            ? ["setup_replication", "view_setup_guide"]
+            : ["view", "edit", "remove", "fix_permission"],
+      } satisfies S3BucketReplicationRow;
+    });
+  }
+
   async getLatestBucketLifecycleRows(scope: DashboardScope): Promise<S3OptimizationBucketRow[]> {
     const binds: unknown[] = [scope.tenantId];
     const where: string[] = ["tenant_id = $1::uuid"];
