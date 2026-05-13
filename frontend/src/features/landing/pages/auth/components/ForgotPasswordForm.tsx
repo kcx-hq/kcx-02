@@ -1,8 +1,8 @@
 import { useId, useMemo, useState, type FocusEvent, type FormEvent, type HTMLAttributes } from "react"
-import { Link } from "react-router-dom"
 
 import { Button } from "@/components/ui/button"
 import { ApiError, apiPost } from "@/lib/api"
+import { handleAppLinkClick } from "@/lib/navigation"
 import { cn } from "@/lib/utils"
 import { validateForm } from "@/lib/validateForm"
 import { forgotPasswordSchema, type ForgotPasswordValues } from "@/schemas/auth.schema"
@@ -187,9 +187,13 @@ export function ForgotPasswordForm() {
 
         <p id={`${formId}__help`} className="text-[11px] leading-5 text-[rgba(75,90,83,0.7)]">
           Remembered your password?{" "}
-          <Link to="/login" className="font-semibold text-[#3E8A76] hover:underline underline-offset-4">
+          <a
+            href="/login"
+            onClick={(event) => handleAppLinkClick(event, "/login")}
+            className="font-semibold text-[#3E8A76] hover:underline underline-offset-4"
+          >
             Sign in
-          </Link>
+          </a>
           .
         </p>
 
