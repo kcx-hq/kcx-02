@@ -11,6 +11,22 @@ let isRunning = false;
 
 const normalize = (value: unknown): string => String(value ?? "").trim();
 
+async function ensureAwsProvider(): Promise<InstanceType<typeof CloudProvider>> {
+  const [awsProvider, created] = await CloudProvider.findOrCreate({
+    where: { code: "aws" },
+    defaults: {
+      name: "Amazon Web Services",
+      status: "active",
+    },
+  });
+
+  if (created) {
+    logger.info("Storage Lens scheduler auto-created missing AWS provider");
+  }
+
+  return awsProvider;
+}
+
 async function runStorageLensSyncSweep(): Promise<void> {
   if (isRunning) {
     logger.info("Storage Lens scheduler skipped: previous run still in progress");
@@ -21,13 +37,7 @@ async function runStorageLensSyncSweep(): Promise<void> {
   const startedAt = Date.now();
 
   try {
-    const awsProvider = await CloudProvider.findOne({
-      where: { code: "aws" },
-    });
-    if (!awsProvider) {
-      logger.warn("Storage Lens scheduler skipped: AWS provider not found");
-      return;
-    }
+    const awsProvider = await ensureAwsProvider();
 
     const sources = await BillingSource.findAll({
       where: {

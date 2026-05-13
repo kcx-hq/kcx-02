@@ -11,6 +11,22 @@ let timer: NodeJS.Timeout | null = null;
 let startupTimer: NodeJS.Timeout | null = null;
 let isRunning = false;
 
+async function ensureAwsProvider(): Promise<InstanceType<typeof CloudProvider>> {
+  const [awsProvider, created] = await CloudProvider.findOrCreate({
+    where: { code: "aws" },
+    defaults: {
+      name: "Amazon Web Services",
+      status: "active",
+    },
+  });
+
+  if (created) {
+    logger.info("S3 bucket config scheduler auto-created missing AWS provider");
+  }
+
+  return awsProvider;
+}
+
 async function runS3BucketConfigSnapshotSweep(): Promise<void> {
   if (isRunning) {
     logger.info("S3 bucket config scheduler skipped: previous run still in progress");
@@ -20,15 +36,7 @@ async function runS3BucketConfigSnapshotSweep(): Promise<void> {
   isRunning = true;
   const startedAt = Date.now();
   try {
-    const awsProvider = await CloudProvider.findOne({
-      where: {
-        code: "aws",
-      },
-    });
-    if (!awsProvider) {
-      logger.warn("S3 bucket config scheduler skipped: AWS provider not found");
-      return;
-    }
+    const awsProvider = await ensureAwsProvider();
 
     const sources = await BillingSource.findAll({
       where: {

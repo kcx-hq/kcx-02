@@ -59,16 +59,6 @@ type S3BucketLifecycleExecutionContextDbRow = {
   cloud_connection_id: string | null;
 };
 
-type S3ReplicationDbRow = {
-  bucket_name: string | null;
-  account_id: string | null;
-  region: string | null;
-  replication_status: string | null;
-  replication_rules_count: number | string | null;
-  replication_config_json: unknown;
-  scan_time: string | null;
-};
-
 type S3PolicyActionHistoryDbRow = {
   id: string | null;
   service_name: string | null;
@@ -85,6 +75,16 @@ type S3PolicyActionHistoryDbRow = {
   response_payload_json: unknown;
   created_at: string | null;
   created_by_user_id: string | null;
+};
+
+type S3ReplicationVisibilityDbRow = {
+  bucket_name: string | null;
+  account_id: string | null;
+  region: string | null;
+  replication_status: string | null;
+  replication_rules_count: number | string | null;
+  replication_config_json: unknown;
+  scan_time: string | null;
 };
 
 export type S3BucketLifecycleExecutionContext = {
@@ -107,10 +107,20 @@ const hasLifecyclePolicy = (status: string | null, rulesCount: number | null): b
   return normalizedStatus === "present" || normalizedStatus === "enabled" || normalizedStatus === "configured";
 };
 
-const toReplicationStatus = (statusRaw: string | null): "present" | "absent" | "unknown" => {
-  const status = String(statusRaw ?? "").trim().toLowerCase();
-  if (status === "present" || status === "enabled" || status === "configured") return "present";
-  if (status === "absent") return "absent";
+const normalizeReplicationStatus = (value: string | null): "present" | "absent" | "unknown" => {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  if (normalized === "present" || normalized === "enabled" || normalized === "configured") return "present";
+  if (normalized === "absent" || normalized === "disabled" || normalized === "none") return "absent";
+  return "unknown";
+};
+
+const normalizeReplicationExecutionStatus = (
+  value: string | null,
+): "enabled" | "disabled" | "mixed" | "unknown" => {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  if (normalized === "enabled") return "enabled";
+  if (normalized === "disabled") return "disabled";
+  if (normalized === "mixed") return "mixed";
   return "unknown";
 };
 
@@ -130,7 +140,7 @@ export class S3OptimizationRepository {
       }
     }
 
-    const rows = await sequelize.query<S3ReplicationDbRow>(
+    const rows = await sequelize.query<S3ReplicationVisibilityDbRow>(
       `
       SELECT
         latest.bucket_name,
@@ -158,82 +168,81 @@ export class S3OptimizationRepository {
       { bind: binds, type: QueryTypes.SELECT },
     );
 
-    const bucketCostMap = await this.getBucketStorageCostsForDaysSafe(
-      scope.tenantId,
-      rows.map((row) => ({
-        bucketName: String(row.bucket_name ?? "").trim(),
-        accountId: String(row.account_id ?? "").trim(),
-      })),
-      30,
-    );
+    return rows.map((row) => {
+      const bucketName = String(row.bucket_name ?? "").trim();
+      const accountId = String(row.account_id ?? "").trim();
+      const region = row.region ? String(row.region).trim() : null;
+      const rulesCount = Math.max(0, toNumber(row.replication_rules_count) ?? 0);
+      const replicationStatus = normalizeReplicationStatus(row.replication_status);
 
-    const mapped = await Promise.all(
-      rows.map(async (row) => {
-        const replicationStatus = toReplicationStatus(row.replication_status);
-        const rulesCount = Math.max(0, toNumber(row.replication_rules_count) ?? 0);
-        const replicationConfig =
-          row.replication_config_json && typeof row.replication_config_json === "object"
-            ? (row.replication_config_json as Record<string, unknown>)
+      let destinationBucket: string | null = null;
+      let destinationRegion: string | null = null;
+      let executionStatus: "enabled" | "disabled" | "mixed" | "unknown" = "unknown";
+      let replicationType: "same_account" | "cross_account" | "unknown" = "unknown";
+
+      const configRoot =
+        row.replication_config_json && typeof row.replication_config_json === "object"
+          ? (row.replication_config_json as { Rules?: unknown })
+          : null;
+      const rules = Array.isArray(configRoot?.Rules) ? configRoot.Rules : [];
+      const typedRules = rules.filter(
+        (item): item is Record<string, unknown> => Boolean(item) && typeof item === "object",
+      );
+
+      if (typedRules.length > 0) {
+        const statuses = typedRules.map((rule) => String(rule.Status ?? "").trim().toLowerCase());
+        const hasEnabled = statuses.some((status) => status === "enabled");
+        const hasDisabled = statuses.some((status) => status === "disabled");
+        executionStatus = hasEnabled && hasDisabled ? "mixed" : hasEnabled ? "enabled" : hasDisabled ? "disabled" : "unknown";
+
+        const firstRule = typedRules[0];
+        const destination =
+          firstRule && typeof firstRule.Destination === "object" && firstRule.Destination
+            ? (firstRule.Destination as Record<string, unknown>)
             : null;
-        const rules = Array.isArray(replicationConfig?.Rules)
-          ? (replicationConfig?.Rules as Array<Record<string, unknown>>)
-          : [];
-        const firstRule = rules[0] ?? null;
-        const destination = firstRule?.Destination && typeof firstRule.Destination === "object"
-          ? (firstRule.Destination as Record<string, unknown>)
-          : null;
-        const destinationBucketArn = typeof destination?.Bucket === "string" ? String(destination.Bucket) : "";
-        const destinationBucket = destinationBucketArn.startsWith("arn:aws:s3:::")
-          ? destinationBucketArn.slice("arn:aws:s3:::".length)
-          : destinationBucketArn || null;
-        const destinationRegion = typeof destination?.Region === "string" ? String(destination.Region) : null;
-        const destinationAccount = typeof destination?.Account === "string" ? String(destination.Account).trim() : null;
-        const statusValues = rules.map((rule) => String(rule?.Status ?? "").trim().toLowerCase()).filter(Boolean);
-        const status = statusValues.length === 0
-          ? "unknown"
-          : statusValues.every((item) => item === "enabled")
-            ? "enabled"
-            : statusValues.every((item) => item === "disabled")
-              ? "disabled"
-              : "mixed";
+        const bucketArn = destination && typeof destination.Bucket === "string" ? destination.Bucket : "";
+        if (bucketArn.startsWith("arn:aws:s3:::")) {
+          destinationBucket = bucketArn.slice("arn:aws:s3:::".length).trim() || null;
+        }
+        if (!destinationBucket && destination && typeof destination.BucketName === "string") {
+          destinationBucket = destination.BucketName.trim() || null;
+        }
+        if (destination && typeof destination.Region === "string") {
+          destinationRegion = destination.Region.trim() || null;
+        }
 
-        const replicationType = destinationAccount
-          ? destinationAccount === String(row.account_id ?? "").trim()
-            ? "same_account"
-            : "cross_account"
-          : "unknown";
+        const destinationAccountId =
+          destination && typeof destination.Account === "string" ? destination.Account.trim() : "";
+        if (destinationAccountId && accountId) {
+          replicationType = destinationAccountId === accountId ? "same_account" : "cross_account";
+        }
+      }
 
-        const monthlyStorageCost =
-          bucketCostMap.get(`${String(row.bucket_name ?? "").trim().toLowerCase()}::${String(row.account_id ?? "").trim()}`) ?? null;
-        const isImportantBucket = monthlyStorageCost != null && monthlyStorageCost >= 100;
-        const recommendation = replicationStatus === "absent" && isImportantBucket
-          ? "This bucket has no replication configured. Consider replication for critical data, disaster recovery, or cross-region backup."
-          : null;
+      const recommendation =
+        replicationStatus === "absent"
+          ? "Configure replication for resilience and cross-region recovery requirements."
+          : replicationStatus === "present" && executionStatus !== "enabled"
+            ? "Review replication rule status and ensure active rules are enabled."
+            : null;
 
-        const actions = replicationStatus === "present"
-          ? (["view", "edit", "remove"] as const)
-          : replicationStatus === "absent"
-            ? (["setup_replication", "view_setup_guide"] as const)
-            : (["fix_permission"] as const);
-
-        return {
-          bucketName: String(row.bucket_name ?? "").trim(),
-          accountId: String(row.account_id ?? "").trim(),
-          region: row.region ? String(row.region).trim() : null,
-          replicationStatus,
-          rulesCount,
-          destinationBucket,
-          destinationRegion,
-          replicationType,
-          status,
-          lastChecked: String(row.scan_time ?? ""),
-          recommendation,
-          actions: [...actions],
-        } satisfies S3BucketReplicationRow;
-      }),
-    );
-
-    return mapped;
+      return {
+        bucketName,
+        accountId,
+        region,
+        replicationStatus,
+        rulesCount,
+        destinationBucket,
+        destinationRegion,
+        replicationType,
+        status: normalizeReplicationExecutionStatus(executionStatus),
+        lastChecked: String(row.scan_time ?? ""),
+        recommendation,
+        actions:
+          replicationStatus === "absent"
+            ? ["setup_replication", "view_setup_guide"]
+            : ["view", "edit", "remove", "fix_permission"],
+      } satisfies S3BucketReplicationRow;
+    });
   }
 
   async getLatestBucketLifecycleRows(scope: DashboardScope): Promise<S3OptimizationBucketRow[]> {
@@ -328,7 +337,7 @@ export class S3OptimizationRepository {
           const policyAppliedStatus: S3PolicyAppliedStatus = item.hasLifecyclePolicy ? "EXTERNAL" : "NOT_APPLIED";
           return {
             ...item,
-            policyAppliedStatus: item.hasLifecyclePolicy ? "EXTERNAL" : "NOT_APPLIED",
+            policyAppliedStatus,
             policyAppliedAt: null,
             lifecycleSavings: {
               status: "not_available" as const,
@@ -794,95 +803,6 @@ export class S3OptimizationRepository {
     const start = new Date();
     start.setUTCDate(start.getUTCDate() - days);
     return this.getBucketStorageCostBetween(tenantId, bucketName, accountId, start, end);
-  }
-
-  private async getBucketStorageCostForDaysSafe(
-    tenantId: string,
-    bucketName: string,
-    accountId: string,
-    days: number,
-  ): Promise<number | null> {
-    try {
-      return await this.getBucketStorageCostForDays(tenantId, bucketName, accountId, days);
-    } catch (error) {
-      const errorCode =
-        error && typeof error === "object" && "original" in error && (error as { original?: { code?: string } }).original
-          ? String((error as { original?: { code?: string } }).original?.code ?? "")
-          : "";
-      if (errorCode === "42P01") {
-        logger.warn("S3 replication scoring skipped: cost line item table not available", {
-          tenantId,
-          bucketName,
-          accountId,
-        });
-        return null;
-      }
-      throw error;
-    }
-  }
-
-  private async getBucketStorageCostsForDaysSafe(
-    tenantId: string,
-    pairs: Array<{ bucketName: string; accountId: string }>,
-    days: number,
-  ): Promise<Map<string, number | null>> {
-    const result = new Map<string, number | null>();
-    const normalized = pairs
-      .map((item) => ({
-        bucketName: String(item.bucketName ?? "").trim(),
-        accountId: String(item.accountId ?? "").trim(),
-      }))
-      .filter((item) => item.bucketName.length > 0);
-    if (normalized.length === 0) return result;
-
-    const end = new Date();
-    const start = new Date();
-    start.setUTCDate(start.getUTCDate() - days);
-    const keys = normalized.map((item) => item.bucketName.toLowerCase());
-    const accounts = [...new Set(normalized.map((item) => item.accountId))];
-    try {
-      const rows = await sequelize.query<{ bucket_name: string; account_id: string; total_cost: number | string | null }>(
-        `
-        SELECT
-          LOWER(bucket_name)::text AS bucket_name,
-          COALESCE(NULLIF(account_id, ''), '')::text AS account_id,
-          COALESCE(SUM(total_cost), 0)::double precision AS total_cost
-        FROM s3_cost_daily
-        WHERE tenant_id = $1::uuid
-          AND usage_date >= $2::date
-          AND usage_date <= $3::date
-          AND LOWER(bucket_name) = ANY($4::text[])
-          AND COALESCE(NULLIF(account_id, ''), '') = ANY($5::text[])
-          AND cost_category = 'Storage'
-        GROUP BY LOWER(bucket_name), COALESCE(NULLIF(account_id, ''), '')
-        `,
-        {
-          bind: [tenantId, start.toISOString().slice(0, 10), end.toISOString().slice(0, 10), keys, accounts],
-          type: QueryTypes.SELECT,
-        },
-      );
-
-      for (const row of rows) {
-        result.set(`${String(row.bucket_name ?? "").toLowerCase()}::${String(row.account_id ?? "")}`, toNumber(row.total_cost) ?? 0);
-      }
-      for (const pair of normalized) {
-        const key = `${pair.bucketName.toLowerCase()}::${pair.accountId}`;
-        if (!result.has(key)) result.set(key, 0);
-      }
-      return result;
-    } catch (error) {
-      const errorCode =
-        error && typeof error === "object" && "original" in error && (error as { original?: { code?: string } }).original
-          ? String((error as { original?: { code?: string } }).original?.code ?? "")
-          : "";
-      if (errorCode === "42P01") {
-        for (const pair of normalized) {
-          result.set(`${pair.bucketName.toLowerCase()}::${pair.accountId}`, null);
-        }
-        return result;
-      }
-      throw error;
-    }
   }
 
   private async getBucketStorageCostBetween(
