@@ -375,7 +375,6 @@ export function useEc2ExplorerQuery(filters: Ec2ExplorerFiltersQuery, enabledOve
     queryKey: ["dashboard", "ec2", "explorer", scope, filters],
     queryFn: () => dashboardApi.getEc2Explorer(assertScope(scope), filters),
     enabled: Boolean(scope) && enabledOverride,
-    placeholderData: (previous) => previous,
     staleTime: 60_000,
     refetchOnWindowFocus: false,
   });

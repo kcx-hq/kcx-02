@@ -7,7 +7,7 @@ import {
   type Sequelize,
 } from "sequelize";
 
-class FactCostLineItems extends Model<InferAttributes<FactCostLineItems>, InferCreationAttributes<FactCostLineItems>> {
+class StagingCostLineItems extends Model<InferAttributes<StagingCostLineItems>, InferCreationAttributes<StagingCostLineItems>> {
   declare id: CreationOptional<string>;
   declare tenantId: string;
   declare billingSourceId: CreationOptional<string | null>;
@@ -21,6 +21,7 @@ class FactCostLineItems extends Model<InferAttributes<FactCostLineItems>, InferC
   declare skuKey: CreationOptional<string | null>;
   declare chargeKey: CreationOptional<string | null>;
   declare tagId: CreationOptional<string | null>;
+  declare tagIdsJson: CreationOptional<Record<string, unknown> | null>;
   declare usageDateKey: CreationOptional<string | null>;
   declare billingPeriodStartDateKey: CreationOptional<string | null>;
   declare billingPeriodEndDateKey: CreationOptional<string | null>;
@@ -58,10 +59,11 @@ class FactCostLineItems extends Model<InferAttributes<FactCostLineItems>, InferC
   declare sourceRowHash: CreationOptional<string | null>;
   declare ingestedAt: CreationOptional<Date>;
   declare createdAt: CreationOptional<Date>;
+  declare updatedAt: CreationOptional<Date>;
 }
 
-const createFactCostLineItemsModel = (sequelize: Sequelize): typeof FactCostLineItems => {
-  FactCostLineItems.init(
+const createStagingCostLineItemsModel = (sequelize: Sequelize): typeof StagingCostLineItems => {
+  StagingCostLineItems.init(
     {
       id: { type: DataTypes.BIGINT, allowNull: false, autoIncrement: true, primaryKey: true },
       tenantId: { type: DataTypes.UUID, allowNull: false, field: "tenant_id" },
@@ -76,6 +78,7 @@ const createFactCostLineItemsModel = (sequelize: Sequelize): typeof FactCostLine
       skuKey: { type: DataTypes.BIGINT, allowNull: true, field: "sku_key" },
       chargeKey: { type: DataTypes.BIGINT, allowNull: true, field: "charge_key" },
       tagId: { type: DataTypes.BIGINT, allowNull: true, field: "tag_id" },
+      tagIdsJson: { type: DataTypes.JSONB, allowNull: true, field: "tag_ids_json" },
       usageDateKey: { type: DataTypes.BIGINT, allowNull: true, field: "usage_date_key" },
       billingPeriodStartDateKey: { type: DataTypes.BIGINT, allowNull: true, field: "billing_period_start_date_key" },
       billingPeriodEndDateKey: { type: DataTypes.BIGINT, allowNull: true, field: "billing_period_end_date_key" },
@@ -113,16 +116,17 @@ const createFactCostLineItemsModel = (sequelize: Sequelize): typeof FactCostLine
       sourceRowHash: { type: DataTypes.TEXT, allowNull: true, field: "source_row_hash" },
       ingestedAt: { type: DataTypes.DATE, allowNull: false, defaultValue: sequelize.literal("NOW()"), field: "ingested_at" },
       createdAt: { type: DataTypes.DATE, allowNull: false, defaultValue: sequelize.literal("NOW()"), field: "created_at" },
+      updatedAt: { type: DataTypes.DATE, allowNull: false, defaultValue: sequelize.literal("NOW()"), field: "updated_at" },
     },
     {
       sequelize,
-      modelName: "FactCostLineItems",
-      tableName: "fact_cost_line_items",
+      modelName: "StagingCostLineItems",
+      tableName: "staging_cost_line_items",
       timestamps: false,
     },
   );
-  return FactCostLineItems;
+  return StagingCostLineItems;
 };
 
-export { FactCostLineItems };
-export default createFactCostLineItemsModel;
+export { StagingCostLineItems };
+export default createStagingCostLineItemsModel;

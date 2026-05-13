@@ -12,7 +12,11 @@ import {
   resolveDimensionsWithCache,
 } from "./dimension-upsert.service.js";
 import { parseParquetSchemaColumnsFromBuffer, readParquetRowChunksFromBuffer } from "./file-reader.service.js";
-import { insertFactCostLineItemsBatch } from "./fact-cost-line-item.service.js";
+import {
+  insertFactCostLineItemsBatch,
+  replaceFactRowsFromStagingInTransaction,
+  validateStagingRowsForIngestionRun,
+} from "./fact-cost-line-item.service.js";
 import { getIngestionRunFiles } from "./ingestion-run-file.service.js";
 import { recordIngestionRowErrors } from "./ingestion-row-error.service.js";
 import { updateIngestionRunStatus } from "./ingestion.service.js";
@@ -34,6 +38,7 @@ import { assertTagDimensionSchemaReady } from "./ingestion-schema-guard.service.
 import { Ec2RecommendationsService } from "../../ec2/optimization/ec2-recommendations.service.js";
 import { LoadBalancerRecommendationsService } from "../../load-balancer/recommendations/load-balancer-recommendations.service.js";
 import { syncStorageLensFromClientAccount } from "./s3-storage-lens-sync.service.js";
+import { buildSourceRowHash } from "./source-row-hash.service.js";
 
 const STAGE_MESSAGE = {
   validating_schema: "Validating manifest and parquet schema",
@@ -406,6 +411,7 @@ export async function processAwsExportParquetRun({ run }) {
               const chunkIndexPosition = sliceStart + localIndex;
               const rowNumber = chunkOffset + chunkIndexPosition + 1;
               try {
+                const sourceRowHash = buildSourceRowHash(rawRow);
                 const normalizedRow = normalizeRowToCanonical(rawRow, canonicalHeaderMap);
                 const dimensions = await resolveDimensionsWithCache({
                   rawRow: normalizedRow,
@@ -497,6 +503,8 @@ export async function processAwsExportParquetRun({ run }) {
                     consumedQuantity: factPayload.consumed_quantity,
                     pricingQuantity: factPayload.pricing_quantity,
                     tagId: factPayload.tag_id,
+                    tagIdsJson: Array.isArray(tagIds) ? tagIds : [],
+                    sourceRowHash,
                   },
                   tagIds,
                 };
@@ -646,6 +654,20 @@ export async function processAwsExportParquetRun({ run }) {
       await recordIngestionRowErrors({ rowErrors: allRowErrors });
     }
 
+    try {
+      await validateStagingRowsForIngestionRun({
+        ingestionRunId: runId,
+        billingSourceId: source.id,
+      });
+    } catch (validationError) {
+      logger.error("AWS parquet staging validation failed before fact replacement", {
+        ingestionRunId: runId,
+        billingSourceId: String(source.id),
+        reason: toErrorMessage(validationError),
+      });
+      throw validationError;
+    }
+
     await setRunState(runId, {
       status: "finalizing",
       current_step: "finalizing",
@@ -785,21 +807,25 @@ export async function processAwsExportParquetRun({ run }) {
       }
     }
 
-    const finalStatus = rowsFailed > 0 ? "completed_with_warnings" : "completed";
-
-    await setRunState(runId, {
-      status: finalStatus,
-      current_step: finalStatus,
-      progress_percent: PROGRESS_BY_STAGE[finalStatus],
-      status_message: STAGE_MESSAGE[finalStatus],
-      rows_read: rowsRead,
-      rows_loaded: rowsLoaded,
-      rows_failed: rowsFailed,
-      total_rows_estimated: rowsRead,
-      error_message: rowsFailed > 0 ? `Rows failed: ${rowsFailed}${topReasons ? `. Top reasons: ${topReasons}` : ""}` : null,
-      finished_at: now(),
-      last_heartbeat_at: now(),
-    });
+    const warningMessage = rowsFailed > 0 ? `Rows failed: ${rowsFailed}${topReasons ? `. Top reasons: ${topReasons}` : ""}` : null;
+    let replacementSummary;
+    try {
+      replacementSummary = await replaceFactRowsFromStagingInTransaction({
+        ingestionRunId: runId,
+        billingSourceId: source.id,
+        rowsRead,
+        rowsFailed,
+        warningMessage,
+      });
+    } catch (replacementError) {
+      logger.error("AWS parquet staging-to-fact replacement failed", {
+        ingestionRunId: runId,
+        billingSourceId: String(source.id),
+        reason: toErrorMessage(replacementError),
+      });
+      throw replacementError;
+    }
+    rowsLoaded = replacementSummary.rowsInserted;
 
     await source.update({
       lastIngestedAt: now(),
