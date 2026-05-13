@@ -1,4 +1,5 @@
 import { useId, useMemo, useState, type FocusEvent, type FormEvent, type HTMLAttributes } from "react"
+import { Link } from "react-router-dom"
 
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
@@ -238,12 +239,12 @@ export function LoginForm() {
         ) : null}
 
         <div className="flex items-center justify-end">
-          <a
-            href="/forgot-password"
+          <Link
+            to="/forgot-password"
             className="text-xs font-semibold text-[#3E8A76] underline-offset-4 hover:text-[#357563] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(62,138,118,0.22)] focus-visible:ring-offset-2 focus-visible:ring-offset-white"
           >
             Reset password
-          </a>
+          </Link>
         </div>
 
         <Button
@@ -259,9 +260,9 @@ export function LoginForm() {
 
         <p id={`${formId}__help`} className="text-[11px] leading-5 text-[rgba(75,90,83,0.7)]">
           Need access?{" "}
-          <a href="/schedule-demo" className="font-semibold text-[#3E8A76] hover:underline underline-offset-4">
+          <Link to="/schedule-demo" className="font-semibold text-[#3E8A76] hover:underline underline-offset-4">
             Request a demo
-          </a>
+          </Link>
           .
         </p>
 

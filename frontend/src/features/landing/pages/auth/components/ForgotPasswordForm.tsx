@@ -1,4 +1,5 @@
 import { useId, useMemo, useState, type FocusEvent, type FormEvent, type HTMLAttributes } from "react"
+import { Link } from "react-router-dom"
 
 import { Button } from "@/components/ui/button"
 import { ApiError, apiPost } from "@/lib/api"
@@ -186,9 +187,9 @@ export function ForgotPasswordForm() {
 
         <p id={`${formId}__help`} className="text-[11px] leading-5 text-[rgba(75,90,83,0.7)]">
           Remembered your password?{" "}
-          <a href="/login" className="font-semibold text-[#3E8A76] hover:underline underline-offset-4">
+          <Link to="/login" className="font-semibold text-[#3E8A76] hover:underline underline-offset-4">
             Sign in
-          </a>
+          </Link>
           .
         </p>
 

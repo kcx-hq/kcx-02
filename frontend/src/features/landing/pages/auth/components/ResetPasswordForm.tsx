@@ -1,4 +1,5 @@
 import { useId, useMemo, useState, type FocusEvent, type FormEvent } from "react"
+import { Link } from "react-router-dom"
 
 import { Button } from "@/components/ui/button"
 import { ApiError, apiPost } from "@/lib/api"
@@ -233,9 +234,9 @@ export function ResetPasswordForm({ token }: { token: string | null }) {
 
         <p id={`${formId}__help`} className="text-[11px] leading-5 text-[rgba(75,90,83,0.7)]">
           After resetting, you can{" "}
-          <a href="/login" className="font-semibold text-[#3E8A76] hover:underline underline-offset-4">
+          <Link to="/login" className="font-semibold text-[#3E8A76] hover:underline underline-offset-4">
             sign in
-          </a>
+          </Link>
           .
         </p>
 
@@ -262,17 +263,17 @@ export function ResetPasswordForm({ token }: { token: string | null }) {
           >
             Reset links include a token. Request a new reset link to continue.
           </div>
-          <a
-            href="/forgot-password"
+          <Link
+            to="/forgot-password"
             className="inline-flex w-full items-center justify-center rounded-none [border-radius:0!important] bg-[#3E8A76] px-4 py-3 text-sm font-semibold text-white transition duration-200 hover:bg-[#357563] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(62,138,118,0.28)] focus-visible:ring-offset-2 focus-visible:ring-offset-white"
           >
             Request reset link
-          </a>
+          </Link>
           <p className="text-[11px] leading-5 text-[rgba(75,90,83,0.7)]">
             Back to{" "}
-            <a href="/login" className="font-semibold text-[#3E8A76] hover:underline underline-offset-4">
+            <Link to="/login" className="font-semibold text-[#3E8A76] hover:underline underline-offset-4">
               sign in
-            </a>
+            </Link>
             .
           </p>
         </div>
