@@ -22,7 +22,7 @@ const optionalEnv = (value: string | undefined): string | undefined => {
     return undefined;
   }
 
-  const trimmed = value.trim();
+  const trimmed = value.trim().replace(/^['"]|['"]$/g, "");
   return trimmed.length > 0 ? trimmed : undefined;
 };
 
