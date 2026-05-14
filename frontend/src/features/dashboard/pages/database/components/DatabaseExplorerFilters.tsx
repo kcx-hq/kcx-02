@@ -1,22 +1,14 @@
 import { Check, ChevronDown } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import type {
   DatabaseExplorerGroupBy,
   DatabaseExplorerMetric,
   DatabaseExplorerScopeValue,
 } from "../../../api/dashboardTypes";
-import {
-  DATABASE_SCOPE_NAV_SECTIONS,
-  formatDatabaseScopeChip,
-  isDatabaseScopeAvailable,
-} from "../databaseExplorer.scope";
-import {
-  deriveAutoGroupBy,
-  getEnginesForDatabaseScope,
-  resolveHierarchyFromEngine,
-  scopeValueFromTaxonomy,
-} from "../databaseExplorer.taxonomy";
+import { DATABASE_SCOPE_NAV_SECTIONS, isDatabaseScopeAvailable } from "../databaseExplorer.scope";
+import { deriveAutoGroupBy, getEnginesForDatabaseScope } from "../databaseExplorer.taxonomy";
 
 type DatabaseExplorerFiltersProps = {
   metric: DatabaseExplorerMetric;
@@ -26,16 +18,12 @@ type DatabaseExplorerFiltersProps = {
   groupBy: "auto" | DatabaseExplorerGroupBy;
   effectiveGroupBy: DatabaseExplorerGroupBy;
   availableDatabaseScopes: DatabaseExplorerScopeValue[];
+  backendServiceOptions: string[];
   backendEngineOptions: string[];
   onApplyScope: (next: { databaseScope: DatabaseExplorerScopeValue; dbService: string; dbEngine: string }) => void;
   onApplyGroupBy: (next: { groupBy: "auto" | DatabaseExplorerGroupBy }) => void;
   onClearAll: () => void;
 };
-
-const metricOptions: Array<{ value: DatabaseExplorerMetric; label: string }> = [
-  { value: "cost", label: "Cost" },
-  { value: "usage", label: "Usage" },
-];
 
 const groupByOptions: Array<{ value: "auto" | DatabaseExplorerGroupBy; label: string }> = [
   { value: "auto", label: "Recommended" },
@@ -60,6 +48,21 @@ const groupByDimensions: Array<{ key: DatabaseExplorerGroupBy; label: string }> 
   { key: "db_engine", label: "DB Engine" },
 ];
 
+const serviceMatchesScope = (service: string, scope: DatabaseExplorerScopeValue): boolean => {
+  const key = service.trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+  if (!key) return false;
+  if (scope === "relational_rds") return ["amazonrds", "amazonrelationaldatabaseservice", "rds"].includes(key);
+  if (scope === "relational_aurora") return ["aurora", "amazonaurora"].includes(key);
+  if (scope === "key_value_dynamodb") return ["amazondynamodb", "dynamodb"].includes(key);
+  if (scope === "in_memory_elasticache") return ["amazonelasticache", "elasticache"].includes(key);
+  if (scope === "in_memory_memorydb") return ["amazonmemorydb", "memorydb"].includes(key);
+  if (scope === "document") return ["amazondocdb", "docdb", "amazondocumentdb", "documentdb"].includes(key);
+  if (scope === "graph") return ["amazonneptune", "neptune"].includes(key);
+  if (scope === "wide_column") return ["amazonkeyspaces", "keyspaces"].includes(key);
+  if (scope === "time_series") return ["amazontimestream", "timestream"].includes(key);
+  return false;
+};
+
 const uniqueSorted = (values: string[]): string[] =>
   [...new Set(values.map((value) => value.trim()).filter(Boolean))].sort((left, right) => left.localeCompare(right));
 
@@ -71,65 +74,54 @@ export function DatabaseExplorerFilters({
   groupBy,
   effectiveGroupBy,
   availableDatabaseScopes,
+  backendServiceOptions,
   backendEngineOptions,
   onApplyScope,
   onApplyGroupBy,
   onClearAll,
 }: DatabaseExplorerFiltersProps) {
-  const [scopeDrawerOpen, setScopeDrawerOpen] = useState(false);
+  const [databaseMenuOpen, setDatabaseMenuOpen] = useState(false);
   const [groupDrawerOpen, setGroupDrawerOpen] = useState(false);
-
-  const [draftScope, setDraftScope] = useState<DatabaseExplorerScopeValue>(databaseScope);
-  const [draftDbService, setDraftDbService] = useState(dbService);
-  const [draftDbEngine, setDraftDbEngine] = useState(dbEngine);
-
+  const [hoveredServiceScope, setHoveredServiceScope] = useState<DatabaseExplorerScopeValue | null>(null);
+  const [engineFlyoutPosition, setEngineFlyoutPosition] = useState<{ top: number; left: number } | null>(null);
   const [draftGroupBy, setDraftGroupBy] = useState<"auto" | DatabaseExplorerGroupBy>(groupBy);
   const [activeGroupDimension, setActiveGroupDimension] = useState<DatabaseExplorerGroupBy>(effectiveGroupBy);
+  const flyoutHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const scopeLabel = useMemo(
-    () => formatDatabaseScopeChip(databaseScope, dbService, dbEngine),
-    [databaseScope, dbEngine, dbService],
-  );
+  const clearFlyoutHideTimer = () => {
+    if (!flyoutHideTimerRef.current) return;
+    clearTimeout(flyoutHideTimerRef.current);
+    flyoutHideTimerRef.current = null;
+  };
 
+  const scheduleFlyoutHide = () => {
+    clearFlyoutHideTimer();
+    flyoutHideTimerRef.current = setTimeout(() => {
+      setHoveredServiceScope(null);
+      setEngineFlyoutPosition(null);
+    }, 120);
+  };
+
+  const availableServices = useMemo(() => uniqueSorted(backendServiceOptions), [backendServiceOptions]);
+  const availableEngines = useMemo(() => uniqueSorted(backendEngineOptions), [backendEngineOptions]);
   const effectiveGroupByLabel = groupByOptions.find((option) => option.value === effectiveGroupBy)?.label ?? "Recommended";
   const groupByLabel = groupBy === "auto" ? `Auto · ${effectiveGroupByLabel}` : effectiveGroupByLabel;
-
   const recommendedPreview = useMemo(
     () => deriveAutoGroupBy(databaseScope, dbService, dbEngine),
     [databaseScope, dbEngine, dbService],
   );
   const recommendedPreviewLabel = groupByOptions.find((o) => o.value === recommendedPreview)?.label ?? "Database Type";
 
-  const engineChoices = useMemo(() => {
-    const taxonomyEngines = getEnginesForDatabaseScope(draftScope);
-    const backend = uniqueSorted(backendEngineOptions);
-    if (draftScope === "all") return backend;
-    const allowed = new Set(taxonomyEngines.map((e) => e.trim().toLowerCase()));
-    const narrowed = backend.filter((e) => allowed.has(e.trim().toLowerCase()));
-    return narrowed.length > 0 ? narrowed : taxonomyEngines;
-  }, [backendEngineOptions, draftScope]);
+  const databaseLabel = useMemo(() => {
+    if (!dbService.trim() && !dbEngine.trim()) return "All Databases";
+    if (!dbService.trim() && dbEngine.trim()) return dbEngine.trim();
+    return dbEngine.trim() ? `${dbService.trim()} · ${dbEngine.trim()}` : dbService.trim();
+  }, [dbEngine, dbService]);
 
-  const openScopeDrawer = () => {
-    setDraftScope(databaseScope);
-    setDraftDbService(dbService);
-    setDraftDbEngine(dbEngine);
-    setScopeDrawerOpen(true);
-  };
-
-  const applyScopeDrawer = () => {
-    onApplyScope({
-      databaseScope: draftScope,
-      dbService: draftDbService,
-      dbEngine: draftDbEngine,
-    });
-    setScopeDrawerOpen(false);
-  };
-
-  const selectDraftScope = (scope: DatabaseExplorerScopeValue) => {
-    setDraftScope(scope);
-    setDraftDbService("");
-    setDraftDbEngine("");
-  };
+  const chips = [
+    { key: "database", label: "Database", value: databaseLabel },
+    { key: "groupBy", label: "Group By", value: groupByLabel },
+  ];
 
   const openGroupDrawer = () => {
     setDraftGroupBy(groupBy);
@@ -143,28 +135,145 @@ export function DatabaseExplorerFilters({
     setGroupDrawerOpen(false);
   };
 
-  const chips = [
-    { key: "metric", label: "Metric", value: metricOptions.find((option) => option.value === metric)?.label ?? metric },
-    { key: "databaseScope", label: "Database Scope", value: scopeLabel },
-    { key: "groupBy", label: "Group By", value: groupByLabel },
-  ];
-
   return (
     <section className="cost-explorer-control-surface" aria-label="Database explorer controls">
       <div className="cost-explorer-toolbar-row">
-        <div className="cost-explorer-toolbar-item">
+        <div className="cost-explorer-toolbar-item" style={{ position: "relative" }}>
           <button
             type="button"
-            className="cost-explorer-toolbar-trigger"
-            onClick={openScopeDrawer}
-            title={scopeLabel}
+            className={`cost-explorer-toolbar-trigger${databaseMenuOpen ? " is-active" : ""}`}
+            onClick={() => {
+              setDatabaseMenuOpen((prev) => {
+                if (prev) {
+                  clearFlyoutHideTimer();
+                  setHoveredServiceScope(null);
+                  setEngineFlyoutPosition(null);
+                }
+                return !prev;
+              });
+            }}
+            title={databaseLabel}
           >
-            <span className="cost-explorer-toolbar-trigger__label">Database Scope</span>
+            <span className="cost-explorer-toolbar-trigger__label">Database</span>
             <span className="cost-explorer-toolbar-trigger__row">
-              <span className="cost-explorer-toolbar-trigger__value">{scopeLabel}</span>
+              <span className="cost-explorer-toolbar-trigger__value">{databaseLabel}</span>
               <ChevronDown className="cost-explorer-toolbar-trigger__caret" size={14} aria-hidden="true" />
             </span>
           </button>
+          {databaseMenuOpen ? (
+            <div className="cost-explorer-filter-popover" role="dialog" aria-label="Database service and engine">
+              <p className="cost-explorer-filter-popover__title">Database Service</p>
+              <div className="cost-explorer-filter-popover__list" role="listbox" style={{ maxHeight: 360, overflowY: "auto" }}>
+                <button
+                  type="button"
+                  className={`cost-explorer-filter-option${!dbService.trim() && !dbEngine.trim() ? " is-active" : ""}`}
+                  onClick={() => {
+                    onApplyScope({ databaseScope: "all", dbService: "", dbEngine: "" });
+                    setDatabaseMenuOpen(false);
+                  }}
+                >
+                  <span className="cost-explorer-filter-option__label">All Databases</span>
+                  {!dbService.trim() && !dbEngine.trim() ? <Check className="cost-explorer-filter-option__check" size={15} aria-hidden="true" /> : null}
+                </button>
+
+                {DATABASE_SCOPE_NAV_SECTIONS.map((section) =>
+                  section.services.map((svc) => {
+                    const scopeEnabled = isDatabaseScopeAvailable(svc.scope, availableDatabaseScopes);
+                    if (!scopeEnabled) return null;
+                    const matchedService = availableServices.find((service) => serviceMatchesScope(service, svc.scope)) ?? svc.label;
+                    const selectedService = databaseScope === svc.scope || serviceMatchesScope(dbService, svc.scope);
+                    const scopedEngines = getEnginesForDatabaseScope(svc.scope);
+                    const scopedEngineSet = new Set(scopedEngines.map((engine) => engine.trim().toLowerCase()));
+                    const matchingEngines = availableEngines.filter((engine) => scopedEngineSet.has(engine.trim().toLowerCase()));
+                    const showEngines = matchingEngines.length > 0 && hoveredServiceScope === svc.scope;
+                    return (
+                      <div
+                        key={svc.scope}
+                        style={{ position: "relative" }}
+                        onMouseEnter={(event) => {
+                          clearFlyoutHideTimer();
+                          setHoveredServiceScope(svc.scope);
+                          const rect = event.currentTarget.getBoundingClientRect();
+                          setEngineFlyoutPosition({
+                            top: rect.top,
+                            left: rect.right + 6,
+                          });
+                        }}
+                        onMouseLeave={scheduleFlyoutHide}
+                      >
+                        <button
+                          type="button"
+                          className={`cost-explorer-filter-option${selectedService && !dbEngine.trim() ? " is-active" : ""}`}
+                          onFocus={(event) => {
+                            clearFlyoutHideTimer();
+                            setHoveredServiceScope(svc.scope);
+                            const rect = event.currentTarget.getBoundingClientRect();
+                            setEngineFlyoutPosition({
+                              top: rect.top,
+                              left: rect.right + 6,
+                            });
+                          }}
+                          onBlur={scheduleFlyoutHide}
+                          onClick={() => {
+                            onApplyScope({ databaseScope: svc.scope, dbService: matchedService, dbEngine: "" });
+                          }}
+                        >
+                          <span className="cost-explorer-filter-option__label">{matchedService}</span>
+                          {selectedService && !dbEngine.trim() ? <Check className="cost-explorer-filter-option__check" size={15} aria-hidden="true" /> : null}
+                        </button>
+                        {showEngines && engineFlyoutPosition
+                          ? createPortal(
+                              <div
+                                className="cost-explorer-filter-popover"
+                                style={{
+                                  position: "fixed",
+                                  top: engineFlyoutPosition.top,
+                                  left: engineFlyoutPosition.left,
+                                  minWidth: 220,
+                                  zIndex: 110,
+                                  maxHeight: 320,
+                                  overflowY: "auto",
+                                }}
+                                role="menu"
+                                aria-label={`${matchedService} engines`}
+                                onMouseEnter={clearFlyoutHideTimer}
+                                onMouseLeave={scheduleFlyoutHide}
+                              >
+                                <p className="cost-explorer-filter-popover__title">Engines</p>
+                                <div className="cost-explorer-filter-popover__list" role="listbox">
+                                  {matchingEngines.map((engine) => {
+                                    const selectedEngine =
+                                      selectedService && dbEngine.trim().toLowerCase() === engine.trim().toLowerCase();
+                                    return (
+                                      <button
+                                        key={`${svc.scope}-${engine}`}
+                                        type="button"
+                                        className={`cost-explorer-filter-option${selectedEngine ? " is-active" : ""}`}
+                                        onClick={() => {
+                                          onApplyScope({ databaseScope: svc.scope, dbService: matchedService, dbEngine: engine });
+                                          clearFlyoutHideTimer();
+                                          setHoveredServiceScope(null);
+                                          setEngineFlyoutPosition(null);
+                                          setDatabaseMenuOpen(false);
+                                        }}
+                                      >
+                                        <span className="cost-explorer-filter-option__label">{engine}</span>
+                                        {selectedEngine ? <Check className="cost-explorer-filter-option__check" size={15} aria-hidden="true" /> : null}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              </div>,
+                              document.body,
+                            )
+                          : null}
+                      </div>
+                    );
+                  }),
+                )}
+              </div>
+            </div>
+          ) : null}
         </div>
         <div className="cost-explorer-toolbar-item">
           <button
@@ -196,115 +305,6 @@ export function DatabaseExplorerFilters({
           </button>
         </div>
       </div>
-
-      <Dialog open={scopeDrawerOpen} onOpenChange={setScopeDrawerOpen}>
-        <DialogContent className="database-explorer-scope-drawer left-auto right-0 top-0 h-screen max-h-screen w-[min(96vw,42rem)] max-w-none -translate-x-0 -translate-y-0 rounded-none border-l border-[color:var(--border-light)] p-6 data-[state=open]:slide-in-from-right data-[state=closed]:slide-out-to-right data-[state=open]:zoom-in-100 data-[state=closed]:zoom-out-100">
-          <DialogHeader className="space-y-1">
-            <DialogTitle className="text-xl font-semibold text-text-primary">Database Scope</DialogTitle>
-          </DialogHeader>
-          <div className="mt-4 db-scope-filter" role="presentation">
-            <nav className="db-scope-filter__body" aria-label="Database scope">
-              <div className="db-scope-filter__list">
-                <button
-                  type="button"
-                  className={`db-scope-filter__row${draftScope === "all" ? " is-active" : ""}`}
-                  onClick={() => selectDraftScope("all")}
-                >
-                  <span className="db-scope-filter__row-label">All Databases</span>
-                  {draftScope === "all" ? <Check className="db-scope-filter__row-check" size={15} aria-hidden="true" /> : null}
-                </button>
-
-                {DATABASE_SCOPE_NAV_SECTIONS.map((section) => {
-                  const portfolioScope = section.portfolioScope;
-                  const portfolioEnabled =
-                    portfolioScope != null && isDatabaseScopeAvailable(portfolioScope, availableDatabaseScopes);
-                  const categorySelected = portfolioScope != null && draftScope === portfolioScope;
-                  return (
-                    <div key={section.categoryTitle} className="db-scope-filter__group">
-                      {portfolioScope != null ? (
-                        <button
-                          type="button"
-                          className={`db-scope-filter__row${categorySelected ? " is-active" : ""}`}
-                          disabled={!portfolioEnabled}
-                          onClick={() => {
-                            if (!portfolioEnabled) return;
-                            selectDraftScope(portfolioScope);
-                          }}
-                        >
-                          <span className="db-scope-filter__row-label">{section.categoryTitle}</span>
-                          {categorySelected ? <Check className="db-scope-filter__row-check" size={15} aria-hidden="true" /> : null}
-                        </button>
-                      ) : (
-                        <div className="db-scope-filter__group-label">{section.categoryTitle}</div>
-                      )}
-                      <ul className="db-scope-filter__nested" role="list">
-                        {section.services.map((svc) => {
-                          const svcEnabled = isDatabaseScopeAvailable(svc.scope, availableDatabaseScopes);
-                          const selected = draftScope === svc.scope;
-                          return (
-                            <li key={svc.scope}>
-                              <button
-                                type="button"
-                                className={`db-scope-filter__row db-scope-filter__row--nested${selected ? " is-active" : ""}`}
-                                disabled={!svcEnabled}
-                                onClick={() => {
-                                  if (!svcEnabled) return;
-                                  selectDraftScope(svc.scope);
-                                }}
-                              >
-                                <span className="db-scope-filter__row-label">{svc.label}</span>
-                                {selected ? <Check className="db-scope-filter__row-check" size={15} aria-hidden="true" /> : null}
-                              </button>
-                            </li>
-                          );
-                        })}
-                      </ul>
-                    </div>
-                  );
-                })}
-              </div>
-            </nav>
-
-            {draftScope !== "all" && engineChoices.length > 0 ? (
-              <div className="db-scope-filter__engines" role="region" aria-label="Engine">
-                <div className="db-scope-filter__engines-label">Engine</div>
-                <ul className="db-scope-filter__engines-list" role="list">
-                  {engineChoices.map((engine) => {
-                    const selected = draftDbEngine === engine;
-                    return (
-                      <li key={engine}>
-                        <button
-                          type="button"
-                          className={`db-scope-filter__row db-scope-filter__row--engine${selected ? " is-active" : ""}`}
-                          onClick={() => {
-                            const resolved = resolveHierarchyFromEngine(engine);
-                            setDraftDbEngine(engine);
-                            if (resolved) {
-                              setDraftScope(scopeValueFromTaxonomy(resolved.databaseType, resolved.dbService));
-                              setDraftDbService(resolved.dbService);
-                            }
-                          }}
-                        >
-                          <span className="db-scope-filter__row-label">{engine}</span>
-                          {selected ? <Check className="db-scope-filter__row-check" size={15} aria-hidden="true" /> : null}
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </div>
-            ) : null}
-
-            <div className="db-scope-filter__footer">
-              <div className="cost-explorer-filter-popover__actions">
-                <button type="button" className="cost-explorer-filter-popover__apply" onClick={applyScopeDrawer}>
-                  Apply
-                </button>
-              </div>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
 
       <Dialog open={groupDrawerOpen} onOpenChange={setGroupDrawerOpen}>
         <DialogContent className="left-auto right-0 top-0 h-screen max-h-screen w-[min(96vw,42rem)] max-w-none -translate-x-0 -translate-y-0 rounded-none border-l border-[color:var(--border-light)] p-6 data-[state=open]:slide-in-from-right data-[state=closed]:slide-out-to-right data-[state=open]:zoom-in-100 data-[state=closed]:zoom-out-100">
@@ -369,13 +369,15 @@ export function DatabaseExplorerFilters({
                           <div className="database-explorer-groupby__section-list">
                             <div className="cost-explorer-filter-option is-active" role="status">
                               <span className="cost-explorer-filter-option__label">
-                                {draftGroupBy === "auto" ? `Recommended (${recommendedPreviewLabel})` : (groupByOptions.find((option) => option.value === draftGroupBy)?.label ?? "Group")}
+                                {draftGroupBy === "auto"
+                                  ? `Recommended (${recommendedPreviewLabel})`
+                                  : (groupByOptions.find((option) => option.value === draftGroupBy)?.label ?? "Group")}
                               </span>
                               <Check className="cost-explorer-filter-option__check" size={15} aria-hidden="true" />
                             </div>
                           </div>
                           <p className="database-explorer-groupby__section-empty">
-                            Charts and the table group already-filtered data by this dimension. Database scope is configured separately.
+                            Group the already-filtered database selection by this dimension.
                           </p>
                         </section>
                       </div>

@@ -88,6 +88,7 @@ export default function DatabaseExplorerPage() {
   };
 
   const availableDatabaseScopes = data?.filterOptions?.availableDatabaseScopes ?? ["all"];
+  const backendServiceOptions = data?.filterOptions?.dbServices ?? [];
   const backendEngineOptions = data?.filterOptions?.dbEngines ?? [];
 
   const navigateToAssets = (source: DrilldownSource, payload: ExplorerDrilldownPayload) => {
@@ -183,6 +184,7 @@ export default function DatabaseExplorerPage() {
         groupBy={groupBy}
         effectiveGroupBy={effectiveGroupBy}
         availableDatabaseScopes={availableDatabaseScopes}
+        backendServiceOptions={backendServiceOptions}
         backendEngineOptions={backendEngineOptions}
         onApplyScope={handleApplyScope}
         onApplyGroupBy={handleApplyGroupBy}
