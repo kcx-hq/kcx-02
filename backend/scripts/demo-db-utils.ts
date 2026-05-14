@@ -1,4 +1,12 @@
 // @ts-nocheck
+import dotenv from "dotenv";
+import { fileURLToPath } from "node:url";
+import { dirname, resolve } from "node:path";
+
+dotenv.config();
+const __dirname = dirname(fileURLToPath(import.meta.url));
+dotenv.config({ path: resolve(__dirname, "../.env") });
+
 export type DemoDbConfig = {
   url: string;
   source: "DEMO_DATABASE_URL" | "DB_URL";

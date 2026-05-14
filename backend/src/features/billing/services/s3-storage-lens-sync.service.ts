@@ -19,6 +19,7 @@ import {
 } from "./s3-storage-lens-ingestion.service.js";
 import { collectS3BucketConfigSnapshotsForBillingSource } from "./s3-bucket-config-snapshot.service.js";
 import { refreshS3BucketCostSummaryForBillingSource } from "./s3-bucket-cost-summary.service.js";
+import { syncS3CostDaily } from "./s3-cost-daily.service.js";
 
 const normalize = (value) => String(value ?? "").trim();
 
@@ -322,6 +323,20 @@ export async function syncStorageLensFromClientAccount({
       tenantId: source.tenantId,
       billingSourceId: String(source.id),
     });
+    const today = new Date();
+    const endDate = today.toISOString().slice(0, 10);
+    const startDateObj = new Date(today);
+    startDateObj.setUTCDate(startDateObj.getUTCDate() - 45);
+    const startDate = startDateObj.toISOString().slice(0, 10);
+    const s3CostDailyResult = await syncS3CostDaily({
+      tenantId: source.tenantId,
+      startDate,
+      endDate,
+      cloudConnectionId: String(source.cloudConnectionId),
+      billingSourceId: String(source.id),
+      providerId: source.cloudProviderId,
+      rebuildRange: true,
+    });
 
     await ingestionRun.update({
       status: "completed",
@@ -349,6 +364,7 @@ export async function syncStorageLensFromClientAccount({
       bucketConfigSnapshotsCreated: configCollectionResult.snapshotsCreated,
       bucketConfigBucketsScanned: configCollectionResult.bucketsScanned,
       costSummaryRowsInserted: costSummaryResult.rowsInserted,
+      s3CostDailyRowsInserted: s3CostDailyResult.rowsInserted,
     });
 
     return {
@@ -364,6 +380,7 @@ export async function syncStorageLensFromClientAccount({
       bucketConfigSnapshotsCreated: configCollectionResult.snapshotsCreated,
       bucketConfigBucketsScanned: configCollectionResult.bucketsScanned,
       costSummaryRowsInserted: costSummaryResult.rowsInserted,
+      s3CostDailyRowsInserted: s3CostDailyResult.rowsInserted,
     };
   } catch (error) {
     await ingestionRun.update({

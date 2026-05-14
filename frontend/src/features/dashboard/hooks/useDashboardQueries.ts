@@ -584,14 +584,21 @@ export function useApplyS3LifecyclePolicyMutation() {
   });
 }
 
-export function useS3ReplicationQuery(enabledOverride: boolean = true) {
+export function useS3ReplicationQuery(
+  enabledOverride: boolean = true,
+  options?: {
+    staleTime?: number;
+    retry?: number | boolean;
+  },
+) {
   const { scope } = useDashboardScope();
   return useQuery<S3ReplicationResponse, Error>({
     queryKey: ["dashboard", "s3", "replication", scope],
     queryFn: () => dashboardApi.getS3Replication(assertScope(scope)),
     enabled: Boolean(scope) && enabledOverride,
     placeholderData: (previous) => previous,
-    staleTime: 90_000,
+    staleTime: options?.staleTime ?? 90_000,
+    retry: options?.retry ?? 1,
     refetchOnWindowFocus: false,
   });
 }

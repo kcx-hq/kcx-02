@@ -701,10 +701,10 @@ export class S3CostInsightsRepository {
       push(`storage_class = ANY(?::text[])`, filters.storageClass);
     }
     if (filters.region.length > 0) {
-      push(`region_name = ANY(?::text[])`, filters.region);
+      push(`COALESCE(NULLIF(region, ''), 'global') = ANY(?::text[])`, filters.region);
     }
     if (filters.account.length > 0) {
-      push(`account_name = ANY(?::text[])`, filters.account);
+      push(`COALESCE(NULLIF(account_id, ''), 'Unspecified') = ANY(?::text[])`, filters.account);
     }
     if (filters.seriesValues.length > 0) {
       if (filters.seriesBy === "cost_category") {
@@ -765,15 +765,49 @@ export class S3CostInsightsRepository {
   private getMetricCostExpression(metric: S3CostYAxisMetric): string {
     switch (metric) {
       case "usage_quantity":
-        return "fcli.consumed_quantity";
+        return "usage_quantity";
       case "effective_cost":
-        return "fcli.effective_cost";
+        return "total_cost";
       case "amortized_cost":
-        return "COALESCE(fcli.amortized_cost, fcli.effective_cost, fcli.billed_cost)";
+        return "total_cost";
       case "billed_cost":
       default:
-        return "fcli.billed_cost";
+        return "total_cost";
     }
+  }
+
+  private buildS3DailyScopedWhere(scope: DashboardScope): { whereClause: string; params: unknown[]; nextIndex: number } {
+    const conditions: string[] = [
+      "tenant_id = $1::uuid",
+      "usage_date >= $2::date",
+      "usage_date <= $3::date",
+    ];
+    const params: unknown[] = [scope.tenantId, scope.from, scope.to];
+
+    if (scope.scopeType === "global") {
+      if (typeof scope.providerId === "number") {
+        params.push(scope.providerId);
+        conditions.push(`provider_id = $${params.length}`);
+      }
+      if (Array.isArray(scope.billingSourceIds) && scope.billingSourceIds.length > 0) {
+        params.push(scope.billingSourceIds);
+        conditions.push(`billing_source_id = ANY($${params.length}::bigint[])`);
+      }
+      if (typeof scope.subAccountKey === "number") {
+        params.push(scope.subAccountKey);
+        conditions.push(`sub_account_key = $${params.length}`);
+      }
+      if (typeof scope.regionKey === "number") {
+        params.push(scope.regionKey);
+        conditions.push(`region_key = $${params.length}`);
+      }
+    }
+
+    return {
+      whereClause: conditions.join("\n        AND "),
+      params,
+      nextIndex: params.length + 1,
+    };
   }
 
   async getBreakdownChart(
@@ -783,66 +817,29 @@ export class S3CostInsightsRepository {
     labels: string[];
     series: Array<{ name: string; values: number[] }>;
   }> {
-    const scoped = this.buildS3ScopedWhere(scope);
+    const scoped = this.buildS3DailyScopedWhere(scope);
     const filterPredicates = this.buildS3FilterPredicates(filters, scoped.nextIndex);
     const xExpr = this.getXAxisExpression(filters.costBy);
     const seriesExpr = this.getSeriesExpression(filters.seriesBy);
     const metricCostExpr = this.getMetricCostExpression(filters.yAxisMetric);
-    const selectedUsageCategory = filters.costCategory.length === 1 ? filters.costCategory[0] : null;
 
     const rows = await sequelize.query<S3BreakdownRow>(
       `
-      WITH base_scoped AS (
+      WITH filtered AS (
         SELECT
-          COALESCE(DATE(COALESCE(fcli.usage_start_time, fcli.usage_end_time)), dd.full_date)::text AS usage_date,
-          COALESCE(NULLIF(${S3_BUCKET_NAME_SQL}, ''), 'unattributed') AS bucket_name,
-          COALESCE(NULLIF(dr.region_name, ''), NULLIF(dr.region_id, ''), 'global') AS region_name,
-          COALESCE(dsa.sub_account_name, dsa.sub_account_id, 'Unspecified') AS account_name,
-          COALESCE(fcli.usage_type, '') AS usage_type,
-          COALESCE(fcli.operation, '') AS operation,
-          COALESCE(fcli.product_family, '') AS product_family,
-          COALESCE(fcli.product_usage_type, '') AS product_usage_type,
-          COALESCE(fcli.line_item_description, '') AS line_item_description,
+          usage_date::text AS usage_date,
+          bucket_name,
+          COALESCE(NULLIF(region, ''), 'global') AS region_name,
+          COALESCE(NULLIF(account_id, ''), 'Unspecified') AS account_name,
+          usage_type,
+          operation,
+          product_family,
+          storage_class,
+          cost_category,
           COALESCE(${metricCostExpr}, 0)::double precision AS metric_cost
-        FROM fact_cost_line_items fcli
-        LEFT JOIN dim_date dd ON dd.id = fcli.usage_date_key
-        LEFT JOIN dim_service ds ON ds.id = fcli.service_key
-        LEFT JOIN dim_resource dres ON dres.id = fcli.resource_key
-        LEFT JOIN dim_region dr ON dr.id = fcli.region_key
-        LEFT JOIN dim_sub_account dsa ON dsa.id = fcli.sub_account_key
+        FROM s3_cost_daily
         WHERE ${scoped.whereClause}
-      ),
-      scoped AS (
-        SELECT
-          base_scoped.*,
-          ${S3_STORAGE_CLASS_LABEL_SQL} AS storage_class,
-          ${S3_COST_CATEGORY_SQL} AS cost_category
-        FROM base_scoped
-      ),
-      filtered AS (
-        SELECT *
-        FROM scoped
-        WHERE ${filterPredicates.clause}
-          AND (
-            NOT (
-              $${scoped.nextIndex + filterPredicates.params.length + 1}::text = 'bucket'
-              AND $${scoped.nextIndex + filterPredicates.params.length + 2}::text = 'usage_quantity'
-            )
-            OR (
-              CASE
-                WHEN $${scoped.nextIndex + filterPredicates.params.length + 3}::text = 'Transfer' THEN ${S3_TRANSFER_COST_CONDITION_SQL}
-                WHEN $${scoped.nextIndex + filterPredicates.params.length + 3}::text = 'Request' THEN ${S3_REQUEST_COST_CONDITION_SQL}
-                WHEN $${scoped.nextIndex + filterPredicates.params.length + 3}::text = 'Retrieval' THEN ${S3_RETRIEVAL_COST_CONDITION_SQL}
-                WHEN $${scoped.nextIndex + filterPredicates.params.length + 3}::text = 'Other' THEN NOT (
-                  ${S3_STORAGE_COST_CONDITION_SQL}
-                  OR ${S3_REQUEST_COST_CONDITION_SQL}
-                  OR ${S3_TRANSFER_COST_CONDITION_SQL}
-                  OR ${S3_RETRIEVAL_COST_CONDITION_SQL}
-                )
-                ELSE ${S3_STORAGE_USAGE_ONLY_CONDITION_SQL}
-              END
-            )
-          )
+          AND ${filterPredicates.clause}
       ),
       ranked_x AS (
         SELECT
@@ -874,7 +871,7 @@ export class S3CostInsightsRepository {
         CASE WHEN $${scoped.nextIndex + filterPredicates.params.length}::text <> 'date' THEN SUM(metric_cost) END DESC;
       `,
       {
-        bind: [...scoped.params, ...filterPredicates.params, filters.costBy, filters.seriesBy, filters.yAxisMetric, selectedUsageCategory],
+        bind: [...scoped.params, ...filterPredicates.params, filters.costBy],
         type: QueryTypes.SELECT,
       },
     );
@@ -956,33 +953,21 @@ export class S3CostInsightsRepository {
     seriesBy: S3CostSeriesBy[];
     yAxisMetric: S3CostYAxisMetric[];
   }> {
-    const scoped = this.buildS3ScopedWhere(scope);
+    const scoped = this.buildS3DailyScopedWhere(scope);
     const baseCte = `
-      WITH base_scoped AS (
+      WITH scoped AS (
         SELECT
-          COALESCE(NULLIF(${S3_BUCKET_NAME_SQL}, ''), 'unattributed') AS bucket_name,
-          COALESCE(NULLIF(dr.region_name, ''), NULLIF(dr.region_id, ''), 'global') AS region_name,
-          COALESCE(dsa.sub_account_name, dsa.sub_account_id, 'Unspecified') AS account_name,
-          COALESCE(fcli.usage_type, '') AS usage_type,
-          COALESCE(fcli.operation, '') AS operation,
-          COALESCE(fcli.product_family, '') AS product_family,
-          COALESCE(fcli.product_usage_type, '') AS product_usage_type,
-          COALESCE(fcli.line_item_description, '') AS line_item_description,
-          COALESCE(fcli.billed_cost, 0)::double precision AS billed_cost
-        FROM fact_cost_line_items fcli
-        LEFT JOIN dim_date dd ON dd.id = fcli.usage_date_key
-        LEFT JOIN dim_service ds ON ds.id = fcli.service_key
-        LEFT JOIN dim_resource dres ON dres.id = fcli.resource_key
-        LEFT JOIN dim_region dr ON dr.id = fcli.region_key
-        LEFT JOIN dim_sub_account dsa ON dsa.id = fcli.sub_account_key
+          bucket_name,
+          COALESCE(NULLIF(region, ''), 'global') AS region_name,
+          COALESCE(NULLIF(account_id, ''), 'Unspecified') AS account_name,
+          usage_type,
+          operation,
+          product_family,
+          storage_class,
+          cost_category,
+          total_cost AS billed_cost
+        FROM s3_cost_daily
         WHERE ${scoped.whereClause}
-      ),
-      scoped AS (
-        SELECT
-          base_scoped.*,
-          ${S3_STORAGE_CLASS_LABEL_SQL} AS storage_class,
-          ${S3_COST_CATEGORY_SQL} AS cost_category
-        FROM base_scoped
       )
     `;
 
@@ -1084,60 +1069,48 @@ export class S3CostInsightsRepository {
   }
 
   async getTotalS3Cost(scope: DashboardScope): Promise<number> {
-    const filter = buildDashboardFilter(scope);
+    const scoped = this.buildS3DailyScopedWhere(scope);
     const rows = await sequelize.query<S3KpiRow>(
       `
-      SELECT COALESCE(SUM(COALESCE(fcli.billed_cost, 0)), 0)::double precision AS total_s3_cost
-      FROM fact_cost_line_items fcli
-      LEFT JOIN dim_date dd ON dd.id = fcli.usage_date_key
-      LEFT JOIN dim_service ds ON ds.id = fcli.service_key
-      LEFT JOIN dim_resource dres ON dres.id = fcli.resource_key
-      WHERE ${filter.whereClause}
-        AND ${S3_FILTER_SQL};
+      SELECT COALESCE(SUM(COALESCE(total_cost, 0)), 0)::double precision AS total_s3_cost
+      FROM s3_cost_daily
+      WHERE ${scoped.whereClause};
       `,
-      { bind: filter.params, type: QueryTypes.SELECT },
+      { bind: scoped.params, type: QueryTypes.SELECT },
     );
 
     return toNumber(rows[0]?.total_s3_cost);
   }
 
   async getTotalS3EffectiveCost(scope: DashboardScope): Promise<number> {
-    const filter = buildDashboardFilter(scope);
+    const scoped = this.buildS3DailyScopedWhere(scope);
     const rows = await sequelize.query<S3EffectiveKpiRow>(
       `
-      SELECT COALESCE(SUM(COALESCE(fcli.effective_cost, 0)), 0)::double precision AS total_effective_s3_cost
-      FROM fact_cost_line_items fcli
-      LEFT JOIN dim_date dd ON dd.id = fcli.usage_date_key
-      LEFT JOIN dim_service ds ON ds.id = fcli.service_key
-      LEFT JOIN dim_resource dres ON dres.id = fcli.resource_key
-      WHERE ${filter.whereClause}
-        AND ${S3_FILTER_SQL};
+      SELECT COALESCE(SUM(COALESCE(total_cost, 0)), 0)::double precision AS total_effective_s3_cost
+      FROM s3_cost_daily
+      WHERE ${scoped.whereClause};
       `,
-      { bind: filter.params, type: QueryTypes.SELECT },
+      { bind: scoped.params, type: QueryTypes.SELECT },
     );
 
     return toNumber(rows[0]?.total_effective_s3_cost);
   }
 
   async getBucketCosts(scope: DashboardScope, limit: number = 250): Promise<S3CostBucketInsight[]> {
-    const filter = buildDashboardFilter(scope);
+    const scoped = this.buildS3DailyScopedWhere(scope);
     const rows = await sequelize.query<S3BucketRow>(
       `
       SELECT
-        COALESCE(NULLIF(${S3_BUCKET_NAME_SQL}, ''), 'unattributed') AS bucket_name,
-        COALESCE(SUM(COALESCE(fcli.billed_cost, 0)), 0)::double precision AS billed_cost,
-        COALESCE(SUM(COALESCE(fcli.effective_cost, 0)), 0)::double precision AS effective_cost
-      FROM fact_cost_line_items fcli
-      LEFT JOIN dim_date dd ON dd.id = fcli.usage_date_key
-      LEFT JOIN dim_service ds ON ds.id = fcli.service_key
-      LEFT JOIN dim_resource dres ON dres.id = fcli.resource_key
-      WHERE ${filter.whereClause}
-        AND ${S3_SERVICE_NAME_FILTER_SQL}
-      GROUP BY COALESCE(NULLIF(${S3_BUCKET_NAME_SQL}, ''), 'unattributed')
+        COALESCE(NULLIF(bucket_name, ''), 'unattributed') AS bucket_name,
+        COALESCE(SUM(COALESCE(total_cost, 0)), 0)::double precision AS billed_cost,
+        COALESCE(SUM(COALESCE(total_cost, 0)), 0)::double precision AS effective_cost
+      FROM s3_cost_daily
+      WHERE ${scoped.whereClause}
+      GROUP BY COALESCE(NULLIF(bucket_name, ''), 'unattributed')
       ORDER BY billed_cost DESC
-      LIMIT $${filter.params.length + 1};
+      LIMIT $${scoped.params.length + 1};
       `,
-      { bind: [...filter.params, limit], type: QueryTypes.SELECT },
+      { bind: [...scoped.params, limit], type: QueryTypes.SELECT },
     );
 
     return rows.map((row) => ({
@@ -1148,23 +1121,19 @@ export class S3CostInsightsRepository {
   }
 
   async getTrend(scope: DashboardScope): Promise<S3CostTrendInsight[]> {
-    const filter = buildDashboardFilter(scope);
+    const scoped = this.buildS3DailyScopedWhere(scope);
     const rows = await sequelize.query<S3TrendRow>(
       `
       SELECT
-        COALESCE(DATE(COALESCE(fcli.usage_start_time, fcli.usage_end_time)), dd.full_date)::text AS usage_start_time,
-        COALESCE(SUM(COALESCE(fcli.billed_cost, 0)), 0)::double precision AS billed_cost,
-        COALESCE(SUM(COALESCE(fcli.effective_cost, 0)), 0)::double precision AS effective_cost
-      FROM fact_cost_line_items fcli
-      LEFT JOIN dim_date dd ON dd.id = fcli.usage_date_key
-      LEFT JOIN dim_service ds ON ds.id = fcli.service_key
-      LEFT JOIN dim_resource dres ON dres.id = fcli.resource_key
-      WHERE ${filter.whereClause}
-        AND ${S3_FILTER_SQL}
-      GROUP BY COALESCE(DATE(COALESCE(fcli.usage_start_time, fcli.usage_end_time)), dd.full_date)
+        usage_date::text AS usage_start_time,
+        COALESCE(SUM(COALESCE(total_cost, 0)), 0)::double precision AS billed_cost,
+        COALESCE(SUM(COALESCE(total_cost, 0)), 0)::double precision AS effective_cost
+      FROM s3_cost_daily
+      WHERE ${scoped.whereClause}
+      GROUP BY usage_date
       ORDER BY usage_start_time ASC;
       `,
-      { bind: filter.params, type: QueryTypes.SELECT },
+      { bind: scoped.params, type: QueryTypes.SELECT },
     );
 
     return rows
@@ -1177,56 +1146,25 @@ export class S3CostInsightsRepository {
   }
 
   async getFeatureTrend(scope: DashboardScope): Promise<S3CostFeatureTrendInsight[]> {
-    const filter = buildDashboardFilter(scope);
+    const scoped = this.buildS3DailyScopedWhere(scope);
     const rows = await sequelize.query<S3FeatureTrendRow>(
       `
-      WITH filtered AS (
-        SELECT
-          COALESCE(DATE(COALESCE(fcli.usage_start_time, fcli.usage_end_time)), dd.full_date)::text AS usage_start_time,
-          COALESCE(NULLIF(${S3_BUCKET_NAME_SQL}, ''), 'unattributed') AS bucket_name,
-          COALESCE(fcli.billed_cost, 0)::double precision AS billed_cost,
-          COALESCE(fcli.product_family, '') AS product_family,
-          COALESCE(fcli.usage_type, '') AS usage_type,
-          COALESCE(fcli.product_usage_type, '') AS product_usage_type,
-          COALESCE(fcli.operation, '') AS operation,
-          COALESCE(fcli.line_item_description, '') AS line_item_description
-        FROM fact_cost_line_items fcli
-        LEFT JOIN dim_date dd ON dd.id = fcli.usage_date_key
-        LEFT JOIN dim_service ds ON ds.id = fcli.service_key
-        LEFT JOIN dim_resource dres ON dres.id = fcli.resource_key
-        WHERE ${filter.whereClause}
-          AND ${S3_FILTER_SQL}
-      ),
-      categorized AS (
-        SELECT
-          usage_start_time,
-          billed_cost,
-          CASE
-            WHEN ${S3_TRANSFER_COST_CONDITION_SQL} THEN 'transfer'
-            WHEN ${S3_RETRIEVAL_COST_CONDITION_SQL} THEN 'retrieval'
-            WHEN ${S3_BUCKET_STORAGE_CLASS_CONDITION_SQL} THEN 'bucket_storage_class'
-            WHEN ${S3_BUCKET_COST_CONDITION_SQL} THEN 'bucket'
-            WHEN ${S3_REQUEST_COST_CONDITION_SQL} THEN 'requests'
-            WHEN ${S3_STORAGE_COST_CONDITION_SQL} THEN 'storage'
-            ELSE 'other'
-          END AS feature
-        FROM filtered
-      )
       SELECT
-        usage_start_time,
-        COALESCE(SUM(CASE WHEN feature = 'storage' THEN billed_cost ELSE 0 END), 0)::double precision AS storage,
-        COALESCE(SUM(CASE WHEN feature = 'requests' THEN billed_cost ELSE 0 END), 0)::double precision AS requests,
-        COALESCE(SUM(CASE WHEN feature = 'retrieval' THEN billed_cost ELSE 0 END), 0)::double precision AS retrieval,
-        COALESCE(SUM(CASE WHEN feature = 'transfer' THEN billed_cost ELSE 0 END), 0)::double precision AS transfer,
-        COALESCE(SUM(CASE WHEN feature = 'bucket' THEN billed_cost ELSE 0 END), 0)::double precision AS bucket,
-        COALESCE(SUM(CASE WHEN feature = 'bucket_storage_class' THEN billed_cost ELSE 0 END), 0)::double precision AS bucket_storage_class,
-        COALESCE(SUM(CASE WHEN feature = 'other' THEN billed_cost ELSE 0 END), 0)::double precision AS other,
-        COALESCE(SUM(billed_cost), 0)::double precision AS total
-      FROM categorized
-      GROUP BY usage_start_time
+        usage_date::text AS usage_start_time,
+        COALESCE(SUM(CASE WHEN cost_category = 'Storage' THEN total_cost ELSE 0 END), 0)::double precision AS storage,
+        COALESCE(SUM(CASE WHEN cost_category = 'Request' THEN total_cost ELSE 0 END), 0)::double precision AS requests,
+        COALESCE(SUM(CASE WHEN cost_category = 'Retrieval' THEN total_cost ELSE 0 END), 0)::double precision AS retrieval,
+        COALESCE(SUM(CASE WHEN cost_category = 'Transfer' THEN total_cost ELSE 0 END), 0)::double precision AS transfer,
+        0::double precision AS bucket,
+        0::double precision AS bucket_storage_class,
+        COALESCE(SUM(CASE WHEN cost_category = 'Other' THEN total_cost ELSE 0 END), 0)::double precision AS other,
+        COALESCE(SUM(total_cost), 0)::double precision AS total
+      FROM s3_cost_daily
+      WHERE ${scoped.whereClause}
+      GROUP BY usage_date
       ORDER BY usage_start_time ASC;
       `,
-      { bind: filter.params, type: QueryTypes.SELECT },
+      { bind: scoped.params, type: QueryTypes.SELECT },
     );
 
     return rows
@@ -1248,44 +1186,27 @@ export class S3CostInsightsRepository {
     scope: DashboardScope,
     filters: S3CostInsightsFilters,
   ): Promise<S3CostCategoryTableInsight[]> {
-    const scoped = this.buildS3ScopedWhere(scope);
+    const scoped = this.buildS3DailyScopedWhere(scope);
     const filterPredicates = this.buildS3FilterPredicates(filters, scoped.nextIndex);
 
     const rows = await sequelize.query<S3CostCategoryTableRow>(
       `
-      WITH base_scoped AS (
+      WITH filtered AS (
         SELECT
-          COALESCE(NULLIF(${S3_BUCKET_NAME_SQL}, ''), 'unattributed') AS bucket_name,
-          COALESCE(NULLIF(dr.region_name, ''), NULLIF(dr.region_id, ''), 'global') AS region_name,
-          COALESCE(dsa.sub_account_name, dsa.sub_account_id, 'Unspecified') AS account_name,
-          COALESCE(fcli.usage_type, '') AS usage_type,
-          COALESCE(fcli.operation, '') AS operation,
-          COALESCE(fcli.product_family, '') AS product_family,
-          COALESCE(fcli.product_usage_type, '') AS product_usage_type,
-          COALESCE(fcli.line_item_description, '') AS line_item_description,
-          COALESCE(fcli.billed_cost, 0)::double precision AS billed_cost,
-          COALESCE(fcli.consumed_quantity, 0)::double precision AS usage_quantity,
-          COALESCE(NULLIF(dsku.pricing_unit, ''), 'Units') AS pricing_unit
-        FROM fact_cost_line_items fcli
-        LEFT JOIN dim_date dd ON dd.id = fcli.usage_date_key
-        LEFT JOIN dim_service ds ON ds.id = fcli.service_key
-        LEFT JOIN dim_resource dres ON dres.id = fcli.resource_key
-        LEFT JOIN dim_region dr ON dr.id = fcli.region_key
-        LEFT JOIN dim_sub_account dsa ON dsa.id = fcli.sub_account_key
-        LEFT JOIN dim_sku dsku ON dsku.id = fcli.sku_key
+          bucket_name,
+          COALESCE(NULLIF(region, ''), 'global') AS region_name,
+          COALESCE(NULLIF(account_id, ''), 'Unspecified') AS account_name,
+          usage_type,
+          operation,
+          product_family,
+          storage_class,
+          cost_category,
+          COALESCE(total_cost, 0)::double precision AS billed_cost,
+          COALESCE(usage_quantity, 0)::double precision AS usage_quantity,
+          COALESCE(NULLIF(pricing_unit, ''), 'Units') AS pricing_unit
+        FROM s3_cost_daily
         WHERE ${scoped.whereClause}
-      ),
-      scoped_data AS (
-        SELECT
-          base_scoped.*,
-          ${S3_STORAGE_CLASS_LABEL_SQL} AS storage_class,
-          ${S3_COST_CATEGORY_SQL} AS cost_category
-        FROM base_scoped
-      ),
-      filtered AS (
-        SELECT *
-        FROM scoped_data
-        WHERE ${filterPredicates.clause}
+          AND ${filterPredicates.clause}
       ),
       grouped AS (
         SELECT
@@ -1336,45 +1257,28 @@ export class S3CostInsightsRepository {
     filters: S3CostInsightsFilters,
     limit: number = 2000,
   ): Promise<S3UsageOperationTableInsight[]> {
-    const scoped = this.buildS3ScopedWhere(scope);
+    const scoped = this.buildS3DailyScopedWhere(scope);
     const filterPredicates = this.buildS3FilterPredicates(filters, scoped.nextIndex);
     const limitPlaceholder = scoped.params.length + filterPredicates.params.length + 1;
 
     const rows = await sequelize.query<S3UsageOperationTableRow>(
       `
-      WITH base_scoped AS (
+      WITH filtered AS (
         SELECT
-          COALESCE(NULLIF(${S3_BUCKET_NAME_SQL}, ''), 'unattributed') AS bucket_name,
-          COALESCE(NULLIF(dr.region_name, ''), NULLIF(dr.region_id, ''), 'global') AS region_name,
-          COALESCE(dsa.sub_account_name, dsa.sub_account_id, 'Unspecified') AS account_name,
-          COALESCE(fcli.usage_type, '') AS usage_type,
-          COALESCE(fcli.operation, '') AS operation,
-          COALESCE(fcli.product_family, '') AS product_family,
-          COALESCE(fcli.product_usage_type, '') AS product_usage_type,
-          COALESCE(fcli.line_item_description, '') AS line_item_description,
-          COALESCE(fcli.billed_cost, 0)::double precision AS billed_cost,
-          COALESCE(fcli.consumed_quantity, 0)::double precision AS quantity,
-          COALESCE(NULLIF(dsku.pricing_unit, ''), 'Units') AS unit
-        FROM fact_cost_line_items fcli
-        LEFT JOIN dim_date dd ON dd.id = fcli.usage_date_key
-        LEFT JOIN dim_service ds ON ds.id = fcli.service_key
-        LEFT JOIN dim_resource dres ON dres.id = fcli.resource_key
-        LEFT JOIN dim_region dr ON dr.id = fcli.region_key
-        LEFT JOIN dim_sub_account dsa ON dsa.id = fcli.sub_account_key
-        LEFT JOIN dim_sku dsku ON dsku.id = fcli.sku_key
+          bucket_name,
+          COALESCE(NULLIF(region, ''), 'global') AS region_name,
+          COALESCE(NULLIF(account_id, ''), 'Unspecified') AS account_name,
+          usage_type,
+          operation,
+          product_family,
+          storage_class,
+          cost_category,
+          COALESCE(total_cost, 0)::double precision AS billed_cost,
+          COALESCE(usage_quantity, 0)::double precision AS quantity,
+          COALESCE(NULLIF(pricing_unit, ''), 'Units') AS unit
+        FROM s3_cost_daily
         WHERE ${scoped.whereClause}
-      ),
-      scoped_data AS (
-        SELECT
-          base_scoped.*,
-          ${S3_STORAGE_CLASS_LABEL_SQL} AS storage_class,
-          ${S3_COST_CATEGORY_SQL} AS cost_category
-        FROM base_scoped
-      ),
-      filtered AS (
-        SELECT *
-        FROM scoped_data
-        WHERE ${filterPredicates.clause}
+          AND ${filterPredicates.clause}
       )
       SELECT
         COALESCE(NULLIF(usage_type, ''), 'Unspecified') AS usage_type,
@@ -1414,264 +1318,33 @@ export class S3CostInsightsRepository {
     limit: number = 5000,
     options?: { includeAttributionTags?: boolean },
   ): Promise<Omit<S3CostBucketTableInsight, "trendPct">[]> {
-    const filter = buildDashboardFilter(scope);
-    const filterPredicates = this.buildS3FilterPredicates(filters, filter.params.length + 1);
-    const limitPlaceholder = filter.params.length + filterPredicates.params.length + 1;
-    const includeAttributionTags = options?.includeAttributionTags ?? true;
+    void options;
+    const scoped = this.buildS3DailyScopedWhere(scope);
+    const filterPredicates = this.buildS3FilterPredicates(filters, scoped.nextIndex);
+    const limitPlaceholder = scoped.params.length + filterPredicates.params.length + 1;
     const rows = await sequelize.query<S3BucketBreakdownRow>(
-      includeAttributionTags
-        ? `
-      WITH filtered AS (
-        SELECT
-          COALESCE(NULLIF(${S3_BUCKET_NAME_SQL}, ''), 'unattributed') AS bucket_name,
-          COALESCE(NULLIF(dr.region_name, ''), NULLIF(dr.region_id, ''), 'global') AS region_name,
-          COALESCE(dsa.sub_account_name, dsa.sub_account_id, 'Unspecified') AS account_name,
-          COALESCE(fcli.billed_cost, 0)::double precision AS billed_cost,
-          COALESCE(fcli.effective_cost, 0)::double precision AS effective_cost,
-          COALESCE(fcli.list_cost, 0)::double precision AS list_cost,
-          COALESCE(fcli.product_family, '') AS product_family,
-          COALESCE(fcli.usage_type, '') AS usage_type,
-          COALESCE(fcli.product_usage_type, '') AS product_usage_type,
-          COALESCE(fcli.operation, '') AS operation,
-          COALESCE(fcli.line_item_description, '') AS line_item_description,
-          owner_tag.owner_value AS owner_value,
-          driver_tag.driver_value AS driver_value
-        FROM fact_cost_line_items fcli
-        LEFT JOIN dim_date dd ON dd.id = fcli.usage_date_key
-        LEFT JOIN dim_service ds ON ds.id = fcli.service_key
-        LEFT JOIN dim_resource dres ON dres.id = fcli.resource_key
-        LEFT JOIN dim_region dr ON dr.id = fcli.region_key
-        LEFT JOIN dim_sub_account dsa ON dsa.id = fcli.sub_account_key
-        LEFT JOIN LATERAL (
-          SELECT dt.tag_value AS owner_value
-          FROM (
-            SELECT flt.tag_id
-            FROM fact_cost_line_item_tags flt
-            WHERE flt.fact_id = fcli.id
-            UNION
-            SELECT fcli.tag_id
-            WHERE fcli.tag_id IS NOT NULL
-          ) fact_tags
-          JOIN dim_tag dt ON dt.id = fact_tags.tag_id
-          WHERE dt.normalized_key IN ${OWNER_TAG_KEYS_SQL}
-          ORDER BY
-            CASE dt.normalized_key
-              WHEN 'owner' THEN 1
-              WHEN 'resource_owner' THEN 2
-              WHEN 'business_owner' THEN 3
-              WHEN 'owner_name' THEN 4
-              ELSE 5
-            END
-          LIMIT 1
-        ) owner_tag ON TRUE
-        LEFT JOIN LATERAL (
-          SELECT dt.tag_value AS driver_value
-          FROM (
-            SELECT flt.tag_id
-            FROM fact_cost_line_item_tags flt
-            WHERE flt.fact_id = fcli.id
-            UNION
-            SELECT fcli.tag_id
-            WHERE fcli.tag_id IS NOT NULL
-          ) fact_tags
-          JOIN dim_tag dt ON dt.id = fact_tags.tag_id
-          WHERE dt.normalized_key IN ${DRIVER_TAG_KEYS_SQL}
-          ORDER BY
-            CASE dt.normalized_key
-              WHEN 'cost_driver' THEN 1
-              WHEN 'driver' THEN 2
-              WHEN 'application' THEN 3
-              WHEN 'app' THEN 4
-              WHEN 'workload' THEN 5
-              ELSE 6
-            END
-          LIMIT 1
-        ) driver_tag ON TRUE
-        WHERE ${filter.whereClause}
-          AND ${S3_SERVICE_NAME_FILTER_SQL}
-      ),
-      scoped_data AS (
-        SELECT
-          filtered.*,
-          ${S3_STORAGE_CLASS_LABEL_SQL} AS storage_class,
-          ${S3_COST_CATEGORY_SQL} AS cost_category
-        FROM filtered
-      ),
-      filtered_with_filters AS (
-        SELECT *
-        FROM scoped_data
-        WHERE ${filterPredicates.clause}
-      ),
-      bucket_agg AS (
-        SELECT
-          bucket_name,
-          COALESCE(SUM(billed_cost), 0)::double precision AS cost,
-          COALESCE(SUM(CASE WHEN ${S3_STORAGE_COST_CONDITION_SQL} THEN billed_cost ELSE 0 END), 0)::double precision AS storage,
-          COALESCE(SUM(CASE WHEN ${S3_REQUEST_COST_CONDITION_SQL} THEN billed_cost ELSE 0 END), 0)::double precision AS requests,
-          COALESCE(SUM(CASE WHEN ${S3_TRANSFER_COST_CONDITION_SQL} THEN billed_cost ELSE 0 END), 0)::double precision AS transfer,
-          COALESCE(SUM(CASE WHEN ${S3_RETRIEVAL_COST_CONDITION_SQL} THEN billed_cost ELSE 0 END), 0)::double precision AS retrieval,
-          COALESCE(
-            SUM(
-              CASE
-                WHEN ${S3_STORAGE_COST_CONDITION_SQL}
-                  OR ${S3_REQUEST_COST_CONDITION_SQL}
-                  OR ${S3_TRANSFER_COST_CONDITION_SQL}
-                  OR ${S3_RETRIEVAL_COST_CONDITION_SQL}
-                THEN 0
-                ELSE billed_cost
-              END
-            ),
-            0
-          )::double precision AS other,
-          GREATEST(COALESCE(SUM(list_cost - effective_cost), 0), 0)::double precision AS savings
-        FROM filtered_with_filters
-        GROUP BY bucket_name
-      ),
-      region_rank AS (
-        SELECT
-          bucket_name,
-          region_name,
-          SUM(billed_cost)::double precision AS billed_cost,
-          ROW_NUMBER() OVER (
-            PARTITION BY bucket_name
-            ORDER BY SUM(billed_cost) DESC, region_name ASC
-          ) AS rn
-        FROM filtered_with_filters
-        GROUP BY bucket_name, region_name
-      ),
-      account_rank AS (
-        SELECT
-          bucket_name,
-          account_name,
-          SUM(billed_cost)::double precision AS billed_cost,
-          ROW_NUMBER() OVER (
-            PARTITION BY bucket_name
-            ORDER BY SUM(billed_cost) DESC, account_name ASC
-          ) AS rn
-        FROM filtered_with_filters
-        GROUP BY bucket_name, account_name
-      ),
-      owner_rank AS (
-        SELECT
-          bucket_name,
-          owner_value,
-          SUM(billed_cost)::double precision AS billed_cost,
-          ROW_NUMBER() OVER (
-            PARTITION BY bucket_name
-            ORDER BY SUM(billed_cost) DESC, owner_value ASC
-          ) AS rn
-        FROM filtered_with_filters
-        WHERE COALESCE(NULLIF(owner_value, ''), '') <> ''
-        GROUP BY bucket_name, owner_value
-      ),
-      driver_tag_rank AS (
-        SELECT
-          bucket_name,
-          driver_value,
-          SUM(billed_cost)::double precision AS billed_cost,
-          ROW_NUMBER() OVER (
-            PARTITION BY bucket_name
-            ORDER BY SUM(billed_cost) DESC, driver_value ASC
-          ) AS rn
-        FROM filtered_with_filters
-        WHERE COALESCE(NULLIF(driver_value, ''), '') <> ''
-        GROUP BY bucket_name, driver_value
-      )
-      SELECT
-        ba.bucket_name,
-        COALESCE(ar.account_name, 'Unspecified') AS account,
-        ba.cost,
-        ba.storage,
-        ba.requests,
-        ba.transfer,
-        ba.retrieval,
-        ba.other,
-        ba.savings,
-        COALESCE(rr.region_name, 'global') AS region,
-        COALESCE(orank.owner_value, 'Unassigned') AS owner,
-        COALESCE(
-          drank.driver_value,
-          CASE
-            WHEN GREATEST(ba.storage, ba.requests, ba.transfer, ba.retrieval, ba.other) = ba.storage THEN 'Storage'
-            WHEN GREATEST(ba.storage, ba.requests, ba.transfer, ba.retrieval, ba.other) = ba.requests THEN 'Request'
-            WHEN GREATEST(ba.storage, ba.requests, ba.transfer, ba.retrieval, ba.other) = ba.transfer THEN 'Transfer'
-            WHEN GREATEST(ba.storage, ba.requests, ba.transfer, ba.retrieval, ba.other) = ba.retrieval THEN 'Retrieval'
-            ELSE 'Other'
-          END
-        ) AS driver
-      FROM bucket_agg ba
-      LEFT JOIN region_rank rr
-        ON rr.bucket_name = ba.bucket_name
-       AND rr.rn = 1
-      LEFT JOIN account_rank ar
-        ON ar.bucket_name = ba.bucket_name
-       AND ar.rn = 1
-      LEFT JOIN owner_rank orank
-        ON orank.bucket_name = ba.bucket_name
-       AND orank.rn = 1
-      LEFT JOIN driver_tag_rank drank
-        ON drank.bucket_name = ba.bucket_name
-       AND drank.rn = 1
-      ORDER BY ba.cost DESC
-      LIMIT $${limitPlaceholder};
       `
-        : `
-      WITH filtered AS (
+      WITH filtered_with_filters AS (
         SELECT
-          COALESCE(NULLIF(${S3_BUCKET_NAME_SQL}, ''), 'unattributed') AS bucket_name,
-          COALESCE(NULLIF(dr.region_name, ''), NULLIF(dr.region_id, ''), 'global') AS region_name,
-          COALESCE(dsa.sub_account_name, dsa.sub_account_id, 'Unspecified') AS account_name,
-          COALESCE(fcli.billed_cost, 0)::double precision AS billed_cost,
-          COALESCE(fcli.effective_cost, 0)::double precision AS effective_cost,
-          COALESCE(fcli.list_cost, 0)::double precision AS list_cost,
-          COALESCE(fcli.product_family, '') AS product_family,
-          COALESCE(fcli.usage_type, '') AS usage_type,
-          COALESCE(fcli.product_usage_type, '') AS product_usage_type,
-          COALESCE(fcli.operation, '') AS operation,
-          COALESCE(fcli.line_item_description, '') AS line_item_description
-        FROM fact_cost_line_items fcli
-        LEFT JOIN dim_date dd ON dd.id = fcli.usage_date_key
-        LEFT JOIN dim_service ds ON ds.id = fcli.service_key
-        LEFT JOIN dim_resource dres ON dres.id = fcli.resource_key
-        LEFT JOIN dim_region dr ON dr.id = fcli.region_key
-        LEFT JOIN dim_sub_account dsa ON dsa.id = fcli.sub_account_key
-        WHERE ${filter.whereClause}
-          AND ${S3_SERVICE_NAME_FILTER_SQL}
-      ),
-      scoped_data AS (
-        SELECT
-          filtered.*,
-          ${S3_STORAGE_CLASS_LABEL_SQL} AS storage_class,
-          ${S3_COST_CATEGORY_SQL} AS cost_category
-        FROM filtered
-      ),
-      filtered_with_filters AS (
-        SELECT *
-        FROM scoped_data
-        WHERE ${filterPredicates.clause}
+          bucket_name,
+          COALESCE(NULLIF(region, ''), 'global') AS region_name,
+          COALESCE(NULLIF(account_id, ''), 'Unspecified') AS account_name,
+          COALESCE(total_cost, 0)::double precision AS billed_cost,
+          cost_category
+        FROM s3_cost_daily
+        WHERE ${scoped.whereClause}
+          AND ${filterPredicates.clause}
       ),
       bucket_agg AS (
         SELECT
           bucket_name,
           COALESCE(SUM(billed_cost), 0)::double precision AS cost,
-          COALESCE(SUM(CASE WHEN ${S3_STORAGE_COST_CONDITION_SQL} THEN billed_cost ELSE 0 END), 0)::double precision AS storage,
-          COALESCE(SUM(CASE WHEN ${S3_REQUEST_COST_CONDITION_SQL} THEN billed_cost ELSE 0 END), 0)::double precision AS requests,
-          COALESCE(SUM(CASE WHEN ${S3_TRANSFER_COST_CONDITION_SQL} THEN billed_cost ELSE 0 END), 0)::double precision AS transfer,
-          COALESCE(SUM(CASE WHEN ${S3_RETRIEVAL_COST_CONDITION_SQL} THEN billed_cost ELSE 0 END), 0)::double precision AS retrieval,
-          COALESCE(
-            SUM(
-              CASE
-                WHEN ${S3_STORAGE_COST_CONDITION_SQL}
-                  OR ${S3_REQUEST_COST_CONDITION_SQL}
-                  OR ${S3_TRANSFER_COST_CONDITION_SQL}
-                  OR ${S3_RETRIEVAL_COST_CONDITION_SQL}
-                THEN 0
-                ELSE billed_cost
-              END
-            ),
-            0
-          )::double precision AS other,
-          GREATEST(COALESCE(SUM(list_cost - effective_cost), 0), 0)::double precision AS savings
+          COALESCE(SUM(CASE WHEN cost_category = 'Storage' THEN billed_cost ELSE 0 END), 0)::double precision AS storage,
+          COALESCE(SUM(CASE WHEN cost_category = 'Request' THEN billed_cost ELSE 0 END), 0)::double precision AS requests,
+          COALESCE(SUM(CASE WHEN cost_category = 'Transfer' THEN billed_cost ELSE 0 END), 0)::double precision AS transfer,
+          COALESCE(SUM(CASE WHEN cost_category = 'Retrieval' THEN billed_cost ELSE 0 END), 0)::double precision AS retrieval,
+          COALESCE(SUM(CASE WHEN cost_category = 'Other' THEN billed_cost ELSE 0 END), 0)::double precision AS other,
+          0::double precision AS savings
         FROM filtered_with_filters
         GROUP BY bucket_name
       ),
@@ -1728,7 +1401,7 @@ export class S3CostInsightsRepository {
       ORDER BY ba.cost DESC
       LIMIT $${limitPlaceholder};
       `,
-      { bind: [...filter.params, ...filterPredicates.params, limit], type: QueryTypes.SELECT },
+      { bind: [...scoped.params, ...filterPredicates.params, limit], type: QueryTypes.SELECT },
     );
 
     return rows.map((row) => ({

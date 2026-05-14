@@ -326,19 +326,22 @@ export class Ec2RecommendationsRepository {
       `
       WITH snapshot_cost AS (
         SELECT
-          f.cloud_connection_id,
+          bs.cloud_connection_id,
           f.billing_source_id,
           dr.resource_id AS snapshot_id,
           SUM(COALESCE(f.billed_cost, f.effective_cost, 0))::double precision AS snapshot_cost
         FROM fact_cost_line_items f
+        LEFT JOIN billing_sources bs
+          ON bs.id = f.billing_source_id
+         AND bs.tenant_id = f.tenant_id::text
         INNER JOIN dim_resource dr ON dr.id = f.resource_key
         WHERE f.tenant_id = :tenantId::uuid
           AND f.usage_start_time >= :dateFrom::date
           AND f.usage_start_time < (:dateTo::date + INTERVAL '1 day')
-          AND (:cloudConnectionId::uuid IS NULL OR f.cloud_connection_id = :cloudConnectionId::uuid)
+          AND (:cloudConnectionId::uuid IS NULL OR bs.cloud_connection_id = :cloudConnectionId::uuid)
           AND LOWER(COALESCE(dr.resource_type, '')) = 'ec2_snapshot'
           AND (:billingSourceId::bigint IS NULL OR f.billing_source_id = :billingSourceId::bigint)
-        GROUP BY f.cloud_connection_id, f.billing_source_id, dr.resource_id
+        GROUP BY bs.cloud_connection_id, f.billing_source_id, dr.resource_id
       )
       SELECT
         inv.cloud_connection_id AS "cloudConnectionId",
@@ -410,20 +413,23 @@ export class Ec2RecommendationsRepository {
         SUM(COALESCE(f.effective_cost, f.billed_cost, 0))::double precision AS cost,
         SUM(COALESCE(f.consumed_quantity, f.pricing_quantity, 0))::double precision AS "usageQuantity"
       FROM fact_cost_line_items f
+      LEFT JOIN billing_sources bs
+        ON bs.id = f.billing_source_id
+       AND bs.tenant_id = f.tenant_id::text
       INNER JOIN dim_resource dres
         ON dres.id = f.resource_key
        AND dres.tenant_id = f.tenant_id
       LEFT JOIN ec2_instance_inventory_snapshots eis
         ON eis.tenant_id = f.tenant_id
        AND eis.instance_id = dres.resource_id
-       AND eis.cloud_connection_id IS NOT DISTINCT FROM f.cloud_connection_id
+       AND eis.cloud_connection_id IS NOT DISTINCT FROM bs.cloud_connection_id
        AND eis.is_current = TRUE
       LEFT JOIN dim_sub_account dsa ON dsa.id = f.sub_account_key
       LEFT JOIN dim_region dr ON dr.id = f.region_key
       WHERE f.tenant_id = :tenantId::uuid
         AND f.usage_start_time >= :dateFrom::date
         AND f.usage_start_time < (:dateTo::date + INTERVAL '1 day')
-        AND (:cloudConnectionId::uuid IS NULL OR eis.cloud_connection_id = :cloudConnectionId::uuid)
+        AND (:cloudConnectionId::uuid IS NULL OR bs.cloud_connection_id = :cloudConnectionId::uuid)
         AND (:billingSourceId::bigint IS NULL OR f.billing_source_id = :billingSourceId::bigint)
         AND (
           LOWER(COALESCE(dres.resource_type, '')) IN ('ec2_instance', 'aws_ec2_instance', 'instance')
@@ -541,20 +547,23 @@ export class Ec2RecommendationsRepository {
       `
       WITH eip_cost AS (
         SELECT
-          f.cloud_connection_id,
+          bs.cloud_connection_id,
           f.billing_source_id,
           dres.resource_id::text AS resource_id,
           SUM(COALESCE(f.effective_cost, f.billed_cost, 0))::double precision AS eip_cost
         FROM fact_cost_line_items f
+        LEFT JOIN billing_sources bs
+          ON bs.id = f.billing_source_id
+         AND bs.tenant_id = f.tenant_id::text
         INNER JOIN dim_resource dres
           ON dres.id = f.resource_key
          AND dres.tenant_id = f.tenant_id
         WHERE f.tenant_id = :tenantId::uuid
           AND f.usage_start_time >= :dateFrom::date
           AND f.usage_start_time < (:dateTo::date + INTERVAL '1 day')
-          AND (:cloudConnectionId::uuid IS NULL OR f.cloud_connection_id = :cloudConnectionId::uuid)
+          AND (:cloudConnectionId::uuid IS NULL OR bs.cloud_connection_id = :cloudConnectionId::uuid)
           AND (:billingSourceId::bigint IS NULL OR f.billing_source_id = :billingSourceId::bigint)
-        GROUP BY f.cloud_connection_id, f.billing_source_id, dres.resource_id
+        GROUP BY bs.cloud_connection_id, f.billing_source_id, dres.resource_id
       )
       SELECT
         inv.cloud_connection_id AS "cloudConnectionId",
@@ -708,12 +717,42 @@ export class Ec2RecommendationsRepository {
       `${r.tenantId}|${r.cloudConnectionId ?? ""}|${r.billingSourceId ?? ""}|${r.category}|${r.type}|${r.resourceType}|${r.resourceId}`;
 
     return sequelize.transaction(async (transaction) => {
+      const recommendationColumns = await this.getFactRecommendationsColumns();
+      const safeAttributes = [
+        "id",
+        "tenantId",
+        "cloudConnectionId",
+        "billingSourceId",
+        "category",
+        "recommendationType",
+        "resourceType",
+        "resourceId",
+        "status",
+        "detectedAt",
+        "sourceSystem",
+      ].filter((attr) => {
+        const columnByAttribute: Record<string, string> = {
+          id: "id",
+          tenantId: "tenant_id",
+          cloudConnectionId: "cloud_connection_id",
+          billingSourceId: "billing_source_id",
+          category: "category",
+          recommendationType: "recommendation_type",
+          resourceType: "resource_type",
+          resourceId: "resource_id",
+          status: "status",
+          detectedAt: "detected_at",
+          sourceSystem: "source_system",
+        };
+        return recommendationColumns.has(columnByAttribute[attr]);
+      });
       const tenantId = String(records[0]?.tenantId ?? "");
       const existing = await FactRecommendations.findAll({
         where: {
           tenantId,
           sourceSystem: SOURCE_SYSTEMS[0],
         },
+        attributes: safeAttributes as never,
         transaction,
       });
 
@@ -778,7 +817,7 @@ export class Ec2RecommendationsRepository {
         };
 
         if (existingRow) {
-          await existingRow.update(payload as never, { transaction });
+          await existingRow.update(payload as never, { transaction, returning: false });
           updated += 1;
         } else {
           await FactRecommendations.create(
@@ -786,7 +825,7 @@ export class Ec2RecommendationsRepository {
               ...payload,
               createdAt: now,
             } as never,
-            { transaction },
+            { transaction, returning: false },
           );
           created += 1;
         }
@@ -804,7 +843,7 @@ export class Ec2RecommendationsRepository {
         });
         if (seenKeys.has(key)) continue;
         if (toLowerStatus(row.status) === "completed") continue;
-        await row.update({ status: "COMPLETED", updatedAt: now }, { transaction });
+        await row.update({ status: "COMPLETED", updatedAt: now }, { transaction, returning: false });
         resolved += 1;
       }
 

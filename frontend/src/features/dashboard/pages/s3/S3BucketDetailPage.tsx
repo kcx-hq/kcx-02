@@ -39,7 +39,17 @@ export default function S3BucketDetailPage() {
     };
   }, [location.search]);
 
-  const query = useS3CostInsightsQuery(queryFilters);
+  const query = useS3CostInsightsQuery(
+    {
+      ...queryFilters,
+      bucket: bucketNameParam,
+      responseMode: "overview",
+    },
+    {
+      enabled: bucketNameParam.length > 0,
+      staleTime: 180_000,
+    },
+  );
   const rows = useMemo(() => (query.data?.bucketTable ?? []) as S3BucketTableRow[], [query.data?.bucketTable]);
   const selectedBucket = useMemo(() => {
     const normalized = bucketNameParam.toLowerCase();

@@ -72,8 +72,15 @@ export default function S3OptimizationPage() {
   const [activeTab, setActiveTab] = useState<S3OptimizationTabKey>("overview");
   const [showReplicationGuide, setShowReplicationGuide] = useState(false);
   const lifecycleQuery = useS3OptimizationQuery(activeTab === "lifecycle" || activeTab === "overview");
-  const s3CostInsightsQuery = useS3CostInsightsQuery();
-  const replicationQuery = useS3ReplicationQuery(activeTab === "replication" || showReplicationGuide);
+  const s3CostInsightsQuery = useS3CostInsightsQuery(undefined, {
+    enabled: activeTab === "overview",
+    staleTime: 180_000,
+  });
+  const replicationQuery = useS3ReplicationQuery(activeTab === "replication" || showReplicationGuide, {
+    staleTime: 180_000,
+    retry: 1,
+  });
+  const [showReplicationSlowHint, setShowReplicationSlowHint] = useState(false);
   const lifecycleRows = useMemo(() => lifecycleQuery.data?.buckets ?? [], [lifecycleQuery.data?.buckets]);
   const replicationRows = useMemo(() => replicationQuery.data?.buckets ?? [], [replicationQuery.data?.buckets]);
   const [replicationActionMessage, setReplicationActionMessage] = useState<string | null>(null);
@@ -111,6 +118,20 @@ export default function S3OptimizationPage() {
   useEffect(() => {
     if (currentPage > totalPages) setCurrentPage(totalPages);
   }, [currentPage, totalPages]);
+
+  useEffect(() => {
+    const waitingOnReplication =
+      activeTab === "replication" &&
+      replicationQuery.isLoading &&
+      !replicationQuery.data &&
+      !replicationQuery.isError;
+    if (!waitingOnReplication) {
+      setShowReplicationSlowHint(false);
+      return;
+    }
+    const timeout = window.setTimeout(() => setShowReplicationSlowHint(true), 12_000);
+    return () => window.clearTimeout(timeout);
+  }, [activeTab, replicationQuery.data, replicationQuery.isError, replicationQuery.isLoading]);
 
   useEffect(() => {
     const searchParams = new URLSearchParams(location.search);
@@ -305,6 +326,11 @@ export default function S3OptimizationPage() {
         ) : (
           <>
             {replicationQuery.isLoading ? <p className="dashboard-note">Loading S3 replication data...</p> : null}
+            {showReplicationSlowHint ? (
+              <p className="dashboard-note">
+                Replication data is taking longer than expected. You can continue using other tabs while this loads.
+              </p>
+            ) : null}
             {replicationQuery.isError ? <p className="dashboard-note">Failed to load S3 replication data: {replicationQuery.error.message}</p> : null}
             {!replicationQuery.isLoading && !replicationQuery.isError ? (
               <>

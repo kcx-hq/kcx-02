@@ -66,8 +66,9 @@ export default function S3UsageBucketDetailPage() {
     {
       ...queryFilters,
       bucket: bucketNameParam,
+      responseMode: "overview",
     },
-    { enabled: bucketNameParam.length > 0 },
+    { enabled: bucketNameParam.length > 0, staleTime: 180_000 },
   );
   const usageByTypeTrendQuery = useS3CostInsightsQuery({
     ...queryFilters,
@@ -76,7 +77,8 @@ export default function S3UsageBucketDetailPage() {
     seriesBy: "cost_category",
     costBy: "date",
     yAxisMetric: "usage_quantity",
-  }, { enabled: bucketNameParam.length > 0 });
+    responseMode: "quick",
+  }, { enabled: bucketNameParam.length > 0, staleTime: 180_000 });
   const rows = useMemo(() => (bucketDetailQuery.data?.bucketTable ?? []) as S3BucketTableRow[], [bucketDetailQuery.data?.bucketTable]);
   const selectedBucket = useMemo(() => {
     const normalized = bucketNameParam.toLowerCase();

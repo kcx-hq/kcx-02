@@ -5,6 +5,7 @@ import { BillingSource, CloudProvider } from "../../../models/index.js";
 import { logger } from "../../../utils/logger.js";
 import { collectS3BucketConfigSnapshotsForBillingSource } from "./s3-bucket-config-snapshot.service.js";
 import { refreshS3BucketCostSummaryForBillingSource } from "./s3-bucket-cost-summary.service.js";
+import { syncS3CostDaily } from "./s3-cost-daily.service.js";
 
 let timer: NodeJS.Timeout | null = null;
 let startupTimer: NodeJS.Timeout | null = null;
@@ -43,6 +44,7 @@ async function runS3BucketConfigSnapshotSweep(): Promise<void> {
     let failed = 0;
     let totalSnapshots = 0;
     let totalCostSummaryRows = 0;
+    let totalS3CostDailyRows = 0;
 
     for (const source of sources) {
       const tenantId = String(source.tenantId ?? "").trim();
@@ -64,8 +66,23 @@ async function runS3BucketConfigSnapshotSweep(): Promise<void> {
           tenantId,
           billingSourceId,
         });
+        const today = new Date();
+        const endDate = today.toISOString().slice(0, 10);
+        const startDateObj = new Date(today);
+        startDateObj.setUTCDate(startDateObj.getUTCDate() - 45);
+        const startDate = startDateObj.toISOString().slice(0, 10);
+        const s3CostDaily = await syncS3CostDaily({
+          tenantId,
+          startDate,
+          endDate,
+          cloudConnectionId,
+          billingSourceId,
+          providerId: source.cloudProviderId,
+          rebuildRange: true,
+        });
         totalSnapshots += Number(result.snapshotsCreated ?? 0);
         totalCostSummaryRows += Number(costSummary.rowsInserted ?? 0);
+        totalS3CostDailyRows += Number(s3CostDaily.rowsInserted ?? 0);
         succeeded += 1;
         logger.info("S3 bucket config scheduler source run succeeded", {
           tenantId,
@@ -74,6 +91,7 @@ async function runS3BucketConfigSnapshotSweep(): Promise<void> {
           bucketsScanned: result.bucketsScanned,
           snapshotsCreated: result.snapshotsCreated,
           costSummaryRowsInserted: costSummary.rowsInserted,
+          s3CostDailyRowsInserted: s3CostDaily.rowsInserted,
         });
       } catch (error) {
         failed += 1;
@@ -94,6 +112,7 @@ async function runS3BucketConfigSnapshotSweep(): Promise<void> {
       failed,
       totalSnapshots,
       totalCostSummaryRows,
+      totalS3CostDailyRows,
       durationMs: Date.now() - startedAt,
     });
   } finally {

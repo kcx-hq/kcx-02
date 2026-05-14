@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import type { S3CostInsightsFiltersQuery } from "../../api/dashboardApi";
@@ -131,10 +131,28 @@ export default function S3UsagePage() {
   );
 
   const query = useS3CostInsightsQuery(queryFilters, { staleTime: 120_000 });
+  const [enableSecondaryBreakdowns, setEnableSecondaryBreakdowns] = useState(false);
   const shouldLoadUsageBreakdowns = !query.isLoading && !query.isError && (query.data?.bucketTable?.length ?? 0) > 0;
   const shouldLoadStorageBreakdown = shouldLoadUsageBreakdowns && (filters.category === "" || filters.category === "storage");
-  const shouldLoadTransferBreakdown = shouldLoadUsageBreakdowns && (filters.category === "" || filters.category === "data_transfer");
-  const shouldLoadRequestBreakdown = shouldLoadUsageBreakdowns && (filters.category === "" || filters.category === "request");
+  const shouldLoadTransferBreakdown =
+    shouldLoadUsageBreakdowns &&
+    (filters.category === "data_transfer" || (filters.category === "" && enableSecondaryBreakdowns));
+  const shouldLoadRequestBreakdown =
+    shouldLoadUsageBreakdowns &&
+    (filters.category === "request" || (filters.category === "" && enableSecondaryBreakdowns));
+
+  useEffect(() => {
+    if (!shouldLoadUsageBreakdowns || filters.category !== "") {
+      setEnableSecondaryBreakdowns(false);
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      setEnableSecondaryBreakdowns(true);
+    }, 250);
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [filters.category, shouldLoadUsageBreakdowns]);
 
   const storageBreakdownQuery = useS3CostInsightsQuery({
     ...queryFilters,
