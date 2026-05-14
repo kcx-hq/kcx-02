@@ -263,10 +263,16 @@ const costDriverLabel = (row: DetailAggregateRow): string | null => {
   return ranked[0] && ranked[0].value > 0 ? ranked[0].label : null;
 };
 
+const NON_SCOPED_FACT_FILTER_SQL = `
+COALESCE(LOWER(BTRIM(f.resource_type)), '') <> 'scoped'
+      AND f.resource_id NOT LIKE 'db-scope:%'
+`;
+
 const buildScopedFactWhere = (params: DatabaseAssetsQueryParams): SqlWhere => {
   const clauses = [
     'f.tenant_id = CAST(:tenantId AS uuid)',
     'f.usage_date BETWEEN CAST(:startDate AS date) AND CAST(:endDate AS date)',
+    NON_SCOPED_FACT_FILTER_SQL,
   ];
 
   const replacements: ReplacementMap = {
@@ -365,7 +371,7 @@ aggregated_assets AS (
     COALESCE(SUM(f.total_billed_cost), 0) AS total_billed_cost,
     COALESCE(SUM(f.total_effective_cost), 0) AS total_effective_cost,
     COALESCE(SUM(f.total_list_cost), 0) AS total_list_cost,
-    COALESCE(SUM(f.total_effective_cost), 0) AS total_cost,
+    COALESCE(SUM(f.total_billed_cost), 0) AS total_cost,
     MAX(f.currency_code) AS currency_code,
     MAX(f.usage_date) AS latest_usage_date
   FROM scoped_fact f
@@ -627,6 +633,10 @@ FROM final_assets fa;
   }
 
   async getAssetDetail(params: DatabaseAssetDetailQueryParams): Promise<DatabaseAssetDetailResponse | null> {
+    if (params.resourceId.startsWith("db-scope:")) {
+      return null;
+    }
+
     const replacements = {
       tenantId: params.tenantId,
       cloudConnectionId: params.cloudConnectionId,
@@ -645,6 +655,7 @@ WITH scoped_fact AS (
   WHERE f.tenant_id = CAST(:tenantId AS uuid)
     AND f.cloud_connection_id = CAST(:cloudConnectionId AS uuid)
     AND f.resource_id = :resourceId
+    AND COALESCE(LOWER(BTRIM(f.resource_type)), '') <> 'scoped'
     AND f.usage_date BETWEEN CAST(:startDate AS date) AND CAST(:endDate AS date)
 ),
 latest_inventory AS (
@@ -718,44 +729,91 @@ LEFT JOIN dim_sub_account dsa
         sequelize.query<DetailAggregateRow>(
           `
 SELECT
-  COALESCE(SUM(f.total_effective_cost), 0) AS "totalCost",
-  COALESCE(SUM(f.total_billed_cost), 0) AS "totalBilledCost",
-  COALESCE(SUM(f.total_effective_cost), 0) AS "totalEffectiveCost",
-  COALESCE(SUM(f.total_list_cost), 0) AS "totalListCost",
-  MAX(f.currency_code) AS "currencyCode",
-  CASE WHEN COUNT(*) > 0 THEN COALESCE(SUM(f.total_effective_cost), 0) / COUNT(*) ELSE NULL END AS "dailyAverageCost",
-  COALESCE(SUM(f.compute_cost), 0) AS "computeCost",
-  COALESCE(SUM(f.storage_cost), 0) AS "storageCost",
-  COALESCE(SUM(f.io_cost), 0) AS "ioCost",
-  COALESCE(SUM(f.backup_cost), 0) AS "backupCost",
-  COALESCE(SUM(f.data_transfer_cost), 0) AS "dataTransferCost",
-  COALESCE(SUM(f.tax_cost), 0) AS "taxCost",
-  COALESCE(SUM(f.credit_amount), 0) AS "creditAmount",
-  COALESCE(SUM(f.refund_amount), 0) AS "refundAmount",
-  AVG(f.cpu_avg) AS "avgCpu",
-  MAX(f.cpu_max) AS "maxCpu",
-  AVG(f.load_avg) AS "avgLoad",
-  MAX(f.load_avg) AS "maxLoad",
-  AVG(f.connections_avg) AS "avgConnections",
-  MAX(f.connections_max) AS "maxConnections",
-  SUM(f.request_count) AS "requestCount",
-  MAX(f.allocated_storage_gb) AS "allocatedStorageGb",
-  MAX(f.storage_used_gb) AS "storageUsedGb",
-  MAX(f.data_footprint_gb) AS "dataFootprintGb",
-  AVG(COALESCE(f.read_iops, 0) + COALESCE(f.write_iops, 0)) AS "avgIops",
-  MAX(COALESCE(f.read_iops, 0) + COALESCE(f.write_iops, 0)) AS "maxIops",
-  AVG(COALESCE(f.read_throughput_bytes, 0) + COALESCE(f.write_throughput_bytes, 0)) AS "avgThroughputBytes",
-  MAX(COALESCE(f.read_throughput_bytes, 0) + COALESCE(f.write_throughput_bytes, 0)) AS "maxThroughputBytes",
-  AVG(f.read_iops) AS "readIops",
-  AVG(f.write_iops) AS "writeIops",
-  AVG(f.read_throughput_bytes) AS "readThroughputBytes",
-  AVG(f.write_throughput_bytes) AS "writeThroughputBytes",
-  COUNT(*) AS "dayCount"
-FROM fact_db_resource_daily f
-WHERE f.tenant_id = CAST(:tenantId AS uuid)
-  AND f.cloud_connection_id = CAST(:cloudConnectionId AS uuid)
-  AND f.resource_id = :resourceId
-  AND f.usage_date BETWEEN CAST(:startDate AS date) AND CAST(:endDate AS date);
+  cost_summary."totalCost",
+  fact_summary."totalBilledCost",
+  fact_summary."totalEffectiveCost",
+  fact_summary."totalListCost",
+  fact_summary."currencyCode",
+  CASE
+    WHEN fact_summary."dayCount" > 0 THEN cost_summary."totalCost" / fact_summary."dayCount"
+    ELSE NULL
+  END AS "dailyAverageCost",
+  cost_summary."computeCost",
+  cost_summary."storageCost",
+  cost_summary."ioCost",
+  cost_summary."backupCost",
+  cost_summary."dataTransferCost",
+  cost_summary."taxCost",
+  cost_summary."creditAmount",
+  cost_summary."refundAmount",
+  fact_summary."avgCpu",
+  fact_summary."maxCpu",
+  fact_summary."avgLoad",
+  fact_summary."maxLoad",
+  fact_summary."avgConnections",
+  fact_summary."maxConnections",
+  fact_summary."requestCount",
+  fact_summary."allocatedStorageGb",
+  fact_summary."storageUsedGb",
+  fact_summary."dataFootprintGb",
+  fact_summary."avgIops",
+  fact_summary."maxIops",
+  fact_summary."avgThroughputBytes",
+  fact_summary."maxThroughputBytes",
+  fact_summary."readIops",
+  fact_summary."writeIops",
+  fact_summary."readThroughputBytes",
+  fact_summary."writeThroughputBytes",
+  fact_summary."dayCount"
+FROM (
+  SELECT
+    COALESCE(SUM(f.total_billed_cost), 0) AS "totalBilledCost",
+    COALESCE(SUM(f.total_effective_cost), 0) AS "totalEffectiveCost",
+    COALESCE(SUM(f.total_list_cost), 0) AS "totalListCost",
+    MAX(f.currency_code) AS "currencyCode",
+    AVG(f.cpu_avg) AS "avgCpu",
+    MAX(f.cpu_max) AS "maxCpu",
+    AVG(f.load_avg) AS "avgLoad",
+    MAX(f.load_avg) AS "maxLoad",
+    AVG(f.connections_avg) AS "avgConnections",
+    MAX(f.connections_max) AS "maxConnections",
+    SUM(f.request_count) AS "requestCount",
+    MAX(f.allocated_storage_gb) AS "allocatedStorageGb",
+    MAX(f.storage_used_gb) AS "storageUsedGb",
+    MAX(f.data_footprint_gb) AS "dataFootprintGb",
+    AVG(COALESCE(f.read_iops, 0) + COALESCE(f.write_iops, 0)) AS "avgIops",
+    MAX(COALESCE(f.read_iops, 0) + COALESCE(f.write_iops, 0)) AS "maxIops",
+    AVG(COALESCE(f.read_throughput_bytes, 0) + COALESCE(f.write_throughput_bytes, 0)) AS "avgThroughputBytes",
+    MAX(COALESCE(f.read_throughput_bytes, 0) + COALESCE(f.write_throughput_bytes, 0)) AS "maxThroughputBytes",
+    AVG(f.read_iops) AS "readIops",
+    AVG(f.write_iops) AS "writeIops",
+    AVG(f.read_throughput_bytes) AS "readThroughputBytes",
+    AVG(f.write_throughput_bytes) AS "writeThroughputBytes",
+    COUNT(*) AS "dayCount"
+  FROM fact_db_resource_daily f
+  WHERE f.tenant_id = CAST(:tenantId AS uuid)
+    AND f.cloud_connection_id = CAST(:cloudConnectionId AS uuid)
+    AND f.resource_id = :resourceId
+    AND COALESCE(LOWER(BTRIM(f.resource_type)), '') <> 'scoped'
+    AND f.usage_date BETWEEN CAST(:startDate AS date) AND CAST(:endDate AS date)
+) fact_summary
+CROSS JOIN (
+  SELECT
+    COALESCE(SUM(ch.billed_cost), 0) AS "totalCost",
+    COALESCE(SUM(CASE WHEN ch.cost_category = 'compute' THEN ch.billed_cost ELSE 0 END), 0) AS "computeCost",
+    COALESCE(SUM(CASE WHEN ch.cost_category = 'storage' THEN ch.billed_cost ELSE 0 END), 0) AS "storageCost",
+    COALESCE(SUM(CASE WHEN ch.cost_category = 'io' THEN ch.billed_cost ELSE 0 END), 0) AS "ioCost",
+    COALESCE(SUM(CASE WHEN ch.cost_category = 'backup' THEN ch.billed_cost ELSE 0 END), 0) AS "backupCost",
+    COALESCE(SUM(CASE WHEN ch.cost_category = 'data_transfer' THEN ch.billed_cost ELSE 0 END), 0) AS "dataTransferCost",
+    COALESCE(SUM(CASE WHEN ch.cost_category = 'tax' THEN ch.billed_cost ELSE 0 END), 0) AS "taxCost",
+    COALESCE(SUM(CASE WHEN ch.cost_category = 'credit' THEN ch.billed_cost ELSE 0 END), 0) AS "creditAmount",
+    COALESCE(SUM(CASE WHEN ch.cost_category = 'refund' THEN ch.billed_cost ELSE 0 END), 0) AS "refundAmount"
+  FROM db_cost_history_daily ch
+  WHERE ch.tenant_id = CAST(:tenantId AS uuid)
+    AND ch.cloud_connection_id = CAST(:cloudConnectionId AS uuid)
+    AND ch.resource_id = :resourceId
+    AND ch.usage_date BETWEEN CAST(:startDate AS date) AND CAST(:endDate AS date)
+) cost_summary;
 `,
           { replacements, type: QueryTypes.SELECT },
         ),
@@ -809,35 +867,35 @@ SELECT
         sequelize.query<CostTrendRow>(
           `
 SELECT
-  f.usage_date AS date,
-  COALESCE(SUM(f.total_effective_cost), 0) AS "totalCost",
-  COALESCE(SUM(f.compute_cost), 0) AS compute,
-  COALESCE(SUM(f.storage_cost), 0) AS storage,
-  COALESCE(SUM(f.io_cost), 0) AS io,
-  COALESCE(SUM(f.backup_cost), 0) AS backup,
-  COALESCE(SUM(f.data_transfer_cost), 0) AS "dataTransfer",
-  COALESCE(SUM(f.tax_cost), 0) AS tax,
-  COALESCE(SUM(f.credit_amount), 0) AS credit,
-  COALESCE(SUM(f.refund_amount), 0) AS refund,
+  ch.usage_date AS date,
+  COALESCE(SUM(ch.billed_cost), 0) AS "totalCost",
+  COALESCE(SUM(CASE WHEN ch.cost_category = 'compute' THEN ch.billed_cost ELSE 0 END), 0) AS compute,
+  COALESCE(SUM(CASE WHEN ch.cost_category = 'storage' THEN ch.billed_cost ELSE 0 END), 0) AS storage,
+  COALESCE(SUM(CASE WHEN ch.cost_category = 'io' THEN ch.billed_cost ELSE 0 END), 0) AS io,
+  COALESCE(SUM(CASE WHEN ch.cost_category = 'backup' THEN ch.billed_cost ELSE 0 END), 0) AS backup,
+  COALESCE(SUM(CASE WHEN ch.cost_category = 'data_transfer' THEN ch.billed_cost ELSE 0 END), 0) AS "dataTransfer",
+  COALESCE(SUM(CASE WHEN ch.cost_category = 'tax' THEN ch.billed_cost ELSE 0 END), 0) AS tax,
+  COALESCE(SUM(CASE WHEN ch.cost_category = 'credit' THEN ch.billed_cost ELSE 0 END), 0) AS credit,
+  COALESCE(SUM(CASE WHEN ch.cost_category = 'refund' THEN ch.billed_cost ELSE 0 END), 0) AS refund,
   GREATEST(
-    COALESCE(SUM(f.total_effective_cost), 0)
-    - COALESCE(SUM(f.compute_cost), 0)
-    - COALESCE(SUM(f.storage_cost), 0)
-    - COALESCE(SUM(f.io_cost), 0)
-    - COALESCE(SUM(f.backup_cost), 0)
-    - COALESCE(SUM(f.data_transfer_cost), 0)
-    - COALESCE(SUM(f.tax_cost), 0)
-    - COALESCE(SUM(f.credit_amount), 0)
-    - COALESCE(SUM(f.refund_amount), 0),
+    COALESCE(SUM(ch.billed_cost), 0)
+    - COALESCE(SUM(CASE WHEN ch.cost_category = 'compute' THEN ch.billed_cost ELSE 0 END), 0)
+    - COALESCE(SUM(CASE WHEN ch.cost_category = 'storage' THEN ch.billed_cost ELSE 0 END), 0)
+    - COALESCE(SUM(CASE WHEN ch.cost_category = 'io' THEN ch.billed_cost ELSE 0 END), 0)
+    - COALESCE(SUM(CASE WHEN ch.cost_category = 'backup' THEN ch.billed_cost ELSE 0 END), 0)
+    - COALESCE(SUM(CASE WHEN ch.cost_category = 'data_transfer' THEN ch.billed_cost ELSE 0 END), 0)
+    - COALESCE(SUM(CASE WHEN ch.cost_category = 'tax' THEN ch.billed_cost ELSE 0 END), 0)
+    - COALESCE(SUM(CASE WHEN ch.cost_category = 'credit' THEN ch.billed_cost ELSE 0 END), 0)
+    - COALESCE(SUM(CASE WHEN ch.cost_category = 'refund' THEN ch.billed_cost ELSE 0 END), 0),
     0
   ) AS other
-FROM fact_db_resource_daily f
-WHERE f.tenant_id = CAST(:tenantId AS uuid)
-  AND f.cloud_connection_id = CAST(:cloudConnectionId AS uuid)
-  AND f.resource_id = :resourceId
-  AND f.usage_date BETWEEN CAST(:startDate AS date) AND CAST(:endDate AS date)
-GROUP BY f.usage_date
-ORDER BY f.usage_date ASC;
+FROM db_cost_history_daily ch
+WHERE ch.tenant_id = CAST(:tenantId AS uuid)
+  AND ch.cloud_connection_id = CAST(:cloudConnectionId AS uuid)
+  AND ch.resource_id = :resourceId
+  AND ch.usage_date BETWEEN CAST(:startDate AS date) AND CAST(:endDate AS date)
+GROUP BY ch.usage_date
+ORDER BY ch.usage_date ASC;
 `,
           { replacements, type: QueryTypes.SELECT },
         ),
@@ -856,6 +914,7 @@ FROM fact_db_resource_daily f
 WHERE f.tenant_id = CAST(:tenantId AS uuid)
   AND f.cloud_connection_id = CAST(:cloudConnectionId AS uuid)
   AND f.resource_id = :resourceId
+  AND COALESCE(LOWER(BTRIM(f.resource_type)), '') <> 'scoped'
   AND f.usage_date BETWEEN CAST(:startDate AS date) AND CAST(:endDate AS date)
 GROUP BY f.usage_date
 ORDER BY f.usage_date ASC;
@@ -873,6 +932,7 @@ FROM fact_db_resource_daily f
 WHERE f.tenant_id = CAST(:tenantId AS uuid)
   AND f.cloud_connection_id = CAST(:cloudConnectionId AS uuid)
   AND f.resource_id = :resourceId
+  AND COALESCE(LOWER(BTRIM(f.resource_type)), '') <> 'scoped'
   AND f.usage_date BETWEEN CAST(:startDate AS date) AND CAST(:endDate AS date)
 GROUP BY f.usage_date
 ORDER BY f.usage_date ASC;
@@ -895,6 +955,7 @@ FROM fact_db_resource_daily f
 WHERE f.tenant_id = CAST(:tenantId AS uuid)
   AND f.cloud_connection_id = CAST(:cloudConnectionId AS uuid)
   AND f.resource_id = :resourceId
+  AND COALESCE(LOWER(BTRIM(f.resource_type)), '') <> 'scoped'
   AND f.usage_date BETWEEN CAST(:startDate AS date) AND CAST(:endDate AS date)
 GROUP BY f.usage_date
 ORDER BY f.usage_date ASC;
@@ -1096,6 +1157,8 @@ WITH scoped_fact AS (
   FROM fact_db_resource_daily f
   WHERE f.tenant_id = CAST(:tenantId AS uuid)
     AND f.usage_date BETWEEN CAST(:startDate AS date) AND CAST(:endDate AS date)
+    AND COALESCE(LOWER(BTRIM(f.resource_type)), '') <> 'scoped'
+    AND f.resource_id NOT LIKE 'db-scope:%'
     ${cloudFilter}
 ),
 resources AS (

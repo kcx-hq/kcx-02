@@ -97,6 +97,7 @@ export const DATABASE_EXPLORER_SCOPES = [
 export type DatabaseExplorerScopeValue = (typeof DATABASE_EXPLORER_SCOPES)[number];
 
 export type DatabaseExplorerGroupBy =
+  | "db_type"
   | "db_service"
   | "db_engine"
   | "region"
@@ -447,6 +448,168 @@ export type DatabaseAssetsFilters = {
   search?: string;
   page?: number;
   pageSize?: number;
+};
+
+export type DatabaseRecommendationType =
+  | "DB_STORAGE_OPTIMIZATION"
+  | "DB_IDLE_CANDIDATE"
+  | "DB_HA_COST_OPTIMIZATION"
+  | "DB_ENGINE_DEPLOYMENT_OPTIMIZATION"
+  | "DB_RIGHTSIZING_CANDIDATE";
+
+export type DatabaseRecommendationConfidence = "low" | "medium" | "high";
+
+export type DatabaseRecommendationEvidenceLevel = "billing_only" | "inventory_backed" | "telemetry_backed";
+
+export type DatabaseRecommendationListItem = {
+  id: string;
+  category: string;
+  recommendation_type: string;
+  title: string | null;
+  description: string | null;
+  status: string;
+  severity: string | null;
+  priority: string | null;
+  estimated_savings: number;
+  estimated_monthly_savings: number | null;
+  resource_id: string | null;
+  cloud_connection_id: string | null;
+  confidence: DatabaseRecommendationConfidence | null;
+  confidence_score: number | null;
+  evidence_level: DatabaseRecommendationEvidenceLevel | null;
+  savings_basis: string | null;
+  warnings_count: number;
+  source_tables: string[];
+  updated_at: string | null;
+  created_at: string | null;
+};
+
+export type DatabaseRecommendationListResponse = {
+  items: DatabaseRecommendationListItem[];
+  pagination: { page: number; limit: number; total: number; totalPages: number };
+  filterOptions: {
+    statuses: string[];
+    recommendationTypes: string[];
+    confidences: string[];
+    evidenceLevels: string[];
+    engines: string[];
+    resourceTypes: string[];
+    regions: string[];
+  };
+};
+
+export type DatabaseRecommendationSummary = {
+  total: number;
+  byStatus: Record<string, number>;
+  byType: Record<string, number>;
+  byConfidence: Record<string, number>;
+  byEvidenceLevel: Record<string, number>;
+  warningsCount: number;
+  estimatedSavingsTotal: number;
+  lastGeneratedAt: string | null;
+  activeCount: number;
+  resolvedCount: number;
+};
+
+export type DatabaseRecommendationDetail = DatabaseRecommendationListItem & {
+  metadata_json: {
+    generated_by?: string;
+    generated_at?: string;
+    lineage?: {
+      tenant_id?: string;
+      cloud_connection_id?: string;
+      resource_id?: string;
+      provider?: string;
+      service?: string;
+      resource_type?: string | null;
+      region?: string | null;
+      account_id?: string | null;
+    };
+    rule_context?: {
+      recommendation_type?: string;
+      rule_id?: string;
+      rule_version?: string;
+      lookback_start?: string | null;
+      lookback_end?: string | null;
+    };
+    [key: string]: unknown;
+  } | null;
+  evidence: {
+    signals_used: Array<{ key: string; label: string; value: unknown; source: string }>;
+    signals_missing: Array<{ key: string; label: string; reason: string }>;
+    cost_breakdown: {
+      currency?: string;
+      lookback_days?: number;
+      total_cost?: number;
+      compute_cost?: number | null;
+      storage_cost?: number | null;
+      backup_cost?: number | null;
+      io_cost?: number | null;
+      other_cost?: number | null;
+      [key: string]: unknown;
+    };
+    savings_assumptions: {
+      estimated_monthly_savings?: number | null;
+      estimated_savings_percent?: number | null;
+      basis?: string;
+      calculation_notes?: string[];
+      [key: string]: unknown;
+    };
+    data_quality_warnings: Array<{ code: string; message: string; severity: "info" | "warning" | "critical" }>;
+    source_tables: string[];
+  };
+  lifecycle: {
+    status_reason: string | null;
+    snoozed_until: string | null;
+    status_updated_at: string | null;
+    status_updated_by: string | null;
+    detected_at: string | null;
+    last_seen_at: string | null;
+  };
+};
+
+export type DatabaseRecommendationFilters = {
+  status?: string;
+  recommendationType?: DatabaseRecommendationType;
+  confidence?: DatabaseRecommendationConfidence;
+  evidenceLevel?: DatabaseRecommendationEvidenceLevel;
+  resourceId?: string;
+  cloudConnectionId?: string;
+  region?: string;
+  engine?: string;
+  resourceType?: string;
+  search?: string;
+  page?: number;
+  limit?: number;
+  sortBy?: "updated_at" | "created_at" | "estimated_savings";
+  sortOrder?: "asc" | "desc";
+};
+
+export type GenerateDatabaseRecommendationsResult = {
+  generatedAt: string;
+  category: "DB";
+  tenantsProcessed: number;
+  connectionsProcessed: number;
+  resourcesEvaluated: number;
+  candidatesEvaluated: number;
+  created: number;
+  updated: number;
+  resolved: number;
+  skipped: number;
+  failed: number;
+  activeRules: string[];
+  ruleResults: Array<{
+    rule: string;
+    evaluated: number;
+    candidates: number;
+    created: number;
+    updated: number;
+    resolved: number;
+    skipped: number;
+    failed: number;
+    durationMs: number;
+  }>;
+  warnings: string[];
 };
 
 export type Ec2OverviewResponse = {

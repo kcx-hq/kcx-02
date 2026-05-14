@@ -39,6 +39,7 @@ const metricOptions: Array<{ value: DatabaseExplorerMetric; label: string }> = [
 
 const groupByOptions: Array<{ value: "auto" | DatabaseExplorerGroupBy; label: string }> = [
   { value: "auto", label: "Recommended" },
+  { value: "db_type", label: "Database Type" },
   { value: "db_service", label: "DB Service" },
   { value: "db_engine", label: "DB Engine" },
   { value: "region", label: "Region" },
@@ -49,6 +50,7 @@ const groupByOptions: Array<{ value: "auto" | DatabaseExplorerGroupBy; label: st
 ];
 
 const groupByDimensions: Array<{ key: DatabaseExplorerGroupBy; label: string }> = [
+  { key: "db_type", label: "Database Type" },
   { key: "region", label: "Region" },
   { key: "cost_category", label: "Cost Category" },
   { key: "resource_type", label: "Resource Type" },
@@ -96,7 +98,7 @@ export function DatabaseExplorerFilters({
     () => deriveAutoGroupBy(databaseScope, dbService, dbEngine),
     [databaseScope, dbEngine, dbService],
   );
-  const recommendedPreviewLabel = groupByOptions.find((o) => o.value === recommendedPreview)?.label ?? "DB Service";
+  const recommendedPreviewLabel = groupByOptions.find((o) => o.value === recommendedPreview)?.label ?? "Database Type";
 
   const engineChoices = useMemo(() => {
     const taxonomyEngines = getEnginesForDatabaseScope(draftScope);

@@ -20,6 +20,7 @@ export const EXPLORER_DATABASE_SCOPES = [
 export type ExplorerDatabaseScope = (typeof EXPLORER_DATABASE_SCOPES)[number];
 
 export const EXPLORER_GROUP_BY = [
+  "db_type",
   "db_service",
   "db_engine",
   "region",

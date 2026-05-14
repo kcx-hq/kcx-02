@@ -40,6 +40,7 @@ const isUsageTrendItem = (item: DatabaseExplorerResponse["trend"][number]): item
   "load" in item;
 
 const toGroupByLabel = (groupBy: DatabaseExplorerGroupBy): string => {
+  if (groupBy === "db_type") return "Database Type";
   if (groupBy === "db_service") return "DB Service";
   if (groupBy === "db_engine") return "DB Engine";
   if (groupBy === "resource_type") return "Resource Type";

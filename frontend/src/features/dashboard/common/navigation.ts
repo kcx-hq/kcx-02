@@ -98,26 +98,26 @@ export const dashboardNav: DashboardNavNode[] = [
       {
         kind: "group",
         label: "Load Balancer",
-        icon: "activity",
+        icon: "services",
         path: "/dashboard/load-balancer/explorer",
         items: [
           {
             kind: "link",
             label: "Explorer",
             path: "/dashboard/load-balancer/explorer",
-            icon: "line-chart",
+            icon: "costExplorer",
           },
           {
             kind: "link",
             label: "List",
             path: "/dashboard/inventory/aws/load-balancer/list",
-            icon: "boxes",
+            icon: "databaseAssets",
           },
           {
             kind: "link",
             label: "Optimization",
             path: "/dashboard/load-balancer/optimization",
-            icon: "gauge",
+            icon: "ec2Optimization",
           },
         ],
       },
@@ -125,15 +125,13 @@ export const dashboardNav: DashboardNavNode[] = [
         kind: "group",
         label: "S3",
         icon: "s3",
-        path: "/dashboard/s3",
-        icon: "boxes",
         path: "/dashboard/s3/cost",
         items: [
           {
             kind: "link",
             label: "Explorer",
             path: "/dashboard/s3/cost",
-            icon: "line-chart",
+            icon: "costExplorer",
           },
           {
             kind: "link",
@@ -160,6 +158,12 @@ export const dashboardNav: DashboardNavNode[] = [
             label: "Assets",
             path: "/dashboard/services/database/assets",
             icon: "databaseAssets",
+          },
+          {
+            kind: "link",
+            label: "Recommendations",
+            path: "/dashboard/services/database/recommendations",
+            icon: "databaseRecommendations",
           },
         ],
       },

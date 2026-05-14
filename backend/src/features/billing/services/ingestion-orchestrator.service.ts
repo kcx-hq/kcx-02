@@ -11,6 +11,7 @@ import {
   syncAwsIdleRecommendationsAfterIngestion,
   syncAwsRightsizingRecommendationsAfterIngestion,
 } from "../../dashboard/optimization/recommendation-sync/sync.service.js";
+import { syncDbRecommendationsAfterIngestion } from "../../database/recommendations/db-recommendations.service.js";
 import { syncEc2CostHistoryForIngestionRun } from "./ec2-cost-history.service.js";
 import { syncDbCostHistoryForIngestionRun } from "./db-cost-history.service.js";
 import { syncLoadBalancerCostDailyForIngestionRun } from "../../load-balancer/cost/load-balancer-cost-daily.service.js";
@@ -918,6 +919,21 @@ async function processIngestionRun(ingestionRunId) {
             tenantId: rawFile.tenantId ?? null,
             billingSourceId: rawFile.billingSourceId ?? null,
             reason: toErrorMessage(idleSyncError),
+          });
+        }
+
+        try {
+          await syncDbRecommendationsAfterIngestion({
+            tenantId: tenantIdForSync,
+            billingSourceId: billingSourceIdForSync,
+            ingestionRunId: String(run.id),
+          });
+        } catch (dbSyncError) {
+          logger.warn("DB recommendation sync failed after ingestion", {
+            ingestionRunId: run.id,
+            tenantId: rawFile.tenantId ?? null,
+            billingSourceId: rawFile.billingSourceId ?? null,
+            reason: toErrorMessage(dbSyncError),
           });
         }
       }

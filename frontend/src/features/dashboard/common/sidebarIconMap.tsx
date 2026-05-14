@@ -64,6 +64,7 @@ export type SidebarIconKey =
   | "s3Optimization"
   | "database"
   | "databaseAssets"
+  | "databaseRecommendations"
   | "optimization"
   | "anomalies"
   | "policy"
@@ -90,6 +91,7 @@ export const sidebarIconMap: Record<SidebarIconKey, LucideIcon> = {
   s3Optimization: Gauge,
   database: Database,
   databaseAssets: Boxes,
+  databaseRecommendations: LineChart,
   optimization: Layers,
   anomalies: TriangleAlert,
   policy: ShieldCheck,

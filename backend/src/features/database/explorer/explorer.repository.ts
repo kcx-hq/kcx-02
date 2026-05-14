@@ -290,7 +290,62 @@ ${options.withInventory ? `LEFT JOIN latest_inventory li
  AND li.cloud_connection_id IS NOT DISTINCT FROM f.cloud_connection_id` : ""}
 `;
 
+const DB_TYPE_SERVICE_SOURCE_SQL = `
+COALESCE(
+  NULLIF(BTRIM(f.db_service), ''),
+  CASE
+    WHEN LOWER(COALESCE(f.resource_arn, '')) LIKE 'arn:aws:rds:%' THEN 'AmazonRDS'
+    WHEN LOWER(COALESCE(f.resource_arn, '')) LIKE 'arn:aws:dynamodb:%' THEN 'AmazonDynamoDB'
+    WHEN LOWER(COALESCE(f.resource_arn, '')) LIKE 'arn:aws:elasticache:%' THEN 'AmazonElastiCache'
+    WHEN LOWER(COALESCE(f.resource_arn, '')) LIKE 'arn:aws:memorydb:%' THEN 'AmazonMemoryDB'
+    WHEN LOWER(COALESCE(f.resource_arn, '')) LIKE 'arn:aws:docdb:%' THEN 'AmazonDocDB'
+    WHEN LOWER(COALESCE(f.resource_arn, '')) LIKE 'arn:aws:neptune:%' THEN 'AmazonNeptune'
+    WHEN LOWER(COALESCE(f.resource_arn, '')) LIKE 'arn:aws:cassandra:%' THEN 'AmazonKeyspaces'
+    WHEN LOWER(COALESCE(f.resource_arn, '')) LIKE 'arn:aws:timestream:%' THEN 'AmazonTimestream'
+    WHEN LOWER(COALESCE(f.resource_id, '')) LIKE 'db-scope:amazonrds%' THEN 'AmazonRDS'
+    WHEN LOWER(COALESCE(f.resource_id, '')) LIKE 'db-scope:amazondynamodb%' THEN 'AmazonDynamoDB'
+    WHEN LOWER(COALESCE(f.resource_id, '')) LIKE 'db-scope:amazonelasticache%' THEN 'AmazonElastiCache'
+    WHEN LOWER(COALESCE(f.resource_id, '')) LIKE 'db-scope:amazonmemorydb%' THEN 'AmazonMemoryDB'
+    WHEN LOWER(COALESCE(f.resource_id, '')) LIKE 'db-scope:amazondocdb%' THEN 'AmazonDocDB'
+    WHEN LOWER(COALESCE(f.resource_id, '')) LIKE 'db-scope:amazonneptune%' THEN 'AmazonNeptune'
+    WHEN LOWER(COALESCE(f.resource_id, '')) LIKE 'db-scope:amazonkeyspaces%' THEN 'AmazonKeyspaces'
+    WHEN LOWER(COALESCE(f.resource_id, '')) LIKE 'db-scope:amazontimestream%' THEN 'AmazonTimestream'
+    ELSE NULL
+  END
+)
+`;
+
+const DB_TYPE_SERVICE_TOKEN_SQL = `
+REGEXP_REPLACE(
+  LOWER(${DB_TYPE_SERVICE_SOURCE_SQL}),
+  '[^a-z0-9]',
+  '',
+  'g'
+)
+`;
+
+const DB_TYPE_CLASSIFICATION_CASE = `
+CASE
+  WHEN ${DB_TYPE_SERVICE_TOKEN_SQL} IN ('amazonrds', 'amazonrdsservice', 'rds', 'amazonrelationaldatabaseservice', 'aurora', 'amazonaurora') THEN 'Relational'
+  WHEN ${DB_TYPE_SERVICE_TOKEN_SQL} IN ('amazondynamodb', 'dynamodb') THEN 'Key-Value'
+  WHEN ${DB_TYPE_SERVICE_TOKEN_SQL} IN ('amazonelasticache', 'elasticache', 'amazonmemorydb', 'memorydb') THEN 'In-Memory'
+  WHEN ${DB_TYPE_SERVICE_TOKEN_SQL} IN ('amazondocdb', 'docdb', 'amazondocumentdb', 'documentdb') THEN 'Document'
+  WHEN ${DB_TYPE_SERVICE_TOKEN_SQL} IN ('amazonneptune', 'neptune') THEN 'Graph'
+  WHEN ${DB_TYPE_SERVICE_TOKEN_SQL} IN ('amazonkeyspaces', 'keyspaces') THEN 'Wide Column'
+  WHEN ${DB_TYPE_SERVICE_TOKEN_SQL} IN ('amazontimestream', 'timestream') THEN 'Time Series'
+  ELSE 'Unknown database type'
+END
+`;
+
 const GROUP_BY_COLUMNS = {
+  db_type: {
+    selectExpression: DB_TYPE_CLASSIFICATION_CASE,
+    groupExpression: DB_TYPE_CLASSIFICATION_CASE,
+    keyExpression:
+      "COALESCE(NULLIF(LOWER(REGEXP_REPLACE((" + DB_TYPE_CLASSIFICATION_CASE + "), '[^a-z0-9]+', '-', 'g')), ''), 'unknown-database-type')",
+    requiresInventory: false,
+    requiresRegion: false,
+  },
   db_service: {
     selectExpression: "COALESCE(NULLIF(BTRIM(f.db_service), ''), 'Unknown service')",
     groupExpression: "COALESCE(NULLIF(BTRIM(f.db_service), ''), 'Unknown service')",
@@ -336,6 +391,7 @@ const GROUP_BY_COLUMNS = {
 } as const;
 
 const GROUPED_UNKNOWN_LABELS: Record<ExplorerGroupBy, string> = {
+  db_type: "Unknown database type",
   db_service: "Unknown service",
   db_engine: "Unknown engine",
   region: "Unknown region",
@@ -360,6 +416,19 @@ END
 `;
 
 const OPERATIONAL_COST_CATEGORIES = ["compute", "storage", "io", "backup", "data_transfer"] as const;
+
+const buildResourceDrilldownFilters = (params: ExplorerQueryParams, tableAlias = ""): string => {
+  const pref = tableAlias ? `${tableAlias}.` : "";
+  return `${buildTrendFilters(params, tableAlias)}
+    AND COALESCE(LOWER(BTRIM(${pref}resource_type)), '') <> 'scoped'
+    AND ${pref}resource_id NOT LIKE 'db-scope:%'`;
+};
+
+const buildCostHistoryDrilldownFilters = (params: ExplorerQueryParams, tableAlias = ""): string => {
+  const pref = tableAlias ? `${tableAlias}.` : "";
+  return `${buildTrendFilters(params, tableAlias)}
+    AND ${pref}resource_id NOT LIKE 'db-scope:%'`;
+};
 
 export class DatabaseExplorerRepository {
   async getFilterOptions(params: ExplorerQueryParams): Promise<ExplorerFilterOptions> {
@@ -564,7 +633,7 @@ ORDER BY usage_date ASC;
       if (queryParams.metric === "usage") {
         return [];
       }
-      const filters = buildTrendFilters(queryParams, "ch");
+      const drilldownFilters = buildCostHistoryDrilldownFilters(queryParams, "ch");
       const rows = await sequelize.query<CostCategoryGroupedRow>(
         `
 SELECT
@@ -572,7 +641,7 @@ SELECT
   COALESCE(SUM(ch.effective_cost), SUM(ch.billed_cost), 0) AS "totalCost",
   COUNT(DISTINCT ch.resource_id) AS "resourceCount"
 FROM db_cost_history_daily ch
-WHERE ${filters}
+WHERE ${drilldownFilters}
 GROUP BY ${COST_CATEGORY_LABEL_CASE}
 ORDER BY "totalCost" DESC;
 `,
@@ -595,7 +664,7 @@ ORDER BY "totalCost" DESC;
     }
 
     const groupBy = GROUP_BY_COLUMNS[queryParams.groupBy];
-    const filters = buildTrendFilters(queryParams, "f");
+    const filters = buildResourceDrilldownFilters(queryParams, "f");
     const withInventory = groupBy.requiresInventory;
     const withRegion = groupBy.requiresRegion;
 
@@ -648,7 +717,7 @@ ORDER BY "totalCost" DESC;
           series: [],
         };
       }
-      const filters = buildTrendFilters(queryParams, "ch");
+      const drilldownFilters = buildCostHistoryDrilldownFilters(queryParams, "ch");
       const rows = await sequelize.query<CostCategoryGroupedRow>(
         `
 SELECT
@@ -657,7 +726,7 @@ SELECT
   ${COST_CATEGORY_LABEL_CASE} AS "groupLabel",
   COALESCE(SUM(ch.effective_cost), SUM(ch.billed_cost), 0) AS "totalCost"
 FROM db_cost_history_daily ch
-WHERE ${filters}
+WHERE ${drilldownFilters}
   AND LOWER(BTRIM(COALESCE(ch.cost_category, ''))) IN (:operationalCostCategories)
 GROUP BY ch.usage_date, LOWER(BTRIM(COALESCE(ch.cost_category, ''))), ${COST_CATEGORY_LABEL_CASE}
 ORDER BY ch.usage_date ASC;
@@ -721,7 +790,7 @@ ORDER BY ch.usage_date ASC;
     }
 
     const groupBy = GROUP_BY_COLUMNS[queryParams.groupBy];
-    const filters = buildTrendFilters(queryParams, "f");
+    const filters = buildResourceDrilldownFilters(queryParams, "f");
     const unknownLabel = GROUPED_UNKNOWN_LABELS[queryParams.groupBy];
     const isUsage = queryParams.metric === "usage";
     const withInventory = groupBy.requiresInventory;

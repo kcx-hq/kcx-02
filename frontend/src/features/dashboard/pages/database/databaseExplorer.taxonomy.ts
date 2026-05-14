@@ -224,11 +224,11 @@ export const deriveAutoGroupBy = (
   databaseScope: DatabaseExplorerScopeValue,
   dbService: string,
   dbEngine: string,
-): "db_service" | "db_engine" => {
+): "db_type" | "db_service" | "db_engine" => {
   if (dbEngine.trim()) return "db_engine";
   if (dbService.trim()) return "db_engine";
   if (databaseScope !== "all") return "db_service";
-  return "db_service";
+  return "db_type";
 };
 
 export const getEnginesForDatabaseScope = (scope: DatabaseExplorerScopeValue): string[] => {

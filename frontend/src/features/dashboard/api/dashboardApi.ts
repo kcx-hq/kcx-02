@@ -42,6 +42,11 @@ import type {
   DatabaseAssetsFilters,
   DatabaseAssetsResponse,
   DatabaseAssetDetail,
+  DatabaseRecommendationFilters,
+  DatabaseRecommendationListResponse,
+  DatabaseRecommendationSummary,
+  DatabaseRecommendationDetail,
+  GenerateDatabaseRecommendationsResult,
 
   S3CostInsightsFiltersQuery,
   S3CostInsightsResponse,
@@ -255,6 +260,46 @@ function withDatabaseAssetDetailQuery(
   query.set("end_date", params.endDate ?? scope.to);
   const queryString = query.toString();
   return queryString.length > 0 ? `${path}?${queryString}` : path;
+}
+
+function withDatabaseRecommendationsFilters(path: string, filters?: DatabaseRecommendationFilters): string {
+  const params = new URLSearchParams();
+  if (typeof filters?.status === "string" && filters.status.trim().length > 0) params.set("status", filters.status.trim());
+  if (typeof filters?.recommendationType === "string" && filters.recommendationType.trim().length > 0) {
+    params.set("recommendation_type", filters.recommendationType.trim());
+  }
+  if (typeof filters?.confidence === "string" && filters.confidence.trim().length > 0) params.set("confidence", filters.confidence.trim());
+  if (typeof filters?.evidenceLevel === "string" && filters.evidenceLevel.trim().length > 0) {
+    params.set("evidence_level", filters.evidenceLevel.trim());
+  }
+  if (typeof filters?.resourceId === "string" && filters.resourceId.trim().length > 0) params.set("resource_id", filters.resourceId.trim());
+  if (typeof filters?.cloudConnectionId === "string" && filters.cloudConnectionId.trim().length > 0) {
+    params.set("cloud_connection_id", filters.cloudConnectionId.trim());
+  }
+  if (typeof filters?.region === "string" && filters.region.trim().length > 0) params.set("region", filters.region.trim());
+  if (typeof filters?.engine === "string" && filters.engine.trim().length > 0) params.set("engine", filters.engine.trim());
+  if (typeof filters?.resourceType === "string" && filters.resourceType.trim().length > 0) {
+    params.set("resource_type", filters.resourceType.trim());
+  }
+  if (typeof filters?.search === "string" && filters.search.trim().length > 0) params.set("search", filters.search.trim());
+  if (typeof filters?.page === "number") params.set("page", String(filters.page));
+  if (typeof filters?.limit === "number") params.set("limit", String(filters.limit));
+  if (typeof filters?.sortBy === "string" && filters.sortBy.trim().length > 0) params.set("sort_by", filters.sortBy.trim());
+  if (typeof filters?.sortOrder === "string" && filters.sortOrder.trim().length > 0) params.set("sort_order", filters.sortOrder.trim());
+  const query = params.toString();
+  return query.length > 0 ? `${path}?${query}` : path;
+}
+
+function withDatabaseRecommendationSummaryFilters(
+  path: string,
+  filters?: Pick<DatabaseRecommendationFilters, "cloudConnectionId">,
+): string {
+  const params = new URLSearchParams();
+  if (typeof filters?.cloudConnectionId === "string" && filters.cloudConnectionId.trim().length > 0) {
+    params.set("cloud_connection_id", filters.cloudConnectionId.trim());
+  }
+  const query = params.toString();
+  return query.length > 0 ? `${path}?${query}` : path;
 }
 
 function withOptimizationFilters(
@@ -628,6 +673,31 @@ export const dashboardApi = {
       withDatabaseAssetDetailQuery(`/services/database/assets/${encodeURIComponent(resourceId)}/details`, scope, params),
     );
   },
+  listDatabaseRecommendations(_scope: DashboardResolvedScope, filters?: DatabaseRecommendationFilters) {
+    return apiGet<DatabaseRecommendationListResponse>(withDatabaseRecommendationsFilters("/services/database/recommendations", filters));
+  },
+  getDatabaseRecommendationSummary(
+    _scope: DashboardResolvedScope,
+    filters?: Pick<DatabaseRecommendationFilters, "cloudConnectionId">,
+  ) {
+    return apiGet<DatabaseRecommendationSummary>(
+      withDatabaseRecommendationSummaryFilters("/services/database/recommendations/summary", filters),
+    );
+  },
+  getDatabaseRecommendationDetail(_scope: DashboardResolvedScope, id: string) {
+    return apiGet<DatabaseRecommendationDetail>(`/services/database/recommendations/${encodeURIComponent(id)}`);
+  },
+  generateDatabaseRecommendations(
+    _scope: DashboardResolvedScope,
+    payload?: { cloudConnectionId?: string; billingSourceId?: number },
+  ) {
+    const body: { cloudConnectionId?: string; billingSourceId?: number } = {};
+    if (typeof payload?.cloudConnectionId === "string" && payload.cloudConnectionId.trim().length > 0) {
+      body.cloudConnectionId = payload.cloudConnectionId.trim();
+    }
+    if (typeof payload?.billingSourceId === "number") body.billingSourceId = payload.billingSourceId;
+    return apiPost<GenerateDatabaseRecommendationsResult>("/services/database/recommendations/generate", body);
+  },
 
   getResources(scope: DashboardResolvedScope) {
     return apiGet<DashboardSectionData>(withDashboardQuery("/dashboard/resources", scope));
@@ -823,6 +893,21 @@ export const dashboardApi = {
   getEc2ElasticIps(scope: DashboardResolvedScope, filters?: Ec2ElasticIpFiltersQuery) {
     return apiGet<Ec2ElasticIpResponse>(withEc2ElasticIpFilters("/dashboard/ec2/elastic-ips", scope, filters));
   },
+  getLoadBalancerExplorerSummary(scope: DashboardResolvedScope, filters: LoadBalancerExplorerFiltersQuery) {
+    return apiGet<LoadBalancerExplorerSummaryResponse>(
+      withLoadBalancerExplorerFilters("/dashboard/load-balancer/explorer/summary", scope, filters),
+    );
+  },
+  getLoadBalancerExplorerTrend(scope: DashboardResolvedScope, filters: LoadBalancerExplorerFiltersQuery) {
+    return apiGet<LoadBalancerExplorerTrendResponse>(
+      withLoadBalancerExplorerFilters("/dashboard/load-balancer/explorer/trend", scope, filters),
+    );
+  },
+  getLoadBalancerExplorerGroupBy(scope: DashboardResolvedScope, filters: LoadBalancerExplorerFiltersQuery) {
+    return apiGet<LoadBalancerExplorerGroupByResponse>(
+      withLoadBalancerExplorerFilters("/dashboard/load-balancer/explorer/group-by", scope, filters),
+    );
+  },
   getS3CostInsights(scope: DashboardResolvedScope, filters?: S3CostInsightsFiltersQuery, init?: RequestInit) {
     return apiGet<S3CostInsightsResponse>(withS3CostInsightsFilters("/dashboard/s3/cost-insights", scope, filters), init);
   },
@@ -903,6 +988,15 @@ export type {
   DatabaseAssetsFilters,
   DatabaseAssetDetail,
   DatabaseAssetsResponse,
+  DatabaseRecommendationFilters,
+  DatabaseRecommendationType,
+  DatabaseRecommendationConfidence,
+  DatabaseRecommendationEvidenceLevel,
+  DatabaseRecommendationListItem,
+  DatabaseRecommendationListResponse,
+  DatabaseRecommendationSummary,
+  DatabaseRecommendationDetail,
+  GenerateDatabaseRecommendationsResult,
   DashboardOverviewResponse,
   OverviewAnomaliesResponse,
   OverviewAnomaly,

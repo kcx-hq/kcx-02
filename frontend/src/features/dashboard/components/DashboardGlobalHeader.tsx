@@ -14,20 +14,6 @@ type BreadcrumbItem = {
   path?: string;
 };
 
-const getLoadBalancerBreadcrumbLabel = (routeValue: string, searchParams: URLSearchParams): string => {
-  const nameFromQuery = searchParams.get("loadBalancerName")?.trim();
-  if (nameFromQuery) return nameFromQuery;
-
-  const decoded = decodeURIComponent(routeValue);
-  const loadBalancerPart = decoded.match(/loadbalancer\/(?:(?:app|net|gwy)\/)?([^/]+)/i)?.[1];
-  if (loadBalancerPart) return loadBalancerPart;
-
-  const arnName = decoded.match(/:loadbalancer\/([^/]+)$/i)?.[1];
-  if (arnName) return arnName;
-
-  return decoded;
-};
-
 const parseDateValue = (value: string | null): string => {
   if (!value) return "";
   return /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : "";
@@ -509,6 +495,28 @@ export function DashboardGlobalHeader() {
         { label: "Services", path: "/dashboard/inventory" },
         { label: "Database", path: "/dashboard/services/database" },
         { label: "Assets" },
+      ];
+    }
+    if (path === "/dashboard/services/database/recommendations") {
+      return [
+        { label: rootCrumb, path: "/dashboard/overview" },
+        { label: "Services", path: "/dashboard/inventory" },
+        { label: "Database", path: "/dashboard/services/database" },
+        { label: "Recommendations" },
+      ];
+    }
+    if (path.startsWith("/dashboard/services/database/assets/")) {
+      const match = path.match(/^\/dashboard\/services\/database\/assets\/([^/]+)$/);
+      const resourceLabel =
+        searchParams.get("resourceId")?.trim()
+        || (match?.[1] ? decodeURIComponent(match[1]) : "")
+        || "Asset Detail";
+      return [
+        { label: rootCrumb, path: "/dashboard/overview" },
+        { label: "Services", path: "/dashboard/inventory" },
+        { label: "Database", path: "/dashboard/services/database" },
+        { label: "Assets", path: "/dashboard/services/database/assets" },
+        { label: resourceLabel },
       ];
     }
     if (path === "/dashboard/services/database") {

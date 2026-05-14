@@ -27,6 +27,11 @@ import {
   type DatabaseAssetsFilters,
   type DatabaseAssetsResponse,
   type DatabaseAssetDetail,
+  type DatabaseRecommendationFilters,
+  type DatabaseRecommendationListResponse,
+  type DatabaseRecommendationSummary,
+  type DatabaseRecommendationDetail,
+  type GenerateDatabaseRecommendationsResult,
 
   type S3CostInsightsFiltersQuery,
   type S3CostInsightsResponse,
@@ -161,6 +166,67 @@ export function useDatabaseAssetDetailQuery(
     enabled: Boolean(scope?.from && scope?.to && resourceId && params.cloudConnectionId),
     placeholderData: (previousData) => previousData,
     staleTime: 30_000,
+  });
+}
+
+export function useDatabaseRecommendations(filters?: DatabaseRecommendationFilters) {
+  const { scope } = useDashboardScope();
+  return useQuery<DatabaseRecommendationListResponse, Error>({
+    queryKey: ["dashboard", "services", "database", "recommendations", scope, filters],
+    queryFn: () => dashboardApi.listDatabaseRecommendations(assertScope(scope), filters),
+    enabled: Boolean(scope?.from && scope?.to),
+    placeholderData: (previousData) => previousData,
+    staleTime: 30_000,
+  });
+}
+
+export function useDatabaseRecommendationsSummary(filters?: Pick<DatabaseRecommendationFilters, "cloudConnectionId">) {
+  const { scope } = useDashboardScope();
+  return useQuery<DatabaseRecommendationSummary, Error>({
+    queryKey: ["dashboard", "services", "database", "recommendations-summary", scope, filters],
+    queryFn: () => dashboardApi.getDatabaseRecommendationSummary(assertScope(scope), filters),
+    enabled: Boolean(scope?.from && scope?.to),
+    placeholderData: (previousData) => previousData,
+    staleTime: 30_000,
+  });
+}
+
+export function useDatabaseRecommendationDetail(id: string | null) {
+  const { scope } = useDashboardScope();
+  return useQuery<DatabaseRecommendationDetail, Error>({
+    queryKey: ["dashboard", "services", "database", "recommendation-detail", scope, id],
+    queryFn: () => dashboardApi.getDatabaseRecommendationDetail(assertScope(scope), id as string),
+    enabled: Boolean(scope?.from && scope?.to && id),
+    placeholderData: (previousData) => previousData,
+    staleTime: 30_000,
+  });
+}
+
+export function useGenerateDatabaseRecommendations() {
+  const { scope } = useDashboardScope();
+  const queryClient = useQueryClient();
+  return useMutation<
+    GenerateDatabaseRecommendationsResult,
+    Error,
+    { cloudConnectionId?: string; billingSourceId?: number } | undefined
+  >({
+    mutationFn: (payload) => {
+      if (!scope) throw new Error("Dashboard scope is not resolved yet");
+      return dashboardApi.generateDatabaseRecommendations(scope, payload);
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ["dashboard", "services", "database", "recommendations"],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ["dashboard", "services", "database", "recommendations-summary"],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ["dashboard", "services", "database", "recommendation-detail"],
+        }),
+      ]);
+    },
   });
 }
 

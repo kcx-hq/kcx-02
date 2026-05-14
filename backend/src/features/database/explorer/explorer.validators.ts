@@ -8,8 +8,8 @@ import type { ExplorerDatabaseScope, ExplorerQueryParams } from "./explorer.type
 
 const metricSchema = z.enum(["cost", "usage"]).default("cost");
 const groupBySchema = z
-  .enum(["db_service", "db_engine", "region", "resource_type", "instance_class", "cluster", "cost_category"])
-  .default("db_service");
+  .enum(["db_type", "db_service", "db_engine", "region", "resource_type", "instance_class", "cluster", "cost_category"])
+  .default("db_type");
 
 const requiredDateString = (fieldName: string) =>
   z.preprocess(
@@ -32,9 +32,9 @@ const optionalString = (value: unknown): string | undefined => {
 const normalizeGroupByInput = (raw: unknown): string => {
   const value = typeof raw === "string" ? raw.trim().toLowerCase() : "";
   if (value === "database_type") {
-    return "db_service";
+    return "db_type";
   }
-  return value.length > 0 ? value : "db_service";
+  return value.length > 0 ? value : "db_type";
 };
 
 const resolveDatabaseScope = (
@@ -92,7 +92,7 @@ export function parseExplorerQuery(req: Request): ExplorerQueryParams {
     dbService: optionalString(req.query.db_service),
     dbEngine: optionalString(req.query.db_engine),
     metric: firstValue(req.query.metric) ?? "cost",
-    groupBy: firstValue(req.query.group_by) ?? "db_service",
+    groupBy: firstValue(req.query.group_by) ?? "db_type",
   });
 
   return {

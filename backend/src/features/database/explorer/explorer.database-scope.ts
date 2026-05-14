@@ -8,18 +8,18 @@ export const isExplorerDatabaseScope = (value: string): value is ExplorerDatabas
 
 /** Maps each non-`all` scope to db_service values used in fact / cost tables. */
 export const DATABASE_SCOPE_TO_DB_SERVICES: Record<Exclude<ExplorerDatabaseScope, "all">, readonly string[]> = {
-  relational: ["AmazonRDS", "Aurora", "Amazon RDS", "Amazon Aurora"],
-  relational_rds: ["AmazonRDS", "Amazon RDS"],
+  relational: ["AmazonRDS", "Aurora", "Amazon RDS", "Amazon Aurora", "AmazonRelationalDatabaseService"],
+  relational_rds: ["AmazonRDS", "Amazon RDS", "AmazonRelationalDatabaseService"],
   relational_aurora: ["Aurora", "Amazon Aurora"],
-  key_value: ["DynamoDB", "Amazon DynamoDB"],
-  key_value_dynamodb: ["DynamoDB", "Amazon DynamoDB"],
-  in_memory: ["ElastiCache", "MemoryDB", "Amazon ElastiCache", "Amazon MemoryDB"],
-  in_memory_elasticache: ["ElastiCache", "Amazon ElastiCache"],
-  in_memory_memorydb: ["MemoryDB", "Amazon MemoryDB"],
-  document: ["DocumentDB", "Amazon DocumentDB"],
+  key_value: ["DynamoDB", "Amazon DynamoDB", "AmazonDynamoDB"],
+  key_value_dynamodb: ["DynamoDB", "Amazon DynamoDB", "AmazonDynamoDB"],
+  in_memory: ["ElastiCache", "MemoryDB", "Amazon ElastiCache", "Amazon MemoryDB", "AmazonElastiCache", "AmazonMemoryDB"],
+  in_memory_elasticache: ["ElastiCache", "Amazon ElastiCache", "AmazonElastiCache"],
+  in_memory_memorydb: ["MemoryDB", "Amazon MemoryDB", "AmazonMemoryDB"],
+  document: ["DocumentDB", "Amazon DocumentDB", "AmazonDocDB"],
   graph: ["Neptune", "Amazon Neptune"],
-  wide_column: ["Keyspaces", "Amazon Keyspaces"],
-  time_series: ["Timestream", "Amazon Timestream"],
+  wide_column: ["Keyspaces", "Amazon Keyspaces", "AmazonKeyspaces"],
+  time_series: ["Timestream", "Amazon Timestream", "AmazonTimestream"],
 };
 
 const compactKey = (value: string): string => value.trim().toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -33,7 +33,7 @@ const leafScopeForService = (dbService: string): Exclude<ExplorerDatabaseScope, 
   if (c === "dynamodb" || c === "amazondynamodb") return "key_value_dynamodb";
   if (c === "elasticache" || c === "amazonelasticache") return "in_memory_elasticache";
   if (c === "memorydb" || c === "amazonmemorydb") return "in_memory_memorydb";
-  if (c === "documentdb" || c === "amazondocumentdb") return "document";
+  if (c === "documentdb" || c === "amazondocumentdb" || c === "amazondocdb") return "document";
   if (c === "neptune" || c === "amazonneptune") return "graph";
   if (c === "keyspaces" || c === "amazonkeyspaces") return "wide_column";
   if (c === "timestream" || c === "amazontimestream") return "time_series";

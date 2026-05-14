@@ -119,6 +119,12 @@ const serviceGroups: InventoryServiceGroup[] = [
         href: "/dashboard/services/database/assets",
         matchPrefixes: ["/dashboard/services/database/assets"],
       },
+      {
+        id: "database-recommendations",
+        label: "Database Recommendations",
+        href: "/dashboard/services/database/recommendations",
+        matchPrefixes: ["/dashboard/services/database/recommendations"],
+      },
     ],
   },
   {
