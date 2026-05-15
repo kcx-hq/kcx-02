@@ -451,8 +451,7 @@ async function replaceFactRowsFromStagingInTransaction({
       throw new Error("Staging replacement failed: row_count is 0 after source_row_hash dedupe");
     }
 
-    const [insertSummary] = await sequelize.query(
-      `
+    const FACT_INSERT_SQL = `
         WITH inserted AS (
           INSERT INTO fact_cost_line_items (
             tenant_id,
@@ -508,60 +507,60 @@ async function replaceFactRowsFromStagingInTransaction({
             created_at
           )
           SELECT
-            tenant_id,
-            billing_source_id,
-            ingestion_run_id,
-            provider_id,
-            billing_account_key,
-            sub_account_key,
-            region_key,
-            service_key,
-            resource_key,
-            sku_key,
-            charge_key,
-            tag_id,
-            tags_json,
-            tag_ids_json,
-            usage_date_key,
-            billing_period_start_date_key,
-            billing_period_end_date_key,
-            billed_cost,
-            effective_cost,
-            list_cost,
-            consumed_quantity,
-            pricing_quantity,
-            usage_start_time,
-            usage_end_time,
-            usage_type,
-            product_usage_type,
-            product_family,
-            from_location,
-            to_location,
-            from_region_code,
-            to_region_code,
-            bill_type,
-            line_item_description,
-            legal_entity,
-            operation,
-            line_item_type,
-            pricing_term,
-            purchase_option,
-            public_on_demand_cost,
-            public_on_demand_rate,
-            discount_amount,
-            bundled_discount,
-            credit_amount,
-            refund_amount,
-            tax_cost,
-            reservation_arn,
-            savings_plan_arn,
-            savings_plan_type,
-            source_row_hash,
-            ingested_at,
-            created_at
-          FROM staging_cost_line_items
-          WHERE ingestion_run_id = :ingestionRunId
-            AND billing_source_id = :billingSourceId
+            s.tenant_id,
+            s.billing_source_id,
+            s.ingestion_run_id,
+            s.provider_id,
+            s.billing_account_key,
+            s.sub_account_key,
+            s.region_key,
+            s.service_key,
+            s.resource_key,
+            s.sku_key,
+            s.charge_key,
+            s.tag_id,
+            s.tags_json,
+            s.tag_ids_json,
+            s.usage_date_key,
+            s.billing_period_start_date_key,
+            s.billing_period_end_date_key,
+            s.billed_cost,
+            s.effective_cost,
+            s.list_cost,
+            s.consumed_quantity,
+            s.pricing_quantity,
+            s.usage_start_time,
+            s.usage_end_time,
+            s.usage_type,
+            s.product_usage_type,
+            s.product_family,
+            s.from_location,
+            s.to_location,
+            s.from_region_code,
+            s.to_region_code,
+            s.bill_type,
+            s.line_item_description,
+            s.legal_entity,
+            s.operation,
+            s.line_item_type,
+            s.pricing_term,
+            s.purchase_option,
+            s.public_on_demand_cost,
+            s.public_on_demand_rate,
+            s.discount_amount,
+            s.bundled_discount,
+            s.credit_amount,
+            s.refund_amount,
+            s.tax_cost,
+            s.reservation_arn,
+            s.savings_plan_arn,
+            s.savings_plan_type,
+            s.source_row_hash,
+            s.ingested_at,
+            s.created_at
+          FROM staging_cost_line_items s
+          WHERE s.ingestion_run_id = :ingestionRunId
+            AND s.billing_source_id = :billingSourceId
           RETURNING id, tenant_id, provider_id, tags_json, tag_ids_json
         ),
         bridge_candidates AS (
@@ -613,16 +612,27 @@ async function replaceFactRowsFromStagingInTransaction({
           (SELECT COUNT(*)::bigint FROM inserted WHERE tags_json IS NOT NULL) AS fact_rows_with_tags_json,
           (SELECT COUNT(*)::bigint FROM bridge_inserted) AS bridge_rows_inserted,
           (SELECT COUNT(*)::bigint FROM bridge_classified WHERE NOT is_allowlisted) AS skipped_non_allowlisted_tag_rows
-      `,
-      {
+      `;
+
+    let insertSummary;
+    try {
+      [insertSummary] = await sequelize.query(FACT_INSERT_SQL, {
         type: QueryTypes.SELECT,
         transaction,
         replacements: {
           ingestionRunId: String(ingestionRunId),
           billingSourceId: String(billingSourceId),
         },
-      },
-    );
+      });
+    } catch (insertError) {
+      console.error("Staging->Fact insert failed", {
+        ingestionRunId: String(ingestionRunId),
+        billingSourceId: String(billingSourceId),
+        sql: FACT_INSERT_SQL,
+        reason: insertError instanceof Error ? insertError.message : String(insertError),
+      });
+      throw insertError;
+    }
 
     const [factDuplicateSummary] = await sequelize.query(
       `
@@ -647,6 +657,25 @@ async function replaceFactRowsFromStagingInTransaction({
         replacements: {
           ingestionRunId: String(ingestionRunId),
           billingSourceId: String(billingSourceId),
+        },
+      },
+    );
+
+    const [factRunScopedSummary] = await sequelize.query(
+      `
+        SELECT COUNT(*)::bigint AS row_count
+        FROM fact_cost_line_items
+        WHERE billing_source_id = :billingSourceId
+          AND ingestion_run_id = :ingestionRunId
+          AND DATE(usage_start_time) IN (:affectedUsageDates)
+      `,
+      {
+        type: QueryTypes.SELECT,
+        transaction,
+        replacements: {
+          ingestionRunId: String(ingestionRunId),
+          billingSourceId: String(billingSourceId),
+          affectedUsageDates,
         },
       },
     );
@@ -717,6 +746,13 @@ async function replaceFactRowsFromStagingInTransaction({
     const stagingDuplicateCount = Number(stagingDuplicateSummary?.duplicate_count ?? 0);
     const dedupedRowsDeleted = Number(stagingDedupeDeleteSummary?.deduped_rows_deleted ?? 0);
     const factDuplicateCount = Number(factDuplicateSummary?.duplicate_count ?? 0);
+    const factRowsWithCurrentIngestionRunId = Number(factRunScopedSummary?.row_count ?? 0);
+
+    if (factRowsWithCurrentIngestionRunId !== stagingAfterDedupeCount) {
+      throw new Error(
+        `Staging replacement failed: fact rows with ingestion_run_id for affected dates (${factRowsWithCurrentIngestionRunId}) does not match staging row count after dedupe (${stagingAfterDedupeCount})`,
+      );
+    }
 
     console.info("Staging->Fact replacement debug summary", {
       ingestionRunId: String(ingestionRunId),
@@ -728,6 +764,7 @@ async function replaceFactRowsFromStagingInTransaction({
       stagingAfterDedupe: stagingAfterDedupeCount,
       deletedFactRows: deletedCount,
       insertedFactRows: insertedCount,
+      factRowsWithCurrentIngestionRunId,
       stagingDuplicateCountBeforeDedupe: stagingDuplicateCount,
       factDuplicateCountAfterInsert: factDuplicateCount,
       factRowsWithTagsJson,
@@ -749,6 +786,7 @@ async function replaceFactRowsFromStagingInTransaction({
       affectedUsageDates,
       deletedCount,
       rowsInserted: insertedCount,
+      factRowsWithCurrentIngestionRunId,
       stagingDuplicateCount,
       factDuplicateCount,
       factRowsWithTagsJson,

@@ -691,13 +691,6 @@ export async function processAwsExportParquetRun({ run }) {
       .join(", ");
 
     if (rowsLoaded > 0) {
-      await upsertCostAggregationsForRun({
-        ingestionRunId: runId,
-        tenantId: source.tenantId,
-        providerId: source.cloudProviderId,
-        billingSourceId: source.id,
-        uploadedBy: connection.createdBy ?? null,
-      });
       await syncEc2CostHistoryForIngestionRun({
         ingestionRunId: runId,
         tenantId: source.tenantId,
@@ -827,6 +820,42 @@ export async function processAwsExportParquetRun({ run }) {
       throw replacementError;
     }
     rowsLoaded = replacementSummary.rowsInserted;
+    logger.info("AWS parquet fact replacement committed", {
+      ingestionRunId: runId,
+      billingSourceId: String(source.id),
+      affectedUsageDates: replacementSummary.affectedUsageDates ?? [],
+      factRowsInserted: replacementSummary.rowsInserted ?? 0,
+      factRowsWithCurrentIngestionRunId: replacementSummary.factRowsWithCurrentIngestionRunId ?? 0,
+    });
+
+    if (rowsLoaded > 0) {
+      try {
+        await upsertCostAggregationsForRun({
+          ingestionRunId: runId,
+          tenantId: source.tenantId,
+          providerId: source.cloudProviderId,
+          billingSourceId: source.id,
+          uploadedBy: connection.createdBy ?? null,
+          affectedUsageDates: Array.isArray(replacementSummary.affectedUsageDates)
+            ? replacementSummary.affectedUsageDates
+            : [],
+        });
+      } catch (aggregationError) {
+        logger.error("AWS parquet aggregation refresh failed after fact commit", {
+          ingestionRunId: runId,
+          billingSourceId: String(source.id),
+          affectedUsageDates: replacementSummary.affectedUsageDates ?? [],
+          reason: toErrorMessage(aggregationError),
+        });
+        await setRunState(runId, {
+          status: "completed_with_warnings",
+          current_step: "completed_with_warnings",
+          status_message: "Billing data is ready with warnings (aggregation refresh failed)",
+          error_message: `Aggregation refresh failed: ${toErrorMessage(aggregationError)}`,
+          last_heartbeat_at: now(),
+        });
+      }
+    }
 
     await source.update({
       lastIngestedAt: now(),

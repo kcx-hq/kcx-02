@@ -898,13 +898,6 @@ async function processIngestionRun(ingestionRunId) {
     });
 
     if (rowsLoaded > 0) {
-      await upsertCostAggregationsForRun({
-        ingestionRunId: run.id,
-        tenantId: rawFile.tenantId,
-        providerId: rawFile.cloudProviderId,
-        billingSourceId: run.billingSourceId,
-        uploadedBy: rawFile.uploadedBy,
-      });
       await syncEc2CostHistoryForIngestionRun({
         ingestionRunId: run.id,
         tenantId: rawFile.tenantId,
@@ -1007,6 +1000,42 @@ async function processIngestionRun(ingestionRunId) {
       throw replacementError;
     }
     rowsLoaded = replacementSummary.rowsInserted;
+    logger.info("Ingestion fact replacement committed", {
+      ingestionRunId: String(run.id),
+      billingSourceId: String(run.billingSourceId ?? ""),
+      affectedUsageDates: replacementSummary.affectedUsageDates ?? [],
+      factRowsInserted: replacementSummary.rowsInserted ?? 0,
+      factRowsWithCurrentIngestionRunId: replacementSummary.factRowsWithCurrentIngestionRunId ?? 0,
+    });
+
+    if (rowsLoaded > 0) {
+      try {
+        await upsertCostAggregationsForRun({
+          ingestionRunId: run.id,
+          tenantId: rawFile.tenantId,
+          providerId: rawFile.cloudProviderId,
+          billingSourceId: run.billingSourceId,
+          uploadedBy: rawFile.uploadedBy,
+          affectedUsageDates: Array.isArray(replacementSummary.affectedUsageDates)
+            ? replacementSummary.affectedUsageDates
+            : [],
+        });
+      } catch (aggregationError) {
+        logger.error("Aggregation refresh failed after fact commit", {
+          ingestionRunId: String(run.id),
+          billingSourceId: String(run.billingSourceId ?? ""),
+          affectedUsageDates: replacementSummary.affectedUsageDates ?? [],
+          reason: toErrorMessage(aggregationError),
+        });
+        await updateIngestionRunStatus(run.id, {
+          status: "completed_with_warnings",
+          current_step: "completed_with_warnings",
+          status_message: "Billing data is ready with warnings (aggregation refresh failed)",
+          error_message: `Aggregation refresh failed: ${toErrorMessage(aggregationError)}`,
+          last_heartbeat_at: now(),
+        });
+      }
+    }
     scheduleStorageLensSyncAfterIngestion({
       tenantId: rawFile.tenantId,
       billingSourceId: run.billingSourceId,
