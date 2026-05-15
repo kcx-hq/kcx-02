@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { createPortal } from "react-dom";
 import { Check, ChevronDown, Search, X } from "lucide-react";
 
 import {
@@ -40,6 +41,7 @@ type CostExplorerFiltersPanelProps = {
   groupValuesLoading?: boolean;
   hideGranularity?: boolean;
   enableGroupValueFiltering?: boolean;
+  hideChipBar?: boolean;
 };
 
 type FilterPopoverKey = CostExplorerChip["key"];
@@ -77,9 +79,17 @@ export function CostExplorerFiltersPanel({
   groupValuesLoading = false,
   hideGranularity = false,
   enableGroupValueFiltering = true,
+  hideChipBar = false,
 }: CostExplorerFiltersPanelProps) {
   const rootRef = useRef<HTMLDivElement | null>(null);
+  const popoverRef = useRef<HTMLDivElement | null>(null);
   const [activePopover, setActivePopover] = useState<FilterPopoverKey | null>(null);
+  const [portalReady, setPortalReady] = useState(false);
+  const [popoverPosition, setPopoverPosition] = useState<{ top: number; left: number; minWidth: number }>({
+    top: 0,
+    left: 0,
+    minWidth: 0,
+  });
   const [searchByPopover, setSearchByPopover] = useState<Record<FilterPopoverKey, string>>({
     granularity: "",
     group: "",
@@ -88,9 +98,14 @@ export function CostExplorerFiltersPanel({
   });
 
   useEffect(() => {
+    setPortalReady(true);
+  }, []);
+
+  useEffect(() => {
     const handlePointerDown = (event: MouseEvent) => {
-      if (!rootRef.current) return;
-      if (rootRef.current.contains(event.target as Node)) return;
+      const target = event.target as Node;
+      if (rootRef.current?.contains(target)) return;
+      if (popoverRef.current?.contains(target)) return;
       setActivePopover(null);
     };
 
@@ -218,6 +233,63 @@ export function CostExplorerFiltersPanel({
     ? "cost-explorer-filter-popover cost-explorer-filter-popover--split cost-explorer-filter-popover--group-split"
     : "cost-explorer-filter-popover cost-explorer-filter-popover--group-single";
 
+  const getActiveTriggerRef = (): RefObject<HTMLButtonElement | null> | null => {
+    if (activePopover === "granularity") return granularityRef;
+    if (activePopover === "group") return groupRef;
+    if (activePopover === "metric") return metricRef;
+    if (activePopover === "compare") return compareRef;
+    return null;
+  };
+
+  useEffect(() => {
+    if (!activePopover) return;
+    let frameId = 0;
+
+    const updatePosition = () => {
+      const triggerRef = getActiveTriggerRef();
+      const triggerEl = triggerRef?.current;
+      if (!triggerEl) return;
+
+      const triggerRect = triggerEl.getBoundingClientRect();
+      const popoverEl = popoverRef.current;
+      const popoverWidth = popoverEl?.offsetWidth ?? 320;
+      const popoverHeight = popoverEl?.offsetHeight ?? 280;
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
+      const gap = 8;
+
+      let left = triggerRect.left;
+      if (activePopover === "compare") {
+        left = triggerRect.right - popoverWidth;
+      }
+      left = Math.max(12, Math.min(left, viewportWidth - popoverWidth - 12));
+
+      const spaceBelow = viewportHeight - triggerRect.bottom;
+      const spaceAbove = triggerRect.top;
+      const shouldOpenUp = spaceBelow < popoverHeight + gap && spaceAbove > spaceBelow;
+      const top = shouldOpenUp
+        ? Math.max(12, triggerRect.top - popoverHeight - gap)
+        : Math.min(viewportHeight - popoverHeight - 12, triggerRect.bottom + gap);
+
+      setPopoverPosition({
+        top,
+        left,
+        minWidth: Math.max(220, Math.round(triggerRect.width)),
+      });
+    };
+
+    updatePosition();
+    frameId = window.requestAnimationFrame(updatePosition);
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
+    };
+  }, [activePopover, compareRef, granularityRef, groupRef, metricRef]);
+
   const renderPopoverSearch = (key: FilterPopoverKey, placeholder: string) => (
     <label className="cost-explorer-filter-popover__search-wrap">
       <Search className="cost-explorer-filter-popover__search-icon" size={14} aria-hidden="true" />
@@ -306,6 +378,129 @@ export function CostExplorerFiltersPanel({
     [chips, hideGranularity],
   );
 
+  const activePopoverContent = activePopover === "granularity"
+    ? (
+      <div className="cost-explorer-filter-popover" role="dialog" aria-label="Granularity options">
+        <p className="cost-explorer-filter-popover__title">Granularity</p>
+        {renderPopoverSearch("granularity", "Search granularity...")}
+        {renderFilterList({
+          options: filteredGranularityOptions,
+          selected: effectiveGranularity,
+          onSelect: onSelectGranularity,
+          emptyLabel: "No granularity options found.",
+        })}
+      </div>
+    )
+    : activePopover === "group"
+      ? (
+        <div className={groupPopoverClassName} role="dialog" aria-label="Group options">
+          <div className="cost-explorer-filter-popover__split">
+            <div className="cost-explorer-filter-popover__split-pane">
+              <p className="cost-explorer-filter-popover__title">Group By</p>
+              {renderPopoverSearch("group", "Search dimensions...")}
+              {renderFilterList({
+                options: filteredGroupOptions,
+                selected: groupBy,
+                onSelect: onSelectGroupBy,
+                emptyLabel: "No group dimensions found.",
+                listClassName: "cost-explorer-filter-popover__list--group-dimensions",
+              })}
+            </div>
+            {showGroupValuesPane ? (
+              <div className="cost-explorer-filter-popover__split-pane cost-explorer-filter-popover__split-pane--right">
+                <p className="cost-explorer-filter-popover__title">Values</p>
+                {groupValuesLoading && (groupValueOptions?.length ?? 0) === 0 ? (
+                  <p className="cost-explorer-filter-popover__empty">Loading values...</p>
+                ) : (groupValueOptions?.length ?? 0) > 0 ? (
+                  <div
+                    className="cost-explorer-filter-popover__list cost-explorer-filter-popover__list--value-boxes"
+                    role="listbox"
+                    aria-label="Group values"
+                  >
+                    <button
+                      type="button"
+                      className={`cost-explorer-filter-option cost-explorer-filter-option--tile${(selectedGroupValues?.length ?? 0) === 0 ? " is-active" : ""}`}
+                      onClick={onClearGroupValues}
+                      role="option"
+                      aria-selected={(selectedGroupValues?.length ?? 0) === 0}
+                    >
+                      <span className="cost-explorer-filter-option__content">
+                        <span className="cost-explorer-filter-option__label">All values</span>
+                      </span>
+                      {(selectedGroupValues?.length ?? 0) === 0 ? (
+                        <Check className="cost-explorer-filter-option__check" size={15} aria-hidden="true" />
+                      ) : null}
+                    </button>
+                    {groupValueOptions?.map((value) => {
+                      const selected = (selectedGroupValues ?? []).includes(value.key);
+                      return (
+                        <button
+                          key={value.key}
+                          type="button"
+                          className={`cost-explorer-filter-option cost-explorer-filter-option--tile${selected ? " is-active" : ""}`}
+                          onClick={() => onToggleGroupValue?.(value.key)}
+                          role="option"
+                          aria-selected={selected}
+                        >
+                          <span className="cost-explorer-filter-option__content">
+                            <span className="cost-explorer-filter-option__label">{value.label}</span>
+                          </span>
+                          <span className="cost-explorer-filter-option__label">{value.count}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="cost-explorer-filter-popover__empty">No values available for this group.</p>
+                )}
+              </div>
+            ) : null}
+          </div>
+          {showGroupValuesPane ? (
+            <div className="cost-explorer-filter-popover__actions">
+              <button
+                type="button"
+                className="cost-explorer-filter-popover__apply"
+                onClick={() => {
+                  onApplyGroupFilters?.();
+                  setActivePopover(null);
+                }}
+                disabled={!hasPendingGroupChanges}
+              >
+                Apply
+              </button>
+            </div>
+          ) : null}
+        </div>
+      )
+      : activePopover === "metric"
+        ? (
+          <div className="cost-explorer-filter-popover" role="dialog" aria-label="Metric options">
+            <p className="cost-explorer-filter-popover__title">Metric</p>
+            {renderPopoverSearch("metric", "Search metrics...")}
+            {renderMultiFilterList({
+              options: filteredMetricOptions,
+              selected: selectedMetrics,
+              onToggle: onSelectMetric,
+              emptyLabel: "No metrics found.",
+            })}
+          </div>
+        )
+        : activePopover === "compare"
+          ? (
+            <div className="cost-explorer-filter-popover cost-explorer-filter-popover--right" role="dialog" aria-label="Compare options">
+              <p className="cost-explorer-filter-popover__title">Compare</p>
+              {renderPopoverSearch("compare", "Search comparisons...")}
+              {renderFilterList({
+                options: filteredCompareOptions,
+                selected: compare[0] ?? null,
+                onSelect: onSelectCompare,
+                emptyLabel: "No compare options found.",
+              })}
+            </div>
+          )
+          : null;
+
   return (
     <section className="cost-explorer-control-surface" aria-label="Cost explorer filters" ref={rootRef}>
       <div className="cost-explorer-toolbar-row">
@@ -325,18 +520,6 @@ export function CostExplorerFiltersPanel({
                 <ChevronDown className="cost-explorer-toolbar-trigger__caret" size={14} aria-hidden="true" />
               </span>
             </button>
-            {activePopover === "granularity" ? (
-              <div className="cost-explorer-filter-popover" role="dialog" aria-label="Granularity options">
-                <p className="cost-explorer-filter-popover__title">Granularity</p>
-                {renderPopoverSearch("granularity", "Search granularity...")}
-                {renderFilterList({
-                  options: filteredGranularityOptions,
-                  selected: effectiveGranularity,
-                  onSelect: onSelectGranularity,
-                  emptyLabel: "No granularity options found.",
-                })}
-              </div>
-            ) : null}
           </div>
         ) : null}
 
@@ -355,87 +538,6 @@ export function CostExplorerFiltersPanel({
               <ChevronDown className="cost-explorer-toolbar-trigger__caret" size={14} aria-hidden="true" />
             </span>
           </button>
-          {activePopover === "group" ? (
-            <div className={groupPopoverClassName} role="dialog" aria-label="Group options">
-              <div className="cost-explorer-filter-popover__split">
-                <div className="cost-explorer-filter-popover__split-pane">
-                  <p className="cost-explorer-filter-popover__title">Group By</p>
-                  {renderPopoverSearch("group", "Search dimensions...")}
-                  {renderFilterList({
-                    options: filteredGroupOptions,
-                    selected: groupBy,
-                    onSelect: onSelectGroupBy,
-                    emptyLabel: "No group dimensions found.",
-                    listClassName: "cost-explorer-filter-popover__list--group-dimensions",
-                  })}
-                </div>
-                {showGroupValuesPane ? (
-                  <div className="cost-explorer-filter-popover__split-pane cost-explorer-filter-popover__split-pane--right">
-                    <p className="cost-explorer-filter-popover__title">Values</p>
-                    {groupValuesLoading && (groupValueOptions?.length ?? 0) === 0 ? (
-                      <p className="cost-explorer-filter-popover__empty">Loading values...</p>
-                    ) : (groupValueOptions?.length ?? 0) > 0 ? (
-                      <div
-                        className="cost-explorer-filter-popover__list cost-explorer-filter-popover__list--value-boxes"
-                        role="listbox"
-                        aria-label="Group values"
-                      >
-                        <button
-                          type="button"
-                          className={`cost-explorer-filter-option cost-explorer-filter-option--tile${(selectedGroupValues?.length ?? 0) === 0 ? " is-active" : ""}`}
-                          onClick={onClearGroupValues}
-                          role="option"
-                          aria-selected={(selectedGroupValues?.length ?? 0) === 0}
-                        >
-                          <span className="cost-explorer-filter-option__content">
-                            <span className="cost-explorer-filter-option__label">All values</span>
-                          </span>
-                          {(selectedGroupValues?.length ?? 0) === 0 ? (
-                            <Check className="cost-explorer-filter-option__check" size={15} aria-hidden="true" />
-                          ) : null}
-                        </button>
-                        {groupValueOptions?.map((value) => {
-                          const selected = (selectedGroupValues ?? []).includes(value.key);
-                          return (
-                            <button
-                              key={value.key}
-                              type="button"
-                              className={`cost-explorer-filter-option cost-explorer-filter-option--tile${selected ? " is-active" : ""}`}
-                              onClick={() => onToggleGroupValue?.(value.key)}
-                              role="option"
-                              aria-selected={selected}
-                            >
-                              <span className="cost-explorer-filter-option__content">
-                                <span className="cost-explorer-filter-option__label">{value.label}</span>
-                              </span>
-                              <span className="cost-explorer-filter-option__label">{value.count}</span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    ) : (
-                      <p className="cost-explorer-filter-popover__empty">No values available for this group.</p>
-                    )}
-                  </div>
-                ) : null}
-              </div>
-              {showGroupValuesPane ? (
-                <div className="cost-explorer-filter-popover__actions">
-                  <button
-                    type="button"
-                    className="cost-explorer-filter-popover__apply"
-                    onClick={() => {
-                      onApplyGroupFilters?.();
-                      setActivePopover(null);
-                    }}
-                    disabled={!hasPendingGroupChanges}
-                  >
-                    Apply
-                  </button>
-                </div>
-              ) : null}
-            </div>
-          ) : null}
         </div>
 
         <div className="cost-explorer-toolbar-item">
@@ -453,18 +555,6 @@ export function CostExplorerFiltersPanel({
               <ChevronDown className="cost-explorer-toolbar-trigger__caret" size={14} aria-hidden="true" />
             </span>
           </button>
-          {activePopover === "metric" ? (
-            <div className="cost-explorer-filter-popover" role="dialog" aria-label="Metric options">
-              <p className="cost-explorer-filter-popover__title">Metric</p>
-              {renderPopoverSearch("metric", "Search metrics...")}
-              {renderMultiFilterList({
-                options: filteredMetricOptions,
-                selected: selectedMetrics,
-                onToggle: onSelectMetric,
-                emptyLabel: "No metrics found.",
-              })}
-            </div>
-          ) : null}
         </div>
 
         <div className="cost-explorer-toolbar-item">
@@ -482,38 +572,41 @@ export function CostExplorerFiltersPanel({
               <ChevronDown className="cost-explorer-toolbar-trigger__caret" size={14} aria-hidden="true" />
             </span>
           </button>
-          {activePopover === "compare" ? (
-            <div className="cost-explorer-filter-popover cost-explorer-filter-popover--right" role="dialog" aria-label="Compare options">
-              <p className="cost-explorer-filter-popover__title">Compare</p>
-              {renderPopoverSearch("compare", "Search comparisons...")}
-              {renderFilterList({
-                options: filteredCompareOptions,
-                selected: compare[0] ?? null,
-                onSelect: onSelectCompare,
-                emptyLabel: "No compare options found.",
-              })}
-            </div>
-          ) : null}
         </div>
       </div>
 
-      <div className="cost-explorer-chip-bar" aria-label="Selected filter summary">
-        <div className="cost-explorer-chip-row">
-          {visibleChips.map((chip) => (
-            <span key={chip.key} className="cost-explorer-chip">
-              <button type="button" className="cost-explorer-chip__edit" onClick={() => handleChipEdit(chip.key)}>
-                {chip.label}: {chip.value}
-              </button>
-              <button type="button" className="cost-explorer-chip__remove" onClick={() => onRemoveChip(chip.key)} aria-label={`Remove ${chip.label}`}>
-                <X size={13} aria-hidden="true" />
-              </button>
-            </span>
-          ))}
-          <button type="button" className="cost-explorer-chip-bar__clear cost-explorer-chip-bar__clear--inline" onClick={onClearAll}>
-            Clear all
-          </button>
+      {portalReady && activePopoverContent
+        ? createPortal(
+            <div
+              ref={popoverRef}
+              className="cost-explorer-filter-popover-portal"
+              style={{ top: `${popoverPosition.top}px`, left: `${popoverPosition.left}px`, minWidth: `${popoverPosition.minWidth}px` }}
+            >
+              {activePopoverContent}
+            </div>,
+            document.body,
+          )
+        : null}
+
+      {!hideChipBar ? (
+        <div className="cost-explorer-chip-bar" aria-label="Selected filter summary">
+          <div className="cost-explorer-chip-row">
+            {visibleChips.map((chip) => (
+              <span key={chip.key} className="cost-explorer-chip">
+                <button type="button" className="cost-explorer-chip__edit" onClick={() => handleChipEdit(chip.key)}>
+                  {chip.label}: {chip.value}
+                </button>
+                <button type="button" className="cost-explorer-chip__remove" onClick={() => onRemoveChip(chip.key)} aria-label={`Remove ${chip.label}`}>
+                  <X size={13} aria-hidden="true" />
+                </button>
+              </span>
+            ))}
+            <button type="button" className="cost-explorer-chip-bar__clear cost-explorer-chip-bar__clear--inline" onClick={onClearAll}>
+              Clear all
+            </button>
+          </div>
         </div>
-      </div>
+      ) : null}
     </section>
   );
 }

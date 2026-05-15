@@ -32,8 +32,9 @@ const createPasswordResetTokenModel = (sequelize: Sequelize): typeof PasswordRes
     {
       sequelize,
       modelName: "PasswordResetToken",
-      tableName: "PasswordResetTokens",
+      tableName: "password_reset_tokens",
       timestamps: true,
+      underscored: true,
     },
   );
   return PasswordResetToken;

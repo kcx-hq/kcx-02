@@ -9,6 +9,7 @@ type OverviewBreakdownSectionProps = {
   topServices: CostBreakdownItem[];
   topAccounts: CostBreakdownItem[];
   topRegions: CostBreakdownItem[];
+  isLoading?: boolean;
   selectedServiceKey: number | null;
   selectedAccountKey: number | null;
   onSelectService: (key: number | null) => void;
@@ -19,6 +20,7 @@ export function OverviewBreakdownSection({
   topServices,
   topAccounts,
   topRegions,
+  isLoading = false,
   selectedServiceKey: _selectedServiceKey,
   selectedAccountKey: _selectedAccountKey,
   onSelectService: _onSelectService,
@@ -139,7 +141,13 @@ export function OverviewBreakdownSection({
         <h3 className="overview-breakdown-panel__title">Top Services</h3>
         <div className="overview-services-list">
           <div className="overview-breakdown-donut">
-            {serviceItems.length ? <BaseEChart option={serviceDonutOption} height={260} /> : <p className="overview-breakdown-note">No services found for selected filters.</p>}
+            {serviceItems.length ? (
+              <BaseEChart option={serviceDonutOption} height={260} />
+            ) : (
+              <p className="overview-breakdown-note">
+                {isLoading ? "Loading services breakdown..." : "No services found for selected filters."}
+              </p>
+            )}
           </div>
         </div>
       </article>
@@ -172,6 +180,11 @@ export function OverviewBreakdownSection({
         <div className="overview-accounts-layout">
           <div className="overview-breakdown-donut">
             {accountItems.length ? <BaseEChart option={accountDonutOption} height={260} /> : <ChartPlaceholder />}
+            {!accountItems.length ? (
+              <p className="overview-breakdown-note">
+                {isLoading ? "Loading accounts breakdown..." : "No accounts found for selected filters."}
+              </p>
+            ) : null}
           </div>
         </div>
       </article>

@@ -1,275 +1,165 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { EChartsOption } from "echarts";
 
-import { useCostExplorerQuery } from "../../../hooks/useDashboardQueries";
-import { useDashboardScope } from "../../../hooks/useDashboardScope";
-import { CostExplorerChartSection, CostExplorerFiltersPanel } from "../../cost-explorer/components";
+import { CostExplorerChartOnlySection } from "../../cost-explorer/components";
+import { formatAxisCost, formatTooltipCost } from "../../cost-explorer/costExplorer.utils";
+import type { CostHistoryFiltersQuery } from "../../../api/dashboardTypes";
+import { useCostHistoryFilterOptionsQuery, useCostHistoryQuery } from "../../../hooks/useDashboardQueries";
+import { CostHistoryFiltersPanel } from "./components/CostHistoryFiltersPanel";
+import { HistorySectionSkeleton } from "./components/HistorySectionSkeleton";
 import {
-  calculateDeltaPercent,
-  compactCurrencyFormatter,
-  formatAxisCost,
-  formatTooltipCost,
-  parseInputDate,
-  percentFormatter,
-} from "../../cost-explorer/costExplorer.utils";
-import {
-  COMPARE_OPTIONS,
-  METRIC_OPTIONS,
-  type ChartSeries,
-  type CompareKey,
-  type CostExplorerChip,
-  type GroupBy,
-  type Metric,
-} from "../../cost-explorer/costExplorer.types";
+  DEFAULT_COST_HISTORY_FILTERS,
+  Y_AXIS_LABELS,
+} from "./config/costHistory.constants";
 
-type RowsPerPage = 5 | 10 | 15;
+const MONTH_WINDOW = 13;
 
-const COMPARISON_SERIES_COLORS: Record<CompareKey, string> = {
-  "previous-month": "#4f46e5",
-  budget: "#b45309",
-  forecast: "#7e22ce",
-};
+const monthStartUtc = (value: Date): Date => new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), 1));
 
-const stringToHue = (value: string): number => {
-  let hash = 0;
-  for (let index = 0; index < value.length; index += 1) {
-    hash = (hash * 31 + value.charCodeAt(index)) >>> 0;
-  }
-  return hash % 360;
-};
+const shiftMonthUtc = (value: Date, deltaMonths: number): Date =>
+  new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth() + deltaMonths, 1));
 
-const colorForSeriesName = (name: string): string => {
-  const normalized = name.trim().toLowerCase();
-  if (normalized === "amazons3") {
-    return "#1f77b4";
-  }
-  return `hsl(${stringToHue(normalized)} 62% 45%)`;
-};
+const formatMonthShort = (value: Date): string =>
+  value.toLocaleDateString("en-US", { month: "short", year: "2-digit", timeZone: "UTC" });
 
-export default function CostHistoryPage() {
-  const { scope } = useDashboardScope();
+const formatMonthLong = (value: Date): string =>
+  value.toLocaleDateString("en-US", { month: "long", year: "numeric", timeZone: "UTC" });
 
-  const [selectedMetrics, setSelectedMetrics] = useState<Metric[]>(["billed"]);
-  const [compare, setCompare] = useState<CompareKey[]>([]);
-  const [rowsPerPage] = useState<RowsPerPage>(10);
-  const [chartMode, setChartMode] = useState<"line" | "bar">("bar");
-
-  const granularityRef = useRef<HTMLButtonElement | null>(null);
-  const groupRef = useRef<HTMLButtonElement | null>(null);
-  const compareRef = useRef<HTMLButtonElement | null>(null);
-  const metricRef = useRef<HTMLButtonElement | null>(null);
-
-  const multiMetricMode = selectedMetrics.length > 1;
-  const activeCompareKey: CompareKey | null = multiMetricMode ? null : (compare[0] ?? null);
-
-  const billedQuery = useCostExplorerQuery(
-    {
-      granularity: "monthly",
-      groupBy: "service",
-      metric: "billed",
-      compareKey: activeCompareKey,
-    },
-    selectedMetrics.includes("billed"),
-  );
-  const effectiveQuery = useCostExplorerQuery(
-    {
-      granularity: "monthly",
-      groupBy: "service",
-      metric: "effective",
-      compareKey: activeCompareKey,
-    },
-    selectedMetrics.includes("effective"),
-  );
-  const listQuery = useCostExplorerQuery(
-    {
-      granularity: "monthly",
-      groupBy: "service",
-      metric: "list",
-      compareKey: activeCompareKey,
-    },
-    selectedMetrics.includes("list"),
-  );
-
-  const queryByMetric = useMemo(
-    () => ({
-      billed: billedQuery,
-      effective: effectiveQuery,
-      list: listQuery,
-    }),
-    [billedQuery, effectiveQuery, listQuery],
-  );
-
-  const primaryMetric = selectedMetrics[0] ?? "billed";
-  const primaryQuery = queryByMetric[primaryMetric];
-  const activeQueries = selectedMetrics.map((item) => queryByMetric[item]);
-
-  const fullLabels = primaryQuery.data?.chart.labels ?? [];
-  const primarySeries = (primaryQuery.data?.chart.series ?? []) as ChartSeries[];
-  const series = useMemo<ChartSeries[]>(() => {
-    if (!multiMetricMode) {
-      return primarySeries;
-    }
-
-    const lines: ChartSeries[] = [];
-    selectedMetrics.forEach((selectedMetric) => {
-      const metricQuery = queryByMetric[selectedMetric];
-      const data = metricQuery.data;
-      if (!data) return;
-
-      const metricSeries = data.chart.series.find((item) => item.kind !== "comparison");
-      if (!metricSeries) return;
-
-      const metricValuesByBucket = new Map<string, number>();
-      data.chart.labels.forEach((label, index) => {
-        metricValuesByBucket.set(label.bucketStart, Number(metricSeries.values[index] ?? 0));
-      });
-
-      const values = fullLabels.map(
-        (label, index) => metricValuesByBucket.get(label.bucketStart) ?? Number(metricSeries.values[index] ?? 0),
-      );
-
-      lines.push({
-        name: METRIC_OPTIONS.find((item) => item.key === selectedMetric)?.label ?? metricSeries.name,
-        kind: "primary",
-        values,
-      });
+const COST_EPSILON = 1e-9;
+const hasCost = (value: number): boolean => Math.abs(Number(value ?? 0)) > COST_EPSILON;
+const normalizeAndFilterSeries = (seriesList: Array<{ name: string; values: number[] }>) =>
+  seriesList
+    .filter((item) => item.values.some((value) => hasCost(value)))
+    .sort((left, right) => {
+      const leftTotal = left.values.reduce((sum, value) => sum + Math.abs(Number(value ?? 0)), 0);
+      const rightTotal = right.values.reduce((sum, value) => sum + Math.abs(Number(value ?? 0)), 0);
+      if (rightTotal !== leftTotal) return rightTotal - leftTotal;
+      return left.name.localeCompare(right.name);
     });
 
-    return lines;
-  }, [fullLabels, multiMetricMode, primarySeries, queryByMetric, selectedMetrics]);
+export default function CostHistoryPage() {
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const [chartMode, setChartMode] = useState<"line" | "bar">("bar");
+  const [activePopover, setActivePopover] = useState<"granularity" | "groupBy" | "xAxis" | "yAxisMetric" | null>(null);
+  const [filters, setFilters] = useState<Required<CostHistoryFiltersQuery>>(DEFAULT_COST_HISTORY_FILTERS);
 
-  const trimStartIndex = Math.max(0, fullLabels.length - 13);
-  const labels = useMemo(() => fullLabels.slice(trimStartIndex), [fullLabels, trimStartIndex]);
-  const trimmedSeries = useMemo(
-    () =>
-      series.map((item) => ({
-        ...item,
-        values: item.values.slice(trimStartIndex),
-      })),
-    [series, trimStartIndex],
-  );
+  useEffect(() => {
+    const handlePointerDown = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (rootRef.current?.contains(target)) return;
+      setActivePopover(null);
+    };
 
-  const seriesColorByName = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const item of trimmedSeries) {
-      if (item.kind === "comparison") {
-        map.set(item.name, (item.compareKey ? COMPARISON_SERIES_COLORS[item.compareKey] : undefined) ?? "#4f7088");
-        continue;
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setActivePopover(null);
       }
+    };
 
-      map.set(item.name, colorForSeriesName(item.name));
+    window.addEventListener("mousedown", handlePointerDown);
+    window.addEventListener("keydown", handleEscape);
+    return () => {
+      window.removeEventListener("mousedown", handlePointerDown);
+      window.removeEventListener("keydown", handleEscape);
+    };
+  }, []);
+
+  const filtersQuery = useCostHistoryFilterOptionsQuery();
+  const historyQuery = useCostHistoryQuery(filters);
+
+  const rawLabels = historyQuery.data?.chart.labels ?? [];
+  const rawSeries = historyQuery.data?.chart.series ?? [];
+
+  const { labels, series } = useMemo(() => {
+    if (!(filters.xAxis === "date" && filters.granularity === "month")) {
+      return { labels: rawLabels, series: normalizeAndFilterSeries(rawSeries) };
     }
-    return map;
-  }, [trimmedSeries]);
 
-  const baseValues = useMemo(() => {
-    if (!labels.length) return [];
-    const chartSeries = trimmedSeries.filter((item) => item.kind !== "comparison");
-    return labels.map((_, index) => chartSeries.reduce((sum, item) => sum + Number(item.values[index] ?? 0), 0));
-  }, [labels, trimmedSeries]);
+    const nowMonth = monthStartUtc(new Date());
+    const latestKnownMonth = rawLabels.reduce<Date | null>((latest, label) => {
+      const parsed = new Date(label.bucketStart);
+      if (Number.isNaN(parsed.getTime())) return latest;
+      const bucketMonth = monthStartUtc(parsed);
+      if (!latest) return bucketMonth;
+      return bucketMonth.getTime() > latest.getTime() ? bucketMonth : latest;
+    }, null);
+    const endMonth = latestKnownMonth ?? nowMonth;
+    const startMonth = shiftMonthUtc(endMonth, -(MONTH_WINDOW - 1));
 
-  const seriesMeta = useMemo(() => new Map(trimmedSeries.map((item) => [item.name, item])), [trimmedSeries]);
+    const fixedLabels = Array.from({ length: MONTH_WINDOW }, (_, index) => {
+      const month = shiftMonthUtc(startMonth, index);
+      const iso = month.toISOString();
+      return {
+        bucketStart: iso,
+        short: formatMonthShort(month),
+        long: formatMonthLong(month),
+      };
+    });
 
-  const yAxisBounds = useMemo(() => {
-    if (!labels.length || !trimmedSeries.length) {
-      return { min: -1, max: 1 };
-    }
+    const monthIndexByBucket = new Map(
+      fixedLabels.map((item, index) => [monthStartUtc(new Date(item.bucketStart)).toISOString(), index]),
+    );
 
-    let maxValue = Number.NEGATIVE_INFINITY;
-    let minValue = Number.POSITIVE_INFINITY;
-    const nonComparisonSeries = trimmedSeries.filter((item) => item.kind !== "comparison");
-
-    for (let index = 0; index < labels.length; index += 1) {
-      let bucketPositive = 0;
-      let bucketNegative = 0;
-      nonComparisonSeries.forEach((item) => {
-        const value = Number(item.values[index] ?? 0);
-        if (value >= 0) bucketPositive += value;
-        else bucketNegative += value;
+    const normalizedSeries = rawSeries.map((item) => {
+      const nextValues = Array(MONTH_WINDOW).fill(0);
+      rawLabels.forEach((label, labelIndex) => {
+        const parsed = new Date(label.bucketStart);
+        if (Number.isNaN(parsed.getTime())) return;
+        const monthKey = monthStartUtc(parsed).toISOString();
+        const fixedIndex = monthIndexByBucket.get(monthKey);
+        if (typeof fixedIndex !== "number") return;
+        nextValues[fixedIndex] = Number(item.values[labelIndex] ?? 0);
       });
-      if (bucketPositive > maxValue) maxValue = bucketPositive;
-      if (bucketNegative < minValue) minValue = bucketNegative;
-    }
+      return {
+        ...item,
+        values: nextValues,
+      };
+    });
 
-    trimmedSeries
-      .filter((item) => item.kind === "comparison")
-      .forEach((item) => {
-        item.values.forEach((value) => {
-          const numeric = Number(value ?? 0);
-          if (numeric > maxValue) maxValue = numeric;
-          if (numeric < minValue) minValue = numeric;
-        });
-      });
-
-    if (!Number.isFinite(minValue) || !Number.isFinite(maxValue)) {
-      return { min: -1, max: 1 };
-    }
-
-    if (minValue === maxValue) {
-      const bump = Math.abs(minValue) > 0 ? Math.abs(minValue) * 0.08 : 1;
-      return { min: minValue - bump, max: maxValue + bump };
-    }
-
-    const span = maxValue - minValue;
-    const pad = span * 0.08;
-    return { min: minValue - pad, max: maxValue + pad };
-  }, [labels, trimmedSeries]);
+    return {
+      labels: fixedLabels,
+      series: normalizeAndFilterSeries(normalizedSeries),
+    };
+  }, [filters.granularity, filters.xAxis, rawLabels, rawSeries]);
 
   const option = useMemo<EChartsOption>(
     () => ({
-      color: trimmedSeries.map((item) => seriesColorByName.get(item.name) ?? "#4f7088"),
-      animation: true,
-      animationDuration: 640,
-      animationEasing: "cubicOut",
-      animationDurationUpdate: 460,
-      animationEasingUpdate: "cubicOut",
-      stateAnimation: { duration: 260, easing: "cubicOut" },
+      color: ["#4f7088", "#58b368", "#3f68c6", "#c27d2f", "#8a66cf", "#da6f40", "#557a43", "#9f5f80"],
       tooltip: {
         trigger: chartMode === "bar" ? "item" : "axis",
-        axisPointer:
-          chartMode === "bar"
-            ? { type: "shadow", shadowStyle: { color: "rgba(79, 112, 136, 0.08)" } }
-            : { type: "line" },
         confine: true,
         backgroundColor: "rgba(21, 35, 48, 0.95)",
         borderWidth: 0,
         textStyle: { color: "#f7fbfb", fontSize: 12 },
         formatter: (raw: unknown) => {
-          const points = (Array.isArray(raw)
-            ? raw
-            : raw && typeof raw === "object"
-              ? [raw]
-              : []) as Array<{
+          const points = (Array.isArray(raw) ? raw : raw && typeof raw === "object" ? [raw] : []) as Array<{
             seriesName: string;
             value: number | [string | number, string | number] | null | undefined;
             marker?: string;
             dataIndex?: number;
           }>;
           if (!points.length) return "";
-
           const pointIndex = points[0]?.dataIndex ?? 0;
-          const base = baseValues[pointIndex] ?? 0;
           const title = labels[pointIndex]?.long ?? "";
           const rows = points
             .map((point) => {
-              const entry = seriesMeta.get(point.seriesName);
-              if (!entry) return "";
               const numericValue = Array.isArray(point.value)
                 ? Number(point.value[point.value.length - 1] ?? 0)
                 : Number(point.value ?? 0);
-              const comparisonDelta =
-                entry.kind === "comparison" && base > 0
-                  ? ` <span style="color:#b8c8d2;">(${calculateDeltaPercent(numericValue, base) >= 0 ? "+" : ""}${percentFormatter.format(calculateDeltaPercent(numericValue, base))}%)</span>`
-                  : "";
-              return `<div style="display:flex; gap:6px; align-items:center; margin-top:4px;">${point.marker ?? ""}<span>${point.seriesName}:</span><strong>${formatTooltipCost(numericValue)}</strong>${comparisonDelta}</div>`;
+              if (numericValue === 0) return "";
+              return `<div style="display:flex; gap:6px; align-items:center; margin-top:4px;">${point.marker ?? ""}<span>${point.seriesName}:</span><strong>${formatTooltipCost(numericValue)}</strong></div>`;
             })
+            .filter(Boolean)
             .join("");
+          if (!rows) {
+            return `<div style="min-width:220px;"><div style="font-weight:600; margin-bottom:4px;">${title}</div><div style="opacity:0.86;">No data</div></div>`;
+          }
           return `<div style="min-width:220px;"><div style="font-weight:600; margin-bottom:4px;">${title}</div>${rows}</div>`;
         },
       },
       legend: {
         type: "scroll",
-        top: 0,
+        top: 2,
         icon: "roundRect",
         itemHeight: 6,
         itemWidth: 18,
@@ -278,26 +168,31 @@ export default function CostHistoryPage() {
         pageTextStyle: { color: "#6d837e", fontSize: 10 },
         textStyle: { color: "#58706d", fontSize: 11 },
       },
-      grid: { left: 10, right: 10, top: 58, bottom: 14, containLabel: true },
+      grid: { left: 10, right: 10, top: 30, bottom: 10, containLabel: true },
       xAxis: {
         type: "category",
+        name: filters.xAxis === "date" ? "Date" : filters.xAxis === "account" ? "Account" : "Region",
+        nameLocation: "middle",
+        nameGap: 34,
+        nameTextStyle: { color: "#4f6664", fontSize: 12, fontWeight: 600 },
         boundaryGap: chartMode === "bar",
         data: labels.map((label) => label.short),
-        axisLine: { lineStyle: { color: "#d7e4df" } },
+        axisLine: { show: true, lineStyle: { color: "#c7d8d3", width: 1.1 } },
         axisLabel: { color: "#5c7370", fontSize: 11, hideOverlap: true },
       },
       yAxis: {
         type: "value",
-        min: yAxisBounds.min,
-        max: yAxisBounds.max,
-        axisLine: { show: false },
+        name: `${Y_AXIS_LABELS[filters.yAxisMetric]} (USD)`,
+        nameLocation: "middle",
+        nameGap: 62,
+        nameRotate: 90,
+        nameTextStyle: { color: "#4f6664", fontSize: 12, fontWeight: 600 },
+        axisLine: { show: true, lineStyle: { color: "#c7d8d3", width: 1.1 } },
         splitLine: { lineStyle: { color: "#e1eae7", type: "dashed" } },
         axisLabel: { color: "#6d837e", fontSize: 11, formatter: (value: number) => formatAxisCost(value) },
       },
-      series: trimmedSeries.map((item, index) => {
-        const isComparison = item.kind === "comparison";
-        const renderAsBar = chartMode === "bar" && !isComparison;
-        const seriesColor = seriesColorByName.get(item.name) ?? "#4f7088";
+      series: series.map((item, index) => {
+        const renderAsBar = chartMode === "bar";
         return {
           name: item.name,
           type: renderAsBar ? "bar" : "line",
@@ -305,162 +200,81 @@ export default function CostHistoryPage() {
           smooth: !renderAsBar,
           showSymbol: renderAsBar ? false : labels.length <= 35,
           symbolSize: 5,
-          emphasis: { focus: "series", itemStyle: { color: seriesColor } },
-          blur: { itemStyle: { opacity: 0.4 }, lineStyle: { opacity: 0.45 } },
-          progressive: 5000,
-          progressiveThreshold: 3000,
           universalTransition: true,
           animationDuration: renderAsBar ? 780 : 520,
           animationDurationUpdate: renderAsBar ? 560 : 380,
           animationEasing: "cubicOut",
           animationEasingUpdate: "cubicOut",
           animationDelay: (idx: number) => Math.min(index * 36 + idx * 22, 640),
-          barMinHeight: renderAsBar ? 2 : undefined,
+          barMinHeight: renderAsBar ? 0 : undefined,
           barWidth: renderAsBar ? "86%" : undefined,
           barMaxWidth: renderAsBar ? 80 : undefined,
           barCategoryGap: renderAsBar ? "8%" : undefined,
           barGap: renderAsBar ? "0%" : undefined,
-          lineStyle: renderAsBar ? undefined : { color: seriesColor, width: isComparison ? 1.9 : 2.4 },
-          itemStyle: renderAsBar
-            ? { color: seriesColor, borderRadius: 0, borderColor: "rgba(255,255,255,0.4)", borderWidth: 0.4 }
-            : { color: seriesColor },
+          itemStyle: renderAsBar ? { opacity: 1, borderWidth: 0 } : undefined,
+          emphasis: renderAsBar
+            ? {
+                disabled: true,
+                scale: false,
+                itemStyle: {
+                  opacity: 1,
+                  borderWidth: 0,
+                  shadowBlur: 0,
+                  shadowColor: "transparent",
+                },
+              }
+            : undefined,
           data: item.values.map((value) => Number(value ?? 0)),
-          z: isComparison ? 4 : 3,
         };
       }),
     }),
-    [baseValues, chartMode, labels, seriesColorByName, seriesMeta, trimmedSeries, yAxisBounds.max, yAxisBounds.min],
+    [chartMode, filters.xAxis, filters.yAxisMetric, labels, series],
   );
 
-  const periodSpend = primaryQuery.data?.kpis.periodSpend ?? 0;
-  const previousPeriodSpend = primaryQuery.data?.kpis.previousPeriodSpend ?? 0;
-  const trend = primaryQuery.data?.kpis.trendPct ?? 0;
-  const trendLabel = `${trend >= 0 ? "+" : ""}${percentFormatter.format(trend)}%`;
-  const trendTone: "positive" | "negative" = trend >= 0 ? "negative" : "positive";
-
-  const chartKpis = [
-    { label: "Total Spend", value: compactCurrencyFormatter.format(periodSpend), tone: "default" as const },
-    { label: "Prev Spend", value: compactCurrencyFormatter.format(previousPeriodSpend), tone: "default" as const },
-    { label: "Trend", value: trendLabel, tone: trendTone },
-  ];
-
-  const scopeFrom = scope?.from ? parseInputDate(scope.from) : null;
-  const scopeTo = scope?.to ? parseInputDate(scope.to) : null;
-  const days = useMemo(() => {
-    if (!scopeFrom || !scopeTo || scopeFrom > scopeTo) return 0;
-    return Math.floor((scopeTo.getTime() - scopeFrom.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-  }, [scopeFrom, scopeTo]);
-
-  const compareLabel = activeCompareKey
-    ? COMPARE_OPTIONS.find((item) => item.key === activeCompareKey)?.label ?? activeCompareKey
-    : "None";
-
-  const chips: CostExplorerChip[] = [
-    { key: "group", label: "Group", value: "Service" },
-    {
-      key: "compare",
-      label: "Compare",
-      value: compareLabel,
-    },
-    {
-      key: "metric",
-      label: "Metric",
-      value: selectedMetrics.map((key) => METRIC_OPTIONS.find((item) => item.key === key)?.label ?? key).join(" VS "),
-    },
-  ];
-
-  const isLoading = activeQueries.some((item) => item.isLoading);
-  const isError = activeQueries.some((item) => item.isError);
-  const firstError = activeQueries.find((item) => item.error);
-  const errorMessage = (firstError?.error as Error | undefined)?.message;
-  const isFetching = activeQueries.some((item) => item.isFetching);
-  const chartReady = labels.length > 0 && trimmedSeries.some((item) => item.values.length > 0);
-
-  const toggleMetric = (metric: Metric) => {
-    setSelectedMetrics([metric]);
-    setCompare([]);
-  };
-
-  const toggleCompare = (key: CompareKey) => {
-    if (selectedMetrics.length > 1) {
-      setSelectedMetrics([selectedMetrics[0] ?? "billed"]);
-    }
-    setCompare((current) => (current[0] === key ? [] : [key]));
-  };
-
-  const clearAll = () => {
-    setSelectedMetrics(["billed"]);
-    setCompare([]);
-    setChartMode("bar");
-  };
+  const hasRenderableChartData = labels.length > 0 && series.some((item) => item.values.some((value) => hasCost(value)));
+  const isInitialLoading = historyQuery.isLoading || filtersQuery.isLoading;
+  const isFilterApplying = historyQuery.isFetching || filtersQuery.isFetching;
+  const isChartReady = historyQuery.isSuccess && filtersQuery.isSuccess;
+  const hasInitialData = Boolean(historyQuery.data) && Boolean(filtersQuery.data);
+  const showHistorySkeleton = !hasInitialData && (isInitialLoading || isFilterApplying || !isChartReady);
 
   return (
     <div className="dashboard-page cost-history-page">
-      <section className="cost-explorer-unified-shell">
-        <CostExplorerFiltersPanel
-          effectiveGranularity="monthly"
-          days={days}
-          groupBy={"service" as GroupBy}
-          selectedMetrics={selectedMetrics}
-          compare={compare}
-          chips={chips}
-          onSetGranularity={() => {}}
-          onSetGroupBy={() => {}}
-          onToggleMetric={toggleMetric}
-          onToggleCompare={toggleCompare}
-          onEditChip={() => {}}
-          onRemoveChip={(key) => {
-            if (key === "compare") {
-              setCompare([]);
-              return;
-            }
-            if (key === "metric") {
-              setSelectedMetrics(["billed"]);
-            }
-          }}
-          onClearAll={clearAll}
-          hideGranularity
-          granularityRef={granularityRef}
-          groupRef={groupRef}
-          compareRef={compareRef}
-          metricRef={metricRef}
-          groupOptions={[{ key: "service", label: "Service" }]}
-          groupValueOptions={[]}
-          selectedGroupValues={[]}
-          onToggleGroupValue={() => {}}
-          onClearGroupValues={() => {}}
-          onApplyGroupFilters={() => {}}
-          hasPendingGroupChanges={false}
-          groupValuesLoading={false}
-          enableGroupValueFiltering={false}
-        />
+      {showHistorySkeleton ? (
+        <HistorySectionSkeleton />
+      ) : (
+        <>
+          <div className="cost-history-filter-container">
+            <CostHistoryFiltersPanel
+              rootRef={rootRef}
+              filters={filters}
+              setFilters={setFilters}
+              activePopover={activePopover}
+              setActivePopover={setActivePopover}
+              options={filtersQuery.data}
+            />
+          </div>
 
-        <div className="cost-explorer-unified-shell__divider" aria-hidden="true" />
-
-        <CostExplorerChartSection
-          option={option}
-          isLoading={isLoading}
-          isError={isError}
-          errorMessage={errorMessage}
-          isFetching={isFetching}
-          showApplySkeleton={isFetching}
-          chartReady={chartReady}
-          chartMode={chartMode}
-          onChartModeChange={setChartMode}
-          kpis={chartKpis}
-          topBreakdowns={[]}
-          rowsPerPage={rowsPerPage}
-          onRowsPerPageChange={() => {}}
-          breakdownPagination={null}
-          onBreakdownPageChange={() => {}}
-          onRetry={() => {
-            activeQueries.forEach((query) => {
-              void query.refetch();
-            });
-          }}
-          onReset={clearAll}
-        />
-      </section>
+          <CostExplorerChartOnlySection
+            title="Cost History"
+            option={option}
+            isLoading={isInitialLoading}
+            isError={historyQuery.isError || filtersQuery.isError}
+            errorMessage={(historyQuery.error as Error | undefined)?.message ?? (filtersQuery.error as Error | undefined)?.message}
+            isFetching={isFilterApplying}
+            showApplySkeleton={isFilterApplying}
+            showFetchStatusLabel={false}
+            chartReady={hasRenderableChartData}
+            chartMode={chartMode}
+            onChartModeChange={setChartMode}
+            onRetry={() => {
+              void historyQuery.refetch();
+              void filtersQuery.refetch();
+            }}
+            onReset={() => setFilters(DEFAULT_COST_HISTORY_FILTERS)}
+          />
+        </>
+      )}
     </div>
   );
 }

@@ -4,6 +4,9 @@ import {
   type AnomaliesFiltersQuery,
   type AnomaliesListResponse,
   type CostExplorerFiltersQuery,
+  type CostHistoryFilterOptionsResponse,
+  type CostHistoryFiltersQuery,
+  type CostHistoryResponse,
   type DashboardResolvedScope,
   type Ec2OptimizationSummaryFiltersQuery,
   type Ec2OptimizationInstancesFiltersQuery,
@@ -121,6 +124,28 @@ export function useCostExplorerGroupOptionsQuery(groupBy?: CostExplorerFiltersQu
     enabled: Boolean(scope),
     staleTime: 30_000,
     placeholderData: (previousData) => previousData,
+  });
+}
+
+export function useCostHistoryQuery(filters?: CostHistoryFiltersQuery, enabledOverride: boolean = true) {
+  const { scope } = useDashboardScope();
+  return useQuery<CostHistoryResponse, Error>({
+    queryKey: ["dashboard", "cost-history", scope, filters],
+    queryFn: () => dashboardApi.getCostHistory(assertScope(scope), filters),
+    enabled: Boolean(scope) && enabledOverride,
+    placeholderData: (previous) => previous,
+    staleTime: 30_000,
+  });
+}
+
+export function useCostHistoryFilterOptionsQuery(enabledOverride: boolean = true) {
+  const { scope } = useDashboardScope();
+  return useQuery<CostHistoryFilterOptionsResponse, Error>({
+    queryKey: ["dashboard", "cost-history", "filters", scope],
+    queryFn: () => dashboardApi.getCostHistoryFilterOptions(assertScope(scope)),
+    enabled: Boolean(scope) && enabledOverride,
+    placeholderData: (previous) => previous,
+    staleTime: 60_000,
   });
 }
 

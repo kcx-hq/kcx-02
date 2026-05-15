@@ -6,20 +6,23 @@ type InventoryProviderPageProps = {
   title: string;
   subtitle: string;
   groups: InventoryServiceGroup[];
+  hideHeader?: boolean;
 };
 
-export function InventoryProviderPage({ title, subtitle, groups }: InventoryProviderPageProps) {
+export function InventoryProviderPage({ title, subtitle, groups, hideHeader = false }: InventoryProviderPageProps) {
   const location = useLocation();
 
   return (
     <section className="dashboard-page inventory-provider-page" aria-label={`${title} navigation`}>
-      <header className="dashboard-page-header inventory-provider-page__header">
-        <div>
-          <p className="inventory-provider-page__eyebrow">Services</p>
-          <h1 className="dashboard-page-header__title">{title}</h1>
-          <p className="inventory-provider-page__subtitle">{subtitle}</p>
-        </div>
-      </header>
+      {!hideHeader ? (
+        <header className="dashboard-page-header inventory-provider-page__header">
+          <div>
+            <p className="inventory-provider-page__eyebrow">Services</p>
+            <h1 className="dashboard-page-header__title">{title}</h1>
+            <p className="inventory-provider-page__subtitle">{subtitle}</p>
+          </div>
+        </header>
+      ) : null}
 
       <div className="inventory-service-groups-grid">
         {groups.map((group) => (

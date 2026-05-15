@@ -37,10 +37,92 @@ export const parseDateValue = (value: string | null): string | null => {
   return /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : null;
 };
 
-export const getMonthLabel = (value: string): string => {
-  const [year, month] = value.split("-");
-  const date = new Date(Date.UTC(Number(year), Number(month) - 1, 1));
-  return date.toLocaleDateString("en-US", { month: "short", year: "2-digit", timeZone: "UTC" });
+const DAILY_LOOKBACK_DAYS = 30;
+
+const parsePointDateUtc = (value: string): Date | null => {
+  if (!value) {
+    return null;
+  }
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    const [year, month, day] = value.split("-").map(Number);
+    return new Date(Date.UTC(year, month - 1, day));
+  }
+  if (/^\d{4}-\d{2}$/.test(value)) {
+    const [year, month] = value.split("-").map(Number);
+    return new Date(Date.UTC(year, month - 1, 1));
+  }
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return null;
+  }
+  return new Date(Date.UTC(parsed.getUTCFullYear(), parsed.getUTCMonth(), parsed.getUTCDate()));
+};
+
+const toIsoDateUtc = (date: Date): string => {
+  const year = date.getUTCFullYear();
+  const month = String(date.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(date.getUTCDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
+const formatShortDayLabel = (isoDate: string): string => {
+  const parsed = parsePointDateUtc(isoDate);
+  if (!parsed) {
+    return isoDate;
+  }
+  return parsed.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+};
+
+const formatFullDayLabel = (isoDate: string): string => {
+  const parsed = parsePointDateUtc(isoDate);
+  if (!parsed) {
+    return isoDate;
+  }
+  return parsed.toLocaleDateString("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+};
+
+const buildDailyRollingPoints = (
+  points: Array<{ month: string; budget: number; actual: number; forecast: number }>,
+): Array<{ date: string; budget: number; actual: number; forecast: number }> => {
+  const byDate = new Map<string, { budget: number; actual: number; forecast: number }>();
+  for (const point of points) {
+    const parsed = parsePointDateUtc(point.month);
+    if (!parsed) {
+      continue;
+    }
+    byDate.set(toIsoDateUtc(parsed), { budget: point.budget, actual: point.actual, forecast: point.forecast });
+  }
+
+  const end = new Date();
+  const endUtc = new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), end.getUTCDate()));
+  const startUtc = new Date(endUtc);
+  startUtc.setUTCDate(endUtc.getUTCDate() - (DAILY_LOOKBACK_DAYS - 1));
+
+  const daily: Array<{ date: string; budget: number; actual: number; forecast: number }> = [];
+  let lastBudget = 0;
+  let lastForecast = 0;
+
+  for (let i = 0; i < DAILY_LOOKBACK_DAYS; i += 1) {
+    const cursor = new Date(startUtc);
+    cursor.setUTCDate(startUtc.getUTCDate() + i);
+    const key = toIsoDateUtc(cursor);
+    const existing = byDate.get(key);
+    if (existing) {
+      lastBudget = existing.budget;
+      lastForecast = existing.forecast;
+      daily.push({ date: key, budget: existing.budget, actual: existing.actual, forecast: existing.forecast });
+    } else {
+      daily.push({ date: key, budget: lastBudget, actual: 0, forecast: lastForecast });
+    }
+  }
+
+  return daily;
 };
 
 export const toSeverityTone = (severity: string): "positive" | "negative" | "accent" | "neutral" => {
@@ -61,11 +143,27 @@ export const getStatusTone = (status: string): "positive" | "negative" | "accent
 
 export const buildTrendOption = (
   points: Array<{ month: string; budget: number; actual: number; forecast: number }>,
-): EChartsOption => ({
+): EChartsOption => {
+  const dailyPoints = buildDailyRollingPoints(points);
+  const axisDates = dailyPoints.map((point) => point.date);
+  const tickStep = Math.max(1, Math.ceil(axisDates.length / 8));
+
+  return {
   color: ["#3f6ed7", "#1f8b7a", "#ca8b17"],
   tooltip: {
     trigger: "axis",
-    valueFormatter: (value) => currencyFormatterPrecise.format(Number(value ?? 0)),
+    formatter: (params: any) => {
+      const seriesParams = Array.isArray(params) ? params : [params];
+      const axisDate = seriesParams[0]?.axisValue as string | undefined;
+      const lines = [`<div style="margin-bottom:4px;">${formatFullDayLabel(axisDate ?? "")}</div>`];
+
+      for (const param of seriesParams) {
+        lines.push(
+          `${param.marker}${param.seriesName}: <strong>${currencyFormatterPrecise.format(Number(param.value ?? 0))}</strong>`,
+        );
+      }
+      return lines.join("<br/>");
+    },
   },
   legend: {
     top: 0,
@@ -77,25 +175,58 @@ export const buildTrendOption = (
   xAxis: {
     type: "category",
     boundaryGap: false,
-    data: points.map((point) => getMonthLabel(point.month)),
+    data: axisDates,
+    name: "Date",
+    nameLocation: "middle",
+    nameGap: 48,
+    nameTextStyle: {
+      color: "#445b58",
+      fontSize: 12,
+      fontWeight: 600,
+    },
     axisLine: { lineStyle: { color: "#d7e4df" } },
-    axisLabel: { color: "#5c7370", fontSize: 11 },
+    axisTick: { alignWithLabel: true },
+    axisLabel: {
+      color: "#5c7370",
+      fontSize: 11,
+      hideOverlap: true,
+      interval: (index: number) => index % tickStep !== 0,
+      rotate: axisDates.length > 14 ? 35 : 0,
+      margin: 12,
+      formatter: (value: string) => formatShortDayLabel(value),
+    },
   },
   yAxis: {
     type: "value",
+    name: "Cost ($)",
+    nameLocation: "middle",
+    nameGap: 68,
+    nameRotate: 90,
+    nameTextStyle: {
+      color: "#445b58",
+      fontSize: 12,
+      fontWeight: 600,
+    },
     splitLine: { lineStyle: { color: "#e5efec" } },
+    axisLine: { lineStyle: { color: "#d7e4df" } },
     axisLabel: {
       color: "#6d837e",
       fontSize: 11,
       formatter: (value: number) => currencyFormatterCompact.format(value),
     },
   },
+  grid: {
+    left: 74,
+    right: 20,
+    top: 42,
+    bottom: 74,
+  },
   series: [
     {
       name: "Budget",
       type: "line",
       smooth: true,
-      data: points.map((point) => point.budget),
+      data: dailyPoints.map((point) => point.budget),
       symbolSize: 6,
       lineStyle: { width: 2.2 },
     },
@@ -103,7 +234,7 @@ export const buildTrendOption = (
       name: "Actual",
       type: "line",
       smooth: true,
-      data: points.map((point) => point.actual),
+      data: dailyPoints.map((point) => point.actual),
       symbolSize: 6,
       lineStyle: { width: 2.2 },
       areaStyle: {
@@ -124,9 +255,10 @@ export const buildTrendOption = (
       name: "Forecast",
       type: "line",
       smooth: true,
-      data: points.map((point) => point.forecast),
+      data: dailyPoints.map((point) => point.forecast),
       symbolSize: 6,
       lineStyle: { width: 2.2, type: "dashed" },
     },
   ],
-});
+  };
+};

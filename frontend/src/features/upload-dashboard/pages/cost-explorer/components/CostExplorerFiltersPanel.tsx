@@ -296,7 +296,8 @@ export function CostExplorerFiltersPanel({
 
   return (
     <section className="cost-explorer-control-surface" aria-label="Cost explorer filters" ref={rootRef}>
-      <div className="cost-explorer-toolbar-row">
+      <div className="cost-explorer-filters-layout">
+        <div className="cost-explorer-toolbar-row">
         <div className="cost-explorer-toolbar-item">
           <button
             type="button"
@@ -479,23 +480,24 @@ export function CostExplorerFiltersPanel({
             </div>
           ) : null}
         </div>
-      </div>
+        </div>
 
-      <div className="cost-explorer-chip-bar" aria-label="Selected filter summary">
-        <div className="cost-explorer-chip-row">
-          {chips.map((chip) => (
-            <span key={chip.key} className="cost-explorer-chip">
-              <button type="button" className="cost-explorer-chip__edit" onClick={() => handleChipEdit(chip.key)}>
-                {chip.label}: {chip.value}
-              </button>
-              <button type="button" className="cost-explorer-chip__remove" onClick={() => onRemoveChip(chip.key)} aria-label={`Remove ${chip.label}`}>
-                <X size={13} aria-hidden="true" />
-              </button>
-            </span>
-          ))}
-          <button type="button" className="cost-explorer-chip-bar__clear cost-explorer-chip-bar__clear--inline" onClick={onClearAll}>
-            Clear all
-          </button>
+        <div className="cost-explorer-chip-bar" aria-label="Selected filter summary">
+          <div className="cost-explorer-chip-row">
+            {chips.map((chip) => (
+              <span key={chip.key} className="cost-explorer-chip">
+                <button type="button" className="cost-explorer-chip__edit" onClick={() => handleChipEdit(chip.key)}>
+                  {chip.label}: {chip.value}
+                </button>
+                <button type="button" className="cost-explorer-chip__remove" onClick={() => onRemoveChip(chip.key)} aria-label={`Remove ${chip.label}`}>
+                  <X size={13} aria-hidden="true" />
+                </button>
+              </span>
+            ))}
+            <button type="button" className="cost-explorer-chip-bar__clear cost-explorer-chip-bar__clear--inline" onClick={onClearAll}>
+              Clear all
+            </button>
+          </div>
         </div>
       </div>
     </section>

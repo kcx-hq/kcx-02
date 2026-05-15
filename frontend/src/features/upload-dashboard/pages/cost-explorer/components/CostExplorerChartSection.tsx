@@ -99,11 +99,12 @@ export function CostExplorerChartSection({
     { key: "bar", label: "Bar Chart" },
   ];
   const activeModeLabel = modeOptions.find((item) => item.key === chartMode)?.label ?? "Line Chart";
+  const showTableSection = !isLoading && !isError && chartReady && topBreakdowns.length > 0;
 
   return (
     <section className="cost-explorer-chart-panel" aria-label="Cost vs time chart">
-      <div className="cost-explorer-chart-panel__header">
-        <div className="cost-explorer-chart-insights" aria-label="Chart key metrics">
+      <section className="cost-explorer-kpi-panel" aria-label="Cost key metrics">
+        <div className="cost-explorer-chart-insights">
           {kpis.map((kpi) => (
             <article key={kpi.label} className={`cost-explorer-insight-tile${kpi.tone ? ` is-${kpi.tone}` : ""}`}>
               <p className="cost-explorer-insight-tile__label">{kpi.label}</p>
@@ -111,48 +112,49 @@ export function CostExplorerChartSection({
             </article>
           ))}
         </div>
-        <div className="cost-explorer-chart-panel__header-actions">
-          <div className="cost-explorer-chart-mode" ref={modeMenuRef}>
-            <button
-              type="button"
-              className={`cost-explorer-chart-mode__trigger${modeMenuOpen ? " is-open" : ""}`}
-              onClick={() => setModeMenuOpen((current) => !current)}
-              aria-haspopup="menu"
-              aria-expanded={modeMenuOpen}
-            >
-              <span className="cost-explorer-chart-mode__trigger-label">{activeModeLabel}</span>
-              <ChevronDown className="cost-explorer-chart-mode__caret" size={14} aria-hidden="true" />
-            </button>
-            {modeMenuOpen ? (
-              <div className="cost-explorer-chart-mode__menu" role="menu" aria-label="Chart type">
-                {modeOptions.map((item) => {
-                  const isActive = item.key === chartMode;
-                  return (
-                    <button
-                      key={item.key}
-                      type="button"
-                      role="menuitemradio"
-                      aria-checked={isActive}
-                      className={`cost-explorer-chart-mode__item${isActive ? " is-active" : ""}`}
-                      onClick={() => {
-                        onChartModeChange(item.key);
-                        setModeMenuOpen(false);
-                      }}
-                    >
-                      <span>{item.label}</span>
-                      {isActive ? <Check size={14} aria-hidden="true" /> : null}
-                    </button>
-                  );
-                })}
-              </div>
-            ) : null}
-          </div>
-          {showRefreshSkeleton ? (
-            <span className="cost-explorer-chart-panel__status">
-              {showApplySkeleton ? "Applying filters..." : "Refreshing data..."}
-            </span>
+      </section>
+
+      <div className="cost-explorer-chart-panel__header-actions">
+        <div className="cost-explorer-chart-mode" ref={modeMenuRef}>
+          <button
+            type="button"
+            className={`cost-explorer-chart-mode__trigger${modeMenuOpen ? " is-open" : ""}`}
+            onClick={() => setModeMenuOpen((current) => !current)}
+            aria-haspopup="menu"
+            aria-expanded={modeMenuOpen}
+          >
+            <span className="cost-explorer-chart-mode__trigger-label">{activeModeLabel}</span>
+            <ChevronDown className="cost-explorer-chart-mode__caret" size={14} aria-hidden="true" />
+          </button>
+          {modeMenuOpen ? (
+            <div className="cost-explorer-chart-mode__menu" role="menu" aria-label="Chart type">
+              {modeOptions.map((item) => {
+                const isActive = item.key === chartMode;
+                return (
+                  <button
+                    key={item.key}
+                    type="button"
+                    role="menuitemradio"
+                    aria-checked={isActive}
+                    className={`cost-explorer-chart-mode__item${isActive ? " is-active" : ""}`}
+                    onClick={() => {
+                      onChartModeChange(item.key);
+                      setModeMenuOpen(false);
+                    }}
+                  >
+                    <span>{item.label}</span>
+                    {isActive ? <Check size={14} aria-hidden="true" /> : null}
+                  </button>
+                );
+              })}
+            </div>
           ) : null}
         </div>
+        {showRefreshSkeleton ? (
+          <span className="cost-explorer-chart-panel__status">
+            {showApplySkeleton ? "Applying filters..." : "Refreshing data..."}
+          </span>
+        ) : null}
       </div>
 
       <div className="cost-explorer-chart-panel__body">
@@ -181,110 +183,9 @@ export function CostExplorerChartSection({
         ) : null}
         {!isLoading && !isError && chartReady ? (
           <div className={`cost-explorer-chart-stack${showRefreshSkeleton ? " is-fetching" : ""}`}>
-            <div key={chartMode} className="cost-explorer-chart-canvas">
+            <div key={chartMode} className="cost-explorer-chart-canvas cost-explorer-chart-canvas--plain">
               <BaseEChart option={option} height={420} />
             </div>
-            {topBreakdowns.length ? (
-              <div className={`cost-explorer-breakdown-grid${topBreakdowns.length === 1 ? " is-single" : ""}`} aria-label="Cost breakdowns">
-                {topBreakdowns.map((group) => (
-                  <div key={group.key} className="cost-explorer-breakdown-block">
-                    <div className="cost-explorer-breakdown-block__head">
-                      <p className="cost-explorer-breakdown-block__title">{group.label}</p>
-                      <div className="cost-explorer-breakdown-controls">
-                        <div className="cost-explorer-breakdown-limit" ref={rowsMenuRef}>
-                          <button
-                            type="button"
-                            className={`cost-explorer-breakdown-limit__trigger${rowsMenuOpen ? " is-open" : ""}`}
-                            onClick={() => setRowsMenuOpen((current) => !current)}
-                            aria-haspopup="menu"
-                            aria-expanded={rowsMenuOpen}
-                          >
-                            <span>Rows: {rowsPerPage}</span>
-                            <ChevronDown size={14} aria-hidden="true" />
-                          </button>
-                          {rowsMenuOpen ? (
-                            <div className="cost-explorer-breakdown-limit__menu" role="menu" aria-label="Rows per page">
-                              {[5, 10, 15].map((limit) => {
-                                const limitValue = limit as 5 | 10 | 15;
-                                const isActive = rowsPerPage === limitValue;
-                                return (
-                                  <button
-                                    key={limit}
-                                    type="button"
-                                    role="menuitemradio"
-                                    aria-checked={isActive}
-                                    className={`cost-explorer-breakdown-limit__item${isActive ? " is-active" : ""}`}
-                                    onClick={() => {
-                                      onRowsPerPageChange(limitValue);
-                                      setRowsMenuOpen(false);
-                                    }}
-                                  >
-                                    {limit}
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          ) : null}
-                        </div>
-                      </div>
-                    </div>
-                    <div className="cost-explorer-breakdown-table-wrap">
-                      <table className="cost-explorer-breakdown-table">
-                        <thead>
-                          <tr>
-                            <th scope="col">Name</th>
-                            <th scope="col">Cost</th>
-                            <th scope="col">Change</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {group.rows.map((row) => (
-                            <tr key={`${group.key}-${row.name}`}>
-                              <td>
-                                <div className="cost-explorer-breakdown-table__name-main">{row.name}</div>
-                                {row.subtitle ? (
-                                  <div className="cost-explorer-breakdown-table__name-sub">{row.subtitle}</div>
-                                ) : null}
-                              </td>
-                              <td>{row.costLabel}</td>
-                              <td className={`cost-explorer-breakdown-table__change is-${row.changeTone}`}>{row.changeLabel}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                    {breakdownPagination ? (
-                      <div className="cost-explorer-breakdown-pagination">
-                        <p className="cost-explorer-breakdown-pagination__meta">
-                          {breakdownPagination.startRow}-{breakdownPagination.endRow} of {breakdownPagination.totalRows}
-                        </p>
-                        <div className="cost-explorer-breakdown-pagination__actions">
-                          <button
-                            type="button"
-                            className="cost-explorer-breakdown-pagination__btn"
-                            disabled={breakdownPagination.currentPage <= 1}
-                            onClick={() => onBreakdownPageChange(breakdownPagination.currentPage - 1)}
-                          >
-                            Prev
-                          </button>
-                          <span className="cost-explorer-breakdown-pagination__page">
-                            Page {breakdownPagination.currentPage} / {breakdownPagination.totalPages}
-                          </span>
-                          <button
-                            type="button"
-                            className="cost-explorer-breakdown-pagination__btn"
-                            disabled={breakdownPagination.currentPage >= breakdownPagination.totalPages}
-                            onClick={() => onBreakdownPageChange(breakdownPagination.currentPage + 1)}
-                          >
-                            Next
-                          </button>
-                        </div>
-                      </div>
-                    ) : null}
-                  </div>
-                ))}
-              </div>
-            ) : null}
             {showRefreshSkeleton ? (
               <div className="cost-explorer-refresh-skeleton" aria-hidden="true">
                 <div className="cost-explorer-refresh-skeleton__chips">
@@ -303,6 +204,108 @@ export function CostExplorerChartSection({
           </div>
         ) : null}
       </div>
+
+      {showTableSection ? (
+        <section className="cost-explorer-table-panel" aria-label="Cost breakdowns">
+          <div className={`cost-explorer-breakdown-grid${topBreakdowns.length === 1 ? " is-single" : ""}`}>
+            {topBreakdowns.map((group) => (
+              <div key={group.key} className="cost-explorer-breakdown-block">
+                <div className="cost-explorer-breakdown-block__head">
+                  <p className="cost-explorer-breakdown-block__title">{group.label}</p>
+                  <div className="cost-explorer-breakdown-controls">
+                    <div className="cost-explorer-breakdown-limit" ref={rowsMenuRef}>
+                      <button
+                        type="button"
+                        className={`cost-explorer-breakdown-limit__trigger${rowsMenuOpen ? " is-open" : ""}`}
+                        onClick={() => setRowsMenuOpen((current) => !current)}
+                        aria-haspopup="menu"
+                        aria-expanded={rowsMenuOpen}
+                      >
+                        <span>Rows: {rowsPerPage}</span>
+                        <ChevronDown size={14} aria-hidden="true" />
+                      </button>
+                      {rowsMenuOpen ? (
+                        <div className="cost-explorer-breakdown-limit__menu" role="menu" aria-label="Rows per page">
+                          {[5, 10, 15].map((limit) => {
+                            const limitValue = limit as 5 | 10 | 15;
+                            const isActive = rowsPerPage === limitValue;
+                            return (
+                              <button
+                                key={limit}
+                                type="button"
+                                role="menuitemradio"
+                                aria-checked={isActive}
+                                className={`cost-explorer-breakdown-limit__item${isActive ? " is-active" : ""}`}
+                                onClick={() => {
+                                  onRowsPerPageChange(limitValue);
+                                  setRowsMenuOpen(false);
+                                }}
+                              >
+                                {limit}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+                <div className="cost-explorer-breakdown-table-wrap">
+                  <table className="cost-explorer-breakdown-table">
+                    <thead>
+                      <tr>
+                        <th scope="col">Name</th>
+                        <th scope="col">Cost</th>
+                        <th scope="col">Change</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {group.rows.map((row) => (
+                        <tr key={`${group.key}-${row.name}`}>
+                          <td>
+                            <div className="cost-explorer-breakdown-table__name-main">{row.name}</div>
+                            {row.subtitle ? <div className="cost-explorer-breakdown-table__name-sub">{row.subtitle}</div> : null}
+                          </td>
+                          <td>{row.costLabel}</td>
+                          <td className={`cost-explorer-breakdown-table__change is-${row.changeTone}`}>{row.changeLabel}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {breakdownPagination ? (
+                  <div className="cost-explorer-breakdown-pagination">
+                    <p className="cost-explorer-breakdown-pagination__meta">
+                      {breakdownPagination.startRow}-{breakdownPagination.endRow} of {breakdownPagination.totalRows}
+                    </p>
+                    <div className="cost-explorer-breakdown-pagination__actions">
+                      <button
+                        type="button"
+                        className="cost-explorer-breakdown-pagination__btn"
+                        disabled={breakdownPagination.currentPage <= 1}
+                        onClick={() => onBreakdownPageChange(breakdownPagination.currentPage - 1)}
+                      >
+                        Prev
+                      </button>
+                      <span className="cost-explorer-breakdown-pagination__page">
+                        Page {breakdownPagination.currentPage} / {breakdownPagination.totalPages}
+                      </span>
+                      <button
+                        type="button"
+                        className="cost-explorer-breakdown-pagination__btn"
+                        disabled={breakdownPagination.currentPage >= breakdownPagination.totalPages}
+                        onClick={() => onBreakdownPageChange(breakdownPagination.currentPage + 1)}
+                      >
+                        Next
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : null}
     </section>
   );
 }
