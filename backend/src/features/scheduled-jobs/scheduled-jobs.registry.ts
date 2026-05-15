@@ -3,6 +3,7 @@ import { handleEc2DailyRollup } from "./handlers/ec2/ec2-daily-rollup.handler.js
 import { handleEc2HourlyRetentionCleanup } from "./handlers/ec2/ec2-hourly-retention-cleanup.handler.js";
 import { handleEc2InventorySync } from "./handlers/ec2/ec2-inventory-sync.handler.js";
 import { handleEc2MetricsSync } from "./handlers/ec2/ec2-metrics-sync.handler.js";
+import { handleStagingCostLineItemsCleanup } from "./handlers/billing/staging-cost-line-items-cleanup.handler.js";
 import { handleLoadBalancerCostAggregation } from "./handlers/load-balancer/load-balancer-cost-aggregation.handler.js";
 import { handleLoadBalancerInventorySync } from "./handlers/load-balancer/load-balancer-inventory-sync.handler.js";
 import { handleLoadBalancerMetricsSync } from "./handlers/load-balancer/load-balancer-metrics-sync.handler.js";
@@ -14,13 +15,14 @@ export type ScheduledJobType =
   | "load_balancer_metrics_sync"
   | "ec2_metrics_sync"
   | "ec2_daily_rollup"
-  | "ec2_hourly_retention_cleanup";
+  | "ec2_hourly_retention_cleanup"
+  | "staging_cost_line_items_cleanup";
 
 type ScheduledJobCategory = "inventory_sync" | "metrics_sync" | "rollup" | "cleanup";
 
 type RegisteredScheduledJobDefinition = {
   type: ScheduledJobType;
-  service: "ec2" | "load-balancer";
+  service: "ec2" | "load-balancer" | "billing";
   key: string;
   category: ScheduledJobCategory;
   handler: (job: ScheduledJob) => Promise<void>;
@@ -75,6 +77,13 @@ export const REGISTERED_SCHEDULED_JOBS: ReadonlyArray<RegisteredScheduledJobDefi
     key: "ec2-hourly-retention-cleanup",
     category: "cleanup",
     handler: handleEc2HourlyRetentionCleanup,
+  },
+  {
+    type: "staging_cost_line_items_cleanup",
+    service: "billing",
+    key: "staging-cost-line-items-cleanup",
+    category: "cleanup",
+    handler: handleStagingCostLineItemsCleanup,
   },
 ];
 

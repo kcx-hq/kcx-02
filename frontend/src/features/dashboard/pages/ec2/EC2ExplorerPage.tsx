@@ -154,6 +154,8 @@ export default function EC2ExplorerPage() {
               : groupByParam === "reservation_type"
                 ? "reservation-type"
                 : groupByParam === "cost_category"
+                  || groupByParam === "cost_type"
+                  || groupByParam === "cost-type"
                   ? "cost-category"
                   : groupByParam === "availability_zone"
                     ? "availability-zone"

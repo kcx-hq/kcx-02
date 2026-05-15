@@ -228,6 +228,17 @@ export function EC2ExplorerChart({
       })),
     };
   }, [graph, valueMode, yAxisLabel]);
+  const chartRenderKey = useMemo(
+    () =>
+      [
+        graph.type,
+        valueMode,
+        graph.xKey,
+        graph.series.length,
+        graph.series.map((series) => `${series.key}:${series.data.length}`).join("|"),
+      ].join("::"),
+    [graph, valueMode],
+  );
 
   if (loading) {
     return <div className="ec2-explorer-chart__skeleton" aria-hidden="true" />;
@@ -279,6 +290,7 @@ export function EC2ExplorerChart({
         ) : null}
       </div>
       <BaseEChart
+        key={chartRenderKey}
         option={option}
         height={410}
         onPointClick={(event) => {

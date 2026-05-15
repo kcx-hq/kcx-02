@@ -217,6 +217,7 @@ const metricLabel = (key: string): string => {
   if (key === "data_transfer") return "Data Transfer";
   if (key === "nat_gateway") return "NAT Gateway";
   if (key === "eip") return "EIP";
+  if (key === "elastic_ip") return "Elastic IP";
   if (key === "other") return "Other";
   if (key === "internet_data_transfer") return "Internet Data Transfer";
   if (key === "inter_region_data_transfer") return "Inter-Region Data Transfer";
@@ -267,6 +268,22 @@ type CurCostRow = {
   tagsJson: Record<string, unknown> | null;
 };
 
+const COST_CATEGORY_LIKE_GROUPS = new Set([
+  "compute",
+  "ebs",
+  "snapshot",
+  "data_transfer",
+  "nat_gateway",
+  "elastic_ip",
+  "eip",
+  "other",
+]);
+
+const normalizeUnknownGroup = (value: string | null | undefined): string => {
+  const normalized = String(value ?? "").trim();
+  return normalized.length > 0 ? normalized : "Unknown";
+};
+
 const toPossibleInstanceId = (value: string | null | undefined): string | null => {
   const match = String(value ?? "").toLowerCase().match(/\bi-[a-z0-9-]+\b/);
   return match?.[0] ?? null;
@@ -275,21 +292,24 @@ const toPossibleInstanceId = (value: string | null | undefined): string | null =
 const groupForCurCostRow = (row: CurCostRow, input: Ec2ExplorerInput): string => {
   if (input.groupBy === "none") return "total";
   if (input.groupBy === "cost_category") return row.category;
-  if (input.groupBy === "region") return row.region || "Unknown";
-  if (input.groupBy === "availability_zone") return row.region || "Unknown";
-  if (input.groupBy === "account") return row.account || "Unknown";
-  if (input.groupBy === "instance_type") return row.instanceType || "Unknown";
-  if (input.groupBy === "source_region") return row.fromRegionCode || "Unknown";
-  if (input.groupBy === "destination_region") return row.toRegionCode || "Unknown";
+  if (input.groupBy === "region") return normalizeUnknownGroup(row.region);
+  if (input.groupBy === "availability_zone") return normalizeUnknownGroup(row.region);
+  if (input.groupBy === "account") return normalizeUnknownGroup(row.account);
+  if (input.groupBy === "instance_type") {
+    const value = normalizeUnknownGroup(row.instanceType);
+    return COST_CATEGORY_LIKE_GROUPS.has(value.toLowerCase()) ? "Unknown" : value;
+  }
+  if (input.groupBy === "source_region") return normalizeUnknownGroup(row.fromRegionCode);
+  if (input.groupBy === "destination_region") return normalizeUnknownGroup(row.toRegionCode);
   if (input.groupBy === "transfer_type") return classifyDataTransferSignals(row).transferType;
-  if (input.groupBy === "usage_type") return (row.usageType ?? "unknown").trim() || "unknown";
-  if (input.groupBy === "operation") return (row.operation ?? "unknown").trim() || "unknown";
-  if (input.groupBy === "reservation_type") return row.reservationType || "on_demand";
+  if (input.groupBy === "usage_type") return normalizeUnknownGroup(row.usageType);
+  if (input.groupBy === "operation") return normalizeUnknownGroup(row.operation);
+  if (input.groupBy === "reservation_type") return normalizeUnknownGroup(row.reservationType || "on_demand");
   if (input.groupBy === "tag") return tagValueForKey(row.tagsJson, input.tagKey);
   if (input.groupBy === "instance") {
-    if (row.category === "compute") return row.instanceId || "Unknown";
-    if (row.category === "ebs") return row.attachedInstanceId || "Unattached";
-    return row.instanceId || row.attachedInstanceId || "Unknown";
+    if (row.category === "compute") return normalizeUnknownGroup(row.instanceId);
+    if (row.category === "ebs") return normalizeUnknownGroup(row.attachedInstanceId || "Unattached");
+    return normalizeUnknownGroup(row.instanceId || row.attachedInstanceId);
   }
   return "total";
 };

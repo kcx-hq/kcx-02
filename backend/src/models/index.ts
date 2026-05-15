@@ -36,6 +36,7 @@ import createDimChargeModel from "./billing/dim_charge.js";
 import createDimDateModel from "./billing/dim_date.js";
 import createDimTagModel from "./billing/dim_tag.js";
 import createFactCostLineItemsModel from "./billing/fact_cost_line_items.js";
+import createStagingCostLineItemsModel from "./billing/staging_cost_line_items.js";
 import createFactCostLineItemTagsModel from "./billing/fact_cost_line_item_tags.js";
 import createBillingIngestionRowErrorModel from "./billing/billing_ingestion_row_error.js";
 import createResourceInventorySnapshotModel from "./billing/resource_inventory_snapshots.js";
@@ -139,6 +140,7 @@ const DimCharge = createDimChargeModel(sequelize);
 const DimDate = createDimDateModel(sequelize);
 const DimTag = createDimTagModel(sequelize);
 const FactCostLineItems = createFactCostLineItemsModel(sequelize);
+const StagingCostLineItems = createStagingCostLineItemsModel(sequelize);
 const FactCostLineItemTags = createFactCostLineItemTagsModel(sequelize);
 const BillingIngestionRowError = createBillingIngestionRowErrorModel(sequelize);
 const ResourceInventorySnapshot = createResourceInventorySnapshotModel(sequelize);
@@ -768,6 +770,7 @@ export {
   DimDate,
   DimTag,
   FactCostLineItems,
+  StagingCostLineItems,
   FactCostLineItemTags,
   BillingIngestionRowError,
   ResourceInventorySnapshot,

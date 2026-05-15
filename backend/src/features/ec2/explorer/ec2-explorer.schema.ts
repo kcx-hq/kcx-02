@@ -200,6 +200,8 @@ export function buildEc2ExplorerInput(req: Request, scope: DashboardScope): Ec2E
         ? "reservation_type"
       : groupByRaw === "network-cost"
         ? "cost_category"
+        : groupByRaw === "cost_type" || groupByRaw === "cost-type"
+          ? "cost_category"
         : groupByRaw === "network-type"
           ? "usage_type"
       : groupByRaw === "availability-zone"

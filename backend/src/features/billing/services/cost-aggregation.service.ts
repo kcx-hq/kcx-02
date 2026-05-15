@@ -3,11 +3,12 @@ import { QueryTypes } from "sequelize";
 import { sequelize } from "../../../models/index.js";
 
 type UpsertCostAggregationsForRunParams = {
-  ingestionRunId: string | number;
+  ingestionRunId?: string | number | null;
   tenantId: string;
   providerId: string | number;
   billingSourceId?: string | number | null;
   uploadedBy?: string | null;
+  affectedUsageDates: string[];
 };
 
 const UPSERT_HOURLY_SQL = `
@@ -61,7 +62,9 @@ LEFT JOIN dim_date dd_usage
   ON dd_usage.id = f.usage_date_key
 LEFT JOIN dim_billing_account dba
   ON dba.id = f.billing_account_key
-WHERE f.ingestion_run_id = CAST(:ingestionRunId AS BIGINT)
+WHERE f.tenant_id = CAST(:tenantId AS UUID)
+  AND f.billing_source_id = CAST(:billingSourceId AS BIGINT)
+  AND DATE(COALESCE(f.usage_start_time, f.usage_end_time)) IN (:affectedUsageDates)
   AND COALESCE(f.usage_start_time, f.usage_end_time) IS NOT NULL
 GROUP BY
   1, 2, 3, 9, 10, 11, 16
@@ -137,7 +140,12 @@ LEFT JOIN dim_date dd_usage
   ON dd_usage.id = f.usage_date_key
 LEFT JOIN dim_billing_account dba
   ON dba.id = f.billing_account_key
-WHERE f.ingestion_run_id = CAST(:ingestionRunId AS BIGINT)
+WHERE f.tenant_id = CAST(:tenantId AS UUID)
+  AND f.billing_source_id = CAST(:billingSourceId AS BIGINT)
+  AND COALESCE(
+    dd_usage.full_date,
+    DATE(COALESCE(f.usage_start_time, f.usage_end_time))
+  ) IN (:affectedUsageDates)
   AND COALESCE(
     dd_usage.full_date,
     DATE(COALESCE(f.usage_start_time, f.usage_end_time))
@@ -211,7 +219,15 @@ LEFT JOIN dim_date dd_usage
   ON dd_usage.id = f.usage_date_key
 LEFT JOIN dim_billing_account dba
   ON dba.id = f.billing_account_key
-WHERE f.ingestion_run_id = CAST(:ingestionRunId AS BIGINT)
+WHERE f.tenant_id = CAST(:tenantId AS UUID)
+  AND f.billing_source_id = CAST(:billingSourceId AS BIGINT)
+  AND DATE_TRUNC(
+    'month',
+    COALESCE(
+      dd_usage.full_date,
+      DATE(COALESCE(f.usage_start_time, f.usage_end_time))
+    )
+  )::DATE IN (:affectedMonthStarts)
   AND COALESCE(
     dd_usage.full_date,
     DATE(COALESCE(f.usage_start_time, f.usage_end_time))
@@ -244,29 +260,230 @@ async function upsertCostAggregationsForRun({
   providerId,
   billingSourceId,
   uploadedBy,
+  affectedUsageDates,
 }: UpsertCostAggregationsForRunParams): Promise<void> {
+  const normalizedDates = Array.from(
+    new Set(
+      (Array.isArray(affectedUsageDates) ? affectedUsageDates : [])
+        .map((value) => String(value ?? "").trim())
+        .filter(Boolean),
+    ),
+  );
+  if (normalizedDates.length === 0) {
+    console.info("Aggregation refresh skipped: no affected usage dates", {
+      tenantId: String(tenantId),
+      billingSourceId: billingSourceId == null ? null : String(billingSourceId),
+      ingestionRunId: ingestionRunId == null ? null : String(ingestionRunId),
+    });
+    return;
+  }
+
+  const affectedMonthStarts = Array.from(
+    new Set(
+      normalizedDates.map((dateText) => {
+        const parsed = new Date(`${dateText}T00:00:00.000Z`);
+        const monthStart = new Date(Date.UTC(parsed.getUTCFullYear(), parsed.getUTCMonth(), 1));
+        return monthStart.toISOString().slice(0, 10);
+      }),
+    ),
+  );
+
   const replacements = {
-    ingestionRunId: String(ingestionRunId),
+    ingestionRunId: ingestionRunId == null ? null : String(ingestionRunId),
     tenantId,
     providerId: String(providerId),
     billingSourceId: billingSourceId === null || billingSourceId === undefined ? null : String(billingSourceId),
     uploadedBy: uploadedBy ?? null,
+    affectedUsageDates: normalizedDates,
+    affectedMonthStarts,
   };
 
-  await sequelize.query(UPSERT_HOURLY_SQL, {
-    replacements,
-    type: QueryTypes.INSERT,
+  console.info("Aggregation refresh started", {
+    tenantId: String(tenantId),
+    billingSourceId: billingSourceId == null ? null : String(billingSourceId),
+    ingestionRunId: ingestionRunId == null ? null : String(ingestionRunId),
+    affectedUsageDates: normalizedDates,
   });
 
-  await sequelize.query(UPSERT_DAILY_SQL, {
-    replacements,
-    type: QueryTypes.INSERT,
-  });
+  try {
+    const factCountRows = await sequelize.query(
+      `
+        SELECT COUNT(*)::bigint AS row_count
+        FROM fact_cost_line_items
+        WHERE tenant_id = CAST(:tenantId AS UUID)
+          AND billing_source_id = CAST(:billingSourceId AS BIGINT)
+          AND DATE(COALESCE(usage_start_time, usage_end_time)) IN (:affectedUsageDates)
+      `,
+      {
+        replacements,
+        type: QueryTypes.SELECT,
+      },
+    );
+    const factRowCount = Number((factCountRows as Array<{ row_count?: number | string }>)[0]?.row_count ?? 0);
+    console.info("Aggregation scope fact rows counted", {
+      tenantId: String(tenantId),
+      billingSourceId: billingSourceId == null ? null : String(billingSourceId),
+      ingestionRunId: ingestionRunId == null ? null : String(ingestionRunId),
+      affectedUsageDates: normalizedDates,
+      factRowCountForAffectedDates: factRowCount,
+    });
 
-  await sequelize.query(UPSERT_MONTHLY_SQL, {
-    replacements,
-    type: QueryTypes.INSERT,
-  });
+    const hourlyDeleteRows = await sequelize.query(
+      `
+        WITH deleted AS (
+          DELETE FROM agg_cost_hourly
+          WHERE tenant_id = CAST(:tenantId AS UUID)
+            AND billing_source_id = CAST(:billingSourceId AS BIGINT)
+            AND usage_date IN (:affectedUsageDates)
+          RETURNING 1
+        )
+        SELECT COUNT(*)::bigint AS deleted_count
+        FROM deleted;
+      `,
+      {
+        replacements,
+        type: QueryTypes.SELECT,
+      },
+    );
+    const deletedHourlyRows = Number((hourlyDeleteRows as Array<{ deleted_count?: number | string }>)[0]?.deleted_count ?? 0);
+    console.info("Aggregation hourly delete complete", {
+      tenantId: String(tenantId),
+      billingSourceId: billingSourceId == null ? null : String(billingSourceId),
+      deletedHourlyRows,
+    });
+
+    const hourlyRows = await sequelize.query(UPSERT_HOURLY_SQL, {
+      replacements,
+      type: QueryTypes.INSERT,
+    });
+    const hourlyInserted = Array.isArray(hourlyRows) ? Number(hourlyRows[1] ?? 0) : 0;
+    console.info("Aggregation hourly upsert complete", {
+      tenantId: String(tenantId),
+      billingSourceId: billingSourceId == null ? null : String(billingSourceId),
+      hourlyRowsInserted: hourlyInserted,
+    });
+
+    const dailyDeleteRows = await sequelize.query(
+      `
+        WITH deleted AS (
+          DELETE FROM agg_cost_daily
+          WHERE tenant_id = CAST(:tenantId AS UUID)
+            AND billing_source_id = CAST(:billingSourceId AS BIGINT)
+            AND usage_date IN (:affectedUsageDates)
+          RETURNING 1
+        )
+        SELECT COUNT(*)::bigint AS deleted_count
+        FROM deleted;
+      `,
+      {
+        replacements,
+        type: QueryTypes.SELECT,
+      },
+    );
+    const deletedDailyRows = Number((dailyDeleteRows as Array<{ deleted_count?: number | string }>)[0]?.deleted_count ?? 0);
+    console.info("Aggregation daily delete complete", {
+      tenantId: String(tenantId),
+      billingSourceId: billingSourceId == null ? null : String(billingSourceId),
+      deletedDailyRows,
+    });
+
+    const dailyRows = await sequelize.query(UPSERT_DAILY_SQL, {
+      replacements,
+      type: QueryTypes.INSERT,
+    });
+    const dailyInserted = Array.isArray(dailyRows) ? Number(dailyRows[1] ?? 0) : 0;
+    console.info("Aggregation daily upsert complete", {
+      tenantId: String(tenantId),
+      billingSourceId: billingSourceId == null ? null : String(billingSourceId),
+      dailyRowsInserted: dailyInserted,
+    });
+
+    const monthlyDeleteRows = await sequelize.query(
+      `
+        WITH deleted AS (
+          DELETE FROM agg_cost_monthly
+          WHERE tenant_id = CAST(:tenantId AS UUID)
+            AND billing_source_id = CAST(:billingSourceId AS BIGINT)
+            AND month_start IN (:affectedMonthStarts)
+          RETURNING 1
+        )
+        SELECT COUNT(*)::bigint AS deleted_count
+        FROM deleted;
+      `,
+      {
+        replacements,
+        type: QueryTypes.SELECT,
+      },
+    );
+    const deletedMonthlyRows = Number((monthlyDeleteRows as Array<{ deleted_count?: number | string }>)[0]?.deleted_count ?? 0);
+    console.info("Aggregation monthly delete complete", {
+      tenantId: String(tenantId),
+      billingSourceId: billingSourceId == null ? null : String(billingSourceId),
+      deletedMonthlyRows,
+    });
+
+    const monthlyRows = await sequelize.query(UPSERT_MONTHLY_SQL, {
+      replacements,
+      type: QueryTypes.INSERT,
+    });
+    const monthlyInserted = Array.isArray(monthlyRows) ? Number(monthlyRows[1] ?? 0) : 0;
+    console.info("Aggregation monthly upsert complete", {
+      tenantId: String(tenantId),
+      billingSourceId: billingSourceId == null ? null : String(billingSourceId),
+      monthlyRowsInserted: monthlyInserted,
+    });
+
+    if (factRowCount > 0 && hourlyInserted + dailyInserted + monthlyInserted === 0) {
+      console.warn("Aggregation produced zero rows despite matching fact rows", {
+        tenantId: String(tenantId),
+        billingSourceId: billingSourceId == null ? null : String(billingSourceId),
+        ingestionRunId: ingestionRunId == null ? null : String(ingestionRunId),
+        factRowCountForAffectedDates: factRowCount,
+        groupingFilters: {
+          scope: "billing_source_id + affected_usage_dates",
+          tenantId: String(tenantId),
+          billingSourceId: billingSourceId == null ? null : String(billingSourceId),
+          affectedUsageDates: normalizedDates,
+          affectedMonthStarts,
+        },
+        aggregateSql: {
+          hourly: UPSERT_HOURLY_SQL,
+          daily: UPSERT_DAILY_SQL,
+          monthly: UPSERT_MONTHLY_SQL,
+        },
+      });
+    }
+
+    console.info("Aggregation refresh completed", {
+      tenantId: String(tenantId),
+      billingSourceId: billingSourceId == null ? null : String(billingSourceId),
+      ingestionRunId: ingestionRunId == null ? null : String(ingestionRunId),
+      affectedUsageDates: normalizedDates,
+      factRowCountForAffectedDates: factRowCount,
+      aggregateRowsDeleted: {
+        hourly: deletedHourlyRows,
+        daily: deletedDailyRows,
+        monthly: deletedMonthlyRows,
+      },
+      aggregateRowsInserted: {
+        hourly: hourlyInserted,
+        daily: dailyInserted,
+        monthly: monthlyInserted,
+      },
+    });
+  } catch (error) {
+    console.error("Aggregation refresh failed", {
+      tenantId: String(tenantId),
+      billingSourceId: billingSourceId == null ? null : String(billingSourceId),
+      ingestionRunId: ingestionRunId == null ? null : String(ingestionRunId),
+      affectedUsageDates: normalizedDates,
+      errorName: error instanceof Error ? error.name : null,
+      errorStack: error instanceof Error ? error.stack : null,
+      sql: error && typeof error === "object" && "sql" in error ? String((error as { sql?: string }).sql ?? "") : null,
+      reason: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
+  }
 }
 
 export { upsertCostAggregationsForRun };

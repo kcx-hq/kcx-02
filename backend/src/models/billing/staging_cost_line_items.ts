@@ -7,7 +7,7 @@ import {
   type Sequelize,
 } from "sequelize";
 
-class FactCostLineItems extends Model<InferAttributes<FactCostLineItems>, InferCreationAttributes<FactCostLineItems>> {
+class StagingCostLineItems extends Model<InferAttributes<StagingCostLineItems>, InferCreationAttributes<StagingCostLineItems>> {
   declare id: CreationOptional<string>;
   declare tenantId: string;
   declare billingSourceId: CreationOptional<string | null>;
@@ -60,10 +60,11 @@ class FactCostLineItems extends Model<InferAttributes<FactCostLineItems>, InferC
   declare sourceRowHash: CreationOptional<string | null>;
   declare ingestedAt: CreationOptional<Date>;
   declare createdAt: CreationOptional<Date>;
+  declare updatedAt: CreationOptional<Date>;
 }
 
-const createFactCostLineItemsModel = (sequelize: Sequelize): typeof FactCostLineItems => {
-  FactCostLineItems.init(
+const createStagingCostLineItemsModel = (sequelize: Sequelize): typeof StagingCostLineItems => {
+  StagingCostLineItems.init(
     {
       id: { type: DataTypes.BIGINT, allowNull: false, autoIncrement: true, primaryKey: true },
       tenantId: { type: DataTypes.UUID, allowNull: false, field: "tenant_id" },
@@ -117,16 +118,17 @@ const createFactCostLineItemsModel = (sequelize: Sequelize): typeof FactCostLine
       sourceRowHash: { type: DataTypes.TEXT, allowNull: true, field: "source_row_hash" },
       ingestedAt: { type: DataTypes.DATE, allowNull: false, defaultValue: sequelize.literal("NOW()"), field: "ingested_at" },
       createdAt: { type: DataTypes.DATE, allowNull: false, defaultValue: sequelize.literal("NOW()"), field: "created_at" },
+      updatedAt: { type: DataTypes.DATE, allowNull: false, defaultValue: sequelize.literal("NOW()"), field: "updated_at" },
     },
     {
       sequelize,
-      modelName: "FactCostLineItems",
-      tableName: "fact_cost_line_items",
+      modelName: "StagingCostLineItems",
+      tableName: "staging_cost_line_items",
       timestamps: false,
     },
   );
-  return FactCostLineItems;
+  return StagingCostLineItems;
 };
 
-export { FactCostLineItems };
-export default createFactCostLineItemsModel;
+export { StagingCostLineItems };
+export default createStagingCostLineItemsModel;

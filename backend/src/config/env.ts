@@ -150,6 +150,8 @@ const env = {
     optionalPositiveInteger(process.env.BILLING_INGESTION_ROW_CONCURRENCY) ?? 25,
   billingIngestionStatusMinIntervalMs:
     optionalPositiveInteger(process.env.BILLING_INGESTION_STATUS_MIN_INTERVAL_MS) ?? 2000,
+  keepStagingAfterIngest:
+    optionalBoolean(process.env.KEEP_STAGING_AFTER_INGEST) ?? false,
   billingS3UploadSessionTtlMinutes:
     optionalPositiveInteger(process.env.BILLING_S3_UPLOAD_SESSION_TTL_MINUTES) ?? 45,
   optimizationIdleSchedulerEnabled:
