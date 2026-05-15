@@ -1,8 +1,9 @@
-import type { EC2ScopeFilters } from "../ec2ExplorerControls.types";
+import type { EC2CompareOption, EC2ScopeFilters } from "../ec2ExplorerControls.types";
 
 export type EC2DataTransferTypeFilter = "all" | "internet" | "inter_region" | "inter_az" | "unknown";
 
 export type EC2DataTransferControlsState = {
+  compare: EC2CompareOption;
   transferType: EC2DataTransferTypeFilter;
   scopeFilters: EC2ScopeFilters;
 };
@@ -16,6 +17,7 @@ export const EC2_DATA_TRANSFER_TYPE_OPTIONS: Array<{ key: EC2DataTransferTypeFil
 ];
 
 export const EC2_DATA_TRANSFER_DEFAULT_CONTROLS: EC2DataTransferControlsState = {
+  compare: "none",
   transferType: "all",
   scopeFilters: {
     region: [],

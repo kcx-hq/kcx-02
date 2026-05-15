@@ -4,7 +4,10 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { useDashboardScope } from "../../hooks/useDashboardScope";
 import { useOverviewQuery } from "../../hooks/useDashboardQueries";
 import {
+  OverviewDashboardSkeleton,
   OverviewBreakdownSection,
+  OverviewEmptyState,
+  OverviewErrorState,
   OverviewKpiSection,
   OverviewTrendRegionSection,
 } from "./components";
@@ -70,29 +73,56 @@ export default function OverviewPage() {
   };
 
   const data = overviewQuery.data;
+  const isInitialLoading = !data && overviewQuery.isLoading;
+  const hasBlockingError = overviewQuery.isError && !data;
+  const hasOverviewData = Boolean(
+    data &&
+      (data.budgetVsActualForecast.length > 0 ||
+        data.topServices.length > 0 ||
+        data.topRegions.length > 0 ||
+        data.topAccounts.length > 0 ||
+        data.anomaliesPreview.items.length > 0 ||
+        data.kpis.totalSpend > 0 ||
+        data.kpis.previousPeriodSpend > 0 ||
+        data.kpis.savingsAchieved > 0),
+  );
 
   return (
     <div className="dashboard-page overview-page">
-      {overviewQuery.isLoading ? <p className="dashboard-note">Loading overview insights...</p> : null}
-      {overviewQuery.isError ? <p className="dashboard-note">Failed to load overview: {overviewQuery.error.message}</p> : null}
+      {isInitialLoading ? <OverviewDashboardSkeleton /> : null}
+      {hasBlockingError ? (
+        <OverviewErrorState message={overviewQuery.error?.message ?? "Something went wrong while loading overview insights."} onRetry={() => void overviewQuery.refetch()} />
+      ) : null}
+      {!isInitialLoading && !hasBlockingError && data && !hasOverviewData ? (
+        <OverviewEmptyState onRetry={() => void overviewQuery.refetch()} />
+      ) : null}
 
-      {data ? <OverviewKpiSection data={data} /> : null}
+      {data && hasOverviewData ? (
+        <div className={`overview-stateful-content${overviewQuery.isFetching ? " is-refreshing" : ""}`}>
+          <OverviewKpiSection data={data} />
 
-      <OverviewTrendRegionSection trendData={data?.budgetVsActualForecast ?? []} anomalies={data?.anomaliesPreview.items ?? []} />
+          <OverviewTrendRegionSection
+            trendData={data.budgetVsActualForecast}
+            anomalies={data.anomaliesPreview.items}
+            isLoading={overviewQuery.isFetching}
+          />
 
-      <OverviewBreakdownSection
-        topServices={data?.topServices ?? []}
-        topAccounts={data?.topAccounts ?? []}
-        topRegions={data?.topRegions ?? []}
-        selectedServiceKey={selectedServiceKey}
-        selectedAccountKey={selectedAccountKey}
-        onSelectService={(key) => {
-          applySearchParam("serviceKey", key ? String(key) : null);
-        }}
-        onSelectAccount={(key) => {
-          applySearchParam("subAccountKey", key ? String(key) : null);
-        }}
-      />
+          <OverviewBreakdownSection
+            topServices={data.topServices}
+            topAccounts={data.topAccounts}
+            topRegions={data.topRegions}
+            isLoading={overviewQuery.isFetching}
+            selectedServiceKey={selectedServiceKey}
+            selectedAccountKey={selectedAccountKey}
+            onSelectService={(key) => {
+              applySearchParam("serviceKey", key ? String(key) : null);
+            }}
+            onSelectAccount={(key) => {
+              applySearchParam("subAccountKey", key ? String(key) : null);
+            }}
+          />
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -13,6 +13,7 @@ import {
   handleGetCostExplorerDashboard,
   handleGetCostExplorerGroupOptions,
 } from "./cost-explorer/cost-explorer.controller.js";
+import { handleGetCostHistory, handleGetCostHistoryFilters } from "./cost-history/cost-history.controller.js";
 import {
   handleExecuteIdleRecommendation,
   handleExecuteRightsizingRecommendation,
@@ -84,6 +85,8 @@ router.get("/dashboard/overview/recommendations", asyncHandler(handleGetOverview
 router.get("/dashboard/filters", asyncHandler(handleGetDashboardFilters));
 router.get("/dashboard/cost-explorer", asyncHandler(handleGetCostExplorerDashboard));
 router.get("/dashboard/cost-explorer/group-options", asyncHandler(handleGetCostExplorerGroupOptions));
+router.get("/dashboard/cost-history", asyncHandler(handleGetCostHistory));
+router.get("/dashboard/cost-history/filters", asyncHandler(handleGetCostHistoryFilters));
 router.get("/dashboard/resources", asyncHandler(handleGetResourcesDashboard));
 router.get("/dashboard/allocation", asyncHandler(handleGetAllocationDashboard));
 router.get("/dashboard/optimization", asyncHandler(handleGetOptimizationDashboard));

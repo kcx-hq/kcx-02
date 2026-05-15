@@ -1,4 +1,4 @@
-import type { EC2ScopeFilters } from "../ec2ExplorerControls.types";
+import type { EC2CompareOption, EC2ScopeFilters } from "../ec2ExplorerControls.types";
 
 export type EC2VolumesStateFilter = "all" | "in-use" | "available";
 export type EC2VolumesTypeFilter = "all" | "gp2" | "gp3" | "io1" | "io2" | "st1" | "sc1";
@@ -20,6 +20,7 @@ export type EC2VolumesThresholds = {
 };
 
 export type EC2VolumesControlsState = {
+  compare: EC2CompareOption;
   state: EC2VolumesStateFilter;
   volumeType: EC2VolumesTypeFilter;
   attachment: EC2VolumesAttachmentFilter;
@@ -62,6 +63,7 @@ export const EC2_VOLUMES_STATUS_OPTIONS: Array<{ key: EC2VolumesStatusFilter; la
 ];
 
 export const EC2_VOLUMES_DEFAULT_CONTROLS: EC2VolumesControlsState = {
+  compare: "none",
   state: "all",
   volumeType: "all",
   attachment: "all",

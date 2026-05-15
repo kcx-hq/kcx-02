@@ -2,6 +2,7 @@ import { Check, ChevronDown, Filter, RotateCcw, Search, Settings2 } from "lucide
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { COMPARE_OPTIONS } from "../ec2ExplorerControls.types";
 
 import { EC2ExplorerScopeFilters } from "./EC2ExplorerScopeFilters";
 import { EC2VolumesThresholdsPopover } from "./EC2VolumesThresholdsPopover";
@@ -17,7 +18,7 @@ import {
   type EC2VolumesTypeFilter,
 } from "./ec2Volumes.types";
 
-type PopoverKey = "state" | "volumeType" | "attachment" | "status" | "thresholds";
+type PopoverKey = "compare" | "state" | "volumeType" | "attachment" | "status" | "thresholds";
 
 type Option<T extends string> = {
   key: T;
@@ -121,6 +122,31 @@ export function EC2VolumesTopBar({ value, onChange, onReset, children }: EC2Volu
                 <Filter className="cost-explorer-toolbar-trigger__caret" size={14} aria-hidden="true" />
               </span>
             </button>
+          </div>
+
+          <div className="cost-explorer-toolbar-item">
+            <button
+              type="button"
+              className={`cost-explorer-toolbar-trigger${activePopover === "compare" ? " is-active" : ""}`}
+              onClick={() => togglePopover("compare")}
+              aria-expanded={activePopover === "compare"}
+              aria-haspopup="dialog"
+            >
+              <span className="cost-explorer-toolbar-trigger__label">Compare</span>
+              <span className="cost-explorer-toolbar-trigger__row">
+                <span className="cost-explorer-toolbar-trigger__value">
+                  {COMPARE_OPTIONS.find((item) => item.key === value.compare)?.label ?? "None"}
+                </span>
+                <ChevronDown className="cost-explorer-toolbar-trigger__caret" size={14} aria-hidden="true" />
+              </span>
+            </button>
+            {activePopover === "compare"
+              ? renderOptionList({
+                  options: COMPARE_OPTIONS,
+                  selected: value.compare,
+                  onSelect: (next) => update({ compare: next }),
+                })
+              : null}
           </div>
 
           <div className="cost-explorer-toolbar-item">

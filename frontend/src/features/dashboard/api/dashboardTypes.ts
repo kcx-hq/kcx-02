@@ -2199,14 +2199,14 @@ export type CostExplorerBreakdownRow = {
 
 export type CostExplorerServiceDetailRow = {
   serviceName: string;
-  resourceName: string;
-  usageType: string;
-  region: string;
+  grossCost: number;
+  credits: number;
+  netCost: number;
+  contributionPct: number | null;
+  resourceCount: number;
+  regionCount: number;
   usageQuantity: number;
-  unit: string;
-  totalCost: number;
-  date: string;
-  percentageOfTotalServiceCost: number;
+  primaryUnit: string;
 };
 
 export type CostExplorerResponse = {
@@ -2244,4 +2244,60 @@ export type CostExplorerResponse = {
     region: CostExplorerBreakdownRow[];
   };
   serviceDetails: CostExplorerServiceDetailRow[];
+};
+
+export type CostHistoryGranularity = "day" | "month";
+export type CostHistoryXAxis = "date" | "account" | "region";
+export type CostHistoryYAxisMetric = "billed_cost" | "effective_cost" | "amortized_cost";
+export type CostHistoryGroupBy = "service" | "region" | "team" | "app" | "account" | "resource" | "service-category";
+
+export type CostHistoryFiltersQuery = {
+  granularity?: CostHistoryGranularity;
+  xAxis?: CostHistoryXAxis;
+  yAxisMetric?: CostHistoryYAxisMetric;
+  groupBy?: CostHistoryGroupBy;
+};
+
+export type CostHistoryFilterOptionsResponse = {
+  granularity: Array<{ key: CostHistoryGranularity; label: string }>;
+  xAxis: Array<{ key: CostHistoryXAxis; label: string }>;
+  yAxis: Array<{ key: CostHistoryYAxisMetric; label: string }>;
+  groupBy: Array<{ key: CostHistoryGroupBy; label: string }>;
+  availableTagGroupBy: Array<{ key: string; normalizedKey: string; count: number }>;
+};
+
+export type CostHistoryChartLabel = {
+  bucketStart: string;
+  short: string;
+  long: string;
+};
+
+export type CostHistorySeries = {
+  name: string;
+  kind: "primary" | "group" | "comparison";
+  values: number[];
+};
+
+export type CostHistoryResponse = {
+  section: "cost-history";
+  title: "Cost History";
+  message: string;
+  filtersApplied: {
+    from: string;
+    to: string;
+    granularity: CostHistoryGranularity;
+    xAxis: CostHistoryXAxis;
+    yAxisMetric: CostHistoryYAxisMetric;
+    groupBy: CostHistoryGroupBy;
+    scopeType: DashboardResolvedScope["scopeType"];
+  };
+  chart: {
+    labels: CostHistoryChartLabel[];
+    series: CostHistorySeries[];
+  };
+  source: {
+    costExplorerGroupBy: CostExplorerGroupBy;
+    costExplorerMetric: CostExplorerMetric;
+    costExplorerGranularity: CostExplorerGranularity;
+  };
 };

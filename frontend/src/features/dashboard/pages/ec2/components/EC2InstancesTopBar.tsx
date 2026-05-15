@@ -2,6 +2,7 @@ import { Check, ChevronDown, Filter, RotateCcw, Search, Settings2 } from "lucide
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { COMPARE_OPTIONS } from "../ec2ExplorerControls.types";
 
 import { EC2ExplorerScopeFilters } from "./EC2ExplorerScopeFilters";
 import { EC2ExplorerThresholdsPopover } from "./EC2ExplorerThresholdsPopover";
@@ -16,7 +17,7 @@ import {
   type EC2InstancesStateFilter,
 } from "./ec2Instances.types";
 
-type PopoverKey = "status" | "state" | "instanceType" | "reservationType" | "networkType" | "thresholds";
+type PopoverKey = "compare" | "status" | "state" | "instanceType" | "reservationType" | "networkType" | "thresholds";
 const NETWORK_TYPE_OPTIONS: Array<{ key: EC2InstancesNetworkType; label: string }> = [
   { key: "all", label: "All" },
   { key: "Internet Data Transfer", label: "Internet Data Transfer" },
@@ -38,7 +39,16 @@ type EC2InstancesTopBarProps = {
   onChange: (next: EC2InstancesControlsState) => void;
   onReset: () => void;
   visibleControls?: Array<
-    "filters" | "status" | "state" | "instanceType" | "reservationType" | "networkType" | "search" | "thresholds" | "reset"
+    | "filters"
+    | "compare"
+    | "status"
+    | "state"
+    | "instanceType"
+    | "reservationType"
+    | "networkType"
+    | "search"
+    | "thresholds"
+    | "reset"
   >;
   children?: ReactNode;
 };
@@ -96,6 +106,7 @@ export function EC2InstancesTopBar({
       new Set(
         visibleControls ?? [
           "filters",
+          "compare",
           "status",
           "state",
           "instanceType",
@@ -186,6 +197,33 @@ export function EC2InstancesTopBar({
                 })
               : null}
             </div>
+          ) : null}
+
+          {controlSet.has("compare") ? (
+          <div className="cost-explorer-toolbar-item">
+            <button
+              type="button"
+              className={`cost-explorer-toolbar-trigger${activePopover === "compare" ? " is-active" : ""}`}
+              onClick={() => togglePopover("compare")}
+              aria-expanded={activePopover === "compare"}
+              aria-haspopup="dialog"
+            >
+              <span className="cost-explorer-toolbar-trigger__label">Compare</span>
+              <span className="cost-explorer-toolbar-trigger__row">
+                <span className="cost-explorer-toolbar-trigger__value">
+                  {COMPARE_OPTIONS.find((item) => item.key === value.compare)?.label ?? "None"}
+                </span>
+                <ChevronDown className="cost-explorer-toolbar-trigger__caret" size={14} aria-hidden="true" />
+              </span>
+            </button>
+            {activePopover === "compare"
+              ? renderOptionList({
+                  options: COMPARE_OPTIONS,
+                  selected: value.compare,
+                  onSelect: (next) => update({ compare: next }),
+                })
+              : null}
+          </div>
           ) : null}
 
           {controlSet.has("state") ? (

@@ -32,6 +32,7 @@ const createAuthSessionModel = (sequelize: Sequelize): typeof AuthSession => {
     {
       sequelize,
       modelName: "AuthSession",
+      // Align with existing production table naming.
       tableName: "AuthSessions",
       timestamps: true,
     },

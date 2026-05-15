@@ -8,6 +8,7 @@ import type { Ec2ExplorerFiltersQuery } from "../../api/dashboardApi";
 import {
   EC2_EXPLORER_DEFAULT_CONTROLS,
   EC2ExplorerChart,
+  EC2ExplorerUnifiedSkeleton,
   EC2ExplorerTable,
   EC2ExplorerTopControls,
   EC2SummaryCards,
@@ -205,6 +206,7 @@ export default function EC2ExplorerPage() {
   );
 
   const query = useEc2ExplorerQuery(filters, Boolean(scope));
+  const showUnifiedSkeleton = query.isLoading && !query.data;
   const dataTransferView = controls.metric === "data-transfer"
     ? controls.usageType === "disk"
       ? "usage"
@@ -462,10 +464,18 @@ export default function EC2ExplorerPage() {
     return list;
   }, [controls, resetControls]);
 
+  if (showUnifiedSkeleton) {
+    return (
+      <div className="dashboard-page cost-explorer-page ec2-explorer-page">
+        <EC2ExplorerUnifiedSkeleton />
+      </div>
+    );
+  }
+
   return (
-    <div className="dashboard-page cost-explorer-page">
+    <div className="dashboard-page cost-explorer-page ec2-explorer-page">
       <section className="ec2-explorer-head-stack" aria-label="EC2 explorer controls and summary">
-        <EC2ExplorerTopControls value={controls} onChange={setControls} onReset={resetControls}>
+        <EC2ExplorerTopControls value={controls} onChange={setControls}>
           <div className="cost-explorer-chip-bar" aria-label="Selected filter summary">
             <div className="cost-explorer-chip-row">
               {chips.map((chip) => (
@@ -503,6 +513,7 @@ export default function EC2ExplorerPage() {
           title={`${metricLabel} Breakdown`}
           chartType={resolvedGraphType}
           canUseStackedBar
+          showChartTypeSelector={false}
           valueMode={
             controls.metric === "data-transfer"
               ? controls.usageType === "disk"
