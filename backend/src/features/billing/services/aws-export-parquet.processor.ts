@@ -468,6 +468,7 @@ export async function processAwsExportParquetRun({ run }) {
                     resourceKey: factPayload.resource_key,
                     skuKey: factPayload.sku_key,
                     chargeKey: factPayload.charge_key,
+                    tagsJson: normalizedRow[RAW_COLUMNS.tags] ?? null,
                     usageDateKey: factPayload.usage_date_key,
                     billingPeriodStartDateKey: factPayload.billing_period_start_date_key,
                     billingPeriodEndDateKey: factPayload.billing_period_end_date_key,

@@ -21,6 +21,8 @@ class FactCostLineItems extends Model<InferAttributes<FactCostLineItems>, InferC
   declare skuKey: CreationOptional<string | null>;
   declare chargeKey: CreationOptional<string | null>;
   declare tagId: CreationOptional<string | null>;
+  declare tagsJson: CreationOptional<Record<string, unknown> | null>;
+  declare tagIdsJson: CreationOptional<Record<string, unknown> | null>;
   declare usageDateKey: CreationOptional<string | null>;
   declare billingPeriodStartDateKey: CreationOptional<string | null>;
   declare billingPeriodEndDateKey: CreationOptional<string | null>;
@@ -76,6 +78,8 @@ const createFactCostLineItemsModel = (sequelize: Sequelize): typeof FactCostLine
       skuKey: { type: DataTypes.BIGINT, allowNull: true, field: "sku_key" },
       chargeKey: { type: DataTypes.BIGINT, allowNull: true, field: "charge_key" },
       tagId: { type: DataTypes.BIGINT, allowNull: true, field: "tag_id" },
+      tagsJson: { type: DataTypes.JSONB, allowNull: true, field: "tags_json" },
+      tagIdsJson: { type: DataTypes.JSONB, allowNull: true, field: "tag_ids_json" },
       usageDateKey: { type: DataTypes.BIGINT, allowNull: true, field: "usage_date_key" },
       billingPeriodStartDateKey: { type: DataTypes.BIGINT, allowNull: true, field: "billing_period_start_date_key" },
       billingPeriodEndDateKey: { type: DataTypes.BIGINT, allowNull: true, field: "billing_period_end_date_key" },

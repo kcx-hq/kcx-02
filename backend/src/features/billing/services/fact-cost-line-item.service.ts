@@ -116,6 +116,7 @@ async function insertFactCostLineItem({
       resourceKey: factPayload.resource_key,
       skuKey: factPayload.sku_key,
       chargeKey: factPayload.charge_key,
+      tagsJson: rawRow[RAW_COLUMNS.tags] ?? null,
       usageDateKey: factPayload.usage_date_key,
       billingPeriodStartDateKey: factPayload.billing_period_start_date_key,
       billingPeriodEndDateKey: factPayload.billing_period_end_date_key,
@@ -466,6 +467,8 @@ async function replaceFactRowsFromStagingInTransaction({
             sku_key,
             charge_key,
             tag_id,
+            tags_json,
+            tag_ids_json,
             usage_date_key,
             billing_period_start_date_key,
             billing_period_end_date_key,
@@ -517,6 +520,8 @@ async function replaceFactRowsFromStagingInTransaction({
             sku_key,
             charge_key,
             tag_id,
+            tags_json,
+            tag_ids_json,
             usage_date_key,
             billing_period_start_date_key,
             billing_period_end_date_key,
@@ -557,9 +562,57 @@ async function replaceFactRowsFromStagingInTransaction({
           FROM staging_cost_line_items
           WHERE ingestion_run_id = :ingestionRunId
             AND billing_source_id = :billingSourceId
+          RETURNING id, tenant_id, provider_id, tags_json, tag_ids_json
+        ),
+        bridge_candidates AS (
+          SELECT
+            i.id AS fact_id,
+            i.tenant_id,
+            i.provider_id,
+            tag_ids_raw.tag_id_text::bigint AS tag_id
+          FROM inserted i
+          JOIN LATERAL jsonb_array_elements_text(COALESCE(i.tag_ids_json, '[]'::jsonb)) AS tag_ids_raw(tag_id_text)
+            ON TRUE
+        ),
+        bridge_classified AS (
+          SELECT
+            c.fact_id,
+            c.tag_id,
+            c.tenant_id,
+            c.provider_id,
+            dt.normalized_key,
+            CASE
+              WHEN dt.normalized_key IN ('team', 'product', 'environment', 'owner', 'application', 'costcenter')
+              THEN TRUE
+              ELSE FALSE
+            END AS is_allowlisted
+          FROM bridge_candidates c
+          JOIN dim_tag dt ON dt.id = c.tag_id
+        ),
+        bridge_inserted AS (
+          INSERT INTO fact_cost_line_item_tags (
+            fact_id,
+            tag_id,
+            tenant_id,
+            provider_id,
+            created_at
+          )
+          SELECT
+            fact_id,
+            tag_id,
+            tenant_id,
+            provider_id,
+            NOW()
+          FROM bridge_classified
+          WHERE is_allowlisted
+          ON CONFLICT (fact_id, tag_id) DO NOTHING
           RETURNING 1
         )
-        SELECT COUNT(*)::bigint AS inserted_count FROM inserted
+        SELECT
+          (SELECT COUNT(*)::bigint FROM inserted) AS inserted_count,
+          (SELECT COUNT(*)::bigint FROM inserted WHERE tags_json IS NOT NULL) AS fact_rows_with_tags_json,
+          (SELECT COUNT(*)::bigint FROM bridge_inserted) AS bridge_rows_inserted,
+          (SELECT COUNT(*)::bigint FROM bridge_classified WHERE NOT is_allowlisted) AS skipped_non_allowlisted_tag_rows
       `,
       {
         type: QueryTypes.SELECT,
@@ -599,6 +652,9 @@ async function replaceFactRowsFromStagingInTransaction({
     );
 
     const insertedCount = Number(insertSummary?.inserted_count ?? 0);
+    const factRowsWithTagsJson = Number(insertSummary?.fact_rows_with_tags_json ?? 0);
+    const bridgeRowsInserted = Number(insertSummary?.bridge_rows_inserted ?? 0);
+    const skippedNonAllowlistedTagRows = Number(insertSummary?.skipped_non_allowlisted_tag_rows ?? 0);
     if (insertedCount !== stagingAfterDedupeCount) {
       throw new Error(
         `Staging replacement failed: inserted row count (${insertedCount}) does not match staging row count after dedupe (${stagingAfterDedupeCount})`,
@@ -674,6 +730,9 @@ async function replaceFactRowsFromStagingInTransaction({
       insertedFactRows: insertedCount,
       stagingDuplicateCountBeforeDedupe: stagingDuplicateCount,
       factDuplicateCountAfterInsert: factDuplicateCount,
+      factRowsWithTagsJson,
+      bridgeRowsInserted,
+      skippedNonAllowlistedTagRows,
     });
 
     console.info("Staging source_row_hash duplicate summary", {
@@ -692,6 +751,9 @@ async function replaceFactRowsFromStagingInTransaction({
       rowsInserted: insertedCount,
       stagingDuplicateCount,
       factDuplicateCount,
+      factRowsWithTagsJson,
+      bridgeRowsInserted,
+      skippedNonAllowlistedTagRows,
       keptStagingRows: env.keepStagingAfterIngest,
     };
   });
@@ -715,6 +777,7 @@ function mapStagingRowToFactInsert(stagingRow) {
       resourceKey: stagingRow.resourceKey,
       skuKey: stagingRow.skuKey,
       chargeKey: stagingRow.chargeKey,
+      tagsJson: stagingRow.tagsJson ?? null,
       usageDateKey: stagingRow.usageDateKey,
       billingPeriodStartDateKey: stagingRow.billingPeriodStartDateKey,
       billingPeriodEndDateKey: stagingRow.billingPeriodEndDateKey,
@@ -750,6 +813,7 @@ function mapStagingRowToFactInsert(stagingRow) {
       consumedQuantity: stagingRow.consumedQuantity,
       pricingQuantity: stagingRow.pricingQuantity,
       tagId: stagingRow.tagId,
+      tagIdsJson: stagingRow.tagIdsJson ?? [],
       sourceRowHash: stagingRow.sourceRowHash ?? null,
     },
     tagIds: resolveBridgeTagIds({
