@@ -42,10 +42,12 @@ const DATA_TRANSFER_VIEW_OPTIONS: Array<Option<EC2UsageType>> = [
   { key: "disk", label: "Usage (GB)" },
   { key: "cpu", label: "Distribution" },
 ];
+const EC2_EXPLORER_METRIC_OPTIONS = METRIC_OPTIONS.filter((option) => option.key !== "volumes");
 
 type EC2ExplorerTopControlsProps = {
   value: EC2ExplorerControlsState;
   onChange: (next: EC2ExplorerControlsState) => void;
+  loading?: boolean;
   children?: ReactNode;
   showMetricTabs?: boolean;
   showThresholdButton?: boolean;
@@ -54,6 +56,7 @@ type EC2ExplorerTopControlsProps = {
 export function EC2ExplorerTopControls({
   value,
   onChange,
+  loading = false,
   children,
   showMetricTabs = true,
   showThresholdButton = true,
@@ -191,7 +194,7 @@ export function EC2ExplorerTopControls({
           {showMetricTabs ? (
             <div className="ec2-explorer-metric-segmented-scroll">
               <div className="ec2-explorer-metric-segmented" role="tablist" aria-label="Metric" id={metricSegmentId}>
-                {METRIC_OPTIONS.map((option) => {
+                {EC2_EXPLORER_METRIC_OPTIONS.map((option) => {
                   const selected = value.metric === option.key;
                   return (
                     <button
@@ -203,6 +206,7 @@ export function EC2ExplorerTopControls({
                       aria-selected={selected}
                       aria-controls="ec2-explorer-filters-grid"
                       tabIndex={selected ? 0 : -1}
+                      disabled={loading}
                       onClick={() => applyMetricChange(option.key)}
                     >
                       {option.label}
@@ -220,6 +224,7 @@ export function EC2ExplorerTopControls({
                 onClick={() => setThresholdsOpen(true)}
                 aria-label="Thresholds"
                 title="Thresholds"
+                disabled={loading}
               >
                 <Settings2 size={14} aria-hidden="true" />
               </button>
@@ -227,7 +232,7 @@ export function EC2ExplorerTopControls({
           ) : null}
         </div>
       </div>
-      <section className="cost-explorer-control-surface ec2-explorer-controls" aria-label="EC2 Explorer Controls">
+      <section className={`cost-explorer-control-surface ec2-explorer-controls${loading ? " ec2-explorer-controls--loading" : ""}`} aria-label="EC2 Explorer Controls">
       <div className="cost-explorer-toolbar-row ec2-explorer-toolbar-row--primary">
         <div
           id="ec2-explorer-filters-grid"
@@ -237,9 +242,10 @@ export function EC2ExplorerTopControls({
             <button
               type="button"
               className={`cost-explorer-toolbar-trigger${activePopover === "groupBy" ? " is-active" : ""}`}
-              onClick={() => togglePopover("groupBy")}
+              onClick={() => !loading && togglePopover("groupBy")}
               aria-expanded={activePopover === "groupBy"}
               aria-haspopup="dialog"
+              disabled={loading}
             >
               <span className="cost-explorer-toolbar-trigger__label">Group By</span>
               <span className="cost-explorer-toolbar-trigger__row">
@@ -254,11 +260,11 @@ export function EC2ExplorerTopControls({
               type="button"
               className={`cost-explorer-toolbar-trigger${activePopover === "config" ? " is-active" : ""}`}
               onClick={() => {
-                togglePopover("config");
+                if (!loading) togglePopover("config");
               }}
               aria-expanded={activePopover === "config"}
               aria-haspopup="dialog"
-              disabled={false}
+              disabled={loading}
             >
               <span className="cost-explorer-toolbar-trigger__label">{configLabel}</span>
               <span className="cost-explorer-toolbar-trigger__row">
@@ -318,9 +324,10 @@ export function EC2ExplorerTopControls({
             <button
               type="button"
               className={`cost-explorer-toolbar-trigger${activePopover === "granularity" ? " is-active" : ""}`}
-              onClick={() => togglePopover("granularity")}
+              onClick={() => !loading && togglePopover("granularity")}
               aria-expanded={activePopover === "granularity"}
               aria-haspopup="dialog"
+              disabled={loading}
             >
               <span className="cost-explorer-toolbar-trigger__label">Granularity</span>
               <span className="cost-explorer-toolbar-trigger__row">
@@ -344,9 +351,10 @@ export function EC2ExplorerTopControls({
             <button
               type="button"
               className={`cost-explorer-toolbar-trigger${activePopover === "compare" ? " is-active" : ""}`}
-              onClick={() => togglePopover("compare")}
+              onClick={() => !loading && togglePopover("compare")}
               aria-expanded={activePopover === "compare"}
               aria-haspopup="dialog"
+              disabled={loading}
             >
               <span className="cost-explorer-toolbar-trigger__label">Compare</span>
               <span className="cost-explorer-toolbar-trigger__row">
@@ -369,9 +377,10 @@ export function EC2ExplorerTopControls({
               <button
                 type="button"
                 className={`cost-explorer-toolbar-trigger${activePopover === "instancesState" ? " is-active" : ""}`}
-                onClick={() => togglePopover("instancesState")}
+                onClick={() => !loading && togglePopover("instancesState")}
                 aria-expanded={activePopover === "instancesState"}
                 aria-haspopup="dialog"
+                disabled={loading}
               >
                 <span className="cost-explorer-toolbar-trigger__label">State</span>
                 <span className="cost-explorer-toolbar-trigger__row">

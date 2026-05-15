@@ -241,7 +241,15 @@ export function EC2ExplorerChart({
   );
 
   if (loading) {
-    return <div className="ec2-explorer-chart__skeleton" aria-hidden="true" />;
+    return (
+      <section className="ec2-explorer-chart__skeleton" aria-hidden="true">
+        <div className="cost-explorer-chart-stack">
+          <div className="cost-explorer-chart-canvas cost-explorer-chart-canvas--plain">
+            <div className="cost-explorer-chart-skeleton cost-explorer-chart-skeleton--bars ec2-explorer-chart__history-skeleton-canvas" />
+          </div>
+        </div>
+      </section>
+    );
   }
 
   if (error) {

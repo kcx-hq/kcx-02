@@ -239,6 +239,8 @@ export default function EC2InstancesPage() {
     },
     Boolean(scope),
   );
+  const isInsightsLoading = explorerInstancesQuery.isFetching || !explorerInstancesQuery.data;
+  const isListLoading = instancesQuery.isFetching || !instancesQuery.data;
 
   useEffect(() => {
     const next = new URLSearchParams(location.search);
@@ -367,60 +369,71 @@ export default function EC2InstancesPage() {
         <EC2ExplorerTopControls
           value={insightsControls}
           onChange={setInsightsControls}
+          loading={isInsightsLoading}
           showMetricTabs={false}
           showThresholdButton={false}
         >
           <div className="cost-explorer-chip-bar" aria-label="Selected filter summary">
             <div className="cost-explorer-chip-row">
-              <span className="cost-explorer-chip">
-                <span className="cost-explorer-chip__edit">
-                  Condition: {insightsControls.instancesCondition}
-                </span>
-                <button
-                  type="button"
-                  className="cost-explorer-chip__remove"
-                  onClick={() => setInsightsControls((current) => ({ ...current, instancesCondition: "all" }))}
-                  aria-label="Remove condition"
-                >
-                  <X size={13} aria-hidden="true" />
-                </button>
-              </span>
-              <span className="cost-explorer-chip">
-                <span className="cost-explorer-chip__edit">
-                  Group By: {insightsControls.groupBy}
-                </span>
-                <button
-                  type="button"
-                  className="cost-explorer-chip__remove"
-                  onClick={() => setInsightsControls((current) => ({ ...current, groupBy: "instance", groupByValues: [] }))}
-                  aria-label="Remove group by"
-                >
-                  <X size={13} aria-hidden="true" />
-                </button>
-              </span>
-              <button
-                type="button"
-                className="cost-explorer-chip-bar__clear cost-explorer-chip-bar__clear--inline"
-                onClick={() =>
-                  setInsightsControls((current) => ({
-                    ...EC2_EXPLORER_DEFAULT_CONTROLS,
-                    metric: "instances",
-                    groupBy: "instance",
-                    scopeFilters: { ...current.scopeFilters, region: [], tags: [] },
-                  }))
-                }
-              >
-                Clear all
-              </button>
-              <button
-                type="button"
-                className="ec2-explorer-toolbar-action"
-                aria-label="Thresholds"
-                title="Thresholds"
-                onClick={() => setInsightsThresholdsOpen(true)}
-              >
-                <SlidersHorizontal size={14} aria-hidden="true" />
-              </button>
+              {isInsightsLoading ? (
+                <>
+                  <span className="ec2-explorer-filter-skeleton-chip ec2-explorer-filter-skeleton-chip--lg" aria-hidden="true" />
+                  <span className="ec2-explorer-filter-skeleton-chip ec2-explorer-filter-skeleton-chip--md" aria-hidden="true" />
+                  <span className="ec2-explorer-filter-skeleton-chip ec2-explorer-filter-skeleton-chip--clear" aria-hidden="true" />
+                </>
+              ) : (
+                <>
+                  <span className="cost-explorer-chip">
+                    <span className="cost-explorer-chip__edit">
+                      Condition: {insightsControls.instancesCondition}
+                    </span>
+                    <button
+                      type="button"
+                      className="cost-explorer-chip__remove"
+                      onClick={() => setInsightsControls((current) => ({ ...current, instancesCondition: "all" }))}
+                      aria-label="Remove condition"
+                    >
+                      <X size={13} aria-hidden="true" />
+                    </button>
+                  </span>
+                  <span className="cost-explorer-chip">
+                    <span className="cost-explorer-chip__edit">
+                      Group By: {insightsControls.groupBy}
+                    </span>
+                    <button
+                      type="button"
+                      className="cost-explorer-chip__remove"
+                      onClick={() => setInsightsControls((current) => ({ ...current, groupBy: "instance", groupByValues: [] }))}
+                      aria-label="Remove group by"
+                    >
+                      <X size={13} aria-hidden="true" />
+                    </button>
+                  </span>
+                  <button
+                    type="button"
+                    className="cost-explorer-chip-bar__clear cost-explorer-chip-bar__clear--inline"
+                    onClick={() =>
+                      setInsightsControls((current) => ({
+                        ...EC2_EXPLORER_DEFAULT_CONTROLS,
+                        metric: "instances",
+                        groupBy: "instance",
+                        scopeFilters: { ...current.scopeFilters, region: [], tags: [] },
+                      }))
+                    }
+                  >
+                    Clear all
+                  </button>
+                  <button
+                    type="button"
+                    className="ec2-explorer-toolbar-action"
+                    aria-label="Thresholds"
+                    title="Thresholds"
+                    onClick={() => setInsightsThresholdsOpen(true)}
+                  >
+                    <SlidersHorizontal size={14} aria-hidden="true" />
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </EC2ExplorerTopControls>
@@ -443,7 +456,7 @@ export default function EC2InstancesPage() {
               totalNetworkGb: 0,
             }
           }
-          loading={explorerInstancesQuery.isLoading}
+          loading={isInsightsLoading}
           metric="instances"
         />
       </section>
@@ -466,7 +479,7 @@ export default function EC2InstancesPage() {
                   series: [],
                 }
           }
-          loading={explorerInstancesQuery.isLoading}
+          loading={isInsightsLoading}
           error={explorerInstancesQuery.isError ? explorerInstancesQuery.error : null}
           onRetry={() => {
             void explorerInstancesQuery.refetch();
@@ -480,7 +493,7 @@ export default function EC2InstancesPage() {
         <EC2ExplorerTable
           metric="instances"
           groupBy={insightsControls.groupBy}
-          loading={explorerInstancesQuery.isLoading}
+          loading={isInsightsLoading}
           error={explorerInstancesQuery.isError ? explorerInstancesQuery.error : null}
           table={explorerInstancesQuery.data?.table ?? null}
           onRetry={() => {
@@ -494,6 +507,7 @@ export default function EC2InstancesPage() {
         <EC2InstancesTopBar
           value={controls}
           instanceTypeOptions={instanceTypeOptions}
+          loading={isListLoading}
           visibleControls={[
             "filters",
             "status",
@@ -543,7 +557,7 @@ export default function EC2InstancesPage() {
         <EC2InstancesTable
           rows={filteredRows}
           volumeCostByInstanceId={volumeCostByInstanceId}
-          loading={instancesQuery.isLoading}
+          loading={isListLoading}
           error={instancesQuery.isError ? instancesQuery.error : null}
           onRetry={() => {
             void instancesQuery.refetch();

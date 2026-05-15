@@ -7,6 +7,7 @@ import { useDashboardScope } from "../hooks/useDashboardScope";
 import { OverviewDashboardSkeleton } from "../pages/overview/components";
 import { CostExplorerSkeleton } from "../pages/cost-explorer/components";
 import { HistorySectionSkeleton } from "../pages/cost/history/components/HistorySectionSkeleton";
+import { EC2ExplorerUnifiedSkeleton } from "../pages/ec2/components";
 
 function S3ExplorerLoadingSkeleton() {
   return (
@@ -122,17 +123,24 @@ function DashboardScopeErrorState({ message }: { message: string }) {
 function DashboardScopeGate() {
   const { scope, isLoading, isError, error } = useDashboardScope();
   const location = useLocation();
+  const isEc2Route =
+    location.pathname.startsWith("/dashboard/ec2/") ||
+    location.pathname.startsWith("/dashboard/inventory/aws/ec2/");
   const isOverviewRoute =
     location.pathname === "/dashboard/overview" || location.pathname === "/dashboard/cfo-dashboard";
   const isCostExplorerRoute =
     location.pathname.startsWith("/dashboard/cost/explorer") || location.pathname.startsWith("/dashboard/cost-explorer");
   const isCostHistoryRoute = location.pathname.startsWith("/dashboard/cost/history");
+  const isEc2ExplorerRoute = location.pathname.startsWith("/dashboard/ec2/explorer");
   const isS3ExplorerLikeRoute =
     location.pathname.startsWith("/dashboard/s3/cost") ||
     location.pathname.startsWith("/dashboard/s3/usage") ||
     location.pathname.startsWith("/dashboard/s3/explorer");
 
   if (isLoading && !scope) {
+    if (isEc2Route) {
+      return <Outlet />;
+    }
     if (isOverviewRoute) {
       return <OverviewDashboardSkeleton />;
     }
@@ -147,6 +155,13 @@ function DashboardScopeGate() {
       return (
         <div className="dashboard-page cost-history-page">
           <HistorySectionSkeleton />
+        </div>
+      );
+    }
+    if (isEc2ExplorerRoute) {
+      return (
+        <div className="dashboard-page cost-explorer-page ec2-explorer-page">
+          <EC2ExplorerUnifiedSkeleton />
         </div>
       );
     }

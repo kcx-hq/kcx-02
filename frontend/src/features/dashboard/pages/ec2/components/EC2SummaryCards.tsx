@@ -62,14 +62,23 @@ export function EC2SummaryCards({ summary, loading = false, metric = "cost" }: E
         ];
 
   return (
-    <section className="ec2-explorer-summary" aria-label="EC2 explorer summary cards">
+    <section className={`ec2-explorer-summary ec2-explorer-summary--${metric}`} aria-label="EC2 explorer summary cards">
       {cards.map((card) => (
         <article
           key={card.label}
           className={`ec2-explorer-summary__card${card.tone ? ` ${card.tone}` : ""}${loading ? " is-loading" : ""}`}
         >
-          <p className="ec2-explorer-summary__label">{card.label}</p>
-          <p className="ec2-explorer-summary__value">{loading ? "..." : card.value}</p>
+          {loading ? (
+            <div className="ec2-explorer-summary__skeleton" aria-hidden="true">
+              <span className="ec2-explorer-summary__skeleton-line ec2-explorer-summary__skeleton-line--label" />
+              <span className="ec2-explorer-summary__skeleton-line ec2-explorer-summary__skeleton-line--value" />
+            </div>
+          ) : (
+            <>
+              <p className="ec2-explorer-summary__label">{card.label}</p>
+              <p className="ec2-explorer-summary__value">{card.value}</p>
+            </>
+          )}
         </article>
       ))}
     </section>
