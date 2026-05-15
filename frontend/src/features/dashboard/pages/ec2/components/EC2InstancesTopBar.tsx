@@ -38,6 +38,7 @@ type EC2InstancesTopBarProps = {
   instanceTypeOptions: Array<{ key: string; label: string }>;
   onChange: (next: EC2InstancesControlsState) => void;
   onReset: () => void;
+  loading?: boolean;
   visibleControls?: Array<
     | "filters"
     | "compare"
@@ -58,6 +59,7 @@ export function EC2InstancesTopBar({
   instanceTypeOptions,
   onChange,
   onReset,
+  loading = false,
   visibleControls,
   children,
 }: EC2InstancesTopBarProps) {
@@ -151,7 +153,7 @@ export function EC2InstancesTopBar({
   );
 
   return (
-    <section className="cost-explorer-control-surface ec2-explorer-controls" ref={rootRef} aria-label="EC2 instances controls">
+    <section className={`cost-explorer-control-surface ec2-explorer-controls${loading ? " ec2-explorer-controls--loading" : ""}`} ref={rootRef} aria-label="EC2 instances controls">
       <div className="cost-explorer-toolbar-row ec2-explorer-toolbar-row--primary">
         <div className="ec2-instances-toolbar-main">
           {controlSet.has("filters") ? (

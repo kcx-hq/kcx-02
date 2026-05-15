@@ -8,7 +8,6 @@ import type { Ec2ExplorerFiltersQuery } from "../../api/dashboardApi";
 import {
   EC2_EXPLORER_DEFAULT_CONTROLS,
   EC2ExplorerChart,
-  EC2ExplorerUnifiedSkeleton,
   EC2ExplorerTable,
   EC2ExplorerTopControls,
   EC2SummaryCards,
@@ -76,6 +75,7 @@ const defaultSummary = {
 };
 
 const INSTANCE_LIST_PATH = "/dashboard/inventory/aws/ec2/instances";
+const VOLUMES_LIST_PATH = "/dashboard/inventory/aws/ec2/volumes";
 const OPTIMIZATION_PAGE_PATH = "/dashboard/ec2/optimization";
 const NAT_GATEWAY_PAGE_PATH = "/dashboard/ec2/network/nat-gateway";
 const ELASTIC_IP_PAGE_PATH = "/dashboard/ec2/network/elastic-ip";
@@ -176,6 +176,11 @@ export default function EC2ExplorerPage() {
     };
   }, [location.search]);
   const [controls, setControls] = useState<EC2ExplorerControlsState>(initialControls);
+  useEffect(() => {
+    if (controls.metric !== "volumes") return;
+    const next = new URLSearchParams(location.search);
+    navigate({ pathname: VOLUMES_LIST_PATH, search: next.toString() }, { replace: true });
+  }, [controls.metric, location.search, navigate]);
   const filters = useMemo(
     () => ({
       startDate: scopeStartDate,
@@ -206,7 +211,8 @@ export default function EC2ExplorerPage() {
   );
 
   const query = useEc2ExplorerQuery(filters, Boolean(scope));
-  const showUnifiedSkeleton = query.isLoading && !query.data;
+  const hasExplorerData = Boolean(query.data);
+  const isSectionLoading = query.isFetching || !hasExplorerData;
   const dataTransferView = controls.metric === "data-transfer"
     ? controls.usageType === "disk"
       ? "usage"
@@ -464,38 +470,41 @@ export default function EC2ExplorerPage() {
     return list;
   }, [controls, resetControls]);
 
-  if (showUnifiedSkeleton) {
-    return (
-      <div className="dashboard-page cost-explorer-page ec2-explorer-page">
-        <EC2ExplorerUnifiedSkeleton />
-      </div>
-    );
-  }
-
   return (
     <div className="dashboard-page cost-explorer-page ec2-explorer-page">
       <section className="ec2-explorer-head-stack" aria-label="EC2 explorer controls and summary">
-        <EC2ExplorerTopControls value={controls} onChange={setControls}>
+        <EC2ExplorerTopControls value={controls} onChange={setControls} loading={isSectionLoading}>
           <div className="cost-explorer-chip-bar" aria-label="Selected filter summary">
             <div className="cost-explorer-chip-row">
-              {chips.map((chip) => (
-                <span key={chip.id} className="cost-explorer-chip">
-                  <span className="cost-explorer-chip__edit">
-                    {chip.label}: {chip.value}
-                  </span>
-                  <button type="button" className="cost-explorer-chip__remove" onClick={chip.onRemove} aria-label={`Remove ${chip.label}`}>
-                    <X size={13} aria-hidden="true" />
+              {isSectionLoading ? (
+                <>
+                  <span className="ec2-explorer-filter-skeleton-chip ec2-explorer-filter-skeleton-chip--lg" aria-hidden="true" />
+                  <span className="ec2-explorer-filter-skeleton-chip ec2-explorer-filter-skeleton-chip--md" aria-hidden="true" />
+                  <span className="ec2-explorer-filter-skeleton-chip ec2-explorer-filter-skeleton-chip--md2" aria-hidden="true" />
+                  <span className="ec2-explorer-filter-skeleton-chip ec2-explorer-filter-skeleton-chip--clear" aria-hidden="true" />
+                </>
+              ) : (
+                <>
+                  {chips.map((chip) => (
+                    <span key={chip.id} className="cost-explorer-chip">
+                      <span className="cost-explorer-chip__edit">
+                        {chip.label}: {chip.value}
+                      </span>
+                      <button type="button" className="cost-explorer-chip__remove" onClick={chip.onRemove} aria-label={`Remove ${chip.label}`}>
+                        <X size={13} aria-hidden="true" />
+                      </button>
+                    </span>
+                  ))}
+                  <button type="button" className="cost-explorer-chip-bar__clear cost-explorer-chip-bar__clear--inline" onClick={resetControls}>
+                    Clear all
                   </button>
-                </span>
-              ))}
-              <button type="button" className="cost-explorer-chip-bar__clear cost-explorer-chip-bar__clear--inline" onClick={resetControls}>
-                Clear all
-              </button>
+                </>
+              )}
             </div>
           </div>
         </EC2ExplorerTopControls>
 
-        <EC2SummaryCards summary={query.data?.summary ?? defaultSummary} loading={query.isLoading} metric={controls.metric} />
+        <EC2SummaryCards summary={query.data?.summary ?? defaultSummary} loading={isSectionLoading} metric={controls.metric} />
       </section>
 
       <section className="ec2-explorer-chart-panel" aria-label="EC2 explorer chart panel">
@@ -538,7 +547,7 @@ export default function EC2ExplorerPage() {
                   series: [],
                 }
           }
-          loading={query.isLoading}
+          loading={isSectionLoading}
           error={query.isError ? query.error : null}
           onRetry={() => {
             void query.refetch();
@@ -580,7 +589,7 @@ export default function EC2ExplorerPage() {
         <EC2ExplorerTable
           metric={controls.metric}
           groupBy={controls.groupBy}
-          loading={query.isLoading}
+          loading={isSectionLoading}
           error={query.isError ? query.error : null}
           table={query.data?.table ?? null}
           onRetry={() => {
