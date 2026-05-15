@@ -29,6 +29,41 @@ const optionalString = (value: unknown): string | undefined => {
   return trimmed.length > 0 ? trimmed : undefined;
 };
 
+const normalizeDbServiceAndEngine = (
+  dbServiceRaw: string | undefined,
+  dbEngineRaw: string | undefined,
+): { dbService?: string; dbEngine?: string } => {
+  let dbService = dbServiceRaw;
+  let dbEngine = dbEngineRaw;
+
+  if (!dbService) {
+    return { dbService, dbEngine };
+  }
+
+  const normalizedServiceText = dbService.toLowerCase();
+
+  if (!dbEngine) {
+    const parts = dbService
+      .split(/\s*(?:•|·|\||\/|:| - )\s*/g)
+      .map((part) => part.trim())
+      .filter((part) => part.length > 0);
+    if (parts.length >= 2) {
+      dbService = parts[0];
+      dbEngine = parts.slice(1).join(" ");
+    }
+  }
+
+  if (!dbEngine && normalizedServiceText.includes("aurora")) {
+    if (normalizedServiceText.includes("postgres")) {
+      dbEngine = "Aurora PostgreSQL";
+    } else if (normalizedServiceText.includes("mysql")) {
+      dbEngine = "Aurora MySQL";
+    }
+  }
+
+  return { dbService, dbEngine };
+};
+
 const normalizeGroupByInput = (raw: unknown): string => {
   const value = typeof raw === "string" ? raw.trim().toLowerCase() : "";
   if (value === "database_type") {
@@ -83,14 +118,18 @@ export function parseExplorerQuery(req: Request): ExplorerQueryParams {
   const legacyTypeRaw = optionalString(req.query.database_type);
   const databaseScope = resolveDatabaseScope(scopeRaw, legacyTypeRaw);
 
+  const rawDbService = optionalString(req.query.db_service);
+  const rawDbEngine = optionalString(req.query.db_engine);
+  const normalizedDbFilters = normalizeDbServiceAndEngine(rawDbService, rawDbEngine);
+
   const parsed = parseWithSchema(explorerQuerySchema, {
     tenantId: resolveTenantId(req),
     startDate: firstValue(req.query.start_date),
     endDate: firstValue(req.query.end_date),
     cloudConnectionId: optionalString(req.query.cloud_connection_id),
     regionKey: optionalString(req.query.region_key),
-    dbService: optionalString(req.query.db_service),
-    dbEngine: optionalString(req.query.db_engine),
+    dbService: normalizedDbFilters.dbService,
+    dbEngine: normalizedDbFilters.dbEngine,
     metric: firstValue(req.query.metric) ?? "cost",
     groupBy: firstValue(req.query.group_by) ?? "db_type",
   });

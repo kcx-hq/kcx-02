@@ -59,6 +59,13 @@ type AssetQueryRow = {
   latestUsageDate: string;
   discoveredAt: Date | string | null;
   metadata: Record<string, unknown> | null;
+  hasLiveInventory: boolean;
+  endpoint: string | null;
+  endpointPort: string | number | null;
+  multiAz: boolean | null;
+  storageEncrypted: boolean | null;
+  deletionProtection: boolean | null;
+  backupRetentionPeriod: string | number | null;
   totalCount: string | number | null;
 };
 
@@ -111,6 +118,13 @@ type DetailIdentityRow = {
   cloudConnectionId: string;
   latestUsageDate: string | Date | null;
   discoveredAt: string | Date | null;
+  hasLiveInventory: boolean;
+  endpoint: string | null;
+  endpointPort: string | number | null;
+  multiAz: boolean | null;
+  storageEncrypted: boolean | null;
+  deletionProtection: boolean | null;
+  backupRetentionPeriod: string | number | null;
   tags: Record<string, unknown> | null;
   rawMetadata: Record<string, unknown> | null;
 };
@@ -233,6 +247,57 @@ const toIsoTimestamp = (value: string | Date | null): string | null => {
   const date = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(date.getTime())) return null;
   return date.toISOString();
+};
+
+const toNullableBoolean = (value: unknown): boolean | null => {
+  if (typeof value === "boolean") return value;
+  return null;
+};
+
+const extractStringFromMetadata = (metadata: Record<string, unknown> | null, keys: string[]): string | null => {
+  if (!metadata || typeof metadata !== "object") return null;
+  for (const key of keys) {
+    const value = metadata[key];
+    if (typeof value === "string" && value.trim().length > 0) return value.trim();
+  }
+  return null;
+};
+
+const extractNumberFromMetadata = (metadata: Record<string, unknown> | null, keys: string[]): number | null => {
+  if (!metadata || typeof metadata !== "object") return null;
+  for (const key of keys) {
+    const value = metadata[key];
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+    if (typeof value === "string") {
+      const parsed = Number(value);
+      if (Number.isFinite(parsed)) return parsed;
+    }
+  }
+  return null;
+};
+
+const extractBooleanFromMetadata = (metadata: Record<string, unknown> | null, keys: string[]): boolean | null => {
+  if (!metadata || typeof metadata !== "object") return null;
+  for (const key of keys) {
+    const value = metadata[key];
+    if (typeof value === "boolean") return value;
+  }
+  return null;
+};
+
+const computeInventorySource = (hasLiveInventory: boolean, hasBillingSignals: boolean): "aws_sdk" | "billing_only" | "mixed" => {
+  if (hasLiveInventory && hasBillingSignals) return "mixed";
+  if (hasLiveInventory) return "aws_sdk";
+  return "billing_only";
+};
+
+const computeInventoryFreshnessMinutes = (observedAtIso: string | null): number | null => {
+  if (!observedAtIso) return null;
+  const observedAt = new Date(observedAtIso);
+  if (Number.isNaN(observedAt.getTime())) return null;
+  const deltaMs = Date.now() - observedAt.getTime();
+  if (!Number.isFinite(deltaMs) || deltaMs < 0) return 0;
+  return Math.floor(deltaMs / 60000);
 };
 
 const toStorageUtilizationPct = (
@@ -533,6 +598,19 @@ SELECT
   fa.recommendation_count AS "recommendationCount",
   fa.latest_usage_date AS "latestUsageDate",
   fa.discovered_at AS "discoveredAt",
+  (fa.discovered_at IS NOT NULL) AS "hasLiveInventory",
+  COALESCE(
+    NULLIF(BTRIM(CAST(fa.metadata->>'endpointAddress' AS text)), ''),
+    NULLIF(BTRIM(CAST(fa.metadata->>'endpoint' AS text)), '')
+  ) AS endpoint,
+  COALESCE(
+    NULLIF(BTRIM(CAST(fa.metadata->>'endpointPort' AS text)), ''),
+    NULLIF(BTRIM(CAST(fa.metadata->>'port' AS text)), '')
+  ) AS "endpointPort",
+  (fa.metadata->>'multiAz')::boolean AS "multiAz",
+  (fa.metadata->>'storageEncrypted')::boolean AS "storageEncrypted",
+  (fa.metadata->>'deletionProtection')::boolean AS "deletionProtection",
+  NULLIF(BTRIM(CAST(fa.metadata->>'backupRetentionPeriod' AS text)), '') AS "backupRetentionPeriod",
   fa.metadata AS "metadata",
   COUNT(*) OVER() AS "totalCount"
 FROM final_assets fa
@@ -554,6 +632,10 @@ LIMIT :pageSize OFFSET :offset;
 
     return {
       assets: rows.map((row) => ({
+        hasLiveInventory: row.hasLiveInventory === true,
+        inventorySource: computeInventorySource(row.hasLiveInventory === true, true),
+        inventoryObservedAt: toIsoTimestamp(row.discoveredAt),
+        inventoryFreshnessMinutes: computeInventoryFreshnessMinutes(toIsoTimestamp(row.discoveredAt)),
         cloudConnectionId: row.cloudConnectionId,
         resourceId: row.resourceId,
         resourceArn: row.resourceArn,
@@ -591,6 +673,18 @@ LIMIT :pageSize OFFSET :offset;
         recommendationCount: toNumber(row.recommendationCount),
         latestUsageDate: toDateOnly(row.latestUsageDate),
         discoveredAt: toIsoTimestamp(row.discoveredAt),
+        endpoint: toNullableString(row.endpoint) ?? extractStringFromMetadata(row.metadata, ["endpointAddress", "endpoint"]),
+        endpointPort:
+          toNullableNumber(row.endpointPort) ??
+          extractNumberFromMetadata(row.metadata, ["endpointPort", "port"]),
+        multiAz: toNullableBoolean(row.multiAz) ?? extractBooleanFromMetadata(row.metadata, ["multiAz"]),
+        storageEncrypted:
+          toNullableBoolean(row.storageEncrypted) ?? extractBooleanFromMetadata(row.metadata, ["storageEncrypted"]),
+        deletionProtection:
+          toNullableBoolean(row.deletionProtection) ?? extractBooleanFromMetadata(row.metadata, ["deletionProtection"]),
+        backupRetentionPeriod:
+          toNullableNumber(row.backupRetentionPeriod) ??
+          extractNumberFromMetadata(row.metadata, ["backupRetentionPeriod"]),
         metadata: row.metadata,
       })),
       total,
@@ -714,6 +808,19 @@ SELECT
   CAST(:cloudConnectionId AS text) AS "cloudConnectionId",
   fi.latest_usage_date AS "latestUsageDate",
   li.discovered_at AS "discoveredAt",
+  (li.discovered_at IS NOT NULL) AS "hasLiveInventory",
+  COALESCE(
+    NULLIF(BTRIM(CAST(li.metadata_json->>'endpointAddress' AS text)), ''),
+    NULLIF(BTRIM(CAST(li.metadata_json->>'endpoint' AS text)), '')
+  ) AS endpoint,
+  COALESCE(
+    NULLIF(BTRIM(CAST(li.metadata_json->>'endpointPort' AS text)), ''),
+    NULLIF(BTRIM(CAST(li.metadata_json->>'port' AS text)), '')
+  ) AS "endpointPort",
+  (li.metadata_json->>'multiAz')::boolean AS "multiAz",
+  (li.metadata_json->>'storageEncrypted')::boolean AS "storageEncrypted",
+  (li.metadata_json->>'deletionProtection')::boolean AS "deletionProtection",
+  NULLIF(BTRIM(CAST(li.metadata_json->>'backupRetentionPeriod' AS text)), '') AS "backupRetentionPeriod",
   li.tags_json AS tags,
   li.metadata_json AS "rawMetadata"
 FROM fact_identity fi
@@ -990,6 +1097,8 @@ ORDER BY f.usage_date ASC;
     if (!availabilityChecks[2]) readinessNotes.push("Storage allocation and usage history are not available from current billing and inventory data.");
     if (!availabilityChecks[3]) readinessNotes.push("Performance throughput and IOPS signals are not available from current billing and usage data.");
     if (recommendationCount === 0) readinessNotes.push("No open database recommendations are currently available for this resource.");
+    const inventoryObservedAt = toIsoTimestamp(identity.discoveredAt);
+    const hasLiveInventory = identity.hasLiveInventory === true;
 
     return {
       identity: {
@@ -1012,7 +1121,29 @@ ORDER BY f.usage_date ASC;
         subAccountName: identity.subAccountName,
         cloudConnectionId: identity.cloudConnectionId,
         latestUsageDate: identity.latestUsageDate ? toDateOnly(identity.latestUsageDate) : null,
-        discoveredAt: toIsoTimestamp(identity.discoveredAt),
+        discoveredAt: inventoryObservedAt,
+        hasLiveInventory,
+        inventorySource: computeInventorySource(hasLiveInventory, true),
+        inventoryObservedAt,
+        inventoryFreshnessMinutes: computeInventoryFreshnessMinutes(inventoryObservedAt),
+        endpoint:
+          toNullableString(identity.endpoint) ??
+          extractStringFromMetadata(identity.rawMetadata ?? null, ["endpointAddress", "endpoint"]),
+        endpointPort:
+          toNullableNumber(identity.endpointPort) ??
+          extractNumberFromMetadata(identity.rawMetadata ?? null, ["endpointPort", "port"]),
+        multiAz:
+          toNullableBoolean(identity.multiAz) ??
+          extractBooleanFromMetadata(identity.rawMetadata ?? null, ["multiAz"]),
+        storageEncrypted:
+          toNullableBoolean(identity.storageEncrypted) ??
+          extractBooleanFromMetadata(identity.rawMetadata ?? null, ["storageEncrypted"]),
+        deletionProtection:
+          toNullableBoolean(identity.deletionProtection) ??
+          extractBooleanFromMetadata(identity.rawMetadata ?? null, ["deletionProtection"]),
+        backupRetentionPeriod:
+          toNullableNumber(identity.backupRetentionPeriod) ??
+          extractNumberFromMetadata(identity.rawMetadata ?? null, ["backupRetentionPeriod"]),
       },
       costSummary: {
         totalCost: toNumber(aggregate?.totalCost),

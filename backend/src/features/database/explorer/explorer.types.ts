@@ -109,6 +109,7 @@ export type ExplorerTableRow = {
 export type ExplorerFilterOptions = {
   dbServices: string[];
   dbEngines: string[];
+  groupedValuePreview: Partial<Record<ExplorerGroupBy, string[]>>;
   /** Scopes that have ≥1 fact row in the requested window (plus always `all`). */
   availableDatabaseScopes: ExplorerDatabaseScope[];
 };
@@ -121,3 +122,4 @@ export type ExplorerResponse = {
   trendGrouped?: ExplorerTrendGrouped;
   table: ExplorerTableRow[];
 };
+

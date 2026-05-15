@@ -81,6 +81,16 @@ export type DatabaseAssetRow = {
   recommendationCount: number;
   latestUsageDate: string;
   discoveredAt: string | null;
+  hasLiveInventory: boolean;
+  inventorySource: "aws_sdk" | "billing_only" | "mixed";
+  inventoryObservedAt: string | null;
+  inventoryFreshnessMinutes: number | null;
+  endpoint: string | null;
+  endpointPort: number | null;
+  multiAz: boolean | null;
+  storageEncrypted: boolean | null;
+  deletionProtection: boolean | null;
+  backupRetentionPeriod: number | null;
   metadata: Record<string, unknown> | null;
 };
 
@@ -133,6 +143,16 @@ export type DatabaseAssetDetailIdentity = {
   cloudConnectionId: string;
   latestUsageDate: string | null;
   discoveredAt: string | null;
+  hasLiveInventory: boolean;
+  inventorySource: "aws_sdk" | "billing_only" | "mixed";
+  inventoryObservedAt: string | null;
+  inventoryFreshnessMinutes: number | null;
+  endpoint: string | null;
+  endpointPort: number | null;
+  multiAz: boolean | null;
+  storageEncrypted: boolean | null;
+  deletionProtection: boolean | null;
+  backupRetentionPeriod: number | null;
 };
 
 export type DatabaseAssetDetailCostSummary = {

@@ -298,6 +298,14 @@ export function DatabaseExplorerTrend({
   const title = metric === "usage" ? "Database Usage Trend" : "Database Cost Trend";
   const subtitle = `Daily ${metric === "usage" ? "load" : "cost"} segmented by ${toGroupByLabel(groupBy)}`;
   const chartReady = activeGrouped ? groupedLabels.length > 0 && activeGrouped.series.length > 0 : activeTrend.length > 0;
+  const chartRenderKey = useMemo(() => {
+    const groupedSignature = activeGrouped
+      ? `${activeGrouped.groupBy}:${activeGrouped.series
+          .map((series) => `${series.key}|${series.label}|${series.data?.length ?? 0}`)
+          .join(",")}`
+      : "ungrouped";
+    return `${metric}:${groupBy}:${groupedSignature}:${labels.length}:${groupedLabels.length}`;
+  }, [activeGrouped, groupBy, groupedLabels.length, labels.length, metric]);
 
   return (
     <WidgetShell title={title} subtitle={subtitle}>
@@ -305,6 +313,7 @@ export function DatabaseExplorerTrend({
         <div className="cost-explorer-chart-skeleton" style={{ minHeight: 420 }} aria-hidden="true" />
       ) : chartReady ? (
         <BaseEChart
+          key={chartRenderKey}
           option={option}
           height={420}
           onPointClick={

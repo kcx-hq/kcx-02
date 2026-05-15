@@ -1,0 +1,225 @@
+# AWS SDK / AWS Components Scan Report
+
+## 1. Installed AWS SDK Dependencies
+From `backend/package.json`:
+
+- `@aws-sdk/client-cloudwatch` `^3.1027.0`  
+  Likely purpose: EC2/EBS/LB metric collection and recommendation signal enrichment.
+- `@aws-sdk/client-compute-optimizer` `^3.1026.0`  
+  Likely purpose: rightsizing recommendations sync.
+- `@aws-sdk/client-cost-explorer` `^3.1028.0`  
+  Likely purpose: commitment recommendations (RI/SP-style) sync.
+- `@aws-sdk/client-ec2` `^3.1021.0`  
+  Likely purpose: EC2 inventory/metrics discovery and real EC2 actions (start/stop/resize/delete-resource flows).
+- `@aws-sdk/client-elastic-load-balancing-v2` `^3.1027.0`  
+  Likely purpose: load balancer inventory/idle detection.
+- `@aws-sdk/client-iam` `^3.1028.0`  
+  Likely purpose: S3 replication role/policy setup.
+- `@aws-sdk/client-s3` `^3.903.0`  
+  Likely purpose: CUR/CloudTrail/export ingestion, S3 upload explorer, S3 optimization workflows.
+- `@aws-sdk/client-sts` `^3.1020.0`  
+  Likely purpose: AssumeRole and caller identity checks across most AWS features.
+
+Not found:
+
+- `aws-sdk` v2 package.
+- `@aws-sdk/client-rds`.
+
+## 2. Shared AWS Auth / STS Flow
+Primary shared assume-role helper:
+
+- `backend/src/features/cloud-connections/aws/infrastructure/aws-sts.service.ts`
+  - `assumeRole(roleArn, externalId?)` central helper.
+  - Uses backend base credentials (`AWS_VALIDATION_*` fallback to `AWS_*`) from `env.ts`.
+  - Uses STS `AssumeRoleCommand` and returns temp creds `{accessKeyId, secretAccessKey, sessionToken}`.
+
+Connection credential model:
+
+- `backend/src/models/cloud-connection-v2.ts`
+  - Stores `externalId`, `billingRoleArn`, `actionRoleArn`, `region`, `exportRegion`.
+- `backend/src/models/manual-cloud-connection.ts`
+  - Similar role/external-id fields for manual connection pathway.
+
+External ID handling:
+
+- Auto flow can generate/persist external ID (`kcx-...`) in `cloud-connections.controller.ts`.
+- Role assumption consistently passes external ID when present.
+
+Validation flows:
+
+- Auto connection validation: `backend/src/features/cloud-connections/aws/auto-connection/aws-connection-validation.service.ts`.
+- Manual connection validation: `backend/src/features/cloud-connections/aws/manual-connection/aws-assume-role.util.ts`.
+- Both do AssumeRole + caller identity checks and optional service probes.
+
+Credential caching:
+
+- No global STS credential cache/factory found.
+- AssumeRole is called per operation.
+- A scoped in-memory cache exists only for S3 upload sessions:
+  `backend/src/features/billing/s3-upload/s3-upload-session.store.ts`.
+
+## 3. Existing AWS Client Creation Pattern
+Pattern observed: mostly scattered per-module client constructors, with partial helpers.
+
+Centralized/shared pieces:
+
+- STS: `aws-sts.service.ts` (`assumeRole`).
+- S3 helper for export-reader path: `aws-s3.service.ts` (`createS3Client`, `listObjects`, `getObject`).
+
+Non-centralized/scattered client creation:
+
+- Many modules instantiate `new EC2Client`, `new CloudWatchClient`, `new S3Client`, `new STSClient`, etc. directly.
+- Some modules use dynamic imports for optional SDK clients (`aws-recommendations.source.ts` for Compute Optimizer, Cost Explorer, EC2, CloudWatch, ELBv2).
+
+Recreation scope:
+
+- Clients are commonly recreated per operation/request/loop region.
+- No single “AWS client factory” across all services.
+- Region and credentials are passed locally at call sites.
+
+## 4. Existing AWS-Backed Features
+Key backend AWS SDK usage modules:
+
+- Cloud connection setup/validation
+  - `cloud-connections/aws/auto-connection/*`
+  - `cloud-connections/aws/manual-connection/*`
+  - Includes AssumeRole, identity checks, region checks, S3 probe checks.
+
+- AWS export ingestion (CUR/CloudTrail)
+  - `cloud-connections/aws/exports/*`
+  - `cloud-connections/aws/infrastructure/aws-export-reader.service.ts`
+  - `cloud-connections/aws/infrastructure/aws-cloudtrail-s3-reader.service.ts`
+
+- Billing S3 upload session flows
+  - `billing/s3-upload/*`
+  - AssumeRole session, bucket region resolution, scoped object listing/validation/read.
+
+- EC2 real actions shared module
+  - `cloud-connections/aws/ec2/ec2.shared.service.ts`
+  - Includes instance type change, delete volume, release EIP, delete snapshot, plus safety guards.
+
+- Optimization recommendation sync (AWS as source)
+  - `dashboard/optimization/recommendation-sync/aws-recommendations.source.ts`
+  - Uses Compute Optimizer, Cost Explorer, EC2, CloudWatch, ELBv2.
+
+- Rightsizing/idle action execution pipeline
+  - `dashboard/optimization/recommendation-sync/rightsizing-actions.service.ts`
+  - `dashboard/optimization/recommendation-sync/idle-actions.service.ts`
+  - Uses shared EC2 action module for actual execution.
+
+- Scheduled AWS sync jobs
+  - `scheduled-jobs/handlers/ec2/*` (inventory + metrics + EBS metrics)
+  - `load-balancer/*` (inventory + CloudWatch metrics)
+
+- S3 optimization actions
+  - `dashboard/s3/s3-optimization.service.ts`
+  - Uses S3, STS, IAM clients.
+
+## 5. Existing EC2 Actions / Recommendations Pattern
+End-to-end pattern:
+
+1. Recommendation sync/population
+- AWS recommendation fetchers and/or internal enrichment feed `fact_recommendations` (rightsizing/idle categories).
+
+2. API route/controller
+- Routes in `backend/src/features/dashboard/dashboard.routes.ts`:
+  - `POST /dashboard/optimization/rightsizing/recommendations/:recommendationId/execute`
+  - `POST /dashboard/optimization/idle/recommendations/:recommendationId/execute`
+  - action status endpoints for both categories.
+- Controller in `optimization.controller.ts` accepts `dryRun` and `idempotencyKey`.
+
+3. Service enqueue
+- `optimization.service.ts` delegates to:
+  - `executeRightsizingAction(...)`
+  - `executeIdleAction(...)`
+- Action rows inserted into `fact_recommendation_actions` with status `QUEUED`.
+
+4. Worker/processor
+- Processor schedulers:
+  - `rightsizing-action-processor.service.ts`
+  - `idle-action-processor.service.ts`
+- Workers claim next action via SQL `FOR UPDATE SKIP LOCKED`, move `QUEUED -> RUNNING`.
+
+5. Real AWS execution
+- Rightsizing calls `changeInstanceType(...)` from `ec2.shared.service.ts`.
+- Idle actions call `deleteVolume`, `releaseAddress`, `deleteSnapshot` from same module.
+
+6. State transitions + error handling
+- Success: action `SUCCEEDED`; recommendation `APPLIED` (or back to `OPEN` on dry run).
+- Failure: action `FAILED` with `error_code`, `error_message`, `details_json`; recommendation to `FAILED`/kept actionable depending path.
+- Uses typed `AwsEc2Error` for structured failure codes/details.
+
+7. Safety checks
+- Tenant scoping on connection lookup.
+- Recommendation must be actionable and in allowed status.
+- Duplicate active action prevention.
+- Idempotency key de-dupe.
+- EC2-specific guards (ASG-managed instance block, allowed instance states, etc.).
+
+## 6. Reusable Pieces for Database Actions
+Safe reusable components:
+
+- STS auth helper: `aws-sts.service.ts`.
+- Cloud connection role/external-id model and lookup pattern (`CloudConnectionV2`).
+- Dashboard optimization execution architecture:
+  - route/controller shape,
+  - enqueue + `fact_recommendation_actions`,
+  - action processors,
+  - `FOR UPDATE SKIP LOCKED` claiming,
+  - idempotency handling,
+  - dry-run support,
+  - status transition and error recording patterns.
+- Recommendation lifecycle/status flow and tenant scoping.
+- Existing response/error conventions (`BadRequestError`, `ConflictError`, `NotFoundError`, etc.).
+
+## 7. EC2-Specific Pieces That Should Not Be Reused Directly
+Should stay service-specific:
+
+- `ec2.shared.service.ts` operational logic:
+  - instance-type mutation flow,
+  - EC2 waiter/state logic,
+  - ASG guardrails,
+  - EC2/EBS/EIP/Snapshot command assumptions.
+- Idle recommendation type mapping tied to EC2 resources (`DELETE_EBS`, `RELEASE_EIP`, `DELETE_SNAPSHOT`).
+- Rightsizing payload assumptions about instance fields (`current_resource_type`, `recommended_resource_type` semantics).
+- EC2-specific error codes/messages and safety validations.
+
+## 8. Missing Pieces for RDS/Aurora Actions
+Current gap assessment:
+
+- Missing package(s):
+  - `@aws-sdk/client-rds` is not installed.
+- CloudWatch package already installed:
+  - `@aws-sdk/client-cloudwatch` exists.
+
+No existing DB real-action execution module found analogous to `ec2.shared.service.ts`.
+
+Likely needed additions:
+
+- RDS client integration module (shared DB action adapter), e.g. start/stop/modify/delete/snapshot-safe checks for:
+  - RDS instance APIs,
+  - Aurora cluster APIs where applicable.
+- DB-specific action type taxonomy in recommendation/action tables.
+- DB action executor service(s) parallel to rightsizing/idle executors (or category extension of current ones).
+- DB safety checks:
+  - engine/cluster mode constraints,
+  - replica/cluster membership constraints,
+  - deletion protection/snapshot preconditions,
+  - maintenance/availability risk checks.
+- DB recommendation-to-action mapping rules (resource identity, target shape, valid states).
+
+## 9. Recommended Next Architecture
+Recommendation:
+
+- Reuse the existing optimization action execution infrastructure (queue, worker, idempotency, dry-run, status transitions, audit fields) as the execution backbone.
+- Introduce a new shared AWS service adapter/factory layer for service-specific clients/actions (starting with RDS) instead of expanding EC2 shared module directly.
+
+Why:
+
+- Current auth/connection and action orchestration patterns are strong and reusable.
+- Client creation is currently scattered; DB actions are a good point to introduce a cleaner shared client/provider abstraction.
+- Keeps EC2 logic isolated while enabling a consistent multi-service AWS action framework.
+
+---
+
+Backend scan scope only. No code changes were made.

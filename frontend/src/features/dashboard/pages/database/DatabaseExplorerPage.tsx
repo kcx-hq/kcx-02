@@ -186,6 +186,7 @@ export default function DatabaseExplorerPage() {
         availableDatabaseScopes={availableDatabaseScopes}
         backendServiceOptions={backendServiceOptions}
         backendEngineOptions={backendEngineOptions}
+        groupedValuePreview={data?.filterOptions?.groupedValuePreview}
         onApplyScope={handleApplyScope}
         onApplyGroupBy={handleApplyGroupBy}
         onClearAll={handleClearAll}

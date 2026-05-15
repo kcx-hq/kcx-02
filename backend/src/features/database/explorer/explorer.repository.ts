@@ -183,7 +183,18 @@ const buildFactFilters = (
   }
 
   if (params.dbService) {
-    filters.push(`${pref}db_service = :dbService`);
+    const normalizedService = params.dbService.trim().toLowerCase();
+    if (normalizedService.includes("aurora")) {
+      filters.push(
+        `(${pref}db_service = 'AmazonRDS' AND LOWER(COALESCE(${pref}db_engine, '')) LIKE 'aurora%')`,
+      );
+    } else if (normalizedService === "amazon rds" || normalizedService === "amazonrds") {
+      filters.push(
+        `(${pref}db_service = 'AmazonRDS' AND LOWER(COALESCE(${pref}db_engine, '')) NOT LIKE 'aurora%')`,
+      );
+    } else {
+      filters.push(`${pref}db_service = :dbService`);
+    }
   }
 
   if (params.databaseScope && params.databaseScope !== "all") {
@@ -193,6 +204,10 @@ const buildFactFilters = (
   if (params.dbEngine) {
     filters.push(`${pref}db_engine = :dbEngine`);
   }
+
+  filters.push(`COALESCE(LOWER(BTRIM(${pref}resource_type)), '') <> 'scoped'`);
+  filters.push(`${pref}resource_id NOT LIKE 'db-scope:%'`);
+  filters.push(`${pref}resource_id NOT LIKE 'db-unattributed:%'`);
 
   return filters.join("\n    AND ");
 };
@@ -213,7 +228,18 @@ const buildTrendFilters = (params: ExplorerQueryParams, tableAlias = ""): string
   }
 
   if (params.dbService) {
-    filters.push(`${pref}db_service = :dbService`);
+    const normalizedService = params.dbService.trim().toLowerCase();
+    if (normalizedService.includes("aurora")) {
+      filters.push(
+        `(${pref}db_service = 'AmazonRDS' AND LOWER(COALESCE(${pref}db_engine, '')) LIKE 'aurora%')`,
+      );
+    } else if (normalizedService === "amazon rds" || normalizedService === "amazonrds") {
+      filters.push(
+        `(${pref}db_service = 'AmazonRDS' AND LOWER(COALESCE(${pref}db_engine, '')) NOT LIKE 'aurora%')`,
+      );
+    } else {
+      filters.push(`${pref}db_service = :dbService`);
+    }
   }
 
   if (params.databaseScope && params.databaseScope !== "all") {
@@ -324,15 +350,39 @@ REGEXP_REPLACE(
 )
 `;
 
+const DB_TYPE_FAMILY_TOKEN_SQL = `
+CASE
+  WHEN ${DB_TYPE_SERVICE_TOKEN_SQL} IN (
+    'amazonrds',
+    'amazonrdsservice',
+    'rds',
+    'amazonrelationaldatabaseservice',
+    'aurora',
+    'amazonaurora',
+    'aurorapostgresql',
+    'auroramysql'
+  )
+    OR LOWER(COALESCE(f.db_engine, '')) LIKE 'aurora%'
+    THEN 'relational'
+  WHEN ${DB_TYPE_SERVICE_TOKEN_SQL} IN ('amazondynamodb', 'dynamodb') THEN 'keyvalue'
+  WHEN ${DB_TYPE_SERVICE_TOKEN_SQL} IN ('amazonelasticache', 'elasticache', 'amazonmemorydb', 'memorydb') THEN 'inmemory'
+  WHEN ${DB_TYPE_SERVICE_TOKEN_SQL} IN ('amazondocdb', 'docdb', 'amazondocumentdb', 'documentdb') THEN 'document'
+  WHEN ${DB_TYPE_SERVICE_TOKEN_SQL} IN ('amazonneptune', 'neptune') THEN 'graph'
+  WHEN ${DB_TYPE_SERVICE_TOKEN_SQL} IN ('amazonkeyspaces', 'keyspaces') THEN 'widecolumn'
+  WHEN ${DB_TYPE_SERVICE_TOKEN_SQL} IN ('amazontimestream', 'timestream') THEN 'timeseries'
+  ELSE 'unknown'
+END
+`;
+
 const DB_TYPE_CLASSIFICATION_CASE = `
 CASE
-  WHEN ${DB_TYPE_SERVICE_TOKEN_SQL} IN ('amazonrds', 'amazonrdsservice', 'rds', 'amazonrelationaldatabaseservice', 'aurora', 'amazonaurora') THEN 'Relational'
-  WHEN ${DB_TYPE_SERVICE_TOKEN_SQL} IN ('amazondynamodb', 'dynamodb') THEN 'Key-Value'
-  WHEN ${DB_TYPE_SERVICE_TOKEN_SQL} IN ('amazonelasticache', 'elasticache', 'amazonmemorydb', 'memorydb') THEN 'In-Memory'
-  WHEN ${DB_TYPE_SERVICE_TOKEN_SQL} IN ('amazondocdb', 'docdb', 'amazondocumentdb', 'documentdb') THEN 'Document'
-  WHEN ${DB_TYPE_SERVICE_TOKEN_SQL} IN ('amazonneptune', 'neptune') THEN 'Graph'
-  WHEN ${DB_TYPE_SERVICE_TOKEN_SQL} IN ('amazonkeyspaces', 'keyspaces') THEN 'Wide Column'
-  WHEN ${DB_TYPE_SERVICE_TOKEN_SQL} IN ('amazontimestream', 'timestream') THEN 'Time Series'
+  WHEN ${DB_TYPE_FAMILY_TOKEN_SQL} = 'relational' THEN 'Relational'
+  WHEN ${DB_TYPE_FAMILY_TOKEN_SQL} = 'keyvalue' THEN 'Key-Value'
+  WHEN ${DB_TYPE_FAMILY_TOKEN_SQL} = 'inmemory' THEN 'In-Memory'
+  WHEN ${DB_TYPE_FAMILY_TOKEN_SQL} = 'document' THEN 'Document'
+  WHEN ${DB_TYPE_FAMILY_TOKEN_SQL} = 'graph' THEN 'Graph'
+  WHEN ${DB_TYPE_FAMILY_TOKEN_SQL} = 'widecolumn' THEN 'Wide Column'
+  WHEN ${DB_TYPE_FAMILY_TOKEN_SQL} = 'timeseries' THEN 'Time Series'
   ELSE 'Unknown database type'
 END
 `;
@@ -347,9 +397,21 @@ const GROUP_BY_COLUMNS = {
     requiresRegion: false,
   },
   db_service: {
-    selectExpression: "COALESCE(NULLIF(BTRIM(f.db_service), ''), 'Unknown service')",
-    groupExpression: "COALESCE(NULLIF(BTRIM(f.db_service), ''), 'Unknown service')",
-    keyExpression: "COALESCE(NULLIF(BTRIM(f.db_service), ''), 'unknown-service')",
+    selectExpression: `CASE
+      WHEN LOWER(COALESCE(f.db_engine, '')) LIKE 'aurora%' THEN 'Amazon Aurora'
+      WHEN COALESCE(NULLIF(BTRIM(f.db_service), ''), '') <> '' THEN 'Amazon RDS'
+      ELSE 'Unknown service'
+    END`,
+    groupExpression: `CASE
+      WHEN LOWER(COALESCE(f.db_engine, '')) LIKE 'aurora%' THEN 'Amazon Aurora'
+      WHEN COALESCE(NULLIF(BTRIM(f.db_service), ''), '') <> '' THEN 'Amazon RDS'
+      ELSE 'Unknown service'
+    END`,
+    keyExpression: `CASE
+      WHEN LOWER(COALESCE(f.db_engine, '')) LIKE 'aurora%' THEN 'amazon-aurora'
+      WHEN COALESCE(NULLIF(BTRIM(f.db_service), ''), '') <> '' THEN 'amazon-rds'
+      ELSE 'unknown-service'
+    END`,
     requiresInventory: false,
     requiresRegion: false,
   },
@@ -427,7 +489,8 @@ const buildResourceDrilldownFilters = (params: ExplorerQueryParams, tableAlias =
 const buildCostHistoryDrilldownFilters = (params: ExplorerQueryParams, tableAlias = ""): string => {
   const pref = tableAlias ? `${tableAlias}.` : "";
   return `${buildTrendFilters(params, tableAlias)}
-    AND ${pref}resource_id NOT LIKE 'db-scope:%'`;
+    AND ${pref}resource_id NOT LIKE 'db-scope:%'
+    AND ${pref}resource_id NOT LIKE 'db-unattributed:%'`;
 };
 
 export class DatabaseExplorerRepository {
@@ -443,7 +506,7 @@ export class DatabaseExplorerRepository {
     );
     const discoveryFilters = buildScopeDiscoveryFilters(discoveryParams);
 
-    const [discoveryServiceRows, serviceRows, engineRows] = await Promise.all([
+    const [discoveryServiceRows, serviceRows, engineRows, regionRows, resourceTypeRows, instanceClassRows, clusterRows, costCategoryRows, dbTypeRows, dbServicePreviewRows] = await Promise.all([
       sequelize.query<FilterOptionValueRow>(
         `
 SELECT DISTINCT db_service AS value
@@ -487,6 +550,78 @@ ORDER BY value ASC;
           type: QueryTypes.SELECT,
         },
       ),
+      sequelize.query<FilterOptionValueRow>(
+        `
+SELECT DISTINCT
+  COALESCE(NULLIF(BTRIM(dr.region_id), ''), NULLIF(BTRIM(dr.region_name), ''), 'Unknown region') AS value
+FROM fact_db_resource_daily f
+LEFT JOIN dim_region dr ON dr.id = f.region_key
+WHERE ${buildTrendFilters(queryParams, "f")}
+ORDER BY value ASC;
+`,
+        { replacements: queryParams, type: QueryTypes.SELECT },
+      ),
+      sequelize.query<FilterOptionValueRow>(
+        `
+SELECT DISTINCT COALESCE(NULLIF(BTRIM(f.resource_type), ''), 'Unknown resource type') AS value
+FROM fact_db_resource_daily f
+WHERE ${buildTrendFilters(queryParams, "f")}
+ORDER BY value ASC;
+`,
+        { replacements: queryParams, type: QueryTypes.SELECT },
+      ),
+      sequelize.query<FilterOptionValueRow>(
+        `
+WITH ${latestInventoryCteSql}
+SELECT DISTINCT COALESCE(NULLIF(BTRIM(li.instance_class), ''), 'Unknown class') AS value
+${fromFactBaseSql({ withInventory: true, withRegion: false })}
+WHERE ${buildResourceDrilldownFilters(queryParams, "f")}
+ORDER BY value ASC;
+`,
+        { replacements: queryParams, type: QueryTypes.SELECT },
+      ),
+      sequelize.query<FilterOptionValueRow>(
+        `
+WITH ${latestInventoryCteSql}
+SELECT DISTINCT COALESCE(NULLIF(BTRIM(f.cluster_id), ''), NULLIF(BTRIM(li.cluster_id), ''), 'Standalone / No cluster') AS value
+${fromFactBaseSql({ withInventory: true, withRegion: false })}
+WHERE ${buildResourceDrilldownFilters(queryParams, "f")}
+ORDER BY value ASC;
+`,
+        { replacements: queryParams, type: QueryTypes.SELECT },
+      ),
+      sequelize.query<FilterOptionValueRow>(
+        `
+SELECT DISTINCT ${COST_CATEGORY_LABEL_CASE} AS value
+FROM db_cost_history_daily ch
+WHERE ${buildCostHistoryDrilldownFilters(queryParams, "ch")}
+ORDER BY value ASC;
+`,
+        { replacements: queryParams, type: QueryTypes.SELECT },
+      ),
+      sequelize.query<FilterOptionValueRow>(
+        `
+SELECT DISTINCT ${DB_TYPE_CLASSIFICATION_CASE} AS value
+FROM fact_db_resource_daily f
+WHERE ${buildTrendFilters(queryParams, "f")}
+ORDER BY value ASC;
+`,
+        { replacements: queryParams, type: QueryTypes.SELECT },
+      ),
+      sequelize.query<FilterOptionValueRow>(
+        `
+SELECT DISTINCT
+  CASE
+    WHEN LOWER(COALESCE(f.db_engine, '')) LIKE 'aurora%' THEN 'Amazon Aurora'
+    WHEN COALESCE(NULLIF(BTRIM(f.db_service), ''), '') <> '' THEN 'Amazon RDS'
+    ELSE 'Unknown service'
+  END AS value
+FROM fact_db_resource_daily f
+WHERE ${buildTrendFilters(queryParams, "f")}
+ORDER BY value ASC;
+`,
+        { replacements: queryParams, type: QueryTypes.SELECT },
+      ),
     ]);
 
     const discoveryServices = discoveryServiceRows
@@ -500,6 +635,16 @@ ORDER BY value ASC;
       dbEngines: engineRows
         .map((row) => (typeof row.value === "string" ? row.value.trim() : ""))
         .filter((value) => value.length > 0),
+      groupedValuePreview: {
+        db_type: dbTypeRows.map((row) => (typeof row.value === "string" ? row.value.trim() : "")).filter((value) => value.length > 0),
+        db_service: dbServicePreviewRows.map((row) => (typeof row.value === "string" ? row.value.trim() : "")).filter((value) => value.length > 0),
+        db_engine: engineRows.map((row) => (typeof row.value === "string" ? row.value.trim() : "")).filter((value) => value.length > 0),
+        region: regionRows.map((row) => (typeof row.value === "string" ? row.value.trim() : "")).filter((value) => value.length > 0),
+        resource_type: resourceTypeRows.map((row) => (typeof row.value === "string" ? row.value.trim() : "")).filter((value) => value.length > 0),
+        instance_class: instanceClassRows.map((row) => (typeof row.value === "string" ? row.value.trim() : "")).filter((value) => value.length > 0),
+        cluster: clusterRows.map((row) => (typeof row.value === "string" ? row.value.trim() : "")).filter((value) => value.length > 0),
+        cost_category: costCategoryRows.map((row) => (typeof row.value === "string" ? row.value.trim() : "")).filter((value) => value.length > 0),
+      },
       availableDatabaseScopes: servicesToAvailableDatabaseScopes(discoveryServices),
     };
   }
@@ -519,7 +664,7 @@ ORDER BY value ASC;
       `
 WITH current_period AS (
   SELECT
-    COALESCE(SUM(total_effective_cost), 0) AS "totalCost",
+    COALESCE(SUM(total_billed_cost), 0) AS "totalCost",
     COUNT(DISTINCT resource_id) AS "activeResources",
     COALESCE(SUM(data_footprint_gb), 0) AS "dataFootprintGb",
     AVG(load_avg) AS "avgLoad",
@@ -529,7 +674,7 @@ WITH current_period AS (
 ),
 previous_period AS (
   SELECT
-    COALESCE(SUM(total_effective_cost), 0) AS "previousCost"
+    COALESCE(SUM(total_billed_cost), 0) AS "previousCost"
   FROM fact_db_resource_daily
   WHERE ${previousFilters}
 )
@@ -600,16 +745,16 @@ ORDER BY usage_date ASC;
     const rows = await sequelize.query<CostTrendRow>(
       `
 SELECT
-  usage_date AS date,
-  COALESCE(SUM(compute_cost), 0) AS compute,
-  COALESCE(SUM(storage_cost), 0) AS storage,
-  COALESCE(SUM(io_cost), 0) AS io,
-  COALESCE(SUM(backup_cost), 0) AS backup,
-  COALESCE(SUM(total_effective_cost), 0) AS total
-FROM fact_db_resource_daily
-WHERE ${filters}
-GROUP BY usage_date
-ORDER BY usage_date ASC;
+  ch.usage_date AS date,
+  COALESCE(SUM(CASE WHEN LOWER(BTRIM(COALESCE(ch.cost_category, ''))) = 'compute' THEN ch.billed_cost ELSE 0 END), 0) AS compute,
+  COALESCE(SUM(CASE WHEN LOWER(BTRIM(COALESCE(ch.cost_category, ''))) = 'storage' THEN ch.billed_cost ELSE 0 END), 0) AS storage,
+  COALESCE(SUM(CASE WHEN LOWER(BTRIM(COALESCE(ch.cost_category, ''))) = 'io' THEN ch.billed_cost ELSE 0 END), 0) AS io,
+  COALESCE(SUM(CASE WHEN LOWER(BTRIM(COALESCE(ch.cost_category, ''))) = 'backup' THEN ch.billed_cost ELSE 0 END), 0) AS backup,
+  COALESCE(SUM(ch.billed_cost), 0) AS total
+FROM db_cost_history_daily ch
+WHERE ${buildCostHistoryDrilldownFilters(queryParams, "ch")}
+GROUP BY ch.usage_date
+ORDER BY ch.usage_date ASC;
 `,
       {
         replacements: queryParams,
@@ -638,7 +783,7 @@ ORDER BY usage_date ASC;
         `
 SELECT
   ${COST_CATEGORY_LABEL_CASE} AS "group",
-  COALESCE(SUM(ch.effective_cost), SUM(ch.billed_cost), 0) AS "totalCost",
+  COALESCE(SUM(ch.billed_cost), 0) AS "totalCost",
   COUNT(DISTINCT ch.resource_id) AS "resourceCount"
 FROM db_cost_history_daily ch
 WHERE ${drilldownFilters}
@@ -673,7 +818,7 @@ ORDER BY "totalCost" DESC;
 ${withInventory ? `WITH ${latestInventoryCteSql}` : ""}
 SELECT
   ${groupBy.selectExpression} AS "group",
-  COALESCE(SUM(f.total_effective_cost), 0) AS "totalCost",
+  COALESCE(SUM(f.total_billed_cost), 0) AS "totalCost",
   COALESCE(SUM(f.compute_cost), 0) AS "computeCost",
   COALESCE(SUM(f.storage_cost), 0) AS "storageCost",
   COALESCE(SUM(f.io_cost), 0) AS "ioCost",
@@ -724,7 +869,7 @@ SELECT
   ch.usage_date AS date,
   LOWER(BTRIM(COALESCE(ch.cost_category, ''))) AS "groupKey",
   ${COST_CATEGORY_LABEL_CASE} AS "groupLabel",
-  COALESCE(SUM(ch.effective_cost), SUM(ch.billed_cost), 0) AS "totalCost"
+  COALESCE(SUM(ch.billed_cost), 0) AS "totalCost"
 FROM db_cost_history_daily ch
 WHERE ${drilldownFilters}
   AND LOWER(BTRIM(COALESCE(ch.cost_category, ''))) IN (:operationalCostCategories)
@@ -798,7 +943,7 @@ ORDER BY ch.usage_date ASC;
 
     const valueExpression = isUsage
       ? "AVG(f.load_avg)"
-      : "COALESCE(SUM(f.total_effective_cost), SUM(f.total_billed_cost), 0)";
+      : "COALESCE(SUM(f.total_billed_cost), SUM(f.total_effective_cost), 0)";
 
     const rows = await sequelize.query<GroupedTrendAggregateRow>(
       `

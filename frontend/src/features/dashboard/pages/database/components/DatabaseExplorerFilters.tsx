@@ -20,6 +20,7 @@ type DatabaseExplorerFiltersProps = {
   availableDatabaseScopes: DatabaseExplorerScopeValue[];
   backendServiceOptions: string[];
   backendEngineOptions: string[];
+  groupedValuePreview?: Partial<Record<DatabaseExplorerGroupBy, string[]>>;
   onApplyScope: (next: { databaseScope: DatabaseExplorerScopeValue; dbService: string; dbEngine: string }) => void;
   onApplyGroupBy: (next: { groupBy: "auto" | DatabaseExplorerGroupBy }) => void;
   onClearAll: () => void;
@@ -76,10 +77,24 @@ export function DatabaseExplorerFilters({
   availableDatabaseScopes,
   backendServiceOptions,
   backendEngineOptions,
+  groupedValuePreview,
   onApplyScope,
   onApplyGroupBy,
   onClearAll,
 }: DatabaseExplorerFiltersProps) {
+  const groupBySelectedStyle = {
+    backgroundColor: "rgba(35, 162, 130, 0.14)",
+    borderLeft: "2px solid rgba(35, 162, 130, 0.5)",
+    boxShadow: "inset 0 0 0 1px rgba(35, 162, 130, 0.24)",
+    outline: "1px solid rgba(35, 162, 130, 0.18)",
+  } as const;
+  const groupByValuePreviewStyle = {
+    backgroundColor: "rgba(35, 162, 130, 0.07)",
+    borderLeft: "2px solid rgba(35, 162, 130, 0.28)",
+    boxShadow: "inset 0 0 0 1px rgba(35, 162, 130, 0.14)",
+    outline: "1px solid rgba(35, 162, 130, 0.1)",
+  } as const;
+
   const [databaseMenuOpen, setDatabaseMenuOpen] = useState(false);
   const [groupDrawerOpen, setGroupDrawerOpen] = useState(false);
   const [hoveredServiceScope, setHoveredServiceScope] = useState<DatabaseExplorerScopeValue | null>(null);
@@ -105,7 +120,7 @@ export function DatabaseExplorerFilters({
   const availableServices = useMemo(() => uniqueSorted(backendServiceOptions), [backendServiceOptions]);
   const availableEngines = useMemo(() => uniqueSorted(backendEngineOptions), [backendEngineOptions]);
   const effectiveGroupByLabel = groupByOptions.find((option) => option.value === effectiveGroupBy)?.label ?? "Recommended";
-  const groupByLabel = groupBy === "auto" ? `Auto · ${effectiveGroupByLabel}` : effectiveGroupByLabel;
+  const groupByLabel = groupBy === "auto" ? `Auto - ${effectiveGroupByLabel}` : effectiveGroupByLabel;
   const recommendedPreview = useMemo(
     () => deriveAutoGroupBy(databaseScope, dbService, dbEngine),
     [databaseScope, dbEngine, dbService],
@@ -115,7 +130,7 @@ export function DatabaseExplorerFilters({
   const databaseLabel = useMemo(() => {
     if (!dbService.trim() && !dbEngine.trim()) return "All Databases";
     if (!dbService.trim() && dbEngine.trim()) return dbEngine.trim();
-    return dbEngine.trim() ? `${dbService.trim()} · ${dbEngine.trim()}` : dbService.trim();
+    return dbEngine.trim() ? `${dbService.trim()} - ${dbEngine.trim()}` : dbService.trim();
   }, [dbEngine, dbService]);
 
   const chips = [
@@ -128,6 +143,14 @@ export function DatabaseExplorerFilters({
     setActiveGroupDimension(groupBy === "auto" ? effectiveGroupBy : groupBy);
     setGroupDrawerOpen(true);
   };
+
+  const valuesDimension = draftGroupBy === "auto" ? activeGroupDimension : draftGroupBy;
+
+  const groupedValuesPreview = useMemo(() => {
+    const preview = groupedValuePreview?.[valuesDimension];
+    if (!Array.isArray(preview)) return [];
+    return uniqueSorted(preview);
+  }, [groupedValuePreview, valuesDimension]);
 
   const applyGroupDrawer = () => {
     const safe = metric === "usage" && draftGroupBy === "cost_category" ? "auto" : draftGroupBy;
@@ -320,26 +343,30 @@ export function DatabaseExplorerFilters({
                     <div className="cost-explorer-filter-popover__list cost-explorer-filter-popover__list--group-dimensions" role="listbox" aria-label="Group by dimensions">
                       <button
                         type="button"
-                        className={`cost-explorer-filter-option${draftGroupBy === "auto" ? " is-active" : ""}`}
+                        className={`cost-explorer-filter-option database-explorer-groupby__dimension-option${
+                          draftGroupBy === "auto" ? " is-active database-explorer-groupby__dimension-option--selected" : ""
+                        }`}
                         onClick={() => {
                           setDraftGroupBy("auto");
                           setActiveGroupDimension(effectiveGroupBy);
                         }}
                         role="option"
                         aria-selected={draftGroupBy === "auto"}
+                        style={draftGroupBy === "auto" ? groupBySelectedStyle : undefined}
                       >
                         <span className="cost-explorer-filter-option__label">Recommended</span>
                         {draftGroupBy === "auto" ? <Check className="cost-explorer-filter-option__check" size={15} aria-hidden="true" /> : null}
                       </button>
                       {groupByDimensions.map((dimension) => {
-                        const selected =
-                          draftGroupBy === "auto" ? activeGroupDimension === dimension.key : draftGroupBy === dimension.key;
+                        const selected = draftGroupBy !== "auto" && draftGroupBy === dimension.key;
                         const disabled = metric === "usage" && dimension.key === "cost_category";
                         return (
                           <button
                             key={dimension.key}
                             type="button"
-                            className={`cost-explorer-filter-option${selected ? " is-active" : ""}`}
+                            className={`cost-explorer-filter-option database-explorer-groupby__dimension-option${
+                              selected ? " is-active database-explorer-groupby__dimension-option--selected" : ""
+                            }`}
                             onClick={() => {
                               if (disabled) return;
                               setActiveGroupDimension(dimension.key);
@@ -348,7 +375,13 @@ export function DatabaseExplorerFilters({
                             role="option"
                             aria-selected={selected}
                             aria-disabled={disabled}
-                            style={disabled ? { opacity: 0.55, cursor: "not-allowed" } : undefined}
+                            style={
+                              disabled
+                                ? { opacity: 0.55, cursor: "not-allowed" }
+                                : selected
+                                  ? groupBySelectedStyle
+                                  : undefined
+                            }
                           >
                             <span className="cost-explorer-filter-option__label">{dimension.label}</span>
                             {selected ? <Check className="cost-explorer-filter-option__check" size={15} aria-hidden="true" /> : null}
@@ -367,17 +400,45 @@ export function DatabaseExplorerFilters({
                             Selected dimension
                           </p>
                           <div className="database-explorer-groupby__section-list">
-                            <div className="cost-explorer-filter-option is-active" role="status">
+                            <div
+                              className="cost-explorer-filter-option is-active database-explorer-groupby__selected-dimension"
+                              role="status"
+                              style={groupBySelectedStyle}
+                            >
                               <span className="cost-explorer-filter-option__label">
                                 {draftGroupBy === "auto"
-                                  ? `Recommended (${recommendedPreviewLabel})`
+                                  ? recommendedPreviewLabel
                                   : (groupByOptions.find((option) => option.value === draftGroupBy)?.label ?? "Group")}
                               </span>
                               <Check className="cost-explorer-filter-option__check" size={15} aria-hidden="true" />
                             </div>
                           </div>
+                        </section>
+                        <section className="database-explorer-groupby__section" aria-labelledby="database-groupby-values">
+                          <p id="database-groupby-values" className="database-explorer-groupby__section-label">
+                            Values Preview
+                          </p>
+                          <div className="database-explorer-groupby__section-list">
+                            {groupedValuesPreview.length > 0 ? (
+                              groupedValuesPreview.map((value) => (
+                                <div
+                                  key={`${valuesDimension}-${value}`}
+                                  className="cost-explorer-filter-option"
+                                  role="status"
+                                  aria-disabled="true"
+                                  style={groupByValuePreviewStyle}
+                                >
+                                  <span className="cost-explorer-filter-option__label">{value}</span>
+                                </div>
+                              ))
+                            ) : (
+                              <p className="database-explorer-groupby__section-empty">
+                                Values are contextual for this dimension and appear when available.
+                              </p>
+                            )}
+                          </div>
                           <p className="database-explorer-groupby__section-empty">
-                            Group the already-filtered database selection by this dimension.
+                            Preview only. Values are visible for reference and are not clickable here.
                           </p>
                         </section>
                       </div>

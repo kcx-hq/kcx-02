@@ -10,7 +10,7 @@ export const isExplorerDatabaseScope = (value: string): value is ExplorerDatabas
 export const DATABASE_SCOPE_TO_DB_SERVICES: Record<Exclude<ExplorerDatabaseScope, "all">, readonly string[]> = {
   relational: ["AmazonRDS", "Aurora", "Amazon RDS", "Amazon Aurora", "AmazonRelationalDatabaseService"],
   relational_rds: ["AmazonRDS", "Amazon RDS", "AmazonRelationalDatabaseService"],
-  relational_aurora: ["Aurora", "Amazon Aurora"],
+  relational_aurora: ["Aurora", "Amazon Aurora", "AmazonRDS", "Amazon RDS", "AmazonRelationalDatabaseService"],
   key_value: ["DynamoDB", "Amazon DynamoDB", "AmazonDynamoDB"],
   key_value_dynamodb: ["DynamoDB", "Amazon DynamoDB", "AmazonDynamoDB"],
   in_memory: ["ElastiCache", "MemoryDB", "Amazon ElastiCache", "Amazon MemoryDB", "AmazonElastiCache", "AmazonMemoryDB"],

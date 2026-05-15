@@ -169,6 +169,7 @@ export type DatabaseExplorerTableRow = {
 export type DatabaseExplorerFilterOptions = {
   dbServices: string[];
   dbEngines: string[];
+  groupedValuePreview?: Partial<Record<DatabaseExplorerGroupBy, string[]>>;
   /** Scopes with ≥1 fact row in the current window (always includes `all`). */
   availableDatabaseScopes: DatabaseExplorerScopeValue[];
 };
@@ -2408,3 +2409,4 @@ export type CostExplorerResponse = {
   };
   serviceDetails: CostExplorerServiceDetailRow[];
 };
+

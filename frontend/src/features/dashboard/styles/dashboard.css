@@ -10659,6 +10659,42 @@
   padding: 7px 9px;
 }
 
+.database-explorer-groupby__dimension-option {
+  border-left: 2px solid transparent;
+  border-radius: 8px;
+}
+
+.database-explorer-groupby .cost-explorer-filter-option.is-active {
+  border-left-color: color-mix(in srgb, var(--dashboard-accent) 44%, #6f8891 56%);
+  background: color-mix(in srgb, var(--dashboard-accent) 7%, var(--dashboard-surface-card) 93%);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--dashboard-accent) 14%, #9eb0b6 86%);
+  color: #1f4a54;
+}
+
+.database-explorer-groupby .database-explorer-groupby__dimension-option--selected {
+  background: color-mix(in srgb, var(--dashboard-accent) 8%, #f6fbfc 92%);
+  border-left-color: color-mix(in srgb, var(--dashboard-accent) 52%, #7f959c 48%);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--dashboard-accent) 16%, #9fb1b7 84%);
+}
+
+.database-explorer-groupby .database-explorer-groupby__selected-dimension {
+  background: color-mix(in srgb, var(--dashboard-accent) 9%, #f6fbfc 91%);
+  border-left-color: color-mix(in srgb, var(--dashboard-accent) 48%, #7a9299 52%);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--dashboard-accent) 18%, #9cafb6 82%);
+}
+
+.database-explorer-groupby .database-explorer-groupby__section-list .cost-explorer-filter-option.is-active {
+  background: color-mix(in srgb, var(--dashboard-accent) 8%, var(--dashboard-surface-card) 92%);
+}
+
+.database-explorer-groupby .cost-explorer-filter-option__check {
+  margin-left: auto;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--dashboard-accent) 10%, var(--dashboard-white-strong) 90%);
+  padding: 1px;
+  color: color-mix(in srgb, var(--dashboard-accent) 62%, #3f6770 38%);
+}
+
 .database-explorer-groupby__panel {
   display: flex;
   flex-direction: column;
