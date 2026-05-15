@@ -16,7 +16,7 @@ class AggCostMonthly extends Model<InferAttributes<AggCostMonthly>, InferCreatio
   declare uploadedBy: CreationOptional<string | null>;
   declare serviceKey: string;
   declare subAccountKey: string;
-  declare regionKey: string;
+  declare regionKey: CreationOptional<string | null>;
   declare billedCost: CreationOptional<string>;
   declare effectiveCost: CreationOptional<string>;
   declare listCost: CreationOptional<string>;
@@ -37,11 +37,11 @@ const createAggCostMonthlyModel = (sequelize: Sequelize): typeof AggCostMonthly 
       uploadedBy: { type: DataTypes.UUID, allowNull: true, field: "uploaded_by" },
       serviceKey: { type: DataTypes.BIGINT, allowNull: false, primaryKey: true, field: "service_key" },
       subAccountKey: { type: DataTypes.BIGINT, allowNull: false, primaryKey: true, field: "sub_account_key" },
-      regionKey: { type: DataTypes.BIGINT, allowNull: false, primaryKey: true, field: "region_key" },
-      billedCost: { type: DataTypes.DECIMAL(18, 4), allowNull: false, defaultValue: 0, field: "billed_cost" },
-      effectiveCost: { type: DataTypes.DECIMAL(18, 4), allowNull: false, defaultValue: 0, field: "effective_cost" },
-      listCost: { type: DataTypes.DECIMAL(18, 4), allowNull: false, defaultValue: 0, field: "list_cost" },
-      usageQuantity: { type: DataTypes.DECIMAL(18, 4), allowNull: false, defaultValue: 0, field: "usage_quantity" },
+      regionKey: { type: DataTypes.BIGINT, allowNull: true, primaryKey: true, field: "region_key" },
+      billedCost: { type: DataTypes.DECIMAL(38, 18), allowNull: false, defaultValue: 0, field: "billed_cost" },
+      effectiveCost: { type: DataTypes.DECIMAL(38, 18), allowNull: false, defaultValue: 0, field: "effective_cost" },
+      listCost: { type: DataTypes.DECIMAL(38, 18), allowNull: false, defaultValue: 0, field: "list_cost" },
+      usageQuantity: { type: DataTypes.DECIMAL(38, 18), allowNull: false, defaultValue: 0, field: "usage_quantity" },
       currencyCode: { type: DataTypes.STRING(10), allowNull: false, defaultValue: "USD", primaryKey: true, field: "currency_code" },
       createdAt: { type: DataTypes.DATE, allowNull: false, defaultValue: sequelize.literal("NOW()"), field: "created_at" },
       updatedAt: { type: DataTypes.DATE, allowNull: false, defaultValue: sequelize.literal("NOW()"), field: "updated_at" },

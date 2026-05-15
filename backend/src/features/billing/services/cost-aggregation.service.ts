@@ -47,11 +47,11 @@ SELECT
   CAST(:uploadedBy AS UUID) AS uploaded_by,
   COALESCE(f.service_key, 0)::BIGINT AS service_key,
   COALESCE(f.sub_account_key, 0)::BIGINT AS sub_account_key,
-  COALESCE(f.region_key, 0)::BIGINT AS region_key,
-  COALESCE(SUM(f.billed_cost), 0)::DECIMAL(18,4) AS billed_cost,
-  COALESCE(SUM(f.effective_cost), 0)::DECIMAL(18,4) AS effective_cost,
-  COALESCE(SUM(f.list_cost), 0)::DECIMAL(18,4) AS list_cost,
-  COALESCE(SUM(f.consumed_quantity), 0)::DECIMAL(18,4) AS usage_quantity,
+  f.region_key AS region_key,
+  COALESCE(SUM(f.billed_cost), 0)::DECIMAL(38,18) AS billed_cost,
+  COALESCE(SUM(f.effective_cost), 0)::DECIMAL(38,18) AS effective_cost,
+  COALESCE(SUM(f.list_cost), 0)::DECIMAL(38,18) AS list_cost,
+  COALESCE(SUM(f.consumed_quantity), 0)::DECIMAL(38,18) AS usage_quantity,
   COALESCE(NULLIF(dba.billing_currency, ''), 'USD') AS currency_code,
   CURRENT_TIMESTAMP,
   CURRENT_TIMESTAMP
@@ -73,7 +73,7 @@ ON CONFLICT (
   hour_start,
   service_key,
   sub_account_key,
-  region_key,
+  (COALESCE(region_key, -1)),
   currency_code
 )
 DO UPDATE SET
@@ -125,11 +125,11 @@ SELECT
   CAST(:uploadedBy AS UUID) AS uploaded_by,
   COALESCE(f.service_key, 0)::BIGINT AS service_key,
   COALESCE(f.sub_account_key, 0)::BIGINT AS sub_account_key,
-  COALESCE(f.region_key, 0)::BIGINT AS region_key,
-  COALESCE(SUM(f.billed_cost), 0)::DECIMAL(18,4) AS billed_cost,
-  COALESCE(SUM(f.effective_cost), 0)::DECIMAL(18,4) AS effective_cost,
-  COALESCE(SUM(f.list_cost), 0)::DECIMAL(18,4) AS list_cost,
-  COALESCE(SUM(f.consumed_quantity), 0)::DECIMAL(18,4) AS usage_quantity,
+  f.region_key AS region_key,
+  COALESCE(SUM(f.billed_cost), 0)::DECIMAL(38,18) AS billed_cost,
+  COALESCE(SUM(f.effective_cost), 0)::DECIMAL(38,18) AS effective_cost,
+  COALESCE(SUM(f.list_cost), 0)::DECIMAL(38,18) AS list_cost,
+  COALESCE(SUM(f.consumed_quantity), 0)::DECIMAL(38,18) AS usage_quantity,
   COALESCE(NULLIF(dba.billing_currency, ''), 'USD') AS currency_code,
   CURRENT_TIMESTAMP,
   CURRENT_TIMESTAMP
@@ -157,7 +157,7 @@ ON CONFLICT (
   usage_date,
   service_key,
   sub_account_key,
-  region_key,
+  (COALESCE(region_key, -1)),
   currency_code
 )
 DO UPDATE SET
@@ -206,11 +206,11 @@ SELECT
   CAST(:uploadedBy AS UUID) AS uploaded_by,
   COALESCE(f.service_key, 0)::BIGINT AS service_key,
   COALESCE(f.sub_account_key, 0)::BIGINT AS sub_account_key,
-  COALESCE(f.region_key, 0)::BIGINT AS region_key,
-  COALESCE(SUM(f.billed_cost), 0)::DECIMAL(18,4) AS billed_cost,
-  COALESCE(SUM(f.effective_cost), 0)::DECIMAL(18,4) AS effective_cost,
-  COALESCE(SUM(f.list_cost), 0)::DECIMAL(18,4) AS list_cost,
-  COALESCE(SUM(f.consumed_quantity), 0)::DECIMAL(18,4) AS usage_quantity,
+  f.region_key AS region_key,
+  COALESCE(SUM(f.billed_cost), 0)::DECIMAL(38,18) AS billed_cost,
+  COALESCE(SUM(f.effective_cost), 0)::DECIMAL(38,18) AS effective_cost,
+  COALESCE(SUM(f.list_cost), 0)::DECIMAL(38,18) AS list_cost,
+  COALESCE(SUM(f.consumed_quantity), 0)::DECIMAL(38,18) AS usage_quantity,
   COALESCE(NULLIF(dba.billing_currency, ''), 'USD') AS currency_code,
   CURRENT_TIMESTAMP,
   CURRENT_TIMESTAMP
@@ -239,7 +239,7 @@ ON CONFLICT (
   month_start,
   service_key,
   sub_account_key,
-  region_key,
+  (COALESCE(region_key, -1)),
   currency_code
 )
 DO UPDATE SET
