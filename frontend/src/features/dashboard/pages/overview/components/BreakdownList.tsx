@@ -1,6 +1,6 @@
 import type { CostBreakdownItem } from "../../../api/dashboardApi";
 import { MetricBadge, WidgetShell } from "../../../common/components";
-import { currencyFormatterCompact, percentFormatter } from "../utils/overviewFormatters";
+import { formatCompactMoney, formatContributionPct } from "../utils/overviewFormatters";
 
 type BreakdownListProps = {
   title: string;
@@ -29,13 +29,13 @@ export function BreakdownList({ title, subtitle, items, selectedKey, onSelect }:
             >
               <div className="overview-breakdown-item__head">
                 <span className="overview-breakdown-item__label">{item.name}</span>
-                <span className="overview-breakdown-item__value">{currencyFormatterCompact.format(item.billedCost)}</span>
+                <span className="overview-breakdown-item__value">{formatCompactMoney(item.billedCost)}</span>
               </div>
               <div className="overview-breakdown-item__track">
                 <span className="overview-breakdown-item__bar" style={{ width: `${Math.max(ratio, 3)}%` }} />
               </div>
               <div className="overview-breakdown-item__meta">
-                <MetricBadge tone="accent">{percentFormatter.format(item.contributionPct)}%</MetricBadge>
+                <MetricBadge tone="accent">{formatContributionPct(item.contributionPct)}</MetricBadge>
               </div>
             </button>
           );

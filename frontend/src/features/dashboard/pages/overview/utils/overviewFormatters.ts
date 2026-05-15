@@ -19,6 +19,26 @@ export const percentFormatter = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 2,
 });
 
+const normalizeNegativeZero = (value: number, precision = 2): number => {
+  const rounded = Number(value.toFixed(precision));
+  return Object.is(rounded, -0) ? 0 : rounded;
+};
+
+export const formatMoney = (value: number): string => {
+  const normalized = normalizeNegativeZero(value, 2);
+  return currencyFormatterPrecise.format(normalized);
+};
+
+export const formatCompactMoney = (value: number): string => {
+  const normalized = normalizeNegativeZero(value, 2);
+  return currencyFormatterCompact.format(normalized);
+};
+
+export const formatContributionPct = (value: number | null | undefined): string => {
+  if (value === null || value === undefined) return "N/A";
+  return `${percentFormatter.format(value)}%`;
+};
+
 export const parseOptionalInt = (value: string | null): number | null => {
   if (!value) {
     return null;

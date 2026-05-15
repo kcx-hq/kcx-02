@@ -18,9 +18,9 @@ type Coordinate = {
 
 type MappedRegion = {
   name: string;
-  value: [number, number, number, number];
+  value: [number, number, number, number | null];
   billedCost: number;
-  contributionPct: number;
+  contributionPct: number | null;
   coordinateSource: "billing-file" | "mapped-reference";
   isTopHighlighted?: boolean;
 };
@@ -219,6 +219,13 @@ const toCoordinate = (name: string): Coordinate | null => {
   return null;
 };
 
+export const hasRenderableCoordinate = (item: Pick<CostBreakdownItem, "name" | "latitude" | "longitude">): boolean => {
+  if (typeof item.latitude === "number" && typeof item.longitude === "number") {
+    return true;
+  }
+  return Boolean(toCoordinate(item.name));
+};
+
 const getGeoView = (points: MappedRegion[]) => {
   if (!points.length) {
     return {
@@ -366,7 +373,7 @@ const buildOption = (items: CostBreakdownItem[]): EChartsOption => {
             </div>
             <div style="font-size: 11px; color: #94a3b8;">
               Share:
-              <span style="color: #e2e8f0; font-weight: 600;"> ${point.contributionPct.toFixed(2)}%</span>
+              <span style="color: #e2e8f0; font-weight: 600;"> ${point.contributionPct === null ? "N/A" : `${point.contributionPct.toFixed(2)}%`}</span>
             </div>
           </div>
         `;
@@ -465,12 +472,7 @@ export function TopRegionsGeoMap({ data, height = 340 }: TopRegionsGeoMapProps) 
   const option = useMemo(() => buildOption(data), [data]);
 
   const mappedCount = useMemo(() => {
-    return data.filter((item) => {
-      if (typeof item.latitude === "number" && typeof item.longitude === "number") {
-        return true;
-      }
-      return Boolean(toCoordinate(item.name));
-    }).length;
+    return data.filter((item) => hasRenderableCoordinate(item)).length;
   }, [data]);
 
   const mapQuery = useQuery({

@@ -6,8 +6,15 @@ import { buildOverviewFilters } from "./overview.schema.js";
 import { OverviewService } from "./overview.service.js";
 
 const overviewService = new OverviewService();
+const setNoStore = (res: Response): void => {
+  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+  res.setHeader("Pragma", "no-cache");
+  res.setHeader("Expires", "0");
+  res.setHeader("Surrogate-Control", "no-store");
+};
 
 export async function handleGetOverviewDashboard(req: Request, res: Response): Promise<void> {
+  setNoStore(res);
   const filters = buildOverviewFilters(req);
   const data = await overviewService.getOverview(filters);
 
@@ -21,6 +28,7 @@ export async function handleGetOverviewDashboard(req: Request, res: Response): P
 }
 
 export async function handleGetOverviewKpis(req: Request, res: Response): Promise<void> {
+  setNoStore(res);
   const filters = buildOverviewFilters(req);
   const data = await overviewService.getKpis(filters);
 
@@ -34,6 +42,7 @@ export async function handleGetOverviewKpis(req: Request, res: Response): Promis
 }
 
 export async function handleGetOverviewBudgetVsActualForecast(req: Request, res: Response): Promise<void> {
+  setNoStore(res);
   const filters = buildOverviewFilters(req);
   const data = await overviewService.getBudgetVsActualForecast(filters);
 
@@ -47,6 +56,7 @@ export async function handleGetOverviewBudgetVsActualForecast(req: Request, res:
 }
 
 export async function handleGetOverviewTopServices(req: Request, res: Response): Promise<void> {
+  setNoStore(res);
   const filters = buildOverviewFilters(req);
   const data = await overviewService.getTopServices(filters);
 
@@ -60,6 +70,7 @@ export async function handleGetOverviewTopServices(req: Request, res: Response):
 }
 
 export async function handleGetOverviewTopAccounts(req: Request, res: Response): Promise<void> {
+  setNoStore(res);
   const filters = buildOverviewFilters(req);
   const data = await overviewService.getTopAccounts(filters);
 
@@ -73,6 +84,7 @@ export async function handleGetOverviewTopAccounts(req: Request, res: Response):
 }
 
 export async function handleGetOverviewTopRegions(req: Request, res: Response): Promise<void> {
+  setNoStore(res);
   const filters = buildOverviewFilters(req);
   const data = await overviewService.getTopRegions(filters);
 
@@ -86,6 +98,7 @@ export async function handleGetOverviewTopRegions(req: Request, res: Response): 
 }
 
 export async function handleGetOverviewSavingsInsights(req: Request, res: Response): Promise<void> {
+  setNoStore(res);
   const filters = buildOverviewFilters(req);
   const data = await overviewService.getSavingsInsights(filters);
 
@@ -99,6 +112,7 @@ export async function handleGetOverviewSavingsInsights(req: Request, res: Respon
 }
 
 export async function handleGetOverviewAnomalies(req: Request, res: Response): Promise<void> {
+  setNoStore(res);
   const filters = buildOverviewFilters(req);
   const data = await overviewService.getAnomalies(filters);
 
@@ -112,6 +126,7 @@ export async function handleGetOverviewAnomalies(req: Request, res: Response): P
 }
 
 export async function handleGetOverviewRecommendations(req: Request, res: Response): Promise<void> {
+  setNoStore(res);
   const filters = buildOverviewFilters(req);
   const data = await overviewService.getRecommendations(filters);
 
@@ -125,6 +140,7 @@ export async function handleGetOverviewRecommendations(req: Request, res: Respon
 }
 
 export async function handleGetDashboardFilters(req: Request, res: Response): Promise<void> {
+  setNoStore(res);
   const filters = buildOverviewFilters(req);
   const data = await overviewService.getFilterOptions(filters);
 

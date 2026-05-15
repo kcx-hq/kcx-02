@@ -1336,7 +1336,7 @@ export type TopSpendEntity = {
   key: number | null;
   name: string;
   billedCost: number;
-  contributionPct: number;
+  contributionPct: number | null;
 };
 
 export type OverviewKpis = {
@@ -1360,7 +1360,7 @@ export type CostBreakdownItem = {
   key: number | null;
   name: string;
   billedCost: number;
-  contributionPct: number;
+  contributionPct: number | null;
   latitude?: number | null;
   longitude?: number | null;
 };
