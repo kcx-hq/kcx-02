@@ -53,6 +53,13 @@ const isUniqueViolation = (error) => {
 const serializeKey = (parts) =>
   JSON.stringify(parts.map((value) => (value === undefined ? null : value)));
 
+const buildRegionIdentityKey = ({ providerId, regionId, regionName, availabilityZone }) => {
+  if (regionId) {
+    return serializeKey([providerId, regionId]);
+  }
+  return serializeKey([providerId, null, regionName, availabilityZone]);
+};
+
 const createIngestionDimensionCache = () => ({
   billingAccount: new Map(),
   subAccount: new Map(),
@@ -155,12 +162,17 @@ async function getOrCreateRegion({ rawRow, providerId }) {
   const mapped = mapDimRegion(rawRow);
 
   try {
-    const where = {
-      providerId,
-      regionId: mapped.region_id,
-      regionName: mapped.region_name,
-      availabilityZone: mapped.availability_zone,
-    };
+    const where = mapped.region_id
+      ? {
+          providerId,
+          regionId: mapped.region_id,
+        }
+      : {
+          providerId,
+          regionId: null,
+          regionName: mapped.region_name,
+          availabilityZone: mapped.availability_zone,
+        };
 
     const existing = await DimRegion.findOne({ where });
     if (existing) return existing.id;
@@ -175,12 +187,17 @@ async function getOrCreateRegion({ rawRow, providerId }) {
     return created.id;
   } catch (error) {
     if (isUniqueViolation(error)) {
-      const where = {
-        providerId,
-        regionId: mapped.region_id,
-        regionName: mapped.region_name,
-        availabilityZone: mapped.availability_zone,
-      };
+      const where = mapped.region_id
+        ? {
+            providerId,
+            regionId: mapped.region_id,
+          }
+        : {
+            providerId,
+            regionId: null,
+            regionName: mapped.region_name,
+            availabilityZone: mapped.availability_zone,
+          };
       const existing = await DimRegion.findOne({ where });
       if (existing) return existing.id;
     }
@@ -547,22 +564,48 @@ const buildPredicateList = (entries, toWhereClause) =>
 async function resolveRegionsBulk({ entries, providerId, cache }) {
   if (entries.size === 0) return;
 
-  const predicates = buildPredicateList(entries, (mapped) => ({
-    providerId,
-    regionId: mapped.region_id,
-    regionName: mapped.region_name,
-    availabilityZone: mapped.availability_zone,
-  }));
+  const regionIds = Array.from(
+    new Set(
+      Array.from(entries.values())
+        .map((entry) => entry.mapped.region_id)
+        .filter(Boolean),
+    ),
+  );
+  const regionNameZonePredicates = buildPredicateList(entries, (mapped) =>
+    mapped.region_id
+      ? null
+      : {
+          providerId,
+          regionId: null,
+          regionName: mapped.region_name,
+          availabilityZone: mapped.availability_zone,
+        },
+  ).filter(Boolean);
 
   const existing = await DimRegion.findAll({
     attributes: ["id", "providerId", "regionId", "regionName", "availabilityZone"],
     where: {
-      [Op.or]: predicates,
+      [Op.or]: [
+        ...(regionIds.length > 0
+          ? [
+              {
+                providerId,
+                regionId: { [Op.in]: regionIds },
+              },
+            ]
+          : []),
+        ...regionNameZonePredicates,
+      ],
     },
   });
 
   for (const row of existing) {
-    const key = serializeKey([row.providerId, row.regionId, row.regionName, row.availabilityZone]);
+    const key = buildRegionIdentityKey({
+      providerId: row.providerId,
+      regionId: row.regionId,
+      regionName: row.regionName,
+      availabilityZone: row.availabilityZone,
+    });
     cache.region.set(key, row.id);
   }
 
@@ -580,15 +623,46 @@ async function resolveRegionsBulk({ entries, providerId, cache }) {
 
   if (missingPayloads.length > 0) {
     await DimRegion.bulkCreate(missingPayloads, { ignoreDuplicates: true, returning: false });
+    const refreshedRegionIds = Array.from(
+      new Set(
+        missingPayloads
+          .map((entry) => entry.regionId)
+          .filter(Boolean),
+      ),
+    );
+    const refreshedNameZonePredicates = missingPayloads
+      .filter((entry) => !entry.regionId)
+      .map((entry) => ({
+        providerId,
+        regionId: null,
+        regionName: entry.regionName,
+        availabilityZone: entry.availabilityZone,
+      }));
+
     const resolved = await DimRegion.findAll({
       attributes: ["id", "providerId", "regionId", "regionName", "availabilityZone"],
       where: {
-        [Op.or]: predicates,
+        [Op.or]: [
+          ...(refreshedRegionIds.length > 0
+            ? [
+                {
+                  providerId,
+                  regionId: { [Op.in]: refreshedRegionIds },
+                },
+              ]
+            : []),
+          ...refreshedNameZonePredicates,
+        ],
       },
     });
 
     for (const row of resolved) {
-      const key = serializeKey([row.providerId, row.regionId, row.regionName, row.availabilityZone]);
+      const key = buildRegionIdentityKey({
+        providerId: row.providerId,
+        regionId: row.regionId,
+        regionName: row.regionName,
+        availabilityZone: row.availabilityZone,
+      });
       cache.region.set(key, row.id);
     }
   }
@@ -852,7 +926,12 @@ async function primeDimensionCacheForChunk({ rawRows, tenantId, providerId, cach
 
     if (shouldUpsertDimRegion(rawRow)) {
       const mapped = mapDimRegion(rawRow);
-      const key = serializeKey([providerId, mapped.region_id, mapped.region_name, mapped.availability_zone]);
+      const key = buildRegionIdentityKey({
+        providerId,
+        regionId: mapped.region_id,
+        regionName: mapped.region_name,
+        availabilityZone: mapped.availability_zone,
+      });
       if (!cache.region.has(key)) {
         regionEntries.set(key, { mapped });
       }
@@ -966,7 +1045,12 @@ async function resolveDimensionsWithCache({ rawRow, tenantId, providerId, cache 
     let regionKey = null;
     if (shouldUpsertDimRegion(rawRow)) {
       const mapped = mapDimRegion(rawRow);
-      const key = serializeKey([providerId, mapped.region_id, mapped.region_name, mapped.availability_zone]);
+      const key = buildRegionIdentityKey({
+        providerId,
+        regionId: mapped.region_id,
+        regionName: mapped.region_name,
+        availabilityZone: mapped.availability_zone,
+      });
       regionKey = effectiveCache.region.get(key);
       if (!regionKey) {
         regionKey = await getOrCreateRegion({ rawRow, providerId });

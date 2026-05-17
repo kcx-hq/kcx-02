@@ -26,6 +26,7 @@ type EC2ExplorerChartProps = {
   title: string;
   chartType: EC2ChartType;
   canUseStackedBar: boolean;
+  showChartTypeSelector?: boolean;
   yAxisLabel?: string;
   valueMode?: "default" | "data-transfer-cost" | "data-transfer-usage" | "data-transfer-distribution";
   onChartTypeChange: (nextChartType: EC2ChartType) => void;
@@ -46,6 +47,7 @@ export function EC2ExplorerChart({
   title,
   chartType,
   canUseStackedBar,
+  showChartTypeSelector = true,
   yAxisLabel,
   valueMode = "default",
   onChartTypeChange,
@@ -99,6 +101,52 @@ export function EC2ExplorerChart({
       currency: "USD",
       maximumFractionDigits: 2,
     });
+    const toNumericValue = (point: EC2ExplorerGraphSeries["data"][number]): number => {
+      if (valueMode === "data-transfer-cost") {
+        return Number(point.cost ?? point.total_cost ?? point.data_transfer_cost ?? point.value ?? 0);
+      }
+      if (valueMode === "data-transfer-usage") {
+        return Number(point.usage_gb ?? point.billed_usage_gb ?? point.total_usage_gb ?? point.value ?? 0);
+      }
+      if (valueMode === "data-transfer-distribution") {
+        return Number(point.percent_share ?? point.value ?? 0);
+      }
+      return Number(point.value ?? 0);
+    };
+    const allValues = visibleSeries.flatMap((series) => series.data.map((point) => toNumericValue(point)));
+    const finiteValues = allValues.filter((value) => Number.isFinite(value));
+    const minValue = finiteValues.length > 0 ? Math.min(...finiteValues) : 0;
+    const maxValue = finiteValues.length > 0 ? Math.max(...finiteValues) : 0;
+    const isFlatSeries = finiteValues.length > 0 && Math.abs(maxValue - minValue) < 1e-9;
+    const paddedRange = Math.max(Math.abs(maxValue) * 0.25, 1);
+    const isStacked = graph.type === "stacked_bar" || graph.type === "stacked_area";
+    const stackedDailyMax = isStacked
+      ? Math.max(
+          0,
+          ...xAxis.map((date) =>
+            visibleSeries.reduce((sum, series) => {
+              const point = series.data.find((entry) => entry.date === date);
+              return sum + (point ? toNumericValue(point) : 0);
+            }, 0),
+          ),
+        )
+      : 0;
+    const computedMin =
+      valueMode === "data-transfer-distribution"
+        ? 0
+        : isStacked
+          ? 0
+        : isFlatSeries
+          ? Math.max(0, minValue - paddedRange)
+          : undefined;
+    const computedMax =
+      valueMode === "data-transfer-distribution"
+        ? 100
+        : isStacked
+          ? Math.max(1, Math.ceil(stackedDailyMax))
+        : isFlatSeries
+          ? maxValue + paddedRange
+          : undefined;
 
     return {
       color: visibleSeries.map((_, index) => SERIES_COLORS[index % SERIES_COLORS.length]),
@@ -129,9 +177,9 @@ export function EC2ExplorerChart({
           }
         : { show: false },
       grid: {
-        left: 64,
-        right: 16,
-        top: shouldShowLegend ? 58 : 24,
+        left: 52,
+        right: 12,
+        top: shouldShowLegend ? 30 : 20,
         bottom: 36,
         containLabel: false,
       },
@@ -139,13 +187,28 @@ export function EC2ExplorerChart({
         type: "category",
         data: xAxis,
         boundaryGap: graph.type === "stacked_bar" || graph.type === "bar",
-        axisLabel: { hideOverlap: true, fontSize: 11 },
+        axisLine: {
+          show: true,
+          lineStyle: { color: "#9fb3b8", width: 1 },
+        },
+        axisLabel: {
+          hideOverlap: true,
+          fontSize: 11,
+          formatter: (value: string) => formatDateMonthLabel(value),
+        },
       },
       yAxis: {
         type: "value",
         name: axisName,
-        min: valueMode === "data-transfer-distribution" ? 0 : undefined,
-        max: valueMode === "data-transfer-distribution" ? 100 : undefined,
+        min: computedMin,
+        max: computedMax,
+        axisLine: {
+          show: true,
+          lineStyle: { color: "#9fb3b8", width: 1 },
+        },
+        splitLine: {
+          show: false,
+        },
         axisLabel: { fontSize: 11, margin: 10 },
       },
       series: visibleSeries.map((series) => ({
@@ -155,25 +218,38 @@ export function EC2ExplorerChart({
         areaStyle: graph.type === "area" || graph.type === "stacked_area" ? {} : undefined,
         smooth: graph.type !== "stacked_bar" && graph.type !== "bar",
         showSymbol: false,
-        barMaxWidth: graph.type === "stacked_bar" || graph.type === "bar" ? 46 : undefined,
+        barMaxWidth: graph.type === "stacked_bar" || graph.type === "bar" ? 56 : undefined,
+        barMinWidth: graph.type === "stacked_bar" || graph.type === "bar" ? 16 : undefined,
+        barCategoryGap: graph.type === "stacked_bar" || graph.type === "bar" ? "18%" : undefined,
+        barGap: graph.type === "stacked_bar" || graph.type === "bar" ? "0%" : undefined,
         data: series.data.map((point) => {
-          if (valueMode === "data-transfer-cost") {
-            return Number(point.cost ?? point.total_cost ?? point.data_transfer_cost ?? point.value ?? 0);
-          }
-          if (valueMode === "data-transfer-usage") {
-            return Number(point.usage_gb ?? point.billed_usage_gb ?? point.total_usage_gb ?? point.value ?? 0);
-          }
-          if (valueMode === "data-transfer-distribution") {
-            return Number(point.percent_share ?? point.value ?? 0);
-          }
-          return Number(point.value ?? 0);
+          return toNumericValue(point);
         }),
       })),
     };
   }, [graph, valueMode, yAxisLabel]);
+  const chartRenderKey = useMemo(
+    () =>
+      [
+        graph.type,
+        valueMode,
+        graph.xKey,
+        graph.series.length,
+        graph.series.map((series) => `${series.key}:${series.data.length}`).join("|"),
+      ].join("::"),
+    [graph, valueMode],
+  );
 
   if (loading) {
-    return <div className="ec2-explorer-chart__skeleton" aria-hidden="true" />;
+    return (
+      <section className="ec2-explorer-chart__skeleton" aria-hidden="true">
+        <div className="cost-explorer-chart-stack">
+          <div className="cost-explorer-chart-canvas cost-explorer-chart-canvas--plain">
+            <div className="cost-explorer-chart-skeleton cost-explorer-chart-skeleton--bars ec2-explorer-chart__history-skeleton-canvas" />
+          </div>
+        </div>
+      </section>
+    );
   }
 
   if (error) {
@@ -203,23 +279,26 @@ export function EC2ExplorerChart({
     <section className="ec2-explorer-chart" aria-label="EC2 explorer chart">
       <div className="ec2-explorer-chart__header">
         <h3 className="ec2-explorer-chart__title">{title}</h3>
-        <label className="ec2-explorer-chart__chart-type">
-          <span className="ec2-explorer-chart__chart-type-label">{chartTypeLabel}</span>
-          <select
-            value={chartType}
-            onChange={(event) => onChartTypeChange(event.target.value as EC2ChartType)}
-            aria-label="Chart type"
-          >
-            {CHART_TYPE_OPTIONS.filter((option) => option.key === "line" || canUseStackedBar).map((option) => (
-              <option key={option.key} value={option.key}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-          <ChevronDown size={14} className="ec2-explorer-chart__chart-type-caret" aria-hidden="true" />
-        </label>
+        {showChartTypeSelector ? (
+          <label className="ec2-explorer-chart__chart-type">
+            <span className="ec2-explorer-chart__chart-type-label">{chartTypeLabel}</span>
+            <select
+              value={chartType}
+              onChange={(event) => onChartTypeChange(event.target.value as EC2ChartType)}
+              aria-label="Chart type"
+            >
+              {CHART_TYPE_OPTIONS.filter((option) => option.key === "line" || canUseStackedBar).map((option) => (
+                <option key={option.key} value={option.key}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+            <ChevronDown size={14} className="ec2-explorer-chart__chart-type-caret" aria-hidden="true" />
+          </label>
+        ) : null}
       </div>
       <BaseEChart
+        key={chartRenderKey}
         option={option}
         height={410}
         onPointClick={(event) => {
@@ -235,3 +314,8 @@ export function EC2ExplorerChart({
     </section>
   );
 }
+    const formatDateMonthLabel = (raw: string): string => {
+      const parsed = new Date(raw);
+      if (!Number.isFinite(parsed.getTime())) return raw;
+      return new Intl.DateTimeFormat("en-US", { day: "2-digit", month: "short" }).format(parsed);
+    };

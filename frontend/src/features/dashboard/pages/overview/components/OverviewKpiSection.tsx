@@ -1,6 +1,6 @@
 import { KpiCard } from "../../../common/components";
 import type { DashboardOverviewResponse } from "../../../api/dashboardApi";
-import { currencyFormatterCompact, currencyFormatterPrecise, percentFormatter } from "../utils/overviewFormatters";
+import { formatCompactMoney, formatContributionPct, formatMoney, percentFormatter } from "../utils/overviewFormatters";
 
 type OverviewKpiSectionProps = {
   data: DashboardOverviewResponse;
@@ -12,7 +12,7 @@ export function OverviewKpiSection({ data }: OverviewKpiSectionProps) {
       <div className="overview-kpi-row overview-kpi-row--report">
         <KpiCard
           label="Total Spend"
-          value={currencyFormatterPrecise.format(data.kpis.totalSpend)}
+          value={formatMoney(data.kpis.totalSpend)}
           delta={`${percentFormatter.format(
             data.kpis.previousPeriodSpend > 0
               ? ((data.kpis.totalSpend - data.kpis.previousPeriodSpend) / data.kpis.previousPeriodSpend) * 100
@@ -23,14 +23,14 @@ export function OverviewKpiSection({ data }: OverviewKpiSectionProps) {
         />
         <KpiCard
           label="Previous Period Spend"
-          value={currencyFormatterPrecise.format(data.kpis.previousPeriodSpend)}
+          value={formatMoney(data.kpis.previousPeriodSpend)}
           delta="Baseline window"
           deltaTone="neutral"
          
         />
         <KpiCard
           label="Savings Achieved"
-          value={currencyFormatterPrecise.format(data.kpis.savingsAchieved)}
+          value={formatMoney(data.kpis.savingsAchieved)}
           delta={`${percentFormatter.format(data.savingsInsights.savingsPct)}% savings`}
           deltaTone="positive"
     
@@ -38,16 +38,16 @@ export function OverviewKpiSection({ data }: OverviewKpiSectionProps) {
         <KpiCard
           label="Top Region"
           value={data.kpis.topRegion?.name ?? "N/A"}
-          delta={data.kpis.topRegion ? `${percentFormatter.format(data.kpis.topRegion.contributionPct)}% share` : "No data"}
+          delta={data.kpis.topRegion ? `${formatContributionPct(data.kpis.topRegion.contributionPct)} share` : "No data"}
           deltaTone="accent"
-          meta={data.kpis.topRegion ? currencyFormatterCompact.format(data.kpis.topRegion.billedCost) : "No spend"}
+          meta={data.kpis.topRegion ? formatCompactMoney(data.kpis.topRegion.billedCost) : "No spend"}
         />
         <KpiCard
           label="Top Account"
           value={data.kpis.topAccount?.name ?? "N/A"}
-          delta={data.kpis.topAccount ? `${percentFormatter.format(data.kpis.topAccount.contributionPct)}% share` : "No data"}
+          delta={data.kpis.topAccount ? `${formatContributionPct(data.kpis.topAccount.contributionPct)} share` : "No data"}
           deltaTone="accent"
-          meta={data.kpis.topAccount ? currencyFormatterCompact.format(data.kpis.topAccount.billedCost) : "No spend"}
+          meta={data.kpis.topAccount ? formatCompactMoney(data.kpis.topAccount.billedCost) : "No spend"}
         />
         <KpiCard
           label="Active Alerts"

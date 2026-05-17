@@ -4,6 +4,10 @@ import { DashboardPageContainer } from "../components/DashboardPageContainer";
 import { DashboardSidebar } from "../components/DashboardSidebar";
 import { DashboardScopeProvider } from "../context/DashboardScopeContext";
 import { useDashboardScope } from "../hooks/useDashboardScope";
+import { OverviewDashboardSkeleton } from "../pages/overview/components";
+import { CostExplorerSkeleton } from "../pages/cost-explorer/components";
+import { HistorySectionSkeleton } from "../pages/cost/history/components/HistorySectionSkeleton";
+import { EC2ExplorerUnifiedSkeleton } from "../pages/ec2/components";
 
 function S3ExplorerLoadingSkeleton() {
   return (
@@ -86,23 +90,89 @@ function S3ExplorerLoadingSkeleton() {
   );
 }
 
+function DashboardScopeLoadingSkeleton() {
+  return (
+    <div className="dashboard-scope-skeleton" aria-hidden="true">
+      <section className="dashboard-scope-skeleton__kpis">
+        {Array.from({ length: 6 }).map((_, index) => (
+          <article key={`scope-kpi-${index}`} className="dashboard-scope-skeleton__card">
+            <div className="dashboard-scope-skeleton__block dashboard-scope-skeleton__block--label" />
+            <div className="dashboard-scope-skeleton__block dashboard-scope-skeleton__block--value" />
+            <div className="dashboard-scope-skeleton__block dashboard-scope-skeleton__block--meta" />
+          </article>
+        ))}
+      </section>
+      <section className="dashboard-scope-skeleton__grid">
+        <div className="dashboard-scope-skeleton__panel dashboard-scope-skeleton__panel--wide" />
+        <div className="dashboard-scope-skeleton__panel" />
+        <div className="dashboard-scope-skeleton__panel" />
+      </section>
+    </div>
+  );
+}
+
+function DashboardScopeErrorState({ message }: { message: string }) {
+  return (
+    <section className="dashboard-scope-error" role="alert">
+      <h2 className="dashboard-scope-error__title">Unable to initialize dashboard scope</h2>
+      <p className="dashboard-scope-error__message">{message}</p>
+    </section>
+  );
+}
+
 function DashboardScopeGate() {
   const { scope, isLoading, isError, error } = useDashboardScope();
   const location = useLocation();
+  const isEc2Route =
+    location.pathname.startsWith("/dashboard/ec2/") ||
+    location.pathname.startsWith("/dashboard/inventory/aws/ec2/");
+  const isOverviewRoute =
+    location.pathname === "/dashboard/overview" || location.pathname === "/dashboard/cfo-dashboard";
+  const isCostExplorerRoute =
+    location.pathname.startsWith("/dashboard/cost/explorer") || location.pathname.startsWith("/dashboard/cost-explorer");
+  const isCostHistoryRoute = location.pathname.startsWith("/dashboard/cost/history");
+  const isEc2ExplorerRoute = location.pathname.startsWith("/dashboard/ec2/explorer");
   const isS3ExplorerLikeRoute =
     location.pathname.startsWith("/dashboard/s3/cost") ||
     location.pathname.startsWith("/dashboard/s3/usage") ||
     location.pathname.startsWith("/dashboard/s3/explorer");
 
   if (isLoading && !scope) {
+    if (isEc2Route) {
+      return <Outlet />;
+    }
+    if (isOverviewRoute) {
+      return <OverviewDashboardSkeleton />;
+    }
+    if (isCostExplorerRoute) {
+      return (
+        <div className="dashboard-page cost-explorer-page">
+          <CostExplorerSkeleton />
+        </div>
+      );
+    }
+    if (isCostHistoryRoute) {
+      return (
+        <div className="dashboard-page cost-history-page">
+          <HistorySectionSkeleton />
+        </div>
+      );
+    }
+    if (isEc2ExplorerRoute) {
+      return (
+        <div className="dashboard-page cost-explorer-page ec2-explorer-page">
+          <EC2ExplorerUnifiedSkeleton />
+        </div>
+      );
+    }
     if (isS3ExplorerLikeRoute) {
       return <S3ExplorerLoadingSkeleton />;
     }
-    return <p className="dashboard-note">Resolving dashboard scope...</p>;
+    return <DashboardScopeLoadingSkeleton />;
   }
 
   if (isError || !scope) {
-    return <p className="dashboard-note">Failed to resolve dashboard scope: {error?.message ?? "Unknown error"}</p>;
+    return <DashboardScopeErrorState message={error?.message ?? "Unknown error"} />;
   }
 
   return <Outlet />;

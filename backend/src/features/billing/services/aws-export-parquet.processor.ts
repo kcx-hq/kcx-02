@@ -12,7 +12,11 @@ import {
   resolveDimensionsWithCache,
 } from "./dimension-upsert.service.js";
 import { parseParquetSchemaColumnsFromBuffer, readParquetRowChunksFromBuffer } from "./file-reader.service.js";
-import { insertFactCostLineItemsBatch } from "./fact-cost-line-item.service.js";
+import {
+  insertFactCostLineItemsBatch,
+  replaceFactRowsFromStagingInTransaction,
+  validateStagingRowsForIngestionRun,
+} from "./fact-cost-line-item.service.js";
 import { getIngestionRunFiles } from "./ingestion-run-file.service.js";
 import { recordIngestionRowErrors } from "./ingestion-row-error.service.js";
 import { updateIngestionRunStatus } from "./ingestion.service.js";
@@ -34,6 +38,7 @@ import { assertTagDimensionSchemaReady } from "./ingestion-schema-guard.service.
 import { Ec2RecommendationsService } from "../../ec2/optimization/ec2-recommendations.service.js";
 import { LoadBalancerRecommendationsService } from "../../load-balancer/recommendations/load-balancer-recommendations.service.js";
 import { syncStorageLensFromClientAccount } from "./s3-storage-lens-sync.service.js";
+import { buildSourceRowHash } from "./source-row-hash.service.js";
 
 const STAGE_MESSAGE = {
   validating_schema: "Validating manifest and parquet schema",
@@ -406,6 +411,7 @@ export async function processAwsExportParquetRun({ run }) {
               const chunkIndexPosition = sliceStart + localIndex;
               const rowNumber = chunkOffset + chunkIndexPosition + 1;
               try {
+                const sourceRowHash = buildSourceRowHash(rawRow);
                 const normalizedRow = normalizeRowToCanonical(rawRow, canonicalHeaderMap);
                 const dimensions = await resolveDimensionsWithCache({
                   rawRow: normalizedRow,
@@ -462,6 +468,7 @@ export async function processAwsExportParquetRun({ run }) {
                     resourceKey: factPayload.resource_key,
                     skuKey: factPayload.sku_key,
                     chargeKey: factPayload.charge_key,
+                    tagsJson: normalizedRow[RAW_COLUMNS.tags] ?? null,
                     usageDateKey: factPayload.usage_date_key,
                     billingPeriodStartDateKey: factPayload.billing_period_start_date_key,
                     billingPeriodEndDateKey: factPayload.billing_period_end_date_key,
@@ -497,6 +504,8 @@ export async function processAwsExportParquetRun({ run }) {
                     consumedQuantity: factPayload.consumed_quantity,
                     pricingQuantity: factPayload.pricing_quantity,
                     tagId: factPayload.tag_id,
+                    tagIdsJson: Array.isArray(tagIds) ? tagIds : [],
+                    sourceRowHash,
                   },
                   tagIds,
                 };
@@ -646,6 +655,20 @@ export async function processAwsExportParquetRun({ run }) {
       await recordIngestionRowErrors({ rowErrors: allRowErrors });
     }
 
+    try {
+      await validateStagingRowsForIngestionRun({
+        ingestionRunId: runId,
+        billingSourceId: source.id,
+      });
+    } catch (validationError) {
+      logger.error("AWS parquet staging validation failed before fact replacement", {
+        ingestionRunId: runId,
+        billingSourceId: String(source.id),
+        reason: toErrorMessage(validationError),
+      });
+      throw validationError;
+    }
+
     await setRunState(runId, {
       status: "finalizing",
       current_step: "finalizing",
@@ -668,13 +691,6 @@ export async function processAwsExportParquetRun({ run }) {
       .join(", ");
 
     if (rowsLoaded > 0) {
-      await upsertCostAggregationsForRun({
-        ingestionRunId: runId,
-        tenantId: source.tenantId,
-        providerId: source.cloudProviderId,
-        billingSourceId: source.id,
-        uploadedBy: connection.createdBy ?? null,
-      });
       await syncEc2CostHistoryForIngestionRun({
         ingestionRunId: runId,
         tenantId: source.tenantId,
@@ -785,21 +801,61 @@ export async function processAwsExportParquetRun({ run }) {
       }
     }
 
-    const finalStatus = rowsFailed > 0 ? "completed_with_warnings" : "completed";
-
-    await setRunState(runId, {
-      status: finalStatus,
-      current_step: finalStatus,
-      progress_percent: PROGRESS_BY_STAGE[finalStatus],
-      status_message: STAGE_MESSAGE[finalStatus],
-      rows_read: rowsRead,
-      rows_loaded: rowsLoaded,
-      rows_failed: rowsFailed,
-      total_rows_estimated: rowsRead,
-      error_message: rowsFailed > 0 ? `Rows failed: ${rowsFailed}${topReasons ? `. Top reasons: ${topReasons}` : ""}` : null,
-      finished_at: now(),
-      last_heartbeat_at: now(),
+    const warningMessage = rowsFailed > 0 ? `Rows failed: ${rowsFailed}${topReasons ? `. Top reasons: ${topReasons}` : ""}` : null;
+    let replacementSummary;
+    try {
+      replacementSummary = await replaceFactRowsFromStagingInTransaction({
+        ingestionRunId: runId,
+        billingSourceId: source.id,
+        rowsRead,
+        rowsFailed,
+        warningMessage,
+      });
+    } catch (replacementError) {
+      logger.error("AWS parquet staging-to-fact replacement failed", {
+        ingestionRunId: runId,
+        billingSourceId: String(source.id),
+        reason: toErrorMessage(replacementError),
+      });
+      throw replacementError;
+    }
+    rowsLoaded = replacementSummary.rowsInserted;
+    logger.info("AWS parquet fact replacement committed", {
+      ingestionRunId: runId,
+      billingSourceId: String(source.id),
+      affectedUsageDates: replacementSummary.affectedUsageDates ?? [],
+      factRowsInserted: replacementSummary.rowsInserted ?? 0,
+      factRowsWithCurrentIngestionRunId: replacementSummary.factRowsWithCurrentIngestionRunId ?? 0,
     });
+
+    if (rowsLoaded > 0) {
+      try {
+        await upsertCostAggregationsForRun({
+          ingestionRunId: runId,
+          tenantId: source.tenantId,
+          providerId: source.cloudProviderId,
+          billingSourceId: source.id,
+          uploadedBy: connection.createdBy ?? null,
+          affectedUsageDates: Array.isArray(replacementSummary.affectedUsageDates)
+            ? replacementSummary.affectedUsageDates
+            : [],
+        });
+      } catch (aggregationError) {
+        logger.error("AWS parquet aggregation refresh failed after fact commit", {
+          ingestionRunId: runId,
+          billingSourceId: String(source.id),
+          affectedUsageDates: replacementSummary.affectedUsageDates ?? [],
+          reason: toErrorMessage(aggregationError),
+        });
+        await setRunState(runId, {
+          status: "completed_with_warnings",
+          current_step: "completed_with_warnings",
+          status_message: "Billing data is ready with warnings (aggregation refresh failed)",
+          error_message: `Aggregation refresh failed: ${toErrorMessage(aggregationError)}`,
+          last_heartbeat_at: now(),
+        });
+      }
+    }
 
     await source.update({
       lastIngestedAt: now(),

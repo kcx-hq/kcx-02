@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { validateForm } from "@/lib/validateForm"
 import { apiPost, ApiError } from "@/lib/api"
-import { navigateTo } from "@/lib/navigation"
+import { handleAppLinkClick, navigateTo } from "@/lib/navigation"
 import { setAuthSession, type AuthUser } from "@/lib/auth"
 import { loginSchema, type LoginValues } from "@/schemas/auth.schema"
 
@@ -240,6 +240,7 @@ export function LoginForm() {
         <div className="flex items-center justify-end">
           <a
             href="/forgot-password"
+            onClick={(event) => handleAppLinkClick(event, "/forgot-password")}
             className="text-xs font-semibold text-[#3E8A76] underline-offset-4 hover:text-[#357563] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(62,138,118,0.22)] focus-visible:ring-offset-2 focus-visible:ring-offset-white"
           >
             Reset password
@@ -259,7 +260,11 @@ export function LoginForm() {
 
         <p id={`${formId}__help`} className="text-[11px] leading-5 text-[rgba(75,90,83,0.7)]">
           Need access?{" "}
-          <a href="/schedule-demo" className="font-semibold text-[#3E8A76] hover:underline underline-offset-4">
+          <a
+            href="/schedule-demo"
+            onClick={(event) => handleAppLinkClick(event, "/schedule-demo")}
+            className="font-semibold text-[#3E8A76] hover:underline underline-offset-4"
+          >
             Request a demo
           </a>
           .

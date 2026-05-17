@@ -8,6 +8,9 @@ import type {
   CostExplorerFiltersQuery,
   CostExplorerGroupOptionsResponse,
   CostExplorerResponse,
+  CostHistoryFilterOptionsResponse,
+  CostHistoryFiltersQuery,
+  CostHistoryResponse,
   CostBreakdownItem,
   DashboardOverviewResponse,
   OverviewAnomaliesResponse,
@@ -170,6 +173,29 @@ function withCostExplorerGroupOptions(
   if (tagKey && tagKey.trim().length > 0) {
     params.set("tagKey", tagKey.trim().toLowerCase());
   }
+  const query = params.toString();
+  return query.length > 0 ? `${path}?${query}` : path;
+}
+
+function withCostHistoryFilters(
+  path: string,
+  scope: DashboardResolvedScope,
+  filters?: CostHistoryFiltersQuery,
+): string {
+  const params = new URLSearchParams(buildDashboardQueryParams(scope));
+  // Avoid inheriting sticky drill-down keys from other dashboard pages.
+  // Cost History should reflect the selected date/source scope unless
+  // explicitly filtered by its own controls.
+  params.delete("providerId");
+  params.delete("billingAccountKey");
+  params.delete("subAccountKey");
+  params.delete("serviceKey");
+  params.delete("regionKey");
+
+  if (filters?.granularity) params.set("granularity", filters.granularity);
+  if (filters?.groupBy) params.set("groupBy", filters.groupBy);
+  if (filters?.xAxis) params.set("xAxis", filters.xAxis);
+  if (filters?.yAxisMetric) params.set("yAxisMetric", filters.yAxisMetric);
   const query = params.toString();
   return query.length > 0 ? `${path}?${query}` : path;
 }
@@ -656,6 +682,14 @@ export const dashboardApi = {
     );
   },
 
+  getCostHistory(scope: DashboardResolvedScope, filters?: CostHistoryFiltersQuery) {
+    return apiGet<CostHistoryResponse>(withCostHistoryFilters("/dashboard/cost-history", scope, filters));
+  },
+
+  getCostHistoryFilterOptions(scope: DashboardResolvedScope) {
+    return apiGet<CostHistoryFilterOptionsResponse>(withDashboardQuery("/dashboard/cost-history/filters", scope));
+  },
+
   getDatabaseExplorer(scope: DashboardResolvedScope, filters: DatabaseExplorerFilters) {
     return apiGet<DatabaseExplorerResponse>(
       withDatabaseExplorerFilters("/services/database/explorer", scope, filters),
@@ -975,6 +1009,13 @@ export type {
   CostExplorerMetric,
   CostExplorerResponse,
   CostExplorerSeries,
+  CostHistoryFilterOptionsResponse,
+  CostHistoryFiltersQuery,
+  CostHistoryGranularity,
+  CostHistoryGroupBy,
+  CostHistoryResponse,
+  CostHistoryXAxis,
+  CostHistoryYAxisMetric,
   CostBreakdownItem,
   DatabaseExplorerAppliedFilters,
   DatabaseExplorerCards,

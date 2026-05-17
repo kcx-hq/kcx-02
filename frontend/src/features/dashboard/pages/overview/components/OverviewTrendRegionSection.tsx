@@ -6,9 +6,10 @@ import { buildTrendOption } from "../utils/overviewFormatters";
 type OverviewTrendRegionSectionProps = {
   trendData: BudgetActualForecastPoint[];
   anomalies: OverviewAnomaly[];
+  isLoading?: boolean;
 };
 
-export function OverviewTrendRegionSection({ trendData, anomalies }: OverviewTrendRegionSectionProps) {
+export function OverviewTrendRegionSection({ trendData, anomalies, isLoading = false }: OverviewTrendRegionSectionProps) {
   const trendOption = useMemo(() => buildTrendOption(trendData), [trendData]);
   const trendHasData = trendData.length > 0;
   const topThreats = useMemo(() => {
@@ -54,7 +55,7 @@ export function OverviewTrendRegionSection({ trendData, anomalies }: OverviewTre
                 <BaseEChart option={trendOption} height={290} />
               </div>
             ) : (
-              <p className="dashboard-note">No trend data available for current filters.</p>
+              <p className="dashboard-note">{isLoading ? "Loading trend data..." : "No trend data available for current filters."}</p>
             )}
           </div>
           <div className="overview-trend-pane overview-trend-pane--threat">
@@ -89,7 +90,7 @@ export function OverviewTrendRegionSection({ trendData, anomalies }: OverviewTre
                   </div>
                 ))
               ) : (
-                <p className="overview-breakdown-note">No anomaly data found for selected filters.</p>
+                <p className="overview-breakdown-note">{isLoading ? "Loading anomaly categories..." : "No anomaly data found for selected filters."}</p>
               )}
             </div>
             <div className="overview-threat-legend overview-threat-legend--inline">

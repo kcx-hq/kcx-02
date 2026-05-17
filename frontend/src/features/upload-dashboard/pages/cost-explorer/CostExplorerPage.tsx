@@ -774,7 +774,7 @@ export default function CostExplorerPage() {
 
   return (
     <div className="dashboard-page cost-explorer-page">
-      <section className="cost-explorer-unified-shell">
+      <div className="cost-explorer-page-layout">
         <CostExplorerFiltersPanel
           effectiveGranularity={effectiveGranularity}
           days={days}
@@ -806,8 +806,6 @@ export default function CostExplorerPage() {
           hasPendingGroupChanges={hasPendingGroupChanges}
           groupValuesLoading={groupValuesLoading}
         />
-
-        <div className="cost-explorer-unified-shell__divider" aria-hidden="true" />
 
         <CostExplorerChartSection
           option={option}
@@ -842,7 +840,7 @@ export default function CostExplorerPage() {
           }}
           onReset={clearAll}
         />
-      </section>
+      </div>
     </div>
   );
 }

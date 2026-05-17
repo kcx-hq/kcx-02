@@ -154,6 +154,22 @@ export function App() {
   }, [route])
 
   useEffect(() => {
+    if (route !== "/") return
+    try {
+      const params = new URLSearchParams(window.location.search)
+      const action = String(params.get("action") ?? "").trim().toLowerCase()
+      const token = String(params.get("token") ?? "").trim()
+      if (action === "reset-password" && token) {
+        const nextUrl = `/reset-password?token=${encodeURIComponent(token)}`
+        window.history.replaceState({}, "", nextUrl)
+        window.dispatchEvent(new PopStateEvent("popstate"))
+      }
+    } catch {
+      // no-op
+    }
+  }, [route])
+
+  useEffect(() => {
     const redirectTarget = getRouteRedirectTarget(window.location.pathname)
     if (redirectTarget) {
       navigateTo(redirectTarget, { replace: true })

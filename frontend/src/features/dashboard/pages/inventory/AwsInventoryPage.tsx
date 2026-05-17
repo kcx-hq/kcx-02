@@ -53,24 +53,6 @@ const serviceGroups: InventoryServiceGroup[] = [
         label: "AMIs",
         placeholder: true,
       },
-      {
-        id: "load-balancer-explorer",
-        label: "Load Balancer Explorer",
-        href: "/dashboard/load-balancer/explorer",
-        matchPrefixes: ["/dashboard/load-balancer/explorer"],
-      },
-      {
-        id: "load-balancer-list",
-        label: "Load Balancer List",
-        href: "/dashboard/inventory/aws/load-balancer/list",
-        matchPrefixes: ["/dashboard/inventory/aws/load-balancer/list"],
-      },
-      {
-        id: "load-balancer-optimization",
-        label: "Load Balancer Optimization",
-        href: "/dashboard/load-balancer/optimization",
-        matchPrefixes: ["/dashboard/load-balancer/optimization"],
-      },
     ],
   },
   {
@@ -79,7 +61,7 @@ const serviceGroups: InventoryServiceGroup[] = [
     items: [
       {
         id: "s3-explorer",
-        label: "S3 Explorer",
+        label: "S3 Bucket",
         href: "/dashboard/s3",
         matchPrefixes: ["/dashboard/s3"],
       },
@@ -150,6 +132,7 @@ export default function AwsInventoryPage() {
     <InventoryProviderPage
       title="Services"
       subtitle="Explore cost-driving cloud services across your connected accounts."
+      hideHeader
       groups={serviceGroups}
     />
   );

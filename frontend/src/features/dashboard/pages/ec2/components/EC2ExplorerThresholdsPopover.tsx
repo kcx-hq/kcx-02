@@ -3,9 +3,10 @@ import type { EC2Thresholds } from "../ec2ExplorerControls.types";
 type EC2ExplorerThresholdsPopoverProps = {
   value: EC2Thresholds;
   onChange: (next: EC2Thresholds) => void;
+  onReset?: () => void;
 };
 
-export function EC2ExplorerThresholdsPopover({ value, onChange }: EC2ExplorerThresholdsPopoverProps) {
+export function EC2ExplorerThresholdsPopover({ value, onChange, onReset }: EC2ExplorerThresholdsPopoverProps) {
   const update = (key: keyof EC2Thresholds, nextValue: string) => {
     onChange({
       ...value,
@@ -14,8 +15,7 @@ export function EC2ExplorerThresholdsPopover({ value, onChange }: EC2ExplorerThr
   };
 
   return (
-    <div className="ec2-explorer-thresholds" role="dialog" aria-label="Threshold filters">
-      <p className="ec2-explorer-thresholds__title">Thresholds</p>
+    <div className="ec2-explorer-thresholds ec2-explorer-thresholds--modal" role="dialog" aria-label="Threshold filters">
       <div className="ec2-explorer-thresholds__grid">
         <label className="ec2-explorer-thresholds__field">
           <span>CPU min</span>
@@ -41,6 +41,14 @@ export function EC2ExplorerThresholdsPopover({ value, onChange }: EC2ExplorerThr
           <span>Network max</span>
           <input value={value.networkMax} onChange={(event) => update("networkMax", event.target.value)} />
         </label>
+      </div>
+      <div className="ec2-explorer-thresholds__actions">
+        <button type="button" className="ec2-explorer-thresholds__clear" onClick={onReset}>
+          Clear Form
+        </button>
+        <button type="button" className="ec2-explorer-thresholds__apply">
+          Apply
+        </button>
       </div>
     </div>
   );

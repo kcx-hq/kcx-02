@@ -21,6 +21,8 @@ class FactCostLineItems extends Model<InferAttributes<FactCostLineItems>, InferC
   declare skuKey: CreationOptional<string | null>;
   declare chargeKey: CreationOptional<string | null>;
   declare tagId: CreationOptional<string | null>;
+  declare tagsJson: CreationOptional<Record<string, unknown> | null>;
+  declare tagIdsJson: CreationOptional<Record<string, unknown> | null>;
   declare usageDateKey: CreationOptional<string | null>;
   declare billingPeriodStartDateKey: CreationOptional<string | null>;
   declare billingPeriodEndDateKey: CreationOptional<string | null>;
@@ -55,6 +57,7 @@ class FactCostLineItems extends Model<InferAttributes<FactCostLineItems>, InferC
   declare reservationArn: CreationOptional<string | null>;
   declare savingsPlanArn: CreationOptional<string | null>;
   declare savingsPlanType: CreationOptional<string | null>;
+  declare sourceRowHash: CreationOptional<string | null>;
   declare ingestedAt: CreationOptional<Date>;
   declare createdAt: CreationOptional<Date>;
 }
@@ -75,14 +78,16 @@ const createFactCostLineItemsModel = (sequelize: Sequelize): typeof FactCostLine
       skuKey: { type: DataTypes.BIGINT, allowNull: true, field: "sku_key" },
       chargeKey: { type: DataTypes.BIGINT, allowNull: true, field: "charge_key" },
       tagId: { type: DataTypes.BIGINT, allowNull: true, field: "tag_id" },
+      tagsJson: { type: DataTypes.JSONB, allowNull: true, field: "tags_json" },
+      tagIdsJson: { type: DataTypes.JSONB, allowNull: true, field: "tag_ids_json" },
       usageDateKey: { type: DataTypes.BIGINT, allowNull: true, field: "usage_date_key" },
       billingPeriodStartDateKey: { type: DataTypes.BIGINT, allowNull: true, field: "billing_period_start_date_key" },
       billingPeriodEndDateKey: { type: DataTypes.BIGINT, allowNull: true, field: "billing_period_end_date_key" },
-      billedCost: { type: DataTypes.DECIMAL(20, 12), allowNull: true, field: "billed_cost" },
-      effectiveCost: { type: DataTypes.DECIMAL(20, 12), allowNull: true, field: "effective_cost" },
-      listCost: { type: DataTypes.DECIMAL(18, 6), allowNull: true, field: "list_cost" },
-      consumedQuantity: { type: DataTypes.DECIMAL(18, 6), allowNull: true, field: "consumed_quantity" },
-      pricingQuantity: { type: DataTypes.DECIMAL(18, 6), allowNull: true, field: "pricing_quantity" },
+      billedCost: { type: DataTypes.DECIMAL(38, 18), allowNull: true, field: "billed_cost" },
+      effectiveCost: { type: DataTypes.DECIMAL(38, 18), allowNull: true, field: "effective_cost" },
+      listCost: { type: DataTypes.DECIMAL(38, 18), allowNull: true, field: "list_cost" },
+      consumedQuantity: { type: DataTypes.DECIMAL(38, 18), allowNull: true, field: "consumed_quantity" },
+      pricingQuantity: { type: DataTypes.DECIMAL(38, 18), allowNull: true, field: "pricing_quantity" },
       usageStartTime: { type: DataTypes.DATE, allowNull: true, field: "usage_start_time" },
       usageEndTime: { type: DataTypes.DATE, allowNull: true, field: "usage_end_time" },
       usageType: { type: DataTypes.TEXT, allowNull: true, field: "usage_type" },
@@ -99,16 +104,17 @@ const createFactCostLineItemsModel = (sequelize: Sequelize): typeof FactCostLine
       lineItemType: { type: DataTypes.TEXT, allowNull: true, field: "line_item_type" },
       pricingTerm: { type: DataTypes.TEXT, allowNull: true, field: "pricing_term" },
       purchaseOption: { type: DataTypes.TEXT, allowNull: true, field: "purchase_option" },
-      publicOnDemandCost: { type: DataTypes.DECIMAL(20, 12), allowNull: true, field: "public_on_demand_cost" },
-      publicOnDemandRate: { type: DataTypes.DECIMAL(20, 12), allowNull: true, field: "public_on_demand_rate" },
-      discountAmount: { type: DataTypes.DECIMAL(20, 12), allowNull: true, field: "discount_amount" },
-      bundledDiscount: { type: DataTypes.DECIMAL(18, 6), allowNull: true, field: "bundled_discount" },
-      creditAmount: { type: DataTypes.DECIMAL(18, 6), allowNull: true, field: "credit_amount" },
-      refundAmount: { type: DataTypes.DECIMAL(18, 6), allowNull: true, field: "refund_amount" },
-      taxCost: { type: DataTypes.DECIMAL(18, 6), allowNull: true, field: "tax_cost" },
+      publicOnDemandCost: { type: DataTypes.DECIMAL(38, 18), allowNull: true, field: "public_on_demand_cost" },
+      publicOnDemandRate: { type: DataTypes.DECIMAL(38, 18), allowNull: true, field: "public_on_demand_rate" },
+      discountAmount: { type: DataTypes.DECIMAL(38, 18), allowNull: true, field: "discount_amount" },
+      bundledDiscount: { type: DataTypes.DECIMAL(38, 18), allowNull: true, field: "bundled_discount" },
+      creditAmount: { type: DataTypes.DECIMAL(38, 18), allowNull: true, field: "credit_amount" },
+      refundAmount: { type: DataTypes.DECIMAL(38, 18), allowNull: true, field: "refund_amount" },
+      taxCost: { type: DataTypes.DECIMAL(38, 18), allowNull: true, field: "tax_cost" },
       reservationArn: { type: DataTypes.TEXT, allowNull: true, field: "reservation_arn" },
       savingsPlanArn: { type: DataTypes.TEXT, allowNull: true, field: "savings_plan_arn" },
       savingsPlanType: { type: DataTypes.TEXT, allowNull: true, field: "savings_plan_type" },
+      sourceRowHash: { type: DataTypes.TEXT, allowNull: true, field: "source_row_hash" },
       ingestedAt: { type: DataTypes.DATE, allowNull: false, defaultValue: sequelize.literal("NOW()"), field: "ingested_at" },
       createdAt: { type: DataTypes.DATE, allowNull: false, defaultValue: sequelize.literal("NOW()"), field: "created_at" },
     },

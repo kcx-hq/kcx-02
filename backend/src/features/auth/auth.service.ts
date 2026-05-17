@@ -114,7 +114,7 @@ export async function requestPasswordReset(email: string): Promise<{ emailSent: 
     usedAt: null,
   });
 
-  const resetLink = buildFrontendUrl("/reset-password", { token });
+  const resetLink = buildFrontendUrl("/", { action: "reset-password", token });
 
   try {
     await sendEmail({

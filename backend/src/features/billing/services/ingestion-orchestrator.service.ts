@@ -11,7 +11,6 @@ import {
   syncAwsIdleRecommendationsAfterIngestion,
   syncAwsRightsizingRecommendationsAfterIngestion,
 } from "../../dashboard/optimization/recommendation-sync/sync.service.js";
-import { syncDbRecommendationsAfterIngestion } from "../../database/recommendations/db-recommendations.service.js";
 import { syncEc2CostHistoryForIngestionRun } from "./ec2-cost-history.service.js";
 import { syncDbCostHistoryForIngestionRun } from "./db-cost-history.service.js";
 import { syncLoadBalancerCostDailyForIngestionRun } from "../../load-balancer/cost/load-balancer-cost-daily.service.js";
@@ -27,7 +26,11 @@ import {
   readCsvHeaders,
   readParquetSchemaColumns,
 } from "./file-reader.service.js";
-import { insertFactCostLineItemsBatch } from "./fact-cost-line-item.service.js";
+import {
+  insertFactCostLineItemsBatch,
+  replaceFactRowsFromStagingInTransaction,
+  validateStagingRowsForIngestionRun,
+} from "./fact-cost-line-item.service.js";
 import { getIngestionRunFiles } from "./ingestion-run-file.service.js";
 import { recordIngestionRowErrors } from "./ingestion-row-error.service.js";
 import { getIngestionRunById, updateIngestionRunStatus } from "./ingestion.service.js";
@@ -40,6 +43,7 @@ import { upsertCostAggregationsForRun } from "./cost-aggregation.service.js";
 import { createTagDimensionCache, resolveFactPrimaryTagId, resolveFactTagIds } from "./dim-tag.service.js";
 import { assertTagDimensionSchemaReady } from "./ingestion-schema-guard.service.js";
 import { syncStorageLensFromClientAccount } from "./s3-storage-lens-sync.service.js";
+import { buildSourceRowHash } from "./source-row-hash.service.js";
 
 const SUPPORTED_FORMATS = new Set(["csv", "parquet"]);
 const PROGRESS_BY_STAGE = {
@@ -606,6 +610,19 @@ async function processIngestionRun(ingestionRunId) {
         const rowNumber = chunkStartRowNumber + chunkRowIndex;
         const rawRow = rawChunk[chunkRowIndex] ?? null;
         try {
+          const sourceRowHash = buildSourceRowHash(rawRow);
+          const ingestionRunIdForRow = run?.id == null ? null : String(run.id);
+          const billingSourceIdForRow = run?.billingSourceId == null ? null : String(run.billingSourceId);
+          const tenantIdForRow =
+            rawFile?.tenantId == null || String(rawFile.tenantId).trim().length === 0 ? null : String(rawFile.tenantId);
+
+          if (!ingestionRunIdForRow) {
+            throw new Error("ingestion_run_id is required for staging_cost_line_items rows");
+          }
+          if (!billingSourceIdForRow) {
+            throw new Error("billing_source_id is required for staging_cost_line_items rows");
+          }
+
           const {
             billingAccountKey,
             subAccountKey,
@@ -638,9 +655,9 @@ async function processIngestionRun(ingestionRunId) {
           });
 
           const factPayload = mapFactCostLineItem({
-            tenant_id: rawFile.tenantId,
-            billing_source_id: run.billingSourceId,
-            ingestion_run_id: run.id,
+            tenant_id: tenantIdForRow,
+            billing_source_id: billingSourceIdForRow,
+            ingestion_run_id: ingestionRunIdForRow,
             provider_id: rawFile.cloudProviderId,
             billing_account_key: billingAccountKey,
             sub_account_key: subAccountKey,
@@ -671,6 +688,7 @@ async function processIngestionRun(ingestionRunId) {
               resourceKey: factPayload.resource_key,
               skuKey: factPayload.sku_key,
               chargeKey: factPayload.charge_key,
+              tagsJson: normalizedRow[RAW_COLUMNS.tags] ?? null,
               usageDateKey: factPayload.usage_date_key,
               billingPeriodStartDateKey: factPayload.billing_period_start_date_key,
               billingPeriodEndDateKey: factPayload.billing_period_end_date_key,
@@ -706,6 +724,8 @@ async function processIngestionRun(ingestionRunId) {
               consumedQuantity: factPayload.consumed_quantity,
               pricingQuantity: factPayload.pricing_quantity,
               tagId: factPayload.tag_id,
+              tagIdsJson: Array.isArray(tagIds) ? tagIds : [],
+              sourceRowHash,
             },
             tagIds,
           });
@@ -856,6 +876,20 @@ async function processIngestionRun(ingestionRunId) {
       { force: true },
     );
 
+    try {
+      await validateStagingRowsForIngestionRun({
+        ingestionRunId: run.id,
+        billingSourceId: run.billingSourceId,
+      });
+    } catch (validationError) {
+      logger.error("Staging validation failed before fact replacement", {
+        ingestionRunId: String(run.id),
+        billingSourceId: String(run.billingSourceId ?? ""),
+        reason: toErrorMessage(validationError),
+      });
+      throw validationError;
+    }
+
     await setRunStage(run.id, "finalizing", {
       rows_read: rowsRead,
       rows_loaded: rowsLoaded,
@@ -864,12 +898,21 @@ async function processIngestionRun(ingestionRunId) {
     });
 
     if (rowsLoaded > 0) {
-      await upsertCostAggregationsForRun({
+      await syncEc2CostHistoryForIngestionRun({
         ingestionRunId: run.id,
         tenantId: rawFile.tenantId,
         providerId: rawFile.cloudProviderId,
         billingSourceId: run.billingSourceId,
-        uploadedBy: rawFile.uploadedBy,
+      });
+      await syncDbCostHistoryForIngestionRun({
+        ingestionRunId: run.id,
+        tenantId: rawFile.tenantId,
+        providerId: rawFile.cloudProviderId,
+        billingSourceId: run.billingSourceId,
+      });
+      scheduleLoadBalancerCostAggregationAfterIngestion({
+        ingestionRunId: run.id,
+        cloudConnectionId: null,
       });
       await syncEc2CostHistoryForIngestionRun({
         ingestionRunId: run.id,
@@ -970,12 +1013,60 @@ async function processIngestionRun(ingestionRunId) {
           }`
         : null;
 
-    await markRunCompleted(run.id, {
-      rowsRead,
-      rowsLoaded,
-      rowsFailed,
-      warningMessage,
+    let replacementSummary;
+    try {
+      replacementSummary = await replaceFactRowsFromStagingInTransaction({
+        ingestionRunId: run.id,
+        billingSourceId: run.billingSourceId,
+        rowsRead,
+        rowsFailed,
+        warningMessage,
+      });
+    } catch (replacementError) {
+      logger.error("Staging-to-fact replacement failed", {
+        ingestionRunId: String(run.id),
+        billingSourceId: String(run.billingSourceId ?? ""),
+        reason: toErrorMessage(replacementError),
+      });
+      throw replacementError;
+    }
+    rowsLoaded = replacementSummary.rowsInserted;
+    logger.info("Ingestion fact replacement committed", {
+      ingestionRunId: String(run.id),
+      billingSourceId: String(run.billingSourceId ?? ""),
+      affectedUsageDates: replacementSummary.affectedUsageDates ?? [],
+      factRowsInserted: replacementSummary.rowsInserted ?? 0,
+      factRowsWithCurrentIngestionRunId: replacementSummary.factRowsWithCurrentIngestionRunId ?? 0,
     });
+
+    if (rowsLoaded > 0) {
+      try {
+        await upsertCostAggregationsForRun({
+          ingestionRunId: run.id,
+          tenantId: rawFile.tenantId,
+          providerId: rawFile.cloudProviderId,
+          billingSourceId: run.billingSourceId,
+          uploadedBy: rawFile.uploadedBy,
+          affectedUsageDates: Array.isArray(replacementSummary.affectedUsageDates)
+            ? replacementSummary.affectedUsageDates
+            : [],
+        });
+      } catch (aggregationError) {
+        logger.error("Aggregation refresh failed after fact commit", {
+          ingestionRunId: String(run.id),
+          billingSourceId: String(run.billingSourceId ?? ""),
+          affectedUsageDates: replacementSummary.affectedUsageDates ?? [],
+          reason: toErrorMessage(aggregationError),
+        });
+        await updateIngestionRunStatus(run.id, {
+          status: "completed_with_warnings",
+          current_step: "completed_with_warnings",
+          status_message: "Billing data is ready with warnings (aggregation refresh failed)",
+          error_message: `Aggregation refresh failed: ${toErrorMessage(aggregationError)}`,
+          last_heartbeat_at: now(),
+        });
+      }
+    }
     scheduleStorageLensSyncAfterIngestion({
       tenantId: rawFile.tenantId,
       billingSourceId: run.billingSourceId,

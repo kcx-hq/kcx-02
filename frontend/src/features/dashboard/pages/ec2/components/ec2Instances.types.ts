@@ -1,4 +1,4 @@
-import type { EC2ScopeFilters, EC2Thresholds } from "../ec2ExplorerControls.types";
+import type { EC2CompareOption, EC2ScopeFilters, EC2Thresholds } from "../ec2ExplorerControls.types";
 
 export type EC2InstancesStatus = "all" | "idle" | "underutilized" | "overutilized" | "uncovered" | "healthy";
 export type EC2InstancesStateFilter = "all" | "running" | "stopped" | "terminated";
@@ -13,6 +13,7 @@ export type EC2InstancesNetworkType =
   | "Other Network";
 
 export type EC2InstancesControlsState = {
+  compare: EC2CompareOption;
   status: EC2InstancesStatus;
   state: EC2InstancesStateFilter;
   instanceType: string;
@@ -51,6 +52,7 @@ export const EC2_INSTANCES_RESERVATION_OPTIONS: Array<{
 ];
 
 export const EC2_INSTANCES_DEFAULT_CONTROLS: EC2InstancesControlsState = {
+  compare: "none",
   status: "all",
   state: "all",
   instanceType: "all",

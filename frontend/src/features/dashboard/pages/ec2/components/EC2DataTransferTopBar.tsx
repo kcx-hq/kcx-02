@@ -2,6 +2,7 @@ import { Check, ChevronDown, Filter, RotateCcw } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { COMPARE_OPTIONS } from "../ec2ExplorerControls.types";
 
 import { EC2ExplorerScopeFilters } from "./EC2ExplorerScopeFilters";
 import {
@@ -20,6 +21,7 @@ type EC2DataTransferTopBarProps = {
 export function EC2DataTransferTopBar({ value, onChange, onReset, children }: EC2DataTransferTopBarProps) {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const [transferTypeOpen, setTransferTypeOpen] = useState(false);
+  const [compareOpen, setCompareOpen] = useState(false);
   const [scopeFiltersOpen, setScopeFiltersOpen] = useState(false);
 
   useEffect(() => {
@@ -27,11 +29,13 @@ export function EC2DataTransferTopBar({ value, onChange, onReset, children }: EC
       if (!rootRef.current) return;
       if (rootRef.current.contains(event.target as Node)) return;
       setTransferTypeOpen(false);
+      setCompareOpen(false);
     };
 
     const handleEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setTransferTypeOpen(false);
+        setCompareOpen(false);
       }
     };
 
@@ -60,6 +64,7 @@ export function EC2DataTransferTopBar({ value, onChange, onReset, children }: EC
               className="cost-explorer-toolbar-trigger"
               onClick={() => {
                 setTransferTypeOpen(false);
+                setCompareOpen(false);
                 setScopeFiltersOpen(true);
               }}
             >
@@ -68,6 +73,49 @@ export function EC2DataTransferTopBar({ value, onChange, onReset, children }: EC
                 <Filter className="cost-explorer-toolbar-trigger__caret" size={14} aria-hidden="true" />
               </span>
             </button>
+          </div>
+
+          <div className="cost-explorer-toolbar-item">
+            <button
+              type="button"
+              className={`cost-explorer-toolbar-trigger${compareOpen ? " is-active" : ""}`}
+              onClick={() => setCompareOpen((current) => !current)}
+              aria-expanded={compareOpen}
+              aria-haspopup="dialog"
+            >
+              <span className="cost-explorer-toolbar-trigger__label">Compare</span>
+              <span className="cost-explorer-toolbar-trigger__row">
+                <span className="cost-explorer-toolbar-trigger__value">
+                  {COMPARE_OPTIONS.find((item) => item.key === value.compare)?.label ?? "None"}
+                </span>
+                <ChevronDown className="cost-explorer-toolbar-trigger__caret" size={14} aria-hidden="true" />
+              </span>
+            </button>
+            {compareOpen ? (
+              <div className="cost-explorer-filter-popover ec2-explorer-filter-popover" role="dialog">
+                <div className="cost-explorer-filter-popover__list" role="listbox">
+                  {COMPARE_OPTIONS.map((option) => {
+                    const selected = option.key === value.compare;
+                    return (
+                      <button
+                        key={option.key}
+                        type="button"
+                        className={`cost-explorer-filter-option${selected ? " is-active" : ""}`}
+                        onClick={() => {
+                          update({ compare: option.key });
+                          setCompareOpen(false);
+                        }}
+                        role="option"
+                        aria-selected={selected}
+                      >
+                        <span>{option.label}</span>
+                        {selected ? <Check size={14} aria-hidden="true" /> : null}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : null}
           </div>
 
           <div className="cost-explorer-toolbar-item">

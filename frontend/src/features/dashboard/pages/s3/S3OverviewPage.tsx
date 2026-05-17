@@ -454,7 +454,7 @@ export default function S3OverviewPage() {
 
       {!hasBlockingError ? (
         <section
-          className="s3-overview-table-panel"
+          className="s3-overview-table-panel s3-overview-table-panel--cost"
           aria-label={
             showCostCategoryUsageInsightTable || showUsageOperationTable
               ? "S3 usage operation insights table"

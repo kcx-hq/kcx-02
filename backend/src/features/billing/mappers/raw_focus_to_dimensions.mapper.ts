@@ -77,6 +77,47 @@ const cleanStringOrNull = (value) => {
   return str.length > 0 ? str : null;
 };
 
+const AWS_REGION_CODE_REGEX = /^[a-z]{2}(?:-(?:gov|iso|isob))?-[a-z0-9-]+-\d+$/;
+const AWS_AVAILABILITY_ZONE_REGEX = /^[a-z]{2}(?:-(?:gov|iso|isob))?-[a-z0-9-]+-\d+[a-z]$/;
+
+const normalizeRegionAndAvailabilityZone = ({ rawRegionId, rawAvailabilityZone }) => {
+  const regionId = rawRegionId ? rawRegionId.trim().toLowerCase() : null;
+  const availabilityZoneNormalized = rawAvailabilityZone ? rawAvailabilityZone.trim().toLowerCase() : null;
+
+  if (!availabilityZoneNormalized) {
+    return {
+      regionId,
+      availabilityZone: null,
+    };
+  }
+
+  if (regionId && availabilityZoneNormalized === regionId) {
+    return {
+      regionId,
+      availabilityZone: null,
+    };
+  }
+
+  if (AWS_AVAILABILITY_ZONE_REGEX.test(availabilityZoneNormalized)) {
+    return {
+      regionId,
+      availabilityZone: availabilityZoneNormalized,
+    };
+  }
+
+  if (AWS_REGION_CODE_REGEX.test(availabilityZoneNormalized)) {
+    return {
+      regionId,
+      availabilityZone: null,
+    };
+  }
+
+  return {
+    regionId,
+    availabilityZone: availabilityZoneNormalized,
+  };
+};
+
 const toNumberOrNull = (value) => {
   if (isBlank(value)) return null;
   const normalized = typeof value === "string" ? value.replace(/,/g, "").trim() : value;
@@ -241,11 +282,18 @@ const shouldUpsertDimSubAccount = (rawRow) => {
   return !isBlank(mapped.sub_account_id);
 };
 
-const mapDimRegion = (rawRow) => ({
-  region_id: cleanStringOrNull(rawRow[RAW_COLUMNS.regionId]),
-  region_name: cleanStringOrNull(rawRow[RAW_COLUMNS.regionName]),
-  availability_zone: cleanStringOrNull(rawRow[RAW_COLUMNS.availabilityZone]),
-});
+const mapDimRegion = (rawRow) => {
+  const normalized = normalizeRegionAndAvailabilityZone({
+    rawRegionId: cleanStringOrNull(rawRow[RAW_COLUMNS.regionId]),
+    rawAvailabilityZone: cleanStringOrNull(rawRow[RAW_COLUMNS.availabilityZone]),
+  });
+
+  return {
+    region_id: normalized.regionId,
+    region_name: cleanStringOrNull(rawRow[RAW_COLUMNS.regionName]),
+    availability_zone: normalized.availabilityZone,
+  };
+};
 
 const shouldUpsertDimRegion = (rawRow) => {
   const mapped = mapDimRegion(rawRow);

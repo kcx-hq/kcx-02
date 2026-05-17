@@ -39,3 +39,18 @@ test("sanitizeFactMeasureNumerics normalizes public_on_demand fields from expone
   assert.equal(result.public_on_demand_rate, "0.00001");
   assert.equal(result.discount_amount, null);
 });
+
+test("sanitizeNumeric18_6 preserves tiny usage quantity 0.000000637 exactly", () => {
+  const result = sanitizeNumeric18_6("0.000000637", "consumed_quantity");
+  assert.equal(result, "0.000000637");
+});
+
+test("sanitizeNumeric18_6 preserves tiny usage quantity 0.0000002831", () => {
+  const result = sanitizeNumeric18_6("0.0000002831", "consumed_quantity");
+  assert.equal(result, "0.0000002831");
+});
+
+test("sanitizeNumeric18_6 preserves tiny usage quantity 0.0000002123", () => {
+  const result = sanitizeNumeric18_6("0.0000002123", "consumed_quantity");
+  assert.equal(result, "0.0000002123");
+});

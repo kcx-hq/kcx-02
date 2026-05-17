@@ -12,24 +12,6 @@ type SyncDbCostHistoryForIngestionRunParams = {
 
 type DateRow = { usage_date: string };
 type CountRow = { total: string | number };
-type BuildCountDiagnosticsRow = {
-  ranked_rows?: string | number | null;
-  deduped_rows?: string | number | null;
-  classified_rows?: string | number | null;
-  grouped_payload_rows?: string | number | null;
-  source_history_rows?: string | number | null;
-  grouped_fact_rows?: string | number | null;
-  null_usage_date_rows?: string | number | null;
-  null_resource_id_rows?: string | number | null;
-  null_db_service_rows?: string | number | null;
-  null_cost_category_rows?: string | number | null;
-  scoped_rows?: string | number | null;
-  unattributed_rows?: string | number | null;
-  unknown_engine_rows?: string | number | null;
-  null_billing_source_rows?: string | number | null;
-  null_provider_rows?: string | number | null;
-  null_tenant_rows?: string | number | null;
-};
 type SampleFactRow = {
   service: string | null;
   product: string | null;
@@ -60,85 +42,56 @@ const DB_RELATED_FILTER_SQL = `
 COALESCE(ds.service_name, '') = 'AmazonRDS'
 `;
 
-const DB_TEXT_CLASSIFIER_SQL = `
-LOWER(CONCAT_WS(
-  ' ',
-  COALESCE(f.usage_type, ''),
-  COALESCE(f.product_usage_type, ''),
-  COALESCE(f.line_item_description, ''),
-  COALESCE(f.operation, ''),
-  COALESCE(f.product_family, '')
-))
-`;
-
 const COST_CATEGORY_SQL = `
 CASE
   WHEN LOWER(COALESCE(f.line_item_type, '')) = 'tax' THEN 'tax'
   WHEN LOWER(COALESCE(f.line_item_type, '')) = 'credit' THEN 'credit'
   WHEN LOWER(COALESCE(f.line_item_type, '')) = 'refund' THEN 'refund'
-  WHEN ${DB_TEXT_CLASSIFIER_SQL} LIKE '%backup%'
-    OR ${DB_TEXT_CLASSIFIER_SQL} LIKE '%snapshot%'
-    THEN 'backup'
-  WHEN ${DB_TEXT_CLASSIFIER_SQL} LIKE '%datatransfer%'
-    OR ${DB_TEXT_CLASSIFIER_SQL} LIKE '%data transfer%'
-    OR ${DB_TEXT_CLASSIFIER_SQL} LIKE '%-bytes%'
-    THEN 'data_transfer'
-  WHEN ${DB_TEXT_CLASSIFIER_SQL} LIKE '%storageio%'
-    OR ${DB_TEXT_CLASSIFIER_SQL} LIKE '%iops%'
-    OR ${DB_TEXT_CLASSIFIER_SQL} LIKE '%io request%'
-    OR ${DB_TEXT_CLASSIFIER_SQL} LIKE '%io usage%'
-    THEN 'io'
-  WHEN (
-      ${DB_TEXT_CLASSIFIER_SQL} LIKE '%storage%'
-      OR ${DB_TEXT_CLASSIFIER_SQL} LIKE '%gb-month%'
-      OR ${DB_TEXT_CLASSIFIER_SQL} LIKE '%bytehrs%'
-      OR ${DB_TEXT_CLASSIFIER_SQL} LIKE '%gbytehrs%'
-      OR ${DB_TEXT_CLASSIFIER_SQL} LIKE '%gp2-storage%'
-      OR ${DB_TEXT_CLASSIFIER_SQL} LIKE '%gp3-storage%'
-      OR ${DB_TEXT_CLASSIFIER_SQL} LIKE '%magnetic-storage%'
-      OR ${DB_TEXT_CLASSIFIER_SQL} LIKE '%provisioned storage%'
-      OR ${DB_TEXT_CLASSIFIER_SQL} LIKE '%database storage%'
-    )
-    AND ${DB_TEXT_CLASSIFIER_SQL} NOT LIKE '%storageio%'
-    THEN 'storage'
-  WHEN ${DB_TEXT_CLASSIFIER_SQL} LIKE '%instanceusage:db.%'
-    OR ${DB_TEXT_CLASSIFIER_SQL} LIKE '%multi-azusage%'
-    OR ${DB_TEXT_CLASSIFIER_SQL} LIKE '%multi az usage%'
-    OR ${DB_TEXT_CLASSIFIER_SQL} LIKE '%serverlessv2usage%'
-    OR ${DB_TEXT_CLASSIFIER_SQL} LIKE '%acu%'
-    OR ${DB_TEXT_CLASSIFIER_SQL} LIKE '%vcpu%'
-    OR ${DB_TEXT_CLASSIFIER_SQL} LIKE '%database instance%'
-    OR ${DB_TEXT_CLASSIFIER_SQL} LIKE '%db instance%'
+  WHEN LOWER(COALESCE(f.usage_type, '')) LIKE '%instanceusage:db.%'
+    OR LOWER(COALESCE(f.product_usage_type, '')) LIKE '%instanceusage:db.%'
+    OR LOWER(COALESCE(f.usage_type, '')) LIKE '%aurora:serverlessv2usage%'
+    OR LOWER(COALESCE(f.product_usage_type, '')) LIKE '%aurora:serverlessv2usage%'
     THEN 'compute'
+  WHEN LOWER(COALESCE(f.usage_type, '')) LIKE '%rds:gp2-storage%'
+    OR LOWER(COALESCE(f.product_usage_type, '')) LIKE '%rds:gp2-storage%'
+    OR LOWER(COALESCE(f.usage_type, '')) LIKE '%aurora:storageusage%'
+    OR LOWER(COALESCE(f.product_usage_type, '')) LIKE '%aurora:storageusage%'
+    OR (
+      LOWER(COALESCE(f.usage_type, '')) LIKE '%storage%'
+      OR LOWER(COALESCE(f.product_usage_type, '')) LIKE '%storage%'
+    )
+    AND LOWER(COALESCE(f.usage_type, '')) NOT LIKE '%storageio%'
+    AND LOWER(COALESCE(f.product_usage_type, '')) NOT LIKE '%storageio%'
+    THEN 'storage'
+  WHEN LOWER(COALESCE(f.usage_type, '')) LIKE '%aurora:storageiousage%'
+    OR LOWER(COALESCE(f.product_usage_type, '')) LIKE '%aurora:storageiousage%'
+    OR LOWER(COALESCE(f.usage_type, '')) LIKE '%storageio%'
+    OR LOWER(COALESCE(f.product_usage_type, '')) LIKE '%storageio%'
+    THEN 'io'
+  WHEN LOWER(COALESCE(f.usage_type, '')) LIKE '%datatransfer-in-bytes%'
+    OR LOWER(COALESCE(f.product_usage_type, '')) LIKE '%datatransfer-in-bytes%'
+    OR LOWER(COALESCE(f.usage_type, '')) LIKE '%datatransfer-out-bytes%'
+    OR LOWER(COALESCE(f.product_usage_type, '')) LIKE '%datatransfer-out-bytes%'
+    THEN 'data_transfer'
+  WHEN LOWER(COALESCE(f.usage_type, '')) LIKE '%backup%'
+    OR LOWER(COALESCE(f.product_usage_type, '')) LIKE '%backup%'
+    OR LOWER(COALESCE(f.usage_type, '')) LIKE '%snapshot%'
+    OR LOWER(COALESCE(f.product_usage_type, '')) LIKE '%snapshot%'
+    THEN 'backup'
   ELSE 'other'
 END
 `;
 
 const DB_ENGINE_SQL = `
 CASE
-  WHEN ${DB_TEXT_CLASSIFIER_SQL} LIKE '%aurora postgresql%'
-    OR ${DB_TEXT_CLASSIFIER_SQL} LIKE '%aurora-postgresql%'
-    OR ${DB_TEXT_CLASSIFIER_SQL} LIKE '%aurora postgres%'
-    THEN 'Aurora PostgreSQL'
-  WHEN ${DB_TEXT_CLASSIFIER_SQL} LIKE '%aurora mysql%'
-    OR ${DB_TEXT_CLASSIFIER_SQL} LIKE '%aurora-mysql%'
-    THEN 'Aurora MySQL'
-  WHEN ${DB_TEXT_CLASSIFIER_SQL} LIKE '%aurora%'
+  WHEN LOWER(COALESCE(f.usage_type, '')) LIKE '%aurora%'
+    OR LOWER(COALESCE(f.product_usage_type, '')) LIKE '%aurora%'
+    OR LOWER(COALESCE(f.operation, '')) LIKE '%createdbinstance:0021%'
+      AND (
+        LOWER(COALESCE(f.usage_type, '')) LIKE '%aurora%'
+        OR LOWER(COALESCE(f.product_usage_type, '')) LIKE '%aurora%'
+      )
     THEN 'Aurora'
-  WHEN LOWER(COALESCE(f.operation, '')) LIKE '%createdbinstance:0014%'
-    THEN 'PostgreSQL'
-  WHEN ${DB_TEXT_CLASSIFIER_SQL} LIKE '%postgresql%'
-    OR ${DB_TEXT_CLASSIFIER_SQL} LIKE '%postgres%'
-    THEN 'PostgreSQL'
-  WHEN ${DB_TEXT_CLASSIFIER_SQL} LIKE '%sql server%'
-    OR ${DB_TEXT_CLASSIFIER_SQL} LIKE '%sqlserver%'
-    THEN 'SQL Server'
-  WHEN ${DB_TEXT_CLASSIFIER_SQL} LIKE '%mariadb%'
-    THEN 'MariaDB'
-  WHEN ${DB_TEXT_CLASSIFIER_SQL} LIKE '%mysql%'
-    THEN 'MySQL'
-  WHEN ${DB_TEXT_CLASSIFIER_SQL} LIKE '%oracle%'
-    THEN 'Oracle'
   ELSE 'Unknown'
 END
 `;
@@ -194,209 +147,6 @@ const buildDbSyncErrorDetails = (error: unknown) => {
     parameters: toSerializable(err?.parameters),
   };
 };
-
-async function logDbCostHistoryBuildDiagnostics({
-  transaction,
-  dates,
-  ingestionRunId,
-  tenantId,
-  providerId,
-  billingSourceId,
-}: {
-  transaction: Transaction;
-  dates: string[];
-  ingestionRunId: string;
-  tenantId: string;
-  providerId: string;
-  billingSourceId: string;
-}): Promise<void> {
-  const diagnosticsRows = await sequelize.query<BuildCountDiagnosticsRow>(
-    `
-WITH ranked_facts AS (
-  SELECT
-    f.*,
-    ${EFFECTIVE_USAGE_DATE_SQL} AS effective_usage_date,
-    ROW_NUMBER() OVER (
-      PARTITION BY
-        f.tenant_id,
-        f.provider_id,
-        f.billing_source_id,
-        ${EFFECTIVE_USAGE_DATE_SQL},
-        COALESCE(f.service_key, -1),
-        COALESCE(f.sub_account_key, -1),
-        COALESCE(f.region_key, -1),
-        COALESCE(f.resource_key, -1),
-        COALESCE(f.billing_account_key, -1),
-        COALESCE(f.usage_type, ''),
-        COALESCE(f.product_usage_type, ''),
-        COALESCE(f.operation, ''),
-        COALESCE(f.line_item_type, ''),
-        COALESCE(f.billed_cost, 0),
-        COALESCE(f.effective_cost, 0),
-        COALESCE(f.list_cost, 0),
-        COALESCE(f.consumed_quantity, 0),
-        COALESCE(f.usage_start_time, f.usage_end_time)
-      ORDER BY
-        f.ingestion_run_id DESC NULLS LAST,
-        f.id DESC
-    ) AS dedupe_rank
-  FROM fact_cost_line_items f
-  LEFT JOIN dim_date dd_usage ON dd_usage.id = f.usage_date_key
-  WHERE f.tenant_id = CAST(:tenantId AS UUID)
-    AND f.provider_id = CAST(:providerId AS BIGINT)
-    AND f.billing_source_id = CAST(:billingSourceId AS BIGINT)
-    AND f.ingestion_run_id = CAST(:ingestionRunId AS BIGINT)
-    AND ${EFFECTIVE_USAGE_DATE_SQL} IN (:usageDates)
-),
-classified AS (
-  SELECT
-    f.effective_usage_date AS usage_date,
-    f.tenant_id,
-    bs.cloud_connection_id,
-    f.billing_source_id,
-    f.provider_id,
-    f.service_key,
-    f.region_key,
-    f.sub_account_key,
-    f.resource_key,
-    ${RESOURCE_ID_SQL} AS resource_id,
-    ${DB_SERVICE_SQL} AS db_service,
-    ${DB_ENGINE_SQL} AS db_engine,
-    CASE
-      WHEN ${COST_CATEGORY_SQL} IN (
-        'compute',
-        'storage',
-        'io',
-        'backup',
-        'data_transfer',
-        'tax',
-        'credit',
-        'refund',
-        'other'
-      ) THEN ${COST_CATEGORY_SQL}
-      ELSE 'other'
-    END AS cost_category,
-    COALESCE(f.billed_cost, 0) AS billed_cost,
-    COALESCE(f.effective_cost, 0) AS effective_cost,
-    COALESCE(f.list_cost, 0) AS list_cost,
-    COALESCE(f.consumed_quantity, 0) AS usage_quantity,
-    COALESCE(NULLIF(dba.billing_currency, ''), 'USD') AS currency_code
-  FROM ranked_facts f
-  LEFT JOIN dim_service ds ON ds.id = f.service_key
-  LEFT JOIN dim_resource dres ON dres.id = f.resource_key
-  LEFT JOIN dim_billing_account dba ON dba.id = f.billing_account_key
-  LEFT JOIN billing_sources bs ON bs.id = f.billing_source_id
-  WHERE f.dedupe_rank = 1
-    AND ${DB_RELATED_FILTER_SQL}
-),
-grouped AS (
-  SELECT
-    usage_date,
-    tenant_id,
-    cloud_connection_id,
-    resource_id,
-    cost_category
-  FROM classified
-  GROUP BY usage_date, tenant_id, cloud_connection_id, resource_id, cost_category
-)
-SELECT
-  (SELECT COUNT(*) FROM ranked_facts) AS ranked_rows,
-  (SELECT COUNT(*) FROM ranked_facts WHERE dedupe_rank = 1) AS deduped_rows,
-  (SELECT COUNT(*) FROM classified) AS classified_rows,
-  (SELECT COUNT(*) FROM grouped) AS grouped_payload_rows,
-  (SELECT COUNT(*) FROM ranked_facts WHERE effective_usage_date IS NULL) AS null_usage_date_rows,
-  (SELECT COUNT(*) FROM classified WHERE resource_id IS NULL) AS null_resource_id_rows,
-  (SELECT COUNT(*) FROM classified WHERE db_service IS NULL) AS null_db_service_rows,
-  (SELECT COUNT(*) FROM classified WHERE cost_category IS NULL) AS null_cost_category_rows,
-  (SELECT COUNT(*) FROM classified WHERE resource_id LIKE 'db-scope:%') AS scoped_rows,
-  (SELECT COUNT(*) FROM classified WHERE resource_id LIKE 'db-unattributed:%') AS unattributed_rows,
-  (SELECT COUNT(*) FROM classified WHERE COALESCE(db_engine, 'Unknown') = 'Unknown') AS unknown_engine_rows,
-  (SELECT COUNT(*) FROM classified WHERE billing_source_id IS NULL) AS null_billing_source_rows,
-  (SELECT COUNT(*) FROM classified WHERE provider_id IS NULL) AS null_provider_rows,
-  (SELECT COUNT(*) FROM classified WHERE tenant_id IS NULL) AS null_tenant_rows;
-`,
-    {
-      replacements: {
-        usageDates: dates,
-        ingestionRunId,
-        tenantId,
-        providerId,
-        billingSourceId,
-      },
-      type: QueryTypes.SELECT,
-      transaction,
-    },
-  );
-
-  logger.info("DB processor v1: db_cost_history_daily_build_diagnostics", {
-    tenantId,
-    providerId,
-    billingSourceId,
-    ingestionRunId,
-    affectedDateCount: dates.length,
-    diagnostics: diagnosticsRows[0] ?? null,
-  });
-}
-
-async function logFactDbResourceDailyBuildDiagnostics({
-  transaction,
-  dates,
-  tenantId,
-  providerId,
-  billingSourceId,
-}: {
-  transaction: Transaction;
-  dates: string[];
-  tenantId: string;
-  providerId: string;
-  billingSourceId: string;
-}): Promise<void> {
-  const diagnosticsRows = await sequelize.query<BuildCountDiagnosticsRow>(
-    `
-WITH source_history AS (
-  SELECT *
-  FROM db_cost_history_daily d
-  WHERE d.tenant_id = CAST(:tenantId AS UUID)
-    AND d.provider_id = CAST(:providerId AS BIGINT)
-    AND d.billing_source_id = CAST(:billingSourceId AS BIGINT)
-    AND d.usage_date IN (:usageDates)
-),
-grouped AS (
-  SELECT
-    d.tenant_id,
-    d.cloud_connection_id,
-    d.usage_date,
-    d.resource_id
-  FROM source_history d
-  GROUP BY d.tenant_id, d.cloud_connection_id, d.usage_date, d.resource_id
-)
-SELECT
-  (SELECT COUNT(*) FROM source_history) AS source_history_rows,
-  (SELECT COUNT(*) FROM grouped) AS grouped_fact_rows,
-  (SELECT COUNT(*) FROM source_history WHERE resource_id IS NULL) AS null_resource_id_rows,
-  (SELECT COUNT(*) FROM source_history WHERE db_service IS NULL) AS null_db_service_rows,
-  (SELECT COUNT(*) FROM source_history WHERE cost_category IS NULL) AS null_cost_category_rows,
-  (SELECT COUNT(*) FROM source_history WHERE resource_id LIKE 'db-scope:%') AS scoped_rows,
-  (SELECT COUNT(*) FROM source_history WHERE resource_id LIKE 'db-unattributed:%') AS unattributed_rows,
-  (SELECT COUNT(*) FROM source_history WHERE billing_source_id IS NULL) AS null_billing_source_rows,
-  (SELECT COUNT(*) FROM source_history WHERE provider_id IS NULL) AS null_provider_rows,
-  (SELECT COUNT(*) FROM source_history WHERE tenant_id IS NULL) AS null_tenant_rows;
-`,
-    {
-      replacements: { tenantId, providerId, billingSourceId, usageDates: dates },
-      type: QueryTypes.SELECT,
-      transaction,
-    },
-  );
-
-  logger.info("DB processor v1: fact_db_resource_daily_build_diagnostics", {
-    tenantId,
-    providerId,
-    billingSourceId,
-    affectedDateCount: dates.length,
-    diagnostics: diagnosticsRows[0] ?? null,
-  });
-}
 
 async function logDbHistoryInsertDiagnostics({
   ingestionRunId,
@@ -630,15 +380,6 @@ WHERE tenant_id = CAST(:tenantId AS UUID)
     affectedDateCount: dates.length,
   });
 
-  await logDbCostHistoryBuildDiagnostics({
-    transaction,
-    dates,
-    ingestionRunId,
-    tenantId,
-    providerId,
-    billingSourceId,
-  });
-
   const [result] = await sequelize.query(
     `
 INSERT INTO db_cost_history_daily (
@@ -678,7 +419,7 @@ SELECT
   MIN(x.resource_key) AS resource_key,
   x.resource_id,
   MIN(x.db_service) AS db_service,
-  re.preferred_engine AS db_engine,
+  COALESCE(MIN(NULLIF(x.db_engine, 'Unknown')), 'Unknown') AS db_engine,
   x.cost_category,
   COALESCE(SUM(x.billed_cost), 0)::DECIMAL(18,6) AS billed_cost,
   COALESCE(SUM(x.effective_cost), 0)::DECIMAL(18,6) AS effective_cost,
@@ -767,83 +508,12 @@ FROM (
   WHERE f.dedupe_rank = 1
     AND ${DB_RELATED_FILTER_SQL}
 ) x
-LEFT JOIN (
-  SELECT
-    xe.tenant_id,
-    xe.cloud_connection_id,
-    xe.resource_id,
-    CASE
-      WHEN MAX(CASE WHEN xe.db_engine = 'Aurora PostgreSQL' THEN 1 ELSE 0 END) = 1 THEN 'Aurora PostgreSQL'
-      WHEN MAX(CASE WHEN xe.db_engine = 'Aurora MySQL' THEN 1 ELSE 0 END) = 1 THEN 'Aurora MySQL'
-      WHEN MAX(CASE WHEN xe.db_engine = 'Aurora' THEN 1 ELSE 0 END) = 1 THEN 'Aurora'
-      WHEN MAX(CASE WHEN xe.db_engine = 'PostgreSQL' THEN 1 ELSE 0 END) = 1 THEN 'PostgreSQL'
-      WHEN MAX(CASE WHEN xe.db_engine = 'MySQL' THEN 1 ELSE 0 END) = 1 THEN 'MySQL'
-      WHEN MAX(CASE WHEN xe.db_engine = 'MariaDB' THEN 1 ELSE 0 END) = 1 THEN 'MariaDB'
-      WHEN MAX(CASE WHEN xe.db_engine = 'SQL Server' THEN 1 ELSE 0 END) = 1 THEN 'SQL Server'
-      WHEN MAX(CASE WHEN xe.db_engine = 'Oracle' THEN 1 ELSE 0 END) = 1 THEN 'Oracle'
-      ELSE 'Unknown'
-    END AS preferred_engine
-  FROM (
-    WITH ranked_facts AS (
-      SELECT
-        f.*,
-        ${EFFECTIVE_USAGE_DATE_SQL} AS effective_usage_date,
-        ROW_NUMBER() OVER (
-          PARTITION BY
-            f.tenant_id,
-            f.provider_id,
-            f.billing_source_id,
-            ${EFFECTIVE_USAGE_DATE_SQL},
-            COALESCE(f.service_key, -1),
-            COALESCE(f.sub_account_key, -1),
-            COALESCE(f.region_key, -1),
-            COALESCE(f.resource_key, -1),
-            COALESCE(f.billing_account_key, -1),
-            COALESCE(f.usage_type, ''),
-            COALESCE(f.product_usage_type, ''),
-            COALESCE(f.operation, ''),
-            COALESCE(f.line_item_type, ''),
-            COALESCE(f.billed_cost, 0),
-            COALESCE(f.effective_cost, 0),
-            COALESCE(f.list_cost, 0),
-            COALESCE(f.consumed_quantity, 0),
-            COALESCE(f.usage_start_time, f.usage_end_time)
-          ORDER BY
-            f.ingestion_run_id DESC NULLS LAST,
-            f.id DESC
-        ) AS dedupe_rank
-      FROM fact_cost_line_items f
-      LEFT JOIN dim_date dd_usage ON dd_usage.id = f.usage_date_key
-      WHERE f.tenant_id = CAST(:tenantId AS UUID)
-        AND f.provider_id = CAST(:providerId AS BIGINT)
-        AND f.billing_source_id = CAST(:billingSourceId AS BIGINT)
-        AND f.ingestion_run_id = CAST(:ingestionRunId AS BIGINT)
-        AND ${EFFECTIVE_USAGE_DATE_SQL} IN (:usageDates)
-    )
-    SELECT
-      f.tenant_id,
-      bs.cloud_connection_id,
-      ${RESOURCE_ID_SQL} AS resource_id,
-      ${DB_ENGINE_SQL} AS db_engine
-    FROM ranked_facts f
-    LEFT JOIN dim_service ds ON ds.id = f.service_key
-    LEFT JOIN dim_resource dres ON dres.id = f.resource_key
-    LEFT JOIN billing_sources bs ON bs.id = f.billing_source_id
-    WHERE f.dedupe_rank = 1
-      AND ${DB_RELATED_FILTER_SQL}
-  ) xe
-  GROUP BY xe.tenant_id, xe.cloud_connection_id, xe.resource_id
-) re
-  ON re.tenant_id = x.tenant_id
- AND re.cloud_connection_id = x.cloud_connection_id
- AND re.resource_id = x.resource_id
 GROUP BY
   x.usage_date,
   x.tenant_id,
   x.cloud_connection_id,
   x.resource_id,
-  x.cost_category,
-  re.preferred_engine;
+  x.cost_category;
 `,
     {
       replacements: {
@@ -865,22 +535,6 @@ GROUP BY
   });
 
   const insertedRows = (result as { rowCount?: number } | undefined)?.rowCount ?? 0;
-  const actualInsertedRowsResult = await sequelize.query<CountRow>(
-    `
-SELECT COUNT(*)::text AS total
-FROM db_cost_history_daily
-WHERE tenant_id = CAST(:tenantId AS UUID)
-  AND provider_id = CAST(:providerId AS BIGINT)
-  AND billing_source_id = CAST(:billingSourceId AS BIGINT)
-  AND usage_date IN (:usageDates);
-`,
-    {
-      replacements: { tenantId, providerId, billingSourceId, usageDates: dates },
-      type: QueryTypes.SELECT,
-      transaction,
-    },
-  );
-  const actualInsertedRows = Number((actualInsertedRowsResult[0]?.total as string | number | undefined) ?? 0);
 
   logger.info("DB processor v1: db_cost_history_daily_deleted", {
     tenantId,
@@ -888,8 +542,6 @@ WHERE tenant_id = CAST(:tenantId AS UUID)
     billingSourceId,
     affectedDateCount: dates.length,
     deletedRows,
-    insertedRows,
-    actualInsertedRows,
   });
 
   return insertedRows;
@@ -955,14 +607,6 @@ WHERE tenant_id = CAST(:tenantId AS UUID)
     affectedDateCount: dates.length,
   });
 
-  await logFactDbResourceDailyBuildDiagnostics({
-    transaction,
-    dates,
-    tenantId,
-    providerId,
-    billingSourceId,
-  });
-
   const [result] = await sequelize.query(
     `
 INSERT INTO fact_db_resource_daily (
@@ -1008,17 +652,7 @@ SELECT
   END AS resource_arn,
   MAX(COALESCE(NULLIF(dr.resource_name, ''), d.resource_id)) AS resource_name,
   MAX(d.db_service) AS db_service,
-  CASE
-    WHEN MAX(CASE WHEN d.db_engine = 'Aurora PostgreSQL' THEN 1 ELSE 0 END) = 1 THEN 'Aurora PostgreSQL'
-    WHEN MAX(CASE WHEN d.db_engine = 'Aurora MySQL' THEN 1 ELSE 0 END) = 1 THEN 'Aurora MySQL'
-    WHEN MAX(CASE WHEN d.db_engine = 'Aurora' THEN 1 ELSE 0 END) = 1 THEN 'Aurora'
-    WHEN MAX(CASE WHEN d.db_engine = 'PostgreSQL' THEN 1 ELSE 0 END) = 1 THEN 'PostgreSQL'
-    WHEN MAX(CASE WHEN d.db_engine = 'MySQL' THEN 1 ELSE 0 END) = 1 THEN 'MySQL'
-    WHEN MAX(CASE WHEN d.db_engine = 'MariaDB' THEN 1 ELSE 0 END) = 1 THEN 'MariaDB'
-    WHEN MAX(CASE WHEN d.db_engine = 'SQL Server' THEN 1 ELSE 0 END) = 1 THEN 'SQL Server'
-    WHEN MAX(CASE WHEN d.db_engine = 'Oracle' THEN 1 ELSE 0 END) = 1 THEN 'Oracle'
-    ELSE 'Unknown'
-  END AS db_engine,
+  MAX(d.db_engine) AS db_engine,
   CASE
     WHEN d.resource_id = 'db-scope:AmazonRDS' THEN 'scoped'
     WHEN LOWER(d.resource_id) LIKE 'arn:aws:rds:%:db:%' THEN 'instance'
@@ -1068,22 +702,6 @@ GROUP BY
   });
 
   const insertedRows = (result as { rowCount?: number } | undefined)?.rowCount ?? 0;
-  const actualInsertedRowsResult = await sequelize.query<CountRow>(
-    `
-SELECT COUNT(*)::text AS total
-FROM fact_db_resource_daily
-WHERE tenant_id = CAST(:tenantId AS UUID)
-  AND provider_id = CAST(:providerId AS BIGINT)
-  AND billing_source_id = CAST(:billingSourceId AS BIGINT)
-  AND usage_date IN (:usageDates);
-`,
-    {
-      replacements: { tenantId, providerId, billingSourceId, usageDates: dates },
-      type: QueryTypes.SELECT,
-      transaction,
-    },
-  );
-  const actualInsertedRows = Number((actualInsertedRowsResult[0]?.total as string | number | undefined) ?? 0);
 
   logger.info("DB processor v1: fact_db_resource_daily_deleted", {
     tenantId,
@@ -1091,8 +709,6 @@ WHERE tenant_id = CAST(:tenantId AS UUID)
     billingSourceId,
     affectedDateCount: dates.length,
     deletedRows,
-    insertedRows,
-    actualInsertedRows,
   });
 
   return insertedRows;

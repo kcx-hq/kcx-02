@@ -1,4 +1,5 @@
 export type EC2Metric = "cost" | "usage" | "instances" | "volumes" | "data-transfer";
+export type EC2CompareOption = "none" | "previous-period";
 export type EC2Granularity = "hourly" | "daily" | "monthly";
 export type EC2VolumeView = "storage" | "storage_hours" | "cost" | "count";
 
@@ -55,6 +56,7 @@ export type EC2Thresholds = {
 
 export type EC2ExplorerControlsState = {
   metric: EC2Metric;
+  compare: EC2CompareOption;
   costBasis: EC2CostBasis;
   usageType: EC2UsageType;
   usageAggregation: EC2Aggregation;
@@ -74,7 +76,6 @@ export const METRIC_OPTIONS: Array<{ key: EC2Metric; label: string }> = [
   { key: "cost", label: "Cost" },
   { key: "usage", label: "Usage" },
   { key: "data-transfer", label: "Data Transfer" },
-  { key: "instances", label: "Instances" },
   { key: "volumes", label: "Volumes" },
 ];
 
@@ -82,6 +83,11 @@ export const GRANULARITY_OPTIONS: Array<{ key: EC2Granularity; label: string }> 
   { key: "hourly", label: "Hourly" },
   { key: "daily", label: "Daily" },
   { key: "monthly", label: "Monthly" },
+];
+
+export const COMPARE_OPTIONS: Array<{ key: EC2CompareOption; label: string }> = [
+  { key: "none", label: "None" },
+  { key: "previous-period", label: "Previous Period" },
 ];
 
 export const VOLUME_VIEW_OPTIONS: Array<{ key: EC2VolumeView; label: string }> = [
@@ -201,6 +207,7 @@ export const DEFAULT_THRESHOLDS: EC2Thresholds = {
 
 export const DEFAULT_EC2_EXPLORER_CONTROLS: EC2ExplorerControlsState = {
   metric: "cost",
+  compare: "none",
   costBasis: "effective_cost",
   usageType: "cpu",
   usageAggregation: "avg",

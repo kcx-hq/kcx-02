@@ -1,16 +1,17 @@
 import { useDeferredValue, useMemo, useState } from "react"
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom"
 import { RefreshCw, Search, SlidersHorizontal, X } from "lucide-react"
+import type { ColDef, ICellRendererParams } from "ag-grid-community"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import type {
   InventoryEc2SnapshotRow,
   InventoryEc2SnapshotStatus,
 } from "@/features/client-home/api/inventory-snapshots.api"
 import { TablePagination } from "@/features/client-home/components/TablePagination"
+import { BaseDataTable } from "@/features/dashboard/common/tables/BaseDataTable"
 import { useInventoryEc2Snapshots } from "@/features/client-home/hooks/useInventoryEc2Snapshots"
 import { ApiError } from "@/lib/api"
 import { cn } from "@/lib/utils"
@@ -32,6 +33,7 @@ const currencyFormatter = new Intl.NumberFormat("en-US", {
 })
 
 const EMPTY_SNAPSHOT_ITEMS: InventoryEc2SnapshotRow[] = []
+type SnapshotTableRow = InventoryEc2SnapshotRow & { id: string }
 
 function toTitleCase(value: string): string {
   return value
@@ -232,6 +234,136 @@ export function ClientInventorySnapshotsPage() {
       : snapshotsQuery.error instanceof Error
         ? snapshotsQuery.error.message
         : "Failed to load EC2 inventory snapshots."
+  const isSnapshotsLoading = snapshotsQuery.isLoading || snapshotsQuery.isFetching
+
+  const tableRows = useMemo<SnapshotTableRow[]>(
+    () =>
+      rows.map((row) => ({
+        ...row,
+        id: `${row.snapshotId}:${row.region ?? "no-region"}:${row.accountId ?? "no-account"}`,
+      })),
+    [rows],
+  )
+
+  const columnDefs = useMemo<ColDef<SnapshotTableRow>[]>(() => {
+    const columns: ColDef<SnapshotTableRow>[] = [
+      {
+        headerName: "Snapshot ID",
+        field: "snapshotId",
+        minWidth: 240,
+        cellClass: "font-medium text-text-primary",
+      },
+      {
+        headerName: "Source Volume",
+        field: "sourceVolumeId",
+        minWidth: 220,
+        valueFormatter: (params) => getSourceVolumeLabel(params.data as InventoryEc2SnapshotRow),
+        cellRenderer: (params: ICellRendererParams<SnapshotTableRow, string | null>) => {
+          const snapshot = params.data
+          if (!snapshot?.sourceVolumeId) return getSourceVolumeLabel(snapshot as InventoryEc2SnapshotRow)
+          return (
+            <button
+              type="button"
+              className="ec2-linked-cell-btn"
+              onClick={() => {
+                const next = new URLSearchParams(location.search)
+                next.set("volumeId", snapshot.sourceVolumeId ?? "")
+                navigate({ pathname: VOLUMES_PAGE_PATH, search: next.toString() })
+              }}
+            >
+              {getSourceVolumeLabel(snapshot)}
+            </button>
+          )
+        },
+      },
+      {
+        headerName: "Volume Status",
+        field: "volumeStatus",
+        minWidth: 170,
+        valueFormatter: (params) => formatCell(params.value ? toTitleCase(String(params.value)) : null),
+      },
+    ]
+    if (hasRegionColumn) {
+      columns.push({
+        headerName: "Region",
+        field: "region",
+        minWidth: 120,
+        valueFormatter: (params) => formatCell(params.value as string | null),
+      })
+    }
+    columns.push(
+      {
+        headerName: "State",
+        field: "state",
+        minWidth: 140,
+        cellRenderer: (params: ICellRendererParams<SnapshotTableRow, string | null>) => (
+          <Badge variant="outline" className={cn("rounded-md", getStateTone(params.data?.state ?? null))}>
+            {toTitleCase(params.data?.state ?? "unknown")}
+          </Badge>
+        ),
+      },
+      {
+        headerName: "Age",
+        field: "ageDays",
+        minWidth: 100,
+        valueFormatter: (params) => formatAgeDays(typeof params.value === "number" ? params.value : null),
+      },
+      {
+        headerName: "Status",
+        field: "status",
+        minWidth: 140,
+        cellRenderer: (params: ICellRendererParams<SnapshotTableRow, InventoryEc2SnapshotStatus>) => (
+          <Badge variant="outline" className={cn("rounded-md", getStatusTone(params.data?.status ?? "normal"))}>
+            {getStatusLabel(params.data?.status ?? "normal")}
+          </Badge>
+        ),
+      },
+      {
+        headerName: "Cost",
+        field: "cost",
+        minWidth: 120,
+        valueFormatter: (params) => formatCurrency(typeof params.value === "number" ? params.value : null, "USD"),
+      },
+      {
+        headerName: "Estimated Savings",
+        field: "estimatedSavings",
+        minWidth: 170,
+        valueFormatter: (params) => formatCurrency(typeof params.value === "number" ? params.value : null, "USD"),
+      },
+      {
+        headerName: "Action",
+        field: "id",
+        minWidth: 240,
+        cellRenderer: (params: ICellRendererParams<SnapshotTableRow>) => {
+          const snapshot = params.data
+          const status = snapshot?.status ?? "normal"
+          const actionPath = snapshot ? getOptimizationActionPath(snapshot.snapshotId, status) : null
+          const prefill = snapshot ? getOptimizationPrefill(snapshot.snapshotId, status) : null
+          if (!actionPath) return "-"
+          return (
+            <button
+              type="button"
+              className="text-left text-xs font-medium text-sky-700 underline decoration-sky-300 underline-offset-2 hover:text-sky-800"
+              onClick={() =>
+                navigate(
+                  {
+                    pathname: "/dashboard/ec2/optimization",
+                    search: buildOptimizationSearch(location.search),
+                  },
+                  {
+                    state: prefill ? { snapshotOptimizationPrefill: prefill } : undefined,
+                  },
+                )
+              }
+            >
+              {getActionLabel(status)}
+            </button>
+          )
+        },
+      },
+    )
+    return columns
+  }, [hasRegionColumn, location.search, navigate])
 
   const resetFilters = () => {
     setSearchInput("")
@@ -368,109 +500,18 @@ export function ClientInventorySnapshotsPage() {
             </div>
           ) : null}
 
-          {snapshotsQuery.isLoading ? (
-            <div className="rounded-md border border-[color:var(--border-light)] bg-[color:var(--bg-surface)] px-4 py-6 text-sm text-text-secondary">
-              Loading inventory snapshots...
-            </div>
+          {isSnapshotsLoading ? (
+            <div className="ec2-explorer-table__skeleton" aria-hidden="true" />
           ) : (
-            <Table className="min-w-[1040px]">
-              <TableHeader>
-                <TableRow className="border-b border-[color:var(--border-light)] bg-transparent hover:bg-transparent">
-                  <TableHead className="py-4">Snapshot ID</TableHead>
-                  <TableHead className="py-4">Source Volume</TableHead>
-                  <TableHead className="py-4">Volume Status</TableHead>
-                  {hasRegionColumn ? <TableHead className="py-4">Region</TableHead> : null}
-                  <TableHead className="py-4">State</TableHead>
-                  <TableHead className="py-4">Age</TableHead>
-                  <TableHead className="py-4">Status</TableHead>
-                  <TableHead className="py-4 text-right">Cost</TableHead>
-                  <TableHead className="py-4 text-right">Estimated Savings</TableHead>
-                  <TableHead className="py-4">Action</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {rows.length === 0 ? (
-                  <TableRow className="border-b border-[color:var(--border-light)]">
-                    <TableCell colSpan={hasRegionColumn ? 10 : 9} className="py-12 text-center text-sm text-text-secondary">
-                      No inventory snapshots found for the selected filters.
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  rows.map((snapshot) => {
-                    const status = snapshot.status
-                    const actionPath = getOptimizationActionPath(snapshot.snapshotId, status)
-                    const prefill = getOptimizationPrefill(snapshot.snapshotId, status)
-                    return (
-                    <TableRow
-                      key={`${snapshot.snapshotId}:${snapshot.region ?? "no-region"}:${snapshot.accountId ?? "no-account"}`}
-                      className="border-b border-[color:var(--border-light)] hover:bg-[rgba(62,138,118,0.06)]"
-                    >
-                      <TableCell className="py-5 font-medium text-text-primary">{snapshot.snapshotId}</TableCell>
-                      <TableCell className="py-5">
-                        {snapshot.sourceVolumeId ? (
-                          <button
-                            type="button"
-                            className="ec2-linked-cell-btn"
-                            onClick={() => {
-                              const next = new URLSearchParams(location.search)
-                              next.set("volumeId", snapshot.sourceVolumeId ?? "")
-                              navigate({ pathname: VOLUMES_PAGE_PATH, search: next.toString() })
-                            }}
-                          >
-                            {getSourceVolumeLabel(snapshot)}
-                          </button>
-                        ) : (
-                          getSourceVolumeLabel(snapshot)
-                        )}
-                      </TableCell>
-                      <TableCell className="py-5">{formatCell(snapshot.volumeStatus ? toTitleCase(snapshot.volumeStatus) : null)}</TableCell>
-                      {hasRegionColumn ? <TableCell className="py-5">{formatCell(snapshot.region)}</TableCell> : null}
-                      <TableCell className="py-5">
-                        <Badge variant="outline" className={cn("rounded-md", getStateTone(snapshot.state))}>
-                          {toTitleCase(snapshot.state ?? "unknown")}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="py-5">{formatAgeDays(snapshot.ageDays)}</TableCell>
-                      <TableCell className="py-5">
-                        <Badge variant="outline" className={cn("rounded-md", getStatusTone(status))}>
-                          {getStatusLabel(status)}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="py-5 text-right font-medium text-text-primary">
-                        {formatCurrency(snapshot.cost, "USD")}
-                      </TableCell>
-                      <TableCell className="py-5 text-right font-medium text-text-primary">
-                        {formatCurrency(snapshot.estimatedSavings, "USD")}
-                      </TableCell>
-                      <TableCell className="py-5">
-                        {actionPath ? (
-                          <button
-                            type="button"
-                            className="text-left text-xs font-medium text-sky-700 underline decoration-sky-300 underline-offset-2 hover:text-sky-800"
-                            onClick={() =>
-                              navigate({
-                                pathname: "/dashboard/ec2/optimization",
-                                search: buildOptimizationSearch(location.search),
-                              }, {
-                                state: prefill ? { snapshotOptimizationPrefill: prefill } : undefined,
-                              })
-                            }
-                          >
-                            {getActionLabel(status)}
-                          </button>
-                        ) : (
-                          "-"
-                        )}
-                      </TableCell>
-                    </TableRow>
-                    )
-                  })
-                )}
-              </TableBody>
-            </Table>
+            <BaseDataTable
+              columnDefs={columnDefs}
+              rowData={tableRows}
+              autoHeight
+              emptyMessage="No inventory snapshots found for the selected filters."
+            />
           )}
 
-          {!snapshotsQuery.isLoading && rows.length > 0 ? (
+          {!isSnapshotsLoading && rows.length > 0 ? (
             <TablePagination
               currentPage={currentPage}
               totalPages={Math.max(1, totalPages)}

@@ -103,6 +103,11 @@ const roundTo = (value: number, decimals: number): number => {
   return Math.round(value * factor) / factor;
 };
 
+const computeContributionPct = (billedCost: number, totalCost: number): number | null => {
+  if (Math.abs(totalCost) < 0.01) return null;
+  return roundTo((billedCost / totalCost) * 100, 2);
+};
+
 type RegionCoordinates = {
   latitude: number;
   longitude: number;
@@ -369,11 +374,11 @@ export class OverviewRepository {
     }
 
     const billedCost = toNumber(first.billed_cost);
-    const contributionPct = totalCost > 0 ? roundTo((billedCost / totalCost) * 100, 2) : 0;
+    const contributionPct = computeContributionPct(billedCost, totalCost);
 
     return {
       key: first.entity_key === null ? null : Number(first.entity_key),
-      name: first.entity_name ?? "Unspecified",
+      name: first.entity_name ?? "No Region",
       billedCost,
       contributionPct,
     };
@@ -406,7 +411,7 @@ export class OverviewRepository {
     }
 
     const billedCost = toNumber(first.billed_cost);
-    const contributionPct = totalCost > 0 ? roundTo((billedCost / totalCost) * 100, 2) : 0;
+    const contributionPct = computeContributionPct(billedCost, totalCost);
 
     return {
       key: first.entity_key === null ? null : Number(first.entity_key),
@@ -595,7 +600,7 @@ export class OverviewRepository {
   }
 
   async getTopRegions(filters: OverviewFilters, limit?: number): Promise<CostBreakdownItem[]> {
-    const { whereClause, params } = buildCostWhereClause(filters, "fcli", "dd.full_date");
+    const { whereClause, params } = buildCostWhereClause(filters, "acd", "acd.usage_date");
     const summary = await this.getCostSummary(filters);
     const totalBilledCost = summary.billedCost;
 
@@ -606,14 +611,14 @@ export class OverviewRepository {
       `
         SELECT
           dr.id AS item_key,
-          COALESCE(dr.region_name, 'Unspecified') AS item_name,
+          COALESCE(dr.region_name, 'No Region') AS item_name,
           LOWER(dr.region_id) AS region_id,
-          COALESCE(SUM(fcli.billed_cost), 0)::double precision AS billed_cost
-        FROM fact_cost_line_items fcli
-        JOIN dim_date dd ON dd.id = fcli.usage_date_key
-        LEFT JOIN dim_region dr ON dr.id = fcli.region_key
+          COALESCE(SUM(acd.billed_cost), 0)::double precision AS billed_cost
+        FROM agg_cost_daily acd
+        LEFT JOIN dim_region dr ON dr.id = acd.region_key
         WHERE ${whereClause}
-        GROUP BY dr.id, dr.region_name, dr.region_id
+        GROUP BY dr.id, dr.region_name, dr.region_id, acd.region_key
+        HAVING COALESCE(SUM(acd.billed_cost), 0) > 0
         ORDER BY billed_cost DESC
         ${limitClause};
       `,
@@ -623,6 +628,17 @@ export class OverviewRepository {
       },
     );
 
+    const regionTotalBilledCost = rows.reduce((sum, row) => sum + toNumber(row.billed_cost), 0);
+    if (Math.abs(regionTotalBilledCost - totalBilledCost) > 0.01) {
+      console.warn("Overview top-regions total mismatch", {
+        tenantId: filters.tenantId,
+        billingPeriodStart: filters.billingPeriodStart,
+        billingPeriodEnd: filters.billingPeriodEnd,
+        totalSpend: totalBilledCost,
+        regionTotalBilledCost,
+      });
+    }
+
     return rows.map((row) => {
       const billedCost = toNumber(row.billed_cost);
       const contributionPct = totalBilledCost > 0 ? roundTo((billedCost / totalBilledCost) * 100, 2) : 0;
@@ -630,7 +646,7 @@ export class OverviewRepository {
 
       return {
         key: row.item_key === null ? null : Number(row.item_key),
-        name: row.item_name ?? "Unspecified",
+        name: row.item_name ?? "No Region",
         billedCost,
         contributionPct,
         latitude: coordinates?.latitude ?? null,
@@ -917,11 +933,11 @@ export class OverviewRepository {
 
     return rows.map((row) => {
       const billedCost = toNumber(row.billed_cost);
-      const contributionPct = totalBilledCost > 0 ? roundTo((billedCost / totalBilledCost) * 100, 2) : 0;
+      const contributionPct = computeContributionPct(billedCost, totalBilledCost);
 
       return {
         key: row.item_key === null ? null : Number(row.item_key),
-        name: row.item_name ?? "Unspecified",
+        name: row.item_name ?? "No Region",
         billedCost,
         contributionPct,
       };
@@ -949,3 +965,5 @@ export const toCostInsightText = (
 
   return `Savings are ${roundTo(savingsPct, 2)}% of list cost, led by optimization opportunities in ${topService.name}.`;
 };
+
+export { computeContributionPct };

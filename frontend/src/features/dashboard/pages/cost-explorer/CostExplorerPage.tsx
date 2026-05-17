@@ -23,7 +23,13 @@ import {
   percentFormatter,
   parseInputDate,
 } from "./costExplorer.utils";
-import { CostExplorerChartSection, CostExplorerFiltersPanel } from "./components";
+import {
+  CostExplorerBreakdownSection,
+  CostExplorerChartOnlySection,
+  CostExplorerFiltersPanel,
+  CostExplorerKpiSection,
+  CostExplorerSkeleton,
+} from "./components";
 
 type ChartMode = "line" | "bar";
 type RowsPerPage = 5 | 10 | 15;
@@ -118,7 +124,7 @@ const detectAllowedGroupFromTagKey = (rawValue: string): AllowedGroupId | null =
 };
 
 export default function CostExplorerPage() {
-  const { scope } = useDashboardScope();
+  const { scope, isLoading: isScopeLoading, isError: isScopeError, error: scopeError } = useDashboardScope();
   const location = useLocation();
   const navigate = useNavigate();
   const searchParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
@@ -444,7 +450,7 @@ export default function CostExplorerPage() {
         pageTextStyle: { color: "#6d837e", fontSize: 10 },
         textStyle: { color: "#58706d", fontSize: 11 },
       },
-      grid: { left: 10, right: 10, top: 58, bottom: 14, containLabel: true },
+      grid: { left: 10, right: 10, top: 44, bottom: 14, containLabel: true },
       xAxis: {
         type: "category",
         boundaryGap: chartMode === "bar",
@@ -461,7 +467,7 @@ export default function CostExplorerPage() {
         type: "value",
         min: yAxisBounds.min,
         max: yAxisBounds.max,
-        axisLine: { show: false },
+        axisLine: { show: true, lineStyle: { color: "#d7e4df" } },
         splitLine: { lineStyle: { color: "#e1eae7", type: "dashed" } },
         axisLabel: { color: "#6d837e", fontSize: 11, formatter: (value: number) => formatAxisCost(value) },
       },
@@ -861,6 +867,31 @@ export default function CostExplorerPage() {
   const firstError = activeQueries.find((item) => item.error);
   const errorMessage = (firstError?.error as Error | undefined)?.message;
   const isFetching = activeQueries.some((item) => item.isFetching);
+  const hasAllActiveData = activeQueries.every((item) => Boolean(item.data));
+  const isInitialDataLoading = !hasAllActiveData && (isLoading || isFetching);
+  const dashboardStatus: "initializing" | "loading" | "success" | "empty" | "error" = useMemo(() => {
+    if (!scope && isScopeLoading) {
+      return "initializing";
+    }
+
+    if (isScopeError || !scope) {
+      return "error";
+    }
+
+    if (isInitialDataLoading) {
+      return "loading";
+    }
+
+    if (isError) {
+      return "error";
+    }
+
+    if (!chartReady) {
+      return "empty";
+    }
+
+    return "success";
+  }, [scope, isScopeLoading, isScopeError, isInitialDataLoading, isError, chartReady]);
   const handleChartPointClick = useCallback(
     (params: unknown) => {
       if (!params || typeof params !== "object") {
@@ -915,9 +946,41 @@ export default function CostExplorerPage() {
     [location.search, navigate],
   );
 
+  if (dashboardStatus === "initializing" || dashboardStatus === "loading") {
+    return (
+      <div className="dashboard-page cost-explorer-page">
+        <CostExplorerSkeleton />
+      </div>
+    );
+  }
+
+  if (dashboardStatus === "error") {
+    return (
+      <div className="dashboard-page cost-explorer-page">
+        <section className="overview-state-card" role="alert">
+          <h2 className="overview-state-card__title">Unable to load Cost Explorer</h2>
+          <p className="overview-state-card__message">
+            {scopeError?.message ?? errorMessage ?? "An unexpected error occurred while loading cost explorer data."}
+          </p>
+        </section>
+      </div>
+    );
+  }
+
+  if (dashboardStatus === "empty") {
+    return (
+      <div className="dashboard-page cost-explorer-page">
+        <section className="overview-state-card">
+          <h2 className="overview-state-card__title">No cost data for this filter context</h2>
+          <p className="overview-state-card__message">Try expanding the date range or reducing comparison layers.</p>
+        </section>
+      </div>
+    );
+  }
+
   return (
     <div className="dashboard-page cost-explorer-page">
-      <section className="cost-explorer-unified-shell">
+      <section className="cost-explorer-filter-card">
         <CostExplorerFiltersPanel
           effectiveGranularity={effectiveGranularity}
           days={days}
@@ -949,45 +1012,57 @@ export default function CostExplorerPage() {
           hasPendingGroupChanges={hasPendingGroupChanges}
           groupValuesLoading={groupValuesLoading}
         />
-
-        <div className="cost-explorer-unified-shell__divider" aria-hidden="true" />
-
-        <CostExplorerChartSection
-          option={option}
-          isLoading={isLoading}
-          isError={isError}
-          errorMessage={errorMessage}
-          isFetching={isFetching}
-          showApplySkeleton={isFetching}
-          chartReady={chartReady}
-          onPointClick={handleChartPointClick}
-          chartMode={chartMode}
-          onChartModeChange={setChartMode}
-          kpis={chartKpis}
-          topBreakdowns={visibleBreakdowns}
-          serviceDetailRows={serviceDetailRows}
-          rowsPerPage={rowsPerPage}
-          onRowsPerPageChange={setRowsPerPage}
-          breakdownPagination={
-            selectedBreakdown
-              ? {
-                  currentPage: safePage,
-                  totalPages,
-                  totalRows,
-                  startRow: totalRows > 0 ? (safePage - 1) * rowsPerPage + 1 : 0,
-                  endRow: totalRows > 0 ? Math.min(safePage * rowsPerPage, totalRows) : 0,
-                }
-              : null
-          }
-          onBreakdownPageChange={setBreakdownPage}
-          onRetry={() => {
-            activeQueries.forEach((query) => {
-              void query.refetch();
-            });
-          }}
-          onReset={clearAll}
-        />
       </section>
+
+      <CostExplorerKpiSection kpis={chartKpis} />
+
+      <CostExplorerChartOnlySection
+        option={option}
+        isLoading={false}
+        isError={false}
+        errorMessage={errorMessage}
+        isFetching={false}
+        showApplySkeleton={false}
+        chartReady
+        onPointClick={handleChartPointClick}
+        chartMode={chartMode}
+        onChartModeChange={setChartMode}
+        onRetry={() => {
+          activeQueries.forEach((query) => {
+            void query.refetch();
+          });
+        }}
+        onReset={clearAll}
+      />
+
+      <CostExplorerBreakdownSection
+        isLoading={false}
+        isError={false}
+        errorMessage={errorMessage}
+        chartReady
+        topBreakdowns={visibleBreakdowns}
+        serviceDetailRows={serviceDetailRows}
+        rowsPerPage={rowsPerPage}
+        onRowsPerPageChange={setRowsPerPage}
+        breakdownPagination={
+          selectedBreakdown
+            ? {
+                currentPage: safePage,
+                totalPages,
+                totalRows,
+                startRow: totalRows > 0 ? (safePage - 1) * rowsPerPage + 1 : 0,
+                endRow: totalRows > 0 ? Math.min(safePage * rowsPerPage, totalRows) : 0,
+              }
+            : null
+        }
+        onBreakdownPageChange={setBreakdownPage}
+        onRetry={() => {
+          activeQueries.forEach((query) => {
+            void query.refetch();
+          });
+        }}
+        onReset={clearAll}
+      />
     </div>
   );
 }

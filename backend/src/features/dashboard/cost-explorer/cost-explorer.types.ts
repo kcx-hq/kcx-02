@@ -49,14 +49,14 @@ export type CostExplorerBreakdownRow = {
 
 export type CostExplorerServiceDetailRow = {
   serviceName: string;
-  resourceName: string;
-  usageType: string;
-  region: string;
+  grossCost: number;
+  credits: number;
+  netCost: number;
+  contributionPct: number | null;
+  resourceCount: number;
+  regionCount: number;
   usageQuantity: number;
-  unit: string;
-  totalCost: number;
-  date: string;
-  percentageOfTotalServiceCost: number;
+  primaryUnit: string;
 };
 
 export type CostExplorerResponse = {

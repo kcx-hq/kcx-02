@@ -3,7 +3,7 @@
 const isBlank = (value) =>
   value === null || value === undefined || (typeof value === "string" && value.trim() === "");
 
-const PG_NUMERIC_20_12_MAX_INTEGER_DIGITS = 8;
+const PG_NUMERIC_38_18_MAX_INTEGER_DIGITS = 20;
 
 function buildNumericError({ code, fieldName, value, message }) {
   const error = new Error(message);
@@ -71,8 +71,8 @@ function sanitizeNumeric18_6(value, fieldName) {
         ? String(value)
         : String(value ?? "").trim();
 
-  const parsed = Number(normalized);
-  if (!Number.isFinite(parsed)) {
+  const numericLikePattern = /^[-+]?((\d+(\.\d*)?)|(\.\d+))([eE][-+]?\d+)?$/;
+  if (!numericLikePattern.test(normalized)) {
     throw buildNumericError({
       code: "invalid_numeric",
       fieldName,
@@ -87,7 +87,7 @@ function sanitizeNumeric18_6(value, fieldName) {
 
   const [integerPart = "0"] = unsigned.split(".");
   const trimmedIntegerPart = integerPart.replace(/^0+/, "") || "0";
-  if (trimmedIntegerPart.length > PG_NUMERIC_20_12_MAX_INTEGER_DIGITS) {
+  if (trimmedIntegerPart.length > PG_NUMERIC_38_18_MAX_INTEGER_DIGITS) {
     throw buildNumericError({
       code: "numeric_overflow",
       fieldName,
@@ -148,11 +148,19 @@ function classifyFactInsertError(error) {
     };
   }
 
-  if (combined.includes("column") && combined.includes("tag_id") && combined.includes("does not exist")) {
+  if (combined.includes("column") && /\btag_id\b/.test(combined) && combined.includes("does not exist")) {
     return {
       errorCode: "schema_mismatch_missing_tag_id",
       errorMessage:
         "database schema mismatch: fact_cost_line_items.tag_id is missing (run latest backend migrations)",
+    };
+  }
+
+  if (combined.includes("column") && combined.includes("tag_ids_json") && combined.includes("does not exist")) {
+    return {
+      errorCode: "schema_mismatch_missing_staging_tag_ids_json",
+      errorMessage:
+        "database schema mismatch: staging_cost_line_items.tag_ids_json is missing (run latest backend migrations)",
     };
   }
 
@@ -166,6 +174,19 @@ function classifyFactInsertError(error) {
       errorCode: "schema_mismatch_fact_cost_line_items_columns",
       errorMessage:
         "database schema mismatch: fact_cost_line_items is missing one or more expected columns (run latest backend migrations)",
+    };
+  }
+
+  if (
+    combined.includes("column") &&
+    combined.includes("of relation") &&
+    combined.includes("staging_cost_line_items") &&
+    combined.includes("does not exist")
+  ) {
+    return {
+      errorCode: "schema_mismatch_staging_cost_line_items_columns",
+      errorMessage:
+        "database schema mismatch: staging_cost_line_items is missing one or more expected columns (run latest backend migrations)",
     };
   }
 

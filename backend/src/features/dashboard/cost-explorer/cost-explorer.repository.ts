@@ -63,14 +63,14 @@ type ResourceDetailRow = {
 
 type ServiceDetailQueryRow = {
   service_name: string | null;
-  resource_name: string | null;
-  usage_type: string | null;
-  region_name: string | null;
+  resource_count: number | string | null;
+  region_count: number | string | null;
+  gross_cost: number | string | null;
+  credits: number | string | null;
+  net_cost: number | string | null;
   usage_quantity: number | string | null;
-  unit: string | null;
-  total_cost: number | string | null;
-  usage_date: string | Date | null;
-  percentage_of_total_service_cost: number | string | null;
+  primary_unit: string | null;
+  contribution_pct: number | string | null;
 };
 
 type GroupDimensionKey = number | string;
@@ -1587,7 +1587,6 @@ export class CostExplorerRepository {
     const effectiveTagFilter = this.parseTagFilter(filters.tagKey, filters.tagValue, filters.groupValues);
     const groupValueFilter = this.parseGroupValueFilter(filters.groupBy, filters.groupValues);
     const config = factConfigByGranularity[filters.effectiveGranularity];
-    const metricColumn = resolveMetricColumn(filters.metric);
     const where = this.buildScopeWhereClause(scope, config, filters.from, filters.to, 1, effectiveTagFilter, groupValueFilter);
 
     const rows = await sequelize.query<ServiceDetailQueryRow>(
@@ -1595,57 +1594,83 @@ export class CostExplorerRepository {
         WITH grouped AS (
           SELECT
             COALESCE(ds.service_name, 'Unspecified') AS service_name,
-            COALESCE(dres.resource_name, dres.resource_id, 'Unspecified') AS resource_name,
-            COALESCE(NULLIF(${config.alias}.usage_type, ''), NULLIF(${config.alias}.product_usage_type, ''), 'Unspecified') AS usage_type,
-            COALESCE(dr.region_name, 'Unspecified') AS region_name,
-            COALESCE(NULLIF(dsku.pricing_unit, ''), 'Units') AS unit,
-            DATE(COALESCE(${config.alias}.usage_start_time, ${config.alias}.usage_end_time)) AS usage_date,
-            COALESCE(SUM(COALESCE(${config.alias}.consumed_quantity, 0)), 0)::double precision AS usage_quantity,
-            COALESCE(SUM(${config.alias}.${metricColumn}), 0)::double precision AS total_cost
+            COALESCE(SUM(CASE WHEN ${config.alias}.billed_cost > 0 THEN ${config.alias}.billed_cost ELSE 0 END), 0)::double precision AS gross_cost,
+            COALESCE(SUM(CASE WHEN ${config.alias}.billed_cost < 0 THEN ${config.alias}.billed_cost ELSE 0 END), 0)::double precision AS credits,
+            COALESCE(SUM(${config.alias}.billed_cost), 0)::double precision AS net_cost,
+            COUNT(DISTINCT ${config.alias}.resource_key)::double precision AS resource_count,
+            COUNT(DISTINCT ${config.alias}.region_key)::double precision AS region_count
           FROM ${config.tableName} ${config.alias}
           LEFT JOIN dim_service ds ON ds.id = ${config.alias}.service_key
-          LEFT JOIN dim_resource dres ON dres.id = ${config.alias}.resource_key
-          LEFT JOIN dim_region dr ON dr.id = ${config.alias}.region_key
+          WHERE ${where.whereClause}
+          GROUP BY COALESCE(ds.service_name, 'Unspecified')
+        ),
+        unit_totals AS (
+          SELECT
+            COALESCE(ds.service_name, 'Unspecified') AS service_name,
+            COALESCE(NULLIF(dsku.pricing_unit, ''), 'Units') AS unit_name,
+            COALESCE(SUM(CASE WHEN ${config.alias}.billed_cost > 0 THEN ${config.alias}.billed_cost ELSE 0 END), 0)::double precision AS unit_gross_cost,
+            COALESCE(SUM(COALESCE(${config.alias}.consumed_quantity, 0)), 0)::double precision AS usage_quantity
+          FROM ${config.tableName} ${config.alias}
+          LEFT JOIN dim_service ds ON ds.id = ${config.alias}.service_key
           LEFT JOIN dim_sku dsku ON dsku.id = ${config.alias}.sku_key
           WHERE ${where.whereClause}
-          GROUP BY
-            COALESCE(ds.service_name, 'Unspecified'),
-            COALESCE(dres.resource_name, dres.resource_id, 'Unspecified'),
-            COALESCE(NULLIF(${config.alias}.usage_type, ''), NULLIF(${config.alias}.product_usage_type, ''), 'Unspecified'),
-            COALESCE(dr.region_name, 'Unspecified'),
-            COALESCE(NULLIF(dsku.pricing_unit, ''), 'Units'),
-            DATE(COALESCE(${config.alias}.usage_start_time, ${config.alias}.usage_end_time))
+          GROUP BY COALESCE(ds.service_name, 'Unspecified'), COALESCE(NULLIF(dsku.pricing_unit, ''), 'Units')
+        ),
+        ranked_units AS (
+          SELECT
+            service_name,
+            unit_name,
+            usage_quantity,
+            ROW_NUMBER() OVER (
+              PARTITION BY service_name
+              ORDER BY unit_gross_cost DESC, usage_quantity DESC, unit_name ASC
+            ) AS rank_no
+          FROM unit_totals
+        ),
+        total_gross_spend AS (
+          SELECT COALESCE(SUM(gross_cost), 0)::double precision AS total_gross_cost
+          FROM grouped
         )
         SELECT
-          service_name,
-          resource_name,
-          usage_type,
-          region_name,
-          usage_quantity,
-          unit,
-          total_cost,
-          usage_date,
+          grouped.service_name,
+          grouped.resource_count,
+          grouped.region_count,
+          grouped.gross_cost,
+          grouped.credits,
+          grouped.net_cost,
+          COALESCE(ranked_units.usage_quantity, 0)::double precision AS usage_quantity,
+          COALESCE(ranked_units.unit_name, 'Units') AS primary_unit,
           CASE
-            WHEN SUM(total_cost) OVER (PARTITION BY service_name) = 0 THEN 0
-            ELSE (total_cost / SUM(total_cost) OVER (PARTITION BY service_name)) * 100
-          END::double precision AS percentage_of_total_service_cost
+            WHEN total_gross_spend.total_gross_cost = 0 THEN NULL
+            ELSE (grouped.gross_cost / total_gross_spend.total_gross_cost) * 100
+          END::double precision AS contribution_pct
         FROM grouped
-        ORDER BY total_cost DESC, service_name ASC, usage_date DESC
+        LEFT JOIN ranked_units
+          ON ranked_units.service_name = grouped.service_name
+         AND ranked_units.rank_no = 1
+        CROSS JOIN total_gross_spend
+        ORDER BY grouped.gross_cost DESC, grouped.service_name ASC
         LIMIT $${where.nextIndex};
       `,
       { bind: [...where.params, limit], type: QueryTypes.SELECT },
     );
 
-    return rows.map((row) => ({
+    const mappedRows = rows.map((row) => ({
       serviceName: row.service_name ?? "Unspecified",
-      resourceName: row.resource_name ?? "Unspecified",
-      usageType: row.usage_type ?? "Unspecified",
-      region: row.region_name ?? "Unspecified",
+      grossCost: toNumber(row.gross_cost),
+      credits: toNumber(row.credits),
+      netCost: toNumber(row.net_cost),
+      resourceCount: toNumber(row.resource_count),
+      regionCount: toNumber(row.region_count),
       usageQuantity: toNumber(row.usage_quantity),
-      unit: row.unit ?? "Units",
-      totalCost: toNumber(row.total_cost),
-      date: row.usage_date instanceof Date ? row.usage_date.toISOString().slice(0, 10) : String(row.usage_date ?? ""),
-      percentageOfTotalServiceCost: toNumber(row.percentage_of_total_service_cost),
+      primaryUnit: row.primary_unit ?? "Units",
+    }));
+
+    const totalGrossCost = mappedRows.reduce((sum, row) => sum + row.grossCost, 0);
+
+    return mappedRows.map((row) => ({
+      ...row,
+      contributionPct: totalGrossCost === 0 ? null : (row.grossCost / totalGrossCost) * 100,
     }));
   }
 }
