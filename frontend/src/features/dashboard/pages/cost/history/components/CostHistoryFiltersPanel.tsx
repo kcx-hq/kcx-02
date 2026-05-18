@@ -7,7 +7,7 @@ import type {
   CostHistoryGroupBy,
   CostHistoryXAxis,
   CostHistoryYAxisMetric,
-} from "../../../api/dashboardTypes";
+} from "../../../../api/dashboardTypes";
 import {
   DEFAULT_COST_HISTORY_FILTERS,
   GROUP_LABELS,

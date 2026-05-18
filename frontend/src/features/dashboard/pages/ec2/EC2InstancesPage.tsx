@@ -4,6 +4,7 @@ import { SlidersHorizontal, X } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 import type { InventoryEc2InstanceRow } from "@/features/client-home/api/inventory-instances.api";
+import type { Ec2ExplorerFiltersQuery } from "../../api/dashboardTypes";
 import { useInventoryEc2Instances } from "@/features/client-home/hooks/useInventoryEc2Instances";
 import { useInventoryEc2Volumes } from "@/features/client-home/hooks/useInventoryEc2Volumes";
 import { useEc2ExplorerQuery } from "../../hooks/useDashboardQueries";
@@ -65,6 +66,27 @@ const parseCsvParam = (value: string | null): string[] => {
     .map((entry) => entry.trim())
     .filter((entry) => entry.length > 0);
 };
+
+const toApiGroupBy = (groupBy: EC2ExplorerControlsState["groupBy"]): Ec2ExplorerFiltersQuery["groupBy"] =>
+  groupBy === "instance-type"
+    ? "instance_type"
+    : groupBy === "reservation-type"
+      ? "reservation_type"
+      : groupBy === "cost-category"
+        ? "cost_category"
+        : groupBy === "availability-zone"
+          ? "availability_zone"
+          : groupBy === "usage-type"
+            ? "usage_type"
+            : groupBy === "transfer-type"
+              ? "transfer_type"
+              : groupBy === "source-region"
+                ? "source_region"
+                : groupBy === "destination-region"
+                  ? "destination_region"
+                  : groupBy === "instance-state"
+                    ? "instance_state"
+                    : groupBy;
 
 const isValidStatus = (value: string | null): value is EC2InstancesStatus =>
   Boolean(value) && EC2_INSTANCES_STATUS_OPTIONS.some((option) => option.key === value);
@@ -226,7 +248,7 @@ export default function EC2InstancesPage() {
       endDate: endDateFromParams,
       metric: "instances",
       granularity: insightsControls.granularity,
-      groupBy: insightsControls.groupBy === "instance-type" ? "instance_type" : insightsControls.groupBy === "instance-state" ? "instance_state" : insightsControls.groupBy === "reservation-type" ? "reservation_type" : insightsControls.groupBy === "cost-category" ? "cost_category" : insightsControls.groupBy,
+      groupBy: toApiGroupBy(insightsControls.groupBy),
       condition: insightsControls.instancesCondition,
       regions: insightsControls.scopeFilters.region,
       tags: insightsControls.scopeFilters.tags.map((tagValue) => `tag:${tagValue}`),

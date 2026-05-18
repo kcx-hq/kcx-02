@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { PanelRightOpen, X } from "lucide-react";
 
-import type { S3BucketTableRow } from "./S3BucketInsightsTable";
+import type { S3BucketTableRow } from "./S3BucketInsightsTable.types";
 
 const currencyFormatter = new Intl.NumberFormat("en-US", {
   style: "currency",
