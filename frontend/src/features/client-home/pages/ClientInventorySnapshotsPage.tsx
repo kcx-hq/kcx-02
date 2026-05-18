@@ -167,6 +167,27 @@ function getActionLabel(status: InventoryEc2SnapshotStatus): string {
   return "-"
 }
 
+function SnapshotsTableSkeleton() {
+  return (
+    <div className="inventory-snapshots-table-skeleton" aria-hidden="true">
+      <div className="inventory-snapshots-table-skeleton__head">
+        {Array.from({ length: 8 }).map((_, index) => (
+          <span key={`snapshots-skeleton-head-${index}`} />
+        ))}
+      </div>
+      <div className="inventory-snapshots-table-skeleton__body">
+        {Array.from({ length: 6 }).map((_, rowIndex) => (
+          <div key={`snapshots-skeleton-row-${rowIndex}`} className="inventory-snapshots-table-skeleton__row">
+            {Array.from({ length: 8 }).map((__, cellIndex) => (
+              <span key={`snapshots-skeleton-cell-${rowIndex}-${cellIndex}`} />
+            ))}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 export function ClientInventorySnapshotsPage() {
   const navigate = useNavigate()
   const location = useLocation()
@@ -501,7 +522,7 @@ export function ClientInventorySnapshotsPage() {
           ) : null}
 
           {isSnapshotsLoading ? (
-            <div className="ec2-explorer-table__skeleton" aria-hidden="true" />
+            <SnapshotsTableSkeleton />
           ) : (
             <BaseDataTable
               columnDefs={columnDefs}

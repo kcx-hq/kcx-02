@@ -1,4 +1,4 @@
-﻿import { Check, ChevronDown, Filter, RotateCcw, Search, X } from "lucide-react";
+import { Check, ChevronDown, X } from "lucide-react";
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -374,6 +374,120 @@ function RecommendationActions({
   );
 }
 
+function OptimizationSkeleton() {
+  return (
+    <div className="optimization-skeleton" aria-label="Loading optimization section">
+      <section className="optimization-overview-kpi-strip optimization-skeleton__kpis" aria-hidden="true">
+        {Array.from({ length: 4 }).map((_, index) => (
+          <article key={`optimization-kpi-skeleton-${index}`} className="optimization-overview-kpi-strip__item">
+            <div className="optimization-skeleton__kpi-icon" />
+            <div className="optimization-skeleton__kpi-copy">
+              <span className="optimization-skeleton__bar optimization-skeleton__bar--kpi-label" />
+              <span className="optimization-skeleton__bar optimization-skeleton__bar--kpi-value" />
+            </div>
+          </article>
+        ))}
+      </section>
+
+      <section className="optimization-overview-grid optimization-skeleton__overview-grid" aria-hidden="true">
+        <article className="optimization-overview-panel optimization-skeleton__panel">
+          <header className="optimization-overview-panel__head">
+            <span className="optimization-skeleton__bar optimization-skeleton__bar--title" />
+          </header>
+          <div className="optimization-skeleton__mini-table">
+            <div className="optimization-skeleton__mini-table-head">
+              {Array.from({ length: 4 }).map((_, index) => (
+                <span key={`mini-head-${index}`} className="optimization-skeleton__bar optimization-skeleton__bar--mini-head" />
+              ))}
+            </div>
+            <div className="optimization-skeleton__mini-table-body">
+              {Array.from({ length: 5 }).map((_, row) => (
+                <div key={`mini-row-${row}`} className="optimization-skeleton__mini-table-row">
+                  <span className="optimization-skeleton__bar optimization-skeleton__bar--mini-col-type" />
+                  <span className="optimization-skeleton__bar optimization-skeleton__bar--mini-col-saving" />
+                  <span className="optimization-skeleton__bar optimization-skeleton__bar--mini-col-resource" />
+                  <span className="optimization-skeleton__chip optimization-skeleton__chip--mini-col-risk" />
+                </div>
+              ))}
+            </div>
+          </div>
+        </article>
+
+        <article className="optimization-overview-panel optimization-skeleton__panel">
+          <header className="optimization-overview-panel__head">
+            <span className="optimization-skeleton__bar optimization-skeleton__bar--title optimization-skeleton__bar--title-wide" />
+          </header>
+          <div className="optimization-skeleton__pie-area">
+            <div className="cost-explorer-chart-skeleton cost-explorer-chart-skeleton--bars optimization-skeleton__pie-chart" />
+          </div>
+        </article>
+      </section>
+
+    </div>
+  );
+}
+
+function OptimizationRecommendationsSkeleton() {
+  return (
+    <div className="optimization-skeleton" aria-label="Loading optimization recommendations">
+      <section className="optimization-skeleton__tabs-shell" aria-hidden="true">
+        <div className="optimization-skeleton__tabs-row">
+          <span className="optimization-skeleton__bar optimization-skeleton__bar--tab-text" />
+          <span className="optimization-skeleton__bar optimization-skeleton__bar--tab-text optimization-skeleton__bar--tab-text-active" />
+        </div>
+      </section>
+
+      <section className="dashboard-widget-shell optimization-skeleton__reco-shell" aria-hidden="true">
+        <div className="dashboard-widget-shell__body optimization-tab-body">
+          <div className="optimization-skeleton__reco-filters">
+            {Array.from({ length: 4 }).map((_, index) => (
+              <div key={`reco-filter-${index}`} className="optimization-skeleton__reco-filter-block">
+                <span className="optimization-skeleton__bar optimization-skeleton__bar--reco-filter-label" />
+                <span className="optimization-skeleton__bar optimization-skeleton__bar--reco-filter-value" />
+              </div>
+            ))}
+          </div>
+
+          <div className="optimization-skeleton__reco-table-wrap">
+            <div className="optimization-skeleton__reco-table">
+            <div className="optimization-skeleton__reco-head">
+              {Array.from({ length: 10 }).map((_, index) => (
+                <span key={`reco-head-${index}`} className="optimization-skeleton__bar optimization-skeleton__bar--reco-head" />
+              ))}
+            </div>
+            <div className="optimization-skeleton__reco-body">
+              {Array.from({ length: 6 }).map((_, row) => (
+                <div key={`reco-row-${row}`} className="optimization-skeleton__reco-row">
+                  {Array.from({ length: 9 }).map((__, col) => (
+                    <span
+                      key={`reco-cell-${row}-${col}`}
+                      className={`optimization-skeleton__bar ${
+                        col === 0
+                          ? "optimization-skeleton__bar--reco-cell-wide"
+                          : col === 3
+                            ? "optimization-skeleton__bar--reco-cell-xl"
+                            : "optimization-skeleton__bar--reco-cell"
+                      }`}
+                    />
+                  ))}
+                  <span className="optimization-skeleton__bar optimization-skeleton__bar--reco-action" />
+                </div>
+              ))}
+            </div>
+            </div>
+            <div className="optimization-skeleton__reco-scroll" />
+            <div className="optimization-skeleton__reco-pagination">
+              <span className="optimization-skeleton__bar optimization-skeleton__bar--reco-page-size" />
+              <span className="optimization-skeleton__bar optimization-skeleton__bar--reco-count" />
+              <span className="optimization-skeleton__bar optimization-skeleton__bar--reco-pages" />
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 export default function EC2OptimizationPage() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -387,6 +501,7 @@ export default function EC2OptimizationPage() {
   const dateTo = searchParams.get("billingPeriodEnd") ?? searchParams.get("to") ?? scope?.to ?? defaults.end;
 
   const [activeTab, setActiveTab] = useState<MainTab>("overview");
+  const [recommendationsTabLoading, setRecommendationsTabLoading] = useState(false);
   const [activeDropdown, setActiveDropdown] = useState<RecommendationsFilterKey | null>(null);
   const [scopeFiltersOpen, setScopeFiltersOpen] = useState(false);
   const [globalScopeFilters, setGlobalScopeFilters] = useState<EC2ScopeFilters>(GLOBAL_SCOPE_DEFAULTS);
@@ -428,6 +543,16 @@ export default function EC2OptimizationPage() {
       setActiveTab("recommendations");
     }
   }, [queryTab]);
+
+  useEffect(() => {
+    if (activeTab !== "recommendations") {
+      setRecommendationsTabLoading(false);
+      return;
+    }
+    setRecommendationsTabLoading(true);
+    const timeout = window.setTimeout(() => setRecommendationsTabLoading(false), 420);
+    return () => window.clearTimeout(timeout);
+  }, [activeTab]);
 
   useEffect(() => {
     const stateCategory = normalizeFilterValue(snapshotPrefill?.category ?? null);
@@ -690,6 +815,53 @@ export default function EC2OptimizationPage() {
     () => [...scopedRows].sort((a, b) => b.estimatedMonthlySaving - a.estimatedMonthlySaving).slice(0, 5),
     [scopedRows],
   );
+  const topRecommendationsBySavingsTotal = useMemo(
+    () => topRecommendationsBySavings.reduce((sum, item) => sum + (item.estimatedMonthlySaving || 0), 0),
+    [topRecommendationsBySavings],
+  );
+  const topRecommendationsPie = useMemo(() => {
+    const palette = ["#3E8D7D", "#7B5CE1", "#E3A13A", "#3D63D1", "#74B7A7"];
+    const cx = 190;
+    const cy = 190;
+    const r = 104;
+    if (topRecommendationsBySavingsTotal <= 0 || topRecommendationsBySavings.length === 0) {
+      return [];
+    }
+    let currentAngle = -90;
+    return topRecommendationsBySavings.map((item, index) => {
+      const value = item.estimatedMonthlySaving || 0;
+      const percent = (value / topRecommendationsBySavingsTotal) * 100;
+      const sweep = Math.max(0.0001, (percent / 100) * 360);
+      const start = currentAngle;
+      const end = currentAngle + sweep;
+      currentAngle = end;
+      const toXY = (angle: number, radius: number) => {
+        const rad = (angle * Math.PI) / 180;
+        return { x: cx + radius * Math.cos(rad), y: cy + radius * Math.sin(rad) };
+      };
+      const p1 = toXY(start, r);
+      const p2 = toXY(end, r);
+      const largeArc = sweep > 180 ? 1 : 0;
+      const path = `M ${cx} ${cy} L ${p1.x} ${p1.y} A ${r} ${r} 0 ${largeArc} 1 ${p2.x} ${p2.y} Z`;
+      const mid = start + sweep / 2;
+      const labelPoint = toXY(mid, r + 34);
+      const anchor = labelPoint.x >= cx ? "start" : "end";
+      return {
+        id: item.id,
+        resourceId: item.resourceId,
+        name: item.resourceName || item.resourceId,
+        percent: Math.round(percent),
+        value,
+        color: palette[index % palette.length],
+        path,
+        labelX: labelPoint.x,
+        labelY: labelPoint.y,
+        lineX: toXY(mid, r).x,
+        lineY: toXY(mid, r).y,
+        anchor,
+      };
+    });
+  }, [topRecommendationsBySavings, topRecommendationsBySavingsTotal]);
 
   const unifiedCols = useMemo<ColDef<Ec2RecommendationRecord>[]>(
     () => [
@@ -783,40 +955,6 @@ export default function EC2OptimizationPage() {
         ? query.error.message
         : null;
 
-  const activeFilterChips = useMemo(() => {
-    const chips: Array<{ id: string; label: string; value: string; onRemove: () => void }> = [];
-    const resourceId = queryResourceId;
-    if (resourceId) {
-      chips.push({
-        id: "resourceId",
-        label: "Resource",
-        value: resourceId,
-        onRemove: () => {
-          if (searchFilter.trim() === resourceId) setSearchFilter("");
-        },
-      });
-    }
-    if (categoryFilter !== "all") {
-      chips.push({ id: "category", label: "Category", value: toTitle(categoryFilter), onRemove: () => setCategoryFilter("all") });
-    }
-    if (issueTypeFilter !== "all") {
-      chips.push({ id: "issueType", label: "Issue Type", value: typeLabel(issueTypeFilter as Ec2RecommendationType), onRemove: () => setIssueTypeFilter("all") });
-    }
-    if (searchFilter.trim()) {
-      chips.push({ id: "search", label: "Search", value: searchFilter.trim(), onRemove: () => setSearchFilter("") });
-    }
-    return chips;
-  }, [categoryFilter, issueTypeFilter, searchFilter, queryResourceId]);
-
-  const clearRecommendationFilters = () => {
-    setCategoryFilter("all");
-    setIssueTypeFilter("all");
-    setStatusFilter("active");
-    setSeverityFilter("all");
-    setSearchFilter("");
-    setActiveDropdown(null);
-  };
-
   const selectedStatus = selectedRecommendation
     ? normalizeStatus(statusOverrides[selectedRecommendation.id] ?? selectedRecommendation.status)
     : "open";
@@ -831,133 +969,159 @@ export default function EC2OptimizationPage() {
     ? snoozeUntilOverrides[selectedRecommendation.id] ?? selectedRecommendation.snoozedUntil
     : null;
   const selectedWorkflow = getWorkflowActions(selectedStatus);
+  const isOptimizationLoading = !scope || query.isPending || (!query.data && !query.error);
+  const isRecommendationsLoading = activeTab === "recommendations" && (isOptimizationLoading || query.isFetching || recommendationsTabLoading);
 
   return (
     <div className="dashboard-page optimization-page" ref={rootRef}>
-      <div className="optimization-header-shell">
-        <div className="optimization-header-tabs" role="tablist" aria-label={`${pageTitle} sections`}>
-          {MAIN_TABS.map((tab) => (
-            <button
-              key={tab.key}
-              type="button"
-              className={`optimization-header-tab ${activeTab === tab.key ? "is-active" : ""}`}
-              onClick={() => setActiveTab(tab.key)}
-              role="tab"
-              aria-selected={activeTab === tab.key}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {query.isLoading ? <p className="dashboard-note">Loading optimization data...</p> : null}
-      {errorMessage ? <p className="dashboard-note">{errorMessage}</p> : null}
-
-      {activeTab === "overview" ? (
-        <section className="dashboard-widget-shell">
-          <div className="dashboard-widget-shell__body optimization-tab-body">
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
-              <article className="optimization-verified-item">
-                <p className="optimization-overview-insight-item__title">Total Potential Savings</p>
-                <p className="optimization-overview-insight-item__value">{formatCurrency(totalSavings(scopedRows))}</p>
-              </article>
-              <article className="optimization-verified-item">
-                <p className="optimization-overview-insight-item__title">Compute Savings</p>
-                <p className="optimization-overview-insight-item__value">
-                  {formatCurrency(totalSavings(scopedRows.filter((x) => x.category === "compute")))}
-                </p>
-              </article>
-              <article className="optimization-verified-item">
-                <p className="optimization-overview-insight-item__title">Storage Savings</p>
-                <p className="optimization-overview-insight-item__value">
-                  {formatCurrency(totalSavings(scopedRows.filter((x) => x.category === "storage")))}
-                </p>
-              </article>
-              <article className="optimization-verified-item">
-                <p className="optimization-overview-insight-item__title">Network Savings</p>
-                <p className="optimization-overview-insight-item__value">
-                  {formatCurrency(totalSavings(scopedRows.filter((x) => x.category === "network")))}
-                </p>
-              </article>
-            </div>
-
-            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-              <article className="optimization-verified-item">
-                <p className="optimization-overview-insight-item__title">Top Recommendation Types</p>
-                <div className="mt-3 space-y-2">
-                  {topTypeSummary.map((item) => (
-                    <button
-                      key={item.type}
-                      type="button"
-                      className="optimization-overview-nav-link flex w-full items-center justify-between text-sm text-left"
-                      onClick={() => navigateToOptimizationRecommendations({ issueType: item.type })}
-                    >
-                      <span>{`${typeLabel(item.type)} \u2014 ${formatCurrency(item.saving)} (${item.count} ${item.count === 1 ? "resource" : "resources"})`}</span>
-                      <span className={`optimization-rightsizing-pill is-risk-${toRiskClassName(item.risk)}`}>
-                        {`${toTitle(item.risk ?? "-")} Risk`}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              </article>
-
-              <article className="optimization-verified-item">
-                <p className="optimization-overview-insight-item__title">Top 5 Recommendations by Savings</p>
-                <div className="mt-3 space-y-2">
-                  {topRecommendationsBySavings.map((item) => (
-                    <button
-                      key={item.id}
-                      type="button"
-                      className="optimization-overview-nav-link flex w-full items-center justify-between text-sm gap-3 text-left"
-                      onClick={() => navigateToOptimizationRecommendations({ resourceId: item.resourceId })}
-                    >
-                      <span className="truncate">{item.resourceName || item.resourceId}</span>
-                      <span>{formatCurrency(item.estimatedMonthlySaving)}</span>
-                    </button>
-                  ))}
-                </div>
-              </article>
-            </div>
-            <div className="mt-4">
+      {!isOptimizationLoading ? (
+        <div className="optimization-header-shell">
+          <div className="optimization-header-tabs" role="tablist" aria-label={`${pageTitle} sections`}>
+            {MAIN_TABS.map((tab) => (
               <button
+                key={tab.key}
                 type="button"
-                className="optimization-overview-nav-link cost-explorer-chip-bar__clear cost-explorer-chip-bar__clear--inline"
-                onClick={() => {
-                  const nextParams = new URLSearchParams(searchParams.toString());
-                  nextParams.set("tab", "recommendations");
-                  navigate({
-                    pathname: "/dashboard/ec2/optimization",
-                    search: nextParams.toString(),
-                  });
-                }}
+                className={`optimization-header-tab ${activeTab === tab.key ? "is-active" : ""}`}
+                onClick={() => setActiveTab(tab.key)}
+                role="tab"
+                aria-selected={activeTab === tab.key}
               >
-                View All Recommendations 
+                {tab.label}
               </button>
-            </div>
+            ))}
           </div>
-        </section>
+        </div>
       ) : null}
 
-      {activeTab === "recommendations" ? (
+      {isOptimizationLoading || isRecommendationsLoading
+        ? (activeTab === "recommendations" ? <OptimizationRecommendationsSkeleton /> : <OptimizationSkeleton />)
+        : null}
+      {!isOptimizationLoading && errorMessage ? <p className="dashboard-note">{errorMessage}</p> : null}
+
+      {!isOptimizationLoading && activeTab === "overview" ? (
+        <div className="optimization-tab-body">
+          <section className="optimization-overview-kpi-strip" aria-label="Optimization savings summary">
+            {[
+              {
+                key: "total",
+                label: "Total Potential Savings",
+                value: totalSavings(scopedRows),
+              },
+              {
+                key: "compute",
+                label: "Compute Savings",
+                value: totalSavings(scopedRows.filter((x) => x.category === "compute")),
+              },
+              {
+                key: "storage",
+                label: "Storage Savings",
+                value: totalSavings(scopedRows.filter((x) => x.category === "storage")),
+              },
+              {
+                key: "network",
+                label: "Network Savings",
+                value: totalSavings(scopedRows.filter((x) => x.category === "network")),
+              },
+            ].map(({ key, label, value }) => (
+              <article key={key} className="optimization-overview-kpi-strip__item">
+                <div>
+                  <p className="optimization-overview-kpi-strip__label">{label}</p>
+                  <p className="optimization-overview-kpi-strip__value">{formatCurrency(value)}</p>
+                </div>
+              </article>
+            ))}
+          </section>
+
+          <div className="optimization-overview-grid">
+            <article className="optimization-overview-panel">
+              <header className="optimization-overview-panel__head">
+                <h3 className="optimization-overview-panel__title">Top Recommendation Types</h3>
+              </header>
+              <div className="optimization-overview-type-table-wrap">
+                <table className="optimization-overview-type-table">
+                  <thead>
+                    <tr>
+                      <th>Type</th>
+                      <th>Savings</th>
+                      <th>Resources</th>
+                      <th>Risk</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {topTypeSummary.map((item) => (
+                      <tr
+                        key={item.type}
+                        className="optimization-overview-type-table__row"
+                        onClick={() => navigateToOptimizationRecommendations({ issueType: item.type })}
+                      >
+                        <td>{typeLabel(item.type)}</td>
+                        <td className="optimization-overview-type-table__saving">{formatCurrency(item.saving)}</td>
+                        <td>{item.count}</td>
+                        <td>
+                          <span className={`optimization-rightsizing-pill is-risk-${toRiskClassName(item.risk)}`}>
+                            {`${toTitle(item.risk ?? "-")} Risk`}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </article>
+
+            <article className="optimization-overview-panel">
+              <header className="optimization-overview-panel__head">
+                <h3 className="optimization-overview-panel__title">Top 5 Recommendations by Savings</h3>
+              </header>
+              <div className="optimization-overview-savings-mix">
+                <svg viewBox="0 0 380 380" className="optimization-overview-savings-mix__svg" role="img" aria-label="Top recommendations pie chart">
+                  {topRecommendationsPie.map((slice) => (
+                    <path
+                      key={slice.id}
+                      d={slice.path}
+                      fill={slice.color}
+                      className="optimization-overview-savings-mix__slice"
+                      onClick={() => navigateToOptimizationRecommendations({ resourceId: slice.resourceId })}
+                    />
+                  ))}
+                  {topRecommendationsPie.map((slice) => (
+                    <g key={`${slice.id}-label`}>
+                      <line
+                        x1={slice.lineX}
+                        y1={slice.lineY}
+                        x2={slice.labelX}
+                        y2={slice.labelY}
+                        className="optimization-overview-savings-mix__line"
+                      />
+                      <text
+                        x={slice.labelX + (slice.anchor === "start" ? 4 : -4)}
+                        y={slice.labelY - 2}
+                        textAnchor={slice.anchor as "start" | "end"}
+                        className="optimization-overview-savings-mix__label"
+                      >
+                        {slice.name.length > 16 ? `${slice.name.slice(0, 16)}...` : slice.name}
+                      </text>
+                      <text
+                        x={slice.labelX + (slice.anchor === "start" ? 4 : -4)}
+                        y={slice.labelY + 14}
+                        textAnchor={slice.anchor as "start" | "end"}
+                        className="optimization-overview-savings-mix__percent"
+                      >
+                        {`${slice.percent}%`}
+                      </text>
+                    </g>
+                  ))}
+                </svg>
+              </div>
+            </article>
+          </div>
+        </div>
+      ) : null}
+
+      {!isRecommendationsLoading && !isOptimizationLoading && activeTab === "recommendations" ? (
         <section className="dashboard-widget-shell">
           <div className="dashboard-widget-shell__body optimization-tab-body">
-            <div className="cost-explorer-toolbar-row ec2-explorer-toolbar-row--primary">
-              <div className="cost-explorer-toolbar-item">
-                <button
-                  type="button"
-                  className="cost-explorer-toolbar-trigger"
-                  onClick={() => {
-                    setActiveDropdown(null);
-                    setScopeFiltersOpen(true);
-                  }}
-                >
-                  <span className="cost-explorer-toolbar-trigger__row">
-                    <span className="cost-explorer-toolbar-trigger__value">Filters</span>
-                    <Filter className="cost-explorer-toolbar-trigger__caret" size={14} aria-hidden="true" />
-                  </span>
-                </button>
-              </div>
+            <div className="cost-explorer-toolbar-row ec2-explorer-toolbar-row--primary optimization-recommendation-filters-row">
               <FilterDropdown
                 label="Category"
                 selected={categoryFilter}
@@ -1010,55 +1174,8 @@ export default function EC2OptimizationPage() {
                   setActiveDropdown(null);
                 }}
               />
-              <div className="cost-explorer-toolbar-item">
-                <label className="cost-explorer-toolbar-trigger ec2-instances-search-trigger">
-                  <span className="ec2-instances-search-trigger__icon-wrap" aria-hidden="true">
-                    <Search size={14} />
-                  </span>
-                  <input
-                    type="search"
-                    value={searchFilter}
-                    onChange={(event) => setSearchFilter(event.target.value)}
-                    placeholder="Search recommendations"
-                    aria-label="Search recommendations"
-                    className="ec2-instances-search-trigger__input"
-                  />
-                </label>
-              </div>
-              <div className="cost-explorer-toolbar-item">
-                <button
-                  type="button"
-                  className="cost-explorer-toolbar-trigger ec2-instances-toolbar-icon-trigger"
-                  onClick={clearRecommendationFilters}
-                  aria-label="Reset recommendation filters"
-                  title="Reset recommendation filters"
-                >
-                  <span className="cost-explorer-toolbar-trigger__row ec2-instances-toolbar-icon-trigger__row">
-                    <RotateCcw size={14} />
-                  </span>
-                </button>
-              </div>
             </div>
             {actionMessage ? <p className="dashboard-note">{actionMessage}</p> : null}
-            {activeFilterChips.length > 0 ? (
-              <div className="cost-explorer-chip-bar" aria-label="Active recommendation filters">
-                <div className="cost-explorer-chip-row">
-                  {activeFilterChips.map((chip) => (
-                    <span key={chip.id} className="cost-explorer-chip">
-                      <span className="cost-explorer-chip__edit">
-                        {chip.label}: {chip.value}
-                      </span>
-                      <button type="button" className="cost-explorer-chip__remove" onClick={chip.onRemove} aria-label={`Remove ${chip.label}`}>
-                        <X size={12} />
-                      </button>
-                    </span>
-                  ))}
-                  <button type="button" className="cost-explorer-chip-bar__clear cost-explorer-chip-bar__clear--inline" onClick={clearRecommendationFilters}>
-                    Clear all
-                  </button>
-                </div>
-              </div>
-            ) : null}
 
             <BaseDataTable
               columnDefs={unifiedCols}
@@ -1088,7 +1205,7 @@ export default function EC2OptimizationPage() {
                 </div>
                 <div className="optimization-drawer-subtitle">
                   <span>{toTitle(selectedRecommendation.category)}</span>
-                  <span aria-hidden="true">·</span>
+                  <span aria-hidden="true">�</span>
                   <span className="font-mono">{selectedRecommendation.resourceName || selectedRecommendation.resourceId}</span>
                 </div>
                 {selectedStatus === "snoozed" && selectedSnoozedUntil ? (
@@ -1292,4 +1409,5 @@ export default function EC2OptimizationPage() {
     </div>
   );
 }
+
 

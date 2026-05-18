@@ -5,7 +5,6 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { EmptyStateBlock } from "../../common/components/EmptyStateBlock";
 import { BaseDataTable } from "../../common/tables/BaseDataTable";
 import { useEc2ElasticIpsQuery } from "../../hooks/useDashboardQueries";
-import { EC2InstancesTopBar } from "./components/EC2InstancesTopBar";
 import {
   EC2_INSTANCES_DEFAULT_CONTROLS,
   type EC2InstancesControlsState,
@@ -35,6 +34,48 @@ const getControlsStateFromParam = (state: string | null): EC2InstancesControlsSt
   if (state === "unknown") return "terminated";
   return "all";
 };
+
+function ElasticIpSkeleton() {
+  return (
+    <>
+      <section className="ec2-explorer-summary ec2-explorer-summary--eip" aria-label="Loading Elastic IP summary cards" style={{ marginTop: 12 }}>
+        {Array.from({ length: 4 }).map((_, index) => (
+          <article key={`eip-summary-skeleton-${index}`} className="ec2-explorer-summary__card is-loading">
+            <div className="ec2-explorer-summary__skeleton" aria-hidden="true">
+              <span className="ec2-explorer-summary__skeleton-line ec2-explorer-summary__skeleton-line--label" />
+              <span className="ec2-explorer-summary__skeleton-line ec2-explorer-summary__skeleton-line--value" />
+            </div>
+          </article>
+        ))}
+      </section>
+
+      <section className="ec2-explorer-table-panel" aria-label="Loading Elastic IP table" style={{ marginTop: 12 }}>
+        <div className="eip-table-skeleton" aria-hidden="true">
+          <div className="eip-table-skeleton__head">
+            {Array.from({ length: 10 }).map((_, index) => (
+              <span key={`eip-head-${index}`} />
+            ))}
+          </div>
+          <div className="eip-table-skeleton__body">
+            {Array.from({ length: 6 }).map((_, rowIndex) => (
+              <div key={`eip-row-${rowIndex}`} className="eip-table-skeleton__row">
+                {Array.from({ length: 10 }).map((__, colIndex) => (
+                  <span key={`eip-cell-${rowIndex}-${colIndex}`} className={colIndex === 0 ? "is-wide" : ""} />
+                ))}
+              </div>
+            ))}
+          </div>
+          <div className="eip-table-skeleton__scroll" />
+          <div className="eip-table-skeleton__footer">
+            <span className="eip-table-skeleton__block eip-table-skeleton__block--size" />
+            <span className="eip-table-skeleton__block eip-table-skeleton__block--count" />
+            <span className="eip-table-skeleton__block eip-table-skeleton__block--pager" />
+          </div>
+        </div>
+      </section>
+    </>
+  );
+}
 
 export default function EC2EipPage() {
   const location = useLocation();
@@ -82,6 +123,7 @@ export default function EC2EipPage() {
   });
 
   const rows = query.data?.rows ?? [];
+  const isSectionLoading = query.isPending || (!query.data && !query.error);
   const summary = query.data?.summary ?? { totalCost: 0, totalEips: 0, unattachedCount: 0, potentialSavings: 0 };
 
   const columns = useMemo<ColDef<(typeof rows)[number]>[]>(() => [
@@ -127,36 +169,24 @@ export default function EC2EipPage() {
   return (
     <div className="dashboard-page cost-explorer-page">
       <section aria-label="EC2 Elastic IP list">
-        <EC2InstancesTopBar
-          value={controls}
-          instanceTypeOptions={[{ key: "all", label: "All" }]}
-          visibleControls={["filters", "state", "search", "reset"]}
-          onChange={(next) => {
-            setControls(next);
-            setPage(1);
-          }}
-          onReset={() => {
-            setControls({ ...EC2_INSTANCES_DEFAULT_CONTROLS });
-            setPage(1);
-          }}
-        />
-
-        <section className="ec2-explorer-summary" aria-label="Elastic IP summary cards" style={{ marginTop: 12 }}>
+        {isSectionLoading ? <ElasticIpSkeleton /> : null}
+        {!isSectionLoading ? (
+          <>
+        <section className="ec2-explorer-summary ec2-explorer-summary--eip" aria-label="Elastic IP summary cards" style={{ marginTop: 12 }}>
           {[
             ["Total EIP Cost", currency.format(summary.totalCost)],
             ["Total EIPs", summary.totalEips.toLocaleString()],
             ["Unattached EIPs", summary.unattachedCount.toLocaleString()],
             ["Potential Savings", currency.format(summary.potentialSavings)],
           ].map(([label, value]) => (
-            <article key={String(label)} className={`ec2-explorer-summary__card${query.isLoading ? " is-loading" : ""}`}>
+            <article key={String(label)} className="ec2-explorer-summary__card">
               <p className="ec2-explorer-summary__label">{label}</p>
-              <p className="ec2-explorer-summary__value">{query.isLoading ? "..." : value}</p>
+              <p className="ec2-explorer-summary__value">{value}</p>
             </article>
           ))}
         </section>
 
         <section className="ec2-explorer-table-panel" aria-label="Elastic IP table" style={{ marginTop: 12 }}>
-          {query.isLoading ? <p className="dashboard-note">Loading Elastic IP data...</p> : null}
           {query.isError ? (
             <EmptyStateBlock title="Unable to load Elastic IP data" message={query.error.message} />
           ) : rows.length === 0 ? (
@@ -165,6 +195,8 @@ export default function EC2EipPage() {
             <BaseDataTable columnDefs={columns} rowData={rows} pagination paginationPageSize={PAGE_SIZE} autoHeight />
           )}
         </section>
+          </>
+        ) : null}
       </section>
     </div>
   );
