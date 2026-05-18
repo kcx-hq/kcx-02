@@ -26,6 +26,7 @@ class S3CostDaily extends Model<
   declare storageClass: string;
   declare usageType: string;
   declare operation: string;
+  declare operationGroup: CreationOptional<string | null>;
   declare productFamily: string;
   declare pricingUnit: CreationOptional<string>;
   declare totalCost: CreationOptional<string>;
@@ -54,6 +55,7 @@ const createS3CostDailyModel = (sequelize: Sequelize): typeof S3CostDaily => {
       storageClass: { type: DataTypes.STRING(64), allowNull: false, field: "storage_class" },
       usageType: { type: DataTypes.TEXT, allowNull: false, field: "usage_type" },
       operation: { type: DataTypes.TEXT, allowNull: false, field: "operation" },
+      operationGroup: { type: DataTypes.TEXT, allowNull: true, field: "operation_group" },
       productFamily: { type: DataTypes.TEXT, allowNull: false, field: "product_family" },
       pricingUnit: { type: DataTypes.STRING(64), allowNull: false, defaultValue: "Units", field: "pricing_unit" },
       totalCost: { type: DataTypes.DECIMAL(20, 12), allowNull: false, defaultValue: 0, field: "total_cost" },

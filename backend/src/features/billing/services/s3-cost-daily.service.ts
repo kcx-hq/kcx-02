@@ -32,6 +32,64 @@ const validateDateOnly = (value: string, field: "startDate" | "endDate"): void =
 
 const normalizeTrim = (value: string | null | undefined): string => String(value ?? "").trim();
 
+export function getS3OperationGroup(operation?: string | null): string {
+  if (!operation) return "Other";
+
+  const op = operation.toLowerCase();
+
+  if (
+    op.includes("putobject") ||
+    op.includes("copyobject") ||
+    op.includes("uploadpart") ||
+    op.includes("multipartupload")
+  ) {
+    return "Write";
+  }
+
+  if (
+    op.includes("getobject") ||
+    op.includes("headobject") ||
+    op.includes("selectobject")
+  ) {
+    return "Read";
+  }
+
+  if (
+    op.includes("listbucket") ||
+    op.includes("listallmybuckets") ||
+    op.includes("readacl") ||
+    op.includes("getbucket") ||
+    op.includes("headbucket") ||
+    op.includes("readbucket")
+  ) {
+    return "List & Metadata";
+  }
+
+  if (
+    op.includes("deleteobject") ||
+    op.includes("abortmultipartupload")
+  ) {
+    return "Delete";
+  }
+
+  if (
+    op.includes("restore") ||
+    op.includes("lifecycle") ||
+    op.includes("glacier")
+  ) {
+    return "Lifecycle & Archive";
+  }
+
+  if (
+    op.includes("replication") ||
+    op.includes("replicate")
+  ) {
+    return "Replication";
+  }
+
+  return "Other";
+}
+
 export function isValidS3BucketName(value?: string | null): boolean {
   if (!value) return false;
 
@@ -201,6 +259,36 @@ export async function syncS3CostDaily(params: SyncS3CostDailyParams): Promise<{
         END AS storage_class,
         COALESCE(NULLIF(f.usage_type, ''), 'Unspecified') AS usage_type,
         COALESCE(NULLIF(f.operation, ''), 'Unspecified') AS operation,
+        CASE
+          WHEN f.operation IS NULL THEN :defaultOperationGroup::text
+          WHEN LOWER(f.operation) LIKE '%putobject%'
+            OR LOWER(f.operation) LIKE '%copyobject%'
+            OR LOWER(f.operation) LIKE '%uploadpart%'
+            OR LOWER(f.operation) LIKE '%multipartupload%'
+          THEN 'Write'
+          WHEN LOWER(f.operation) LIKE '%getobject%'
+            OR LOWER(f.operation) LIKE '%headobject%'
+            OR LOWER(f.operation) LIKE '%selectobject%'
+          THEN 'Read'
+          WHEN LOWER(f.operation) LIKE '%listbucket%'
+            OR LOWER(f.operation) LIKE '%listallmybuckets%'
+            OR LOWER(f.operation) LIKE '%readacl%'
+            OR LOWER(f.operation) LIKE '%getbucket%'
+            OR LOWER(f.operation) LIKE '%headbucket%'
+            OR LOWER(f.operation) LIKE '%readbucket%'
+          THEN 'List & Metadata'
+          WHEN LOWER(f.operation) LIKE '%deleteobject%'
+            OR LOWER(f.operation) LIKE '%abortmultipartupload%'
+          THEN 'Delete'
+          WHEN LOWER(f.operation) LIKE '%restore%'
+            OR LOWER(f.operation) LIKE '%lifecycle%'
+            OR LOWER(f.operation) LIKE '%glacier%'
+          THEN 'Lifecycle & Archive'
+          WHEN LOWER(f.operation) LIKE '%replication%'
+            OR LOWER(f.operation) LIKE '%replicate%'
+          THEN 'Replication'
+          ELSE 'Other'
+        END AS operation_group,
         COALESCE(NULLIF(f.product_family, ''), 'Unspecified') AS product_family,
         COALESCE(NULLIF(dsku.pricing_unit, ''), 'Units') AS pricing_unit,
         COALESCE(f.billed_cost, 0)::numeric AS total_cost,
@@ -247,6 +335,7 @@ export async function syncS3CostDaily(params: SyncS3CostDailyParams): Promise<{
         storage_class,
         usage_type,
         operation,
+        operation_group,
         product_family,
         pricing_unit,
         COALESCE(SUM(total_cost), 0)::numeric(20,12) AS total_cost,
@@ -256,17 +345,17 @@ export async function syncS3CostDaily(params: SyncS3CostDailyParams): Promise<{
       FROM raw
       GROUP BY
         tenant_id, cloud_connection_id, billing_source_id, provider_id, sub_account_key, region_key,
-        account_id, region, bucket_name, usage_date, cost_category, storage_class, usage_type, operation, product_family, pricing_unit, currency_code
+        account_id, region, bucket_name, usage_date, cost_category, storage_class, usage_type, operation, operation_group, product_family, pricing_unit, currency_code
     ),
     inserted AS (
       INSERT INTO s3_cost_daily (
         tenant_id, cloud_connection_id, billing_source_id, provider_id, sub_account_key, region_key,
-        account_id, region, bucket_name, usage_date, cost_category, storage_class, usage_type, operation, product_family, pricing_unit,
+        account_id, region, bucket_name, usage_date, cost_category, storage_class, usage_type, operation, operation_group, product_family, pricing_unit,
         total_cost, usage_quantity, currency_code, line_item_count, created_at, updated_at
       )
       SELECT
         tenant_id, cloud_connection_id, billing_source_id, provider_id, sub_account_key, region_key,
-        account_id, region, bucket_name, usage_date, cost_category, storage_class, usage_type, operation, product_family, pricing_unit,
+        account_id, region, bucket_name, usage_date, cost_category, storage_class, usage_type, operation, operation_group, product_family, pricing_unit,
         total_cost, usage_quantity, currency_code, line_item_count, NOW(), NOW()
       FROM rolled
       ON CONFLICT (
@@ -277,6 +366,7 @@ export async function syncS3CostDaily(params: SyncS3CostDailyParams): Promise<{
         total_cost = EXCLUDED.total_cost,
         usage_quantity = EXCLUDED.usage_quantity,
         line_item_count = EXCLUDED.line_item_count,
+        operation_group = EXCLUDED.operation_group,
         updated_at = EXCLUDED.updated_at
       RETURNING 1
     )
@@ -292,6 +382,7 @@ export async function syncS3CostDaily(params: SyncS3CostDailyParams): Promise<{
         providerId,
         accountId,
         region,
+        defaultOperationGroup: getS3OperationGroup(null),
       },
       type: QueryTypes.SELECT,
     },
