@@ -12,6 +12,7 @@
     "ingest:aws:like:clean": "node dist/scripts/aws-like-ingest-with-cleanup.js",
     "ingest:local:like": "node dist/scripts/local-file-ingest.js",
     "ingest:local:like:clean": "node dist/scripts/local-file-ingest-with-cleanup.js",
+    "reingest:billing:run": "tsx scripts/reingest-billing-run.ts",
     "seed:ec2:demo": "tsx scripts/seed-ec2-demo.ts",
     "seed:load-balancer:demo": "tsx scripts/seed-load-balancer-demo.ts",
     "ingest:cloudtrail:files": "node dist/scripts/process-cloudtrail-files.js",

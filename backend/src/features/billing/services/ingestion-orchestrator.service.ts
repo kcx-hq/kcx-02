@@ -4,13 +4,15 @@ import { HeadObjectCommand, S3Client } from "@aws-sdk/client-s3";
 
 import env from "../../../config/env.js";
 import { NotFoundError } from "../../../errors/http-errors.js";
-import { RawBillingFile } from "../../../models/index.js";
+import { BillingSource, CloudConnectionV2, RawBillingFile } from "../../../models/index.js";
 import { logger } from "../../../utils/logger.js";
 import { RAW_COLUMNS, mapFactCostLineItem } from "../mappers/raw_focus_to_dimensions.mapper.js";
 import {
   syncAwsIdleRecommendationsAfterIngestion,
   syncAwsRightsizingRecommendationsAfterIngestion,
 } from "../../dashboard/optimization/recommendation-sync/sync.service.js";
+import { syncDbRecommendationsAfterIngestion } from "../../database/recommendations/db-recommendations.service.js";
+import { createAndStartAnomalyDetectionRunFromIngestion } from "../../dashboard/anomaly-alerts/anomaly-ingestion-trigger.service.js";
 import { syncEc2CostHistoryForIngestionRun } from "./ec2-cost-history.service.js";
 import { syncDbCostHistoryForIngestionRun } from "./db-cost-history.service.js";
 import { syncLoadBalancerCostDailyForIngestionRun } from "../../load-balancer/cost/load-balancer-cost-daily.service.js";
@@ -97,6 +99,55 @@ const normalizeFormat = (value) => String(value ?? "").trim().toLowerCase();
 const now = () => new Date();
 const pendingPostIngestionTasks = new Set<Promise<void>>();
 
+function logIngestionStage({
+  runId,
+  billingSourceId = null,
+  cloudConnectionId = null,
+  clientAccountId = null,
+  stage,
+  status,
+  durationMs = null,
+  affectedStartDate = null,
+  affectedEndDate = null,
+  rowCount = null,
+  fatal = null,
+  error = null,
+  resultingStatus = null,
+  extra = {},
+}) {
+  const stageName = String(stage ?? "").trim();
+  const hasExplicitStageSuffix = /_(started|completed|failed|skipped|queued)$/.test(stageName);
+  const normalizedStage =
+    hasExplicitStageSuffix || status == null
+      ? stageName
+      : ["started", "completed", "failed", "skipped", "queued"].includes(String(status))
+        ? `${stageName}_${status}`
+        : stageName;
+  const payload = {
+    runId: runId == null ? null : String(runId),
+    billingSourceId: billingSourceId == null ? null : String(billingSourceId),
+    cloudConnectionId: cloudConnectionId == null ? null : String(cloudConnectionId),
+    clientAccountId: clientAccountId == null ? null : String(clientAccountId),
+    stage: normalizedStage,
+    status,
+    durationMs,
+    affectedStartDate,
+    affectedEndDate,
+    rowCount,
+    fatal,
+    error,
+    resultingStatus,
+    ...extra,
+  };
+
+  if (status === "failed") {
+    logger.error("Ingestion stage", payload);
+    return;
+  }
+
+  logger.info("Ingestion stage", payload);
+}
+
 function trackPostIngestionTask(task: Promise<void>): void {
   pendingPostIngestionTasks.add(task);
   task.finally(() => {
@@ -120,11 +171,29 @@ function scheduleStorageLensSyncAfterIngestion({ tenantId, billingSourceId, inge
   }
 
   setImmediate(() => {
+    const startedAt = Date.now();
+    logIngestionStage({
+      runId: ingestionRunId,
+      billingSourceId,
+      stage: "storage_lens_sync",
+      status: "started",
+    });
     const task = syncStorageLensFromClientAccount({
       tenantId: normalizedTenantId,
       billingSourceId: normalizedBillingSourceId,
     })
       .then((result) => {
+        logIngestionStage({
+          runId: ingestionRunId,
+          billingSourceId,
+          stage: "storage_lens_sync",
+          status: "completed",
+          durationMs: Date.now() - startedAt,
+          extra: {
+            snapshotsUpserted: result.snapshotsUpserted,
+            objectsProcessed: result.objectsProcessed,
+          },
+        });
         logger.info("Storage Lens auto-sync completed after ingestion", {
           ingestionRunId: String(ingestionRunId),
           tenantId: normalizedTenantId,
@@ -134,6 +203,19 @@ function scheduleStorageLensSyncAfterIngestion({ tenantId, billingSourceId, inge
         });
       })
       .catch((error) => {
+        logIngestionStage({
+          runId: ingestionRunId,
+          billingSourceId,
+          stage: "storage_lens_sync",
+          status: "failed",
+          durationMs: Date.now() - startedAt,
+          fatal: false,
+          error: {
+            message: toErrorMessage(error),
+            stack: error instanceof Error ? error.stack : null,
+          },
+          resultingStatus: "unchanged",
+        });
         logger.warn("Storage Lens auto-sync failed after ingestion", {
           ingestionRunId: String(ingestionRunId),
           tenantId: normalizedTenantId,
@@ -154,11 +236,33 @@ function scheduleLoadBalancerCostAggregationAfterIngestion({
   cloudConnectionId?: string | null;
 }): void {
   setImmediate(() => {
+    const startedAt = Date.now();
+    logIngestionStage({
+      runId: ingestionRunId,
+      stage: "load_balancer_rebuild",
+      status: "started",
+      extra: { cloudConnectionId: cloudConnectionId ?? null },
+    });
     const task = syncLoadBalancerCostDailyForIngestionRun({
       ingestionRunId: String(ingestionRunId),
       cloudConnectionId: cloudConnectionId ?? null,
     })
       .then((result) => {
+        logIngestionStage({
+          runId: ingestionRunId,
+          stage: "load_balancer_rebuild",
+          status: "completed",
+          durationMs: Date.now() - startedAt,
+          rowCount: result.rowsUpserted ?? 0,
+          extra: {
+            rowsScanned: result.rowsScanned ?? 0,
+            rowsDeleted: result.rowsDeleted ?? 0,
+            rowsClassified: result.rowsClassified ?? 0,
+            rowsUnmatched: result.rowsUnmatched ?? 0,
+            skipped: result.skipped ?? false,
+            reason: result.reason ?? null,
+          },
+        });
         logger.info("Load balancer cost aggregation completed after ingestion", {
           triggerSource: "ingestion",
           ingestionRunId: String(ingestionRunId),
@@ -176,6 +280,18 @@ function scheduleLoadBalancerCostAggregationAfterIngestion({
         });
       })
       .catch((error) => {
+        logIngestionStage({
+          runId: ingestionRunId,
+          stage: "load_balancer_rebuild",
+          status: "failed",
+          durationMs: Date.now() - startedAt,
+          fatal: false,
+          error: {
+            message: toErrorMessage(error),
+            stack: error instanceof Error ? error.stack : null,
+          },
+          resultingStatus: "unchanged",
+        });
         logger.warn("Load balancer cost aggregation failed after ingestion", {
           triggerSource: "ingestion",
           ingestionRunId: String(ingestionRunId),
@@ -375,16 +491,31 @@ async function processIngestionRun(ingestionRunId) {
   logger.info("Ingestion orchestrator: step=start", { ingestionRunId });
 
   let run;
+  let billingSource = null;
+  let cloudConnection = null;
   let latestProgressPercent = PROGRESS_BY_STAGE.queued;
   let rowsRead = 0;
   let rowsLoaded = 0;
   let rowsFailed = 0;
+  let affectedStartDate = null;
+  let affectedEndDate = null;
+  let currentStage = "ingestion_run_started";
 
   try {
+    logIngestionStage({
+      runId: ingestionRunId,
+      stage: "ingestion_run_started",
+      status: "started",
+    });
     await assertTagDimensionSchemaReady();
 
     logger.info("Ingestion orchestrator: step=load_run:start", { ingestionRunId });
     run = await loadIngestionRunOrThrow(ingestionRunId);
+    billingSource = await BillingSource.findByPk(String(run.billingSourceId)).catch(() => null);
+    const cloudConnectionId = billingSource?.cloudConnectionId ? String(billingSource.cloudConnectionId) : null;
+    if (cloudConnectionId) {
+      cloudConnection = await CloudConnectionV2.findByPk(cloudConnectionId).catch(() => null);
+    }
     logger.info("Ingestion orchestrator: step=load_run:done", {
       ingestionRunId,
       runId: run.id,
@@ -495,7 +626,32 @@ async function processIngestionRun(ingestionRunId) {
     }
 
     logger.info("Ingestion orchestrator: step=validate_schema:start", { runId: run.id });
+    currentStage = "schema_validation_started";
+    const schemaValidationStartedAt = Date.now();
+    logIngestionStage({
+      runId: run.id,
+      billingSourceId: run.billingSourceId,
+      cloudConnectionId: billingSource?.cloudConnectionId ?? null,
+      clientAccountId: cloudConnection?.cloudAccountId ?? null,
+      stage: "schema_validation",
+      status: "started",
+    });
     const validation = validateHeaders(headers);
+    logIngestionStage({
+      runId: run.id,
+      billingSourceId: run.billingSourceId,
+      cloudConnectionId: billingSource?.cloudConnectionId ?? null,
+      clientAccountId: cloudConnection?.cloudAccountId ?? null,
+      stage: "schema_validation",
+      status: "completed",
+      durationMs: Date.now() - schemaValidationStartedAt,
+      extra: {
+        validationSuccess: validation.success,
+        missingRequiredColumns: validation.missingRequiredColumns?.length ?? 0,
+        unknownHeaders: validation.unknownHeaders?.length ?? 0,
+        ambiguousHeaders: validation.ambiguousHeaders?.length ?? 0,
+      },
+    });
     logger.info("Ingestion orchestrator: step=validate_schema:done", {
       runId: run.id,
       validationSuccess: validation.success,
@@ -564,6 +720,33 @@ async function processIngestionRun(ingestionRunId) {
       chunkSize,
       fileFormat: resolvedFileFormat,
     });
+    currentStage = "chunk_read_started";
+    const chunkReadStartedAt = Date.now();
+    let chunkReadCount = 0;
+    logIngestionStage({
+      runId: run.id,
+      billingSourceId: run.billingSourceId,
+      cloudConnectionId: billingSource?.cloudConnectionId ?? null,
+      clientAccountId: cloudConnection?.cloudAccountId ?? null,
+      stage: "chunk_read",
+      status: "started",
+    });
+    logIngestionStage({
+      runId: run.id,
+      billingSourceId: run.billingSourceId,
+      cloudConnectionId: billingSource?.cloudConnectionId ?? null,
+      clientAccountId: cloudConnection?.cloudAccountId ?? null,
+      stage: "row_normalization",
+      status: "started",
+    });
+    logIngestionStage({
+      runId: run.id,
+      billingSourceId: run.billingSourceId,
+      cloudConnectionId: billingSource?.cloudConnectionId ?? null,
+      clientAccountId: cloudConnection?.cloudAccountId ?? null,
+      stage: "staging_insert",
+      status: "started",
+    });
 
     try {
       while (true) {
@@ -574,6 +757,7 @@ async function processIngestionRun(ingestionRunId) {
         if (done) {
           break;
         }
+        chunkReadCount += 1;
 
         chunkIndex += 1;
         rowsRead += rawChunk.length;
@@ -863,6 +1047,36 @@ async function processIngestionRun(ingestionRunId) {
       });
       throw error;
     }
+    logIngestionStage({
+      runId: run.id,
+      billingSourceId: run.billingSourceId,
+      cloudConnectionId: billingSource?.cloudConnectionId ?? null,
+      clientAccountId: cloudConnection?.cloudAccountId ?? null,
+      stage: "chunk_read",
+      status: "completed",
+      durationMs: Date.now() - chunkReadStartedAt,
+      extra: { chunkCount: chunkReadCount },
+      rowCount: rowsRead,
+    });
+    logIngestionStage({
+      runId: run.id,
+      billingSourceId: run.billingSourceId,
+      cloudConnectionId: billingSource?.cloudConnectionId ?? null,
+      clientAccountId: cloudConnection?.cloudAccountId ?? null,
+      stage: "row_normalization",
+      status: "completed",
+      rowCount: rowsRead,
+    });
+    logIngestionStage({
+      runId: run.id,
+      billingSourceId: run.billingSourceId,
+      cloudConnectionId: billingSource?.cloudConnectionId ?? null,
+      clientAccountId: cloudConnection?.cloudAccountId ?? null,
+      stage: "staging_insert",
+      status: "completed",
+      rowCount: rowsLoaded,
+      extra: { rowsFailed },
+    });
 
     await updateProgressThrottled(
       {
@@ -876,10 +1090,29 @@ async function processIngestionRun(ingestionRunId) {
       { force: true },
     );
 
+    currentStage = "staging_validation_started";
+    const stagingValidationStartedAt = Date.now();
+    logIngestionStage({
+      runId: run.id,
+      billingSourceId: run.billingSourceId,
+      cloudConnectionId: billingSource?.cloudConnectionId ?? null,
+      clientAccountId: cloudConnection?.cloudAccountId ?? null,
+      stage: "staging_validation",
+      status: "started",
+    });
     try {
       await validateStagingRowsForIngestionRun({
         ingestionRunId: run.id,
         billingSourceId: run.billingSourceId,
+      });
+      logIngestionStage({
+        runId: run.id,
+        billingSourceId: run.billingSourceId,
+        cloudConnectionId: billingSource?.cloudConnectionId ?? null,
+        clientAccountId: cloudConnection?.cloudAccountId ?? null,
+        stage: "staging_validation",
+        status: "completed",
+        durationMs: Date.now() - stagingValidationStartedAt,
       });
     } catch (validationError) {
       logger.error("Staging validation failed before fact replacement", {
@@ -896,91 +1129,6 @@ async function processIngestionRun(ingestionRunId) {
       rows_failed: rowsFailed,
       total_rows_estimated: rowsRead,
     });
-
-    if (rowsLoaded > 0) {
-      await syncEc2CostHistoryForIngestionRun({
-        ingestionRunId: run.id,
-        tenantId: rawFile.tenantId,
-        providerId: rawFile.cloudProviderId,
-        billingSourceId: run.billingSourceId,
-      });
-      await syncDbCostHistoryForIngestionRun({
-        ingestionRunId: run.id,
-        tenantId: rawFile.tenantId,
-        providerId: rawFile.cloudProviderId,
-        billingSourceId: run.billingSourceId,
-      });
-      scheduleLoadBalancerCostAggregationAfterIngestion({
-        ingestionRunId: run.id,
-        cloudConnectionId: null,
-      });
-      await syncEc2CostHistoryForIngestionRun({
-        ingestionRunId: run.id,
-        tenantId: rawFile.tenantId,
-        providerId: rawFile.cloudProviderId,
-        billingSourceId: run.billingSourceId,
-      });
-      await syncDbCostHistoryForIngestionRun({
-        ingestionRunId: run.id,
-        tenantId: rawFile.tenantId,
-        providerId: rawFile.cloudProviderId,
-        billingSourceId: run.billingSourceId,
-      });
-      scheduleLoadBalancerCostAggregationAfterIngestion({
-        ingestionRunId: run.id,
-        cloudConnectionId: null,
-      });
-
-      const tenantIdForSync = typeof rawFile.tenantId === "string" ? rawFile.tenantId.trim() : "";
-      const billingSourceIdForSync = run?.billingSourceId ? String(run.billingSourceId) : "";
-
-      if (tenantIdForSync && billingSourceIdForSync) {
-        try {
-          await syncAwsRightsizingRecommendationsAfterIngestion({
-            tenantId: tenantIdForSync,
-            billingSourceId: billingSourceIdForSync,
-            ingestionRunId: String(run.id),
-          });
-        } catch (syncError) {
-          logger.warn("Optimization recommendation sync failed after ingestion", {
-            ingestionRunId: run.id,
-            tenantId: rawFile.tenantId ?? null,
-            billingSourceId: rawFile.billingSourceId ?? null,
-            reason: toErrorMessage(syncError),
-          });
-        }
-
-        try {
-          await syncAwsIdleRecommendationsAfterIngestion({
-            tenantId: tenantIdForSync,
-            billingSourceId: billingSourceIdForSync,
-            ingestionRunId: String(run.id),
-          });
-        } catch (idleSyncError) {
-          logger.warn("Idle recommendation sync failed after ingestion", {
-            ingestionRunId: run.id,
-            tenantId: rawFile.tenantId ?? null,
-            billingSourceId: rawFile.billingSourceId ?? null,
-            reason: toErrorMessage(idleSyncError),
-          });
-        }
-
-        try {
-          await syncDbRecommendationsAfterIngestion({
-            tenantId: tenantIdForSync,
-            billingSourceId: billingSourceIdForSync,
-            ingestionRunId: String(run.id),
-          });
-        } catch (dbSyncError) {
-          logger.warn("DB recommendation sync failed after ingestion", {
-            ingestionRunId: run.id,
-            tenantId: rawFile.tenantId ?? null,
-            billingSourceId: rawFile.billingSourceId ?? null,
-            reason: toErrorMessage(dbSyncError),
-          });
-        }
-      }
-    }
 
     const topReasons = summarizeTopFailureReasons(failureReasonCounts);
     if (rowsLoaded === 0 && rowsFailed > 0) {
@@ -1013,6 +1161,17 @@ async function processIngestionRun(ingestionRunId) {
           }`
         : null;
 
+    currentStage = "fact_replacement_started";
+    const factReplacementStartedAt = Date.now();
+    logIngestionStage({
+      runId: run.id,
+      billingSourceId: run.billingSourceId,
+      cloudConnectionId: billingSource?.cloudConnectionId ?? null,
+      clientAccountId: cloudConnection?.cloudAccountId ?? null,
+      stage: "fact_replacement",
+      status: "started",
+      rowCount: rowsRead,
+    });
     let replacementSummary;
     try {
       replacementSummary = await replaceFactRowsFromStagingInTransaction({
@@ -1031,6 +1190,28 @@ async function processIngestionRun(ingestionRunId) {
       throw replacementError;
     }
     rowsLoaded = replacementSummary.rowsInserted;
+    const affectedDates = Array.isArray(replacementSummary.affectedUsageDates)
+      ? replacementSummary.affectedUsageDates.filter(Boolean)
+      : [];
+    if (affectedDates.length > 0) {
+      affectedStartDate = [...affectedDates].sort()[0];
+      affectedEndDate = [...affectedDates].sort()[affectedDates.length - 1];
+    }
+    logIngestionStage({
+      runId: run.id,
+      billingSourceId: run.billingSourceId,
+      cloudConnectionId: billingSource?.cloudConnectionId ?? null,
+      clientAccountId: cloudConnection?.cloudAccountId ?? null,
+      stage: "fact_replacement",
+      status: "completed",
+      durationMs: Date.now() - factReplacementStartedAt,
+      rowCount: rowsLoaded,
+      affectedStartDate,
+      affectedEndDate,
+      extra: {
+        factRowsWithCurrentIngestionRunId: replacementSummary.factRowsWithCurrentIngestionRunId ?? 0,
+      },
+    });
     logger.info("Ingestion fact replacement committed", {
       ingestionRunId: String(run.id),
       billingSourceId: String(run.billingSourceId ?? ""),
@@ -1040,6 +1221,18 @@ async function processIngestionRun(ingestionRunId) {
     });
 
     if (rowsLoaded > 0) {
+      currentStage = "cost_aggregation_started";
+      const aggregationStartedAt = Date.now();
+      logIngestionStage({
+        runId: run.id,
+        billingSourceId: run.billingSourceId,
+        cloudConnectionId: billingSource?.cloudConnectionId ?? null,
+        clientAccountId: cloudConnection?.cloudAccountId ?? null,
+        stage: "cost_aggregation",
+        status: "started",
+        affectedStartDate,
+        affectedEndDate,
+      });
       try {
         await upsertCostAggregationsForRun({
           ingestionRunId: run.id,
@@ -1050,6 +1243,17 @@ async function processIngestionRun(ingestionRunId) {
           affectedUsageDates: Array.isArray(replacementSummary.affectedUsageDates)
             ? replacementSummary.affectedUsageDates
             : [],
+        });
+        logIngestionStage({
+          runId: run.id,
+          billingSourceId: run.billingSourceId,
+          cloudConnectionId: billingSource?.cloudConnectionId ?? null,
+          clientAccountId: cloudConnection?.cloudAccountId ?? null,
+          stage: "cost_aggregation",
+          status: "completed",
+          durationMs: Date.now() - aggregationStartedAt,
+          affectedStartDate,
+          affectedEndDate,
         });
       } catch (aggregationError) {
         logger.error("Aggregation refresh failed after fact commit", {
@@ -1065,13 +1269,243 @@ async function processIngestionRun(ingestionRunId) {
           error_message: `Aggregation refresh failed: ${toErrorMessage(aggregationError)}`,
           last_heartbeat_at: now(),
         });
+        logIngestionStage({
+          runId: run.id,
+          billingSourceId: run.billingSourceId,
+          cloudConnectionId: billingSource?.cloudConnectionId ?? null,
+          clientAccountId: cloudConnection?.cloudAccountId ?? null,
+          stage: "cost_aggregation",
+          status: "failed",
+          durationMs: Date.now() - aggregationStartedAt,
+          fatal: false,
+          error: {
+            message: toErrorMessage(aggregationError),
+            stack: aggregationError instanceof Error ? aggregationError.stack : null,
+          },
+          resultingStatus: "completed_with_warnings",
+          affectedStartDate,
+          affectedEndDate,
+        });
       }
     }
+
+    if (rowsLoaded > 0) {
+      currentStage = "ec2_rebuild_started";
+      const ec2StartedAt = Date.now();
+      logIngestionStage({
+        runId: run.id,
+        billingSourceId: run.billingSourceId,
+        cloudConnectionId: billingSource?.cloudConnectionId ?? null,
+        clientAccountId: cloudConnection?.cloudAccountId ?? null,
+        stage: "ec2_rebuild",
+        status: "started",
+        affectedStartDate,
+        affectedEndDate,
+      });
+      const ec2Result = await syncEc2CostHistoryForIngestionRun({
+        ingestionRunId: run.id,
+        tenantId: rawFile.tenantId,
+        providerId: rawFile.cloudProviderId,
+        billingSourceId: run.billingSourceId,
+      });
+      logIngestionStage({
+        runId: run.id,
+        billingSourceId: run.billingSourceId,
+        cloudConnectionId: billingSource?.cloudConnectionId ?? null,
+        clientAccountId: cloudConnection?.cloudAccountId ?? null,
+        stage: "ec2_rebuild",
+        status: "completed",
+        durationMs: Date.now() - ec2StartedAt,
+        affectedStartDate,
+        affectedEndDate,
+        extra: ec2Result,
+      });
+
+      currentStage = "db_rebuild_started";
+      const dbStartedAt = Date.now();
+      logIngestionStage({
+        runId: run.id,
+        billingSourceId: run.billingSourceId,
+        cloudConnectionId: billingSource?.cloudConnectionId ?? null,
+        clientAccountId: cloudConnection?.cloudAccountId ?? null,
+        stage: "db_rebuild",
+        status: "started",
+        affectedStartDate,
+        affectedEndDate,
+      });
+      const dbResult = await syncDbCostHistoryForIngestionRun({
+        ingestionRunId: run.id,
+        tenantId: rawFile.tenantId,
+        providerId: rawFile.cloudProviderId,
+        billingSourceId: run.billingSourceId,
+      });
+      logIngestionStage({
+        runId: run.id,
+        billingSourceId: run.billingSourceId,
+        cloudConnectionId: billingSource?.cloudConnectionId ?? null,
+        clientAccountId: cloudConnection?.cloudAccountId ?? null,
+        stage: "db_rebuild",
+        status: "completed",
+        durationMs: Date.now() - dbStartedAt,
+        affectedStartDate,
+        affectedEndDate,
+        extra: dbResult,
+      });
+
+      logIngestionStage({
+        runId: run.id,
+        billingSourceId: run.billingSourceId,
+        cloudConnectionId: billingSource?.cloudConnectionId ?? null,
+        clientAccountId: cloudConnection?.cloudAccountId ?? null,
+        stage: "load_balancer_rebuild",
+        status: "queued",
+        extra: { async: true },
+      });
+      scheduleLoadBalancerCostAggregationAfterIngestion({
+        ingestionRunId: run.id,
+        cloudConnectionId: billingSource?.cloudConnectionId ? String(billingSource.cloudConnectionId) : null,
+      });
+    } else {
+      logIngestionStage({
+        runId: run.id,
+        billingSourceId: run.billingSourceId,
+        stage: "ec2_rebuild",
+        status: "skipped",
+      });
+      logIngestionStage({
+        runId: run.id,
+        billingSourceId: run.billingSourceId,
+        stage: "db_rebuild",
+        status: "skipped",
+      });
+      logIngestionStage({
+        runId: run.id,
+        billingSourceId: run.billingSourceId,
+        stage: "load_balancer_rebuild",
+        status: "skipped",
+      });
+    }
+
     scheduleStorageLensSyncAfterIngestion({
       tenantId: rawFile.tenantId,
       billingSourceId: run.billingSourceId,
       ingestionRunId: run.id,
     });
+    logIngestionStage({
+      runId: run.id,
+      billingSourceId: run.billingSourceId,
+      cloudConnectionId: billingSource?.cloudConnectionId ?? null,
+      clientAccountId: cloudConnection?.cloudAccountId ?? null,
+      stage: "storage_lens_sync",
+      status: "queued",
+      extra: { async: true },
+    });
+
+    const tenantIdForSync = typeof rawFile.tenantId === "string" ? rawFile.tenantId.trim() : "";
+    const billingSourceIdForSync = run?.billingSourceId ? String(run.billingSourceId) : "";
+    logIngestionStage({
+      runId: run.id,
+      billingSourceId: run.billingSourceId,
+      cloudConnectionId: billingSource?.cloudConnectionId ?? null,
+      clientAccountId: cloudConnection?.cloudAccountId ?? null,
+      stage: "recommendation_sync",
+      status: "started",
+      affectedStartDate,
+      affectedEndDate,
+    });
+    if (tenantIdForSync && billingSourceIdForSync) {
+      try {
+        await syncAwsRightsizingRecommendationsAfterIngestion({
+          tenantId: tenantIdForSync,
+          billingSourceId: billingSourceIdForSync,
+          ingestionRunId: String(run.id),
+        });
+      } catch (syncError) {
+        logger.warn("Optimization recommendation sync failed after ingestion", {
+          ingestionRunId: run.id,
+          tenantId: rawFile.tenantId ?? null,
+          billingSourceId: rawFile.billingSourceId ?? null,
+          reason: toErrorMessage(syncError),
+        });
+      }
+
+      try {
+        await syncAwsIdleRecommendationsAfterIngestion({
+          tenantId: tenantIdForSync,
+          billingSourceId: billingSourceIdForSync,
+          ingestionRunId: String(run.id),
+        });
+      } catch (idleSyncError) {
+        logger.warn("Idle recommendation sync failed after ingestion", {
+          ingestionRunId: run.id,
+          tenantId: rawFile.tenantId ?? null,
+          billingSourceId: rawFile.billingSourceId ?? null,
+          reason: toErrorMessage(idleSyncError),
+        });
+      }
+
+      try {
+        await syncDbRecommendationsAfterIngestion({
+          tenantId: tenantIdForSync,
+          billingSourceId: billingSourceIdForSync,
+          ingestionRunId: String(run.id),
+        });
+      } catch (dbSyncError) {
+        logger.warn("DB recommendation sync failed after ingestion", {
+          ingestionRunId: run.id,
+          tenantId: rawFile.tenantId ?? null,
+          billingSourceId: rawFile.billingSourceId ?? null,
+          reason: toErrorMessage(dbSyncError),
+        });
+      }
+    }
+    logIngestionStage({
+      runId: run.id,
+      billingSourceId: run.billingSourceId,
+      cloudConnectionId: billingSource?.cloudConnectionId ?? null,
+      clientAccountId: cloudConnection?.cloudAccountId ?? null,
+      stage: "recommendation_sync",
+      status: "completed",
+      affectedStartDate,
+      affectedEndDate,
+    });
+
+    logIngestionStage({
+      runId: run.id,
+      billingSourceId: run.billingSourceId,
+      cloudConnectionId: billingSource?.cloudConnectionId ?? null,
+      clientAccountId: cloudConnection?.cloudAccountId ?? null,
+      stage: "anomaly_detection_trigger",
+      status: "started",
+    });
+    try {
+      await createAndStartAnomalyDetectionRunFromIngestion({
+        ingestionRunId: String(run.id),
+      });
+      logIngestionStage({
+        runId: run.id,
+        billingSourceId: run.billingSourceId,
+        cloudConnectionId: billingSource?.cloudConnectionId ?? null,
+        clientAccountId: cloudConnection?.cloudAccountId ?? null,
+        stage: "anomaly_detection_trigger",
+        status: "completed",
+      });
+    } catch (anomalyTriggerError) {
+      logIngestionStage({
+        runId: run.id,
+        billingSourceId: run.billingSourceId,
+        cloudConnectionId: billingSource?.cloudConnectionId ?? null,
+        clientAccountId: cloudConnection?.cloudAccountId ?? null,
+        stage: "anomaly_detection_trigger",
+        status: "failed",
+        fatal: false,
+        error: {
+          message: toErrorMessage(anomalyTriggerError),
+          stack: anomalyTriggerError instanceof Error ? anomalyTriggerError.stack : null,
+        },
+        resultingStatus: "unchanged",
+      });
+    }
 
     console.log("[S3-UPLOAD-DEBUG][INGESTION][END]", {
       tenantId: rawFile.tenantId ?? null,
@@ -1101,6 +1535,18 @@ async function processIngestionRun(ingestionRunId) {
       rowsFailed,
       failedRowWriteErrors,
       topReasons,
+    });
+    logIngestionStage({
+      runId: run.id,
+      billingSourceId: run.billingSourceId,
+      cloudConnectionId: billingSource?.cloudConnectionId ?? null,
+      clientAccountId: cloudConnection?.cloudAccountId ?? null,
+      stage: "ingestion_run_completed",
+      status: "completed",
+      affectedStartDate,
+      affectedEndDate,
+      rowCount: rowsLoaded,
+      extra: { rowsRead, rowsFailed },
     });
   } catch (error) {
     if (!run?.id) {
@@ -1140,6 +1586,21 @@ async function processIngestionRun(ingestionRunId) {
         originalReason: toErrorMessage(error),
       });
     }
+    logIngestionStage({
+      runId: run.id,
+      billingSourceId: run.billingSourceId ?? null,
+      cloudConnectionId: billingSource?.cloudConnectionId ?? null,
+      clientAccountId: cloudConnection?.cloudAccountId ?? null,
+      stage: "ingestion_run_failed",
+      status: "failed",
+      fatal: true,
+      error: {
+        message: toErrorMessage(error),
+        stack: error instanceof Error ? error.stack : null,
+      },
+      resultingStatus: "failed",
+      extra: { failedStage: currentStage },
+    });
   }
 }
 
