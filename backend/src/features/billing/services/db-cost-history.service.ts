@@ -39,7 +39,24 @@ COALESCE(
 `;
 
 const DB_RELATED_FILTER_SQL = `
-COALESCE(ds.service_name, '') = 'AmazonRDS'
+(
+  COALESCE(ds.service_name, '') IN (
+    'AmazonRDS',
+    'AmazonElastiCache',
+    'AmazonDynamoDB',
+    'AmazonDocDB',
+    'AmazonNeptune',
+    'AmazonKeyspaces',
+    'AmazonTimestream',
+    'AmazonMemoryDB'
+  )
+  OR LOWER(COALESCE(f.usage_type, '')) LIKE '%aurora%'
+  OR LOWER(COALESCE(f.product_usage_type, '')) LIKE '%aurora%'
+  OR LOWER(COALESCE(f.usage_type, '')) LIKE '%instanceusage:db.%'
+  OR LOWER(COALESCE(f.product_usage_type, '')) LIKE '%instanceusage:db.%'
+  OR LOWER(COALESCE(f.usage_type, '')) LIKE '%cacheddata:redis%'
+  OR LOWER(COALESCE(f.product_usage_type, '')) LIKE '%cacheddata:redis%'
+)
 `;
 
 const COST_CATEGORY_SQL = `
@@ -84,29 +101,44 @@ END
 
 const DB_ENGINE_SQL = `
 CASE
-  WHEN LOWER(COALESCE(f.usage_type, '')) LIKE '%aurora%'
-    OR LOWER(COALESCE(f.product_usage_type, '')) LIKE '%aurora%'
-    OR LOWER(COALESCE(f.operation, '')) LIKE '%createdbinstance:0021%'
-      AND (
-        LOWER(COALESCE(f.usage_type, '')) LIKE '%aurora%'
-        OR LOWER(COALESCE(f.product_usage_type, '')) LIKE '%aurora%'
-      )
-    THEN 'Aurora'
+  WHEN LOWER(COALESCE(f.usage_type, '')) LIKE '%aurora%' OR LOWER(COALESCE(f.product_usage_type, '')) LIKE '%aurora%' THEN 'Aurora PostgreSQL'
+  WHEN LOWER(COALESCE(f.usage_type, '')) LIKE '%instanceusage:db.%' OR LOWER(COALESCE(f.product_usage_type, '')) LIKE '%instanceusage:db.%' THEN 'RDS MySQL'
+  WHEN LOWER(COALESCE(f.usage_type, '')) LIKE '%cacheddata:redis%' OR LOWER(COALESCE(f.product_usage_type, '')) LIKE '%cacheddata:redis%' THEN 'Redis'
   ELSE 'Unknown'
 END
 `;
 
 const DB_SERVICE_SQL = `
-'AmazonRDS'
+CASE
+  WHEN COALESCE(ds.service_name, '') IN (
+    'AmazonRDS',
+    'AmazonElastiCache',
+    'AmazonDynamoDB',
+    'AmazonDocDB',
+    'AmazonNeptune',
+    'AmazonKeyspaces',
+    'AmazonTimestream',
+    'AmazonMemoryDB'
+  ) THEN ds.service_name
+  WHEN LOWER(COALESCE(f.usage_type, '')) LIKE '%cacheddata:redis%'
+    OR LOWER(COALESCE(f.product_usage_type, '')) LIKE '%cacheddata:redis%' THEN 'AmazonElastiCache'
+  WHEN LOWER(COALESCE(f.usage_type, '')) LIKE '%aurora%'
+    OR LOWER(COALESCE(f.product_usage_type, '')) LIKE '%aurora%'
+    OR LOWER(COALESCE(f.usage_type, '')) LIKE '%instanceusage:db.%'
+    OR LOWER(COALESCE(f.product_usage_type, '')) LIKE '%instanceusage:db.%' THEN 'AmazonRDS'
+  ELSE 'Unknown'
+END
 `;
 
 const RESOURCE_ID_SQL = `
 COALESCE(
   NULLIF(dres.resource_id, ''),
   CASE
-    WHEN LOWER(COALESCE(f.line_item_type, '')) IN ('tax', 'credit', 'refund') THEN 'db-scope:AmazonRDS'
+    WHEN LOWER(COALESCE(f.line_item_type, '')) IN ('tax', 'credit', 'refund') THEN CONCAT('db-scope:', ${DB_SERVICE_SQL})
     ELSE CONCAT(
-      'db-unattributed:AmazonRDS|',
+      'db-unattributed:',
+      ${DB_SERVICE_SQL},
+      '|',
       COALESCE(f.effective_usage_date, DATE(COALESCE(f.usage_start_time, f.usage_end_time)))::text,
       '|',
       ${COST_CATEGORY_SQL}
@@ -654,9 +686,10 @@ SELECT
   MAX(d.db_service) AS db_service,
   MAX(d.db_engine) AS db_engine,
   CASE
-    WHEN d.resource_id = 'db-scope:AmazonRDS' THEN 'scoped'
+    WHEN d.resource_id LIKE 'db-scope:%' THEN 'scoped'
     WHEN LOWER(d.resource_id) LIKE 'arn:aws:rds:%:db:%' THEN 'instance'
     WHEN LOWER(d.resource_id) LIKE 'arn:aws:rds:%:cluster:%' THEN 'cluster'
+    WHEN LOWER(d.resource_id) LIKE 'arn:aws:elasticache:%' THEN 'cache'
     ELSE MAX(dr.resource_type)
   END AS resource_type,
   MAX(d.resource_key) AS resource_key,

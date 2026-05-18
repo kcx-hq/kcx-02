@@ -6312,6 +6312,36 @@
   gap: 14px;
 }
 
+.s3-overview-kpi-surface {
+  margin-top: -2px;
+}
+
+.s3-overview-kpi-row {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 0;
+}
+
+.s3-overview-kpi-row .s3-overview-kpi-tile {
+  flex: 1 1 0;
+  min-width: 0;
+  border: 0;
+  border-right: 1px solid color-mix(in srgb, var(--dashboard-border-light) 80%, var(--dashboard-white-strong) 20%);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.s3-overview-kpi-row .s3-overview-kpi-tile:last-child {
+  border-right: 0;
+}
+
+.s3-overview-kpi-row .s3-overview-kpi-tile .cost-explorer-insight-tile__value {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .s3-overview-filter-panel {
   position: relative !important;
   top: auto !important;
@@ -12553,7 +12583,6 @@
   padding: 7px 9px;
 }
 
-<<<<<<< HEAD
 .database-explorer-groupby__dimension-option {
   border-left: 2px solid transparent;
   border-radius: 8px;
@@ -12589,9 +12618,6 @@
   padding: 1px;
   color: color-mix(in srgb, var(--dashboard-accent) 62%, #3f6770 38%);
 }
-
-=======
->>>>>>> main
 .database-explorer-groupby__panel {
   display: flex;
   flex-direction: column;
@@ -14326,8 +14352,6 @@
 }
 
 @media (max-width: 760px) {
-<<<<<<< HEAD
-=======
   .ec2-explorer-page .ec2-explorer-controls {
     padding: 16px;
   }
@@ -14355,8 +14379,6 @@
   .ec2-explorer-page .ec2-explorer-table {
     padding: 16px;
   }
-
->>>>>>> main
   .ec2-explorer-summary {
     grid-template-columns: repeat(2, minmax(120px, 1fr));
   }

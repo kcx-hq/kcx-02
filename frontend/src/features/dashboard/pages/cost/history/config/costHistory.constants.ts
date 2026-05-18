@@ -3,7 +3,7 @@ import type {
   CostHistoryGroupBy,
   CostHistoryXAxis,
   CostHistoryYAxisMetric,
-} from "../../../api/dashboardTypes";
+} from "../../../../api/dashboardTypes";
 
 export const DEFAULT_COST_HISTORY_FILTERS: Required<CostHistoryFiltersQuery> = {
   granularity: "month",

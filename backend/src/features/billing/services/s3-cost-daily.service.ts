@@ -15,6 +15,14 @@ type SyncS3CostDailyParams = {
 };
 
 const DATE_ONLY_REGEX = /^\d{4}-\d{2}-\d{2}$/;
+const INVALID_S3_BUCKET_VALUES = [
+  "unattributed",
+  "aws.s3",
+  "lambda",
+  "amazon s3",
+  "s3",
+  "credits / adjustments",
+] as const;
 
 const validateDateOnly = (value: string, field: "startDate" | "endDate"): void => {
   if (!DATE_ONLY_REGEX.test(value)) {
@@ -23,6 +31,19 @@ const validateDateOnly = (value: string, field: "startDate" | "endDate"): void =
 };
 
 const normalizeTrim = (value: string | null | undefined): string => String(value ?? "").trim();
+
+export function isValidS3BucketName(value?: string | null): boolean {
+  if (!value) return false;
+
+  const v = value.trim().toLowerCase();
+  if (!v) return false;
+
+  if ((INVALID_S3_BUCKET_VALUES as readonly string[]).includes(v)) return false;
+
+  if (v.startsWith("arn:aws:s3:") && v.includes(":storage-lens/")) return false;
+
+  return /^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/.test(v);
+}
 
 type DeletedCountRow = { deleted_rows: number | string };
 type InsertedCountRow = { inserted_rows: number | string };
@@ -94,14 +115,51 @@ export async function syncS3CostDaily(params: SyncS3CostDailyParams): Promise<{
         COALESCE(NULLIF(TRIM(dsa.sub_account_id), ''), NULLIF(TRIM(dba.billing_account_id), '')) AS account_id,
         COALESCE(NULLIF(TRIM(dr.region_name), ''), NULLIF(TRIM(dr.region_id), ''), 'global') AS region,
         COALESCE(dd.full_date, DATE(COALESCE(f.usage_start_time, f.usage_end_time)))::date AS usage_date,
-        COALESCE(NULLIF(
-          CASE
-            WHEN COALESCE(dres.resource_id, '') = '' THEN 'unattributed'
-            WHEN LOWER(dres.resource_id) LIKE 'arn:aws:s3:::%' THEN NULLIF(SPLIT_PART(dres.resource_id, ':::', 2), '')
-            WHEN LOWER(dres.resource_id) LIKE 's3://%' THEN NULLIF(SPLIT_PART(SUBSTRING(dres.resource_id FROM 6), '/', 1), '')
-            ELSE dres.resource_id
-          END
-        , ''), 'unattributed') AS bucket_name,
+        CASE
+          WHEN LOWER(COALESCE(f.line_item_type, '')) = 'credit' THEN NULL
+          ELSE
+            CASE
+              WHEN (
+                CASE
+                  WHEN COALESCE(dres.resource_id, '') = '' THEN NULL
+                  WHEN LOWER(dres.resource_id) LIKE 'arn:aws:s3:::%' THEN NULLIF(SPLIT_PART(dres.resource_id, ':::', 2), '')
+                  WHEN LOWER(dres.resource_id) LIKE 's3://%' THEN NULLIF(SPLIT_PART(SUBSTRING(dres.resource_id FROM 6), '/', 1), '')
+                  ELSE dres.resource_id
+                END
+              ) IS NULL THEN NULL
+              WHEN LOWER(
+                CASE
+                  WHEN COALESCE(dres.resource_id, '') = '' THEN ''
+                  WHEN LOWER(dres.resource_id) LIKE 'arn:aws:s3:::%' THEN COALESCE(NULLIF(SPLIT_PART(dres.resource_id, ':::', 2), ''), '')
+                  WHEN LOWER(dres.resource_id) LIKE 's3://%' THEN COALESCE(NULLIF(SPLIT_PART(SUBSTRING(dres.resource_id FROM 6), '/', 1), ''), '')
+                  ELSE COALESCE(dres.resource_id, '')
+                END
+              ) = ANY (ARRAY['unattributed', 'aws.s3', 'lambda', 'amazon s3', 's3', 'credits / adjustments']::text[]) THEN NULL
+              WHEN LOWER(
+                CASE
+                  WHEN COALESCE(dres.resource_id, '') = '' THEN ''
+                  WHEN LOWER(dres.resource_id) LIKE 'arn:aws:s3:::%' THEN COALESCE(NULLIF(SPLIT_PART(dres.resource_id, ':::', 2), ''), '')
+                  WHEN LOWER(dres.resource_id) LIKE 's3://%' THEN COALESCE(NULLIF(SPLIT_PART(SUBSTRING(dres.resource_id FROM 6), '/', 1), ''), '')
+                  ELSE COALESCE(dres.resource_id, '')
+                END
+              ) LIKE 'arn:aws:s3:%:storage-lens/%' THEN NULL
+              WHEN LOWER(
+                CASE
+                  WHEN COALESCE(dres.resource_id, '') = '' THEN ''
+                  WHEN LOWER(dres.resource_id) LIKE 'arn:aws:s3:::%' THEN COALESCE(NULLIF(SPLIT_PART(dres.resource_id, ':::', 2), ''), '')
+                  WHEN LOWER(dres.resource_id) LIKE 's3://%' THEN COALESCE(NULLIF(SPLIT_PART(SUBSTRING(dres.resource_id FROM 6), '/', 1), ''), '')
+                  ELSE COALESCE(dres.resource_id, '')
+                END
+              ) ~ '^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$' THEN
+                CASE
+                  WHEN COALESCE(dres.resource_id, '') = '' THEN NULL
+                  WHEN LOWER(dres.resource_id) LIKE 'arn:aws:s3:::%' THEN NULLIF(SPLIT_PART(dres.resource_id, ':::', 2), '')
+                  WHEN LOWER(dres.resource_id) LIKE 's3://%' THEN NULLIF(SPLIT_PART(SUBSTRING(dres.resource_id FROM 6), '/', 1), '')
+                  ELSE dres.resource_id
+                END
+              ELSE NULL
+            END
+        END AS bucket_name,
         CASE
           WHEN (
             LOWER(COALESCE(f.usage_type, '')) LIKE '%retrieval%'

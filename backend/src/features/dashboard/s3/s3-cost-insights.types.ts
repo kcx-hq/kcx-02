@@ -26,7 +26,12 @@ export type S3CostFeatureTrendInsight = {
 
 export type S3CostChartBy = "date" | "bucket" | "region" | "account";
 export type S3CostSeriesBy = "none" | "cost_category" | "usage_type" | "operation" | "product_family" | "bucket" | "storage_class";
-export type S3CostYAxisMetric = "billed_cost" | "effective_cost" | "amortized_cost" | "usage_quantity";
+export type S3CostYAxisMetric =
+  | "gross_cost"
+  | "billed_cost"
+  | "effective_cost"
+  | "amortized_cost"
+  | "usage_quantity";
 export type S3CostCategory =
   | "Storage"
   | "Request"
@@ -101,6 +106,13 @@ export type S3UsageOperationTableInsight = {
   cost: number;
   quantity: number;
   unit: string;
+};
+
+export type S3UsageTypeCostTableInsight = {
+  usageType: string;
+  grossCost: number;
+  trendPct: number;
+  topBucketName: string;
 };
 
 export type S3FinopsBucketBase = {
@@ -337,6 +349,22 @@ export type S3CostInsightsResponse = {
     totalS3Cost: number;
     monthToDateCost: number;
     effectiveCost: number;
+    bucketCostKpis: {
+      grossBucketCost: number;
+      creditAdjustedCost: number;
+      netBucketCost: number;
+      totalBuckets: number;
+    };
+    usageTypeCostKpis: {
+      grossS3Cost: number;
+      credits: number;
+      netS3Cost: number;
+      topUsageDriver: {
+        category: "Request" | "Storage" | "Transfer" | "Retrieval" | "Replication" | "Lifecycle" | "Other";
+        cost: number;
+        percentOfTotal: number;
+      } | null;
+    };
   };
   storageCostDashboard: {
     currency: "USD";
@@ -373,6 +401,7 @@ export type S3CostInsightsResponse = {
   bucketTable: S3CostBucketTableInsight[];
   costCategoryTable: S3CostCategoryTableInsight[];
   usageOperationTable: S3UsageOperationTableInsight[];
+  usageTypeCostTable: S3UsageTypeCostTableInsight[];
   chart: {
     bucketCosts: S3CostBucketInsight[];
     trend: S3CostTrendInsight[];
