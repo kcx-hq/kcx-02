@@ -8,6 +8,9 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
 
 export default defineConfig({
   plugins: [tailwindcss()],
+  build: {
+    chunkSizeWarningLimit: 5000,
+  },
   resolve: {
     alias: {
       "@": resolve(__dirname, "src"),

@@ -334,7 +334,7 @@ export async function generateCloudCostReportPdf(report: CloudCostAnomalyReportR
   try {
     const page = await browser.newPage();
     await page.setViewport({ width: 1240, height: 1754, deviceScaleFactor: 1 });
-    await page.setContent(buildHtml(report), { waitUntil: "networkidle0" });
+    await page.setContent(buildHtml(report), { waitUntil: "load" });
     await page.emulateMediaType("screen");
 
     const pdfBytes = await page.pdf({

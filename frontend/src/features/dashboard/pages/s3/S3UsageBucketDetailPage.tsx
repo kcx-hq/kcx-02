@@ -4,7 +4,7 @@ import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { type S3CostInsightsFiltersQuery } from "../../api/dashboardApi";
 import { useS3BucketLifecycleInsightQuery, useS3CostInsightsQuery } from "../../hooks/useDashboardQueries";
 import { S3BucketDetailPanel } from "./components/S3BucketDetailPanel";
-import { type S3BucketTableRow } from "./components/S3BucketInsightsTable";
+import type { S3BucketTableRow } from "./components/S3BucketInsightsTable.types";
 import { S3BucketUsageTrendPanel } from "./components/S3BucketUsageTrendPanel";
 
 const integerFormatter = new Intl.NumberFormat("en-US", {

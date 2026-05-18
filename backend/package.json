@@ -30,6 +30,7 @@
     "seed:cloud-connections:demo": "npm run build && node dist/scripts/seed-cloud-connections-demo.js",
     "seed:ingestion:prereq": "npm run build && node dist/scripts/seed-ingestion-prereq-dummy-data.js",
     "seed:database-explorer:dev": "npm run build && node dist/scripts/seed/dev/seed-database-explorer-dev.js",
+    "cleanup:db:parquet:dev-scope": "tsx scripts/cleanup-db-parquet-dev-scope.ts",
     "backfill:ebs-volume-utilization-hourly": "npm run build && node dist/scripts/backfill-ebs-volume-utilization-hourly.js",
     "backfill:ebs-volume-utilization-daily": "npm run build && node dist/scripts/backfill-ebs-volume-utilization-daily.js",
     "backfill:ebs-volume-daily": "npm run build && node dist/scripts/backfill-ebs-volume-daily.js",

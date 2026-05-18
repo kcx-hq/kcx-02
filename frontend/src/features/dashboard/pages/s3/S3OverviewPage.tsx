@@ -6,7 +6,7 @@ import { useS3CostInsightsQuery } from "../../hooks/useDashboardQueries";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue";
 import { dashboardApi, type S3CostInsightsFiltersQuery } from "../../api/dashboardApi";
 import { useDashboardScope } from "../../hooks/useDashboardScope";
-import type { S3BucketTableRow } from "./components/S3BucketInsightsTable";
+import type { S3BucketTableRow } from "./components/S3BucketInsightsTable.types";
 import type { S3CostCategoryTableRow } from "./components/S3CostCategoryTable";
 import type { S3UsageOperationTableRow } from "./components/S3UsageOperationTable";
 import type { S3OverviewFilterOptions, S3OverviewFilterValue } from "./components/s3Overview.types";

@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import type { ColDef, ICellRendererParams } from "ag-grid-community";
 
 import { BaseDataTable } from "../../../common/tables/BaseDataTable";
+import type { S3BucketTableRow } from "./S3BucketInsightsTable.types";
 
 const currencyFormatter = new Intl.NumberFormat("en-US", {
   style: "currency",
@@ -16,38 +17,6 @@ const percentFormatter = new Intl.NumberFormat("en-US", {
 });
 
 const DRIVER_LABELS = new Set(["storage", "request", "retrieval", "transfer"]);
-
-export type S3BucketTableRow = {
-  bucketName: string;
-  account: string;
-  cost: number;
-  storage: number;
-  requests: number;
-  transfer: number;
-  region: string;
-  owner: string;
-  driver: string;
-  retrieval: number;
-  other: number;
-  replicationStatus?: string | null;
-  versioningStatus?: string | null;
-  encryptionStatus?: string | null;
-  publicAccessStatus?: "Public" | "Private" | "Unknown";
-  trendPct: number;
-  storageLens?: {
-    usageDate: string;
-    objectCount: number | null;
-    currentVersionBytes: number | null;
-    avgObjectSizeBytes: number | null;
-    accessCount: number | null;
-    percentInGlacier: number;
-    storageClassDistribution: Array<{
-      name: string;
-      bytes: number;
-      percent: number;
-    }>;
-  } | null;
-};
 
 type Props = {
   rows: S3BucketTableRow[];
