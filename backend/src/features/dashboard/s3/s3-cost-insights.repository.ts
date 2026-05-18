@@ -219,7 +219,7 @@ const S3_BUCKET_COST_CONDITION_SQL = `
 const S3_BUCKET_STORAGE_CLASS_CONDITION_SQL = `
 (
   ${S3_STORAGE_COST_CONDITION_SQL}
-  AND COALESCE(bucket_name, 'unattributed') <> 'unattributed'
+  AND bucket_name IS NOT NULL
   AND (
     LOWER(COALESCE(product_usage_type, usage_type, '')) LIKE '%timedstorage%'
     OR LOWER(COALESCE(product_usage_type, usage_type, '')) LIKE '%standardstorage%'
@@ -1010,6 +1010,7 @@ export class S3CostInsightsRepository {
         ${baseCte}
         SELECT bucket_name AS value
         FROM scoped
+        WHERE bucket_name IS NOT NULL
         GROUP BY bucket_name
         ORDER BY SUM(billed_cost) DESC, bucket_name ASC
         LIMIT 100;
@@ -1101,12 +1102,13 @@ export class S3CostInsightsRepository {
     const rows = await sequelize.query<S3BucketRow>(
       `
       SELECT
-        COALESCE(NULLIF(bucket_name, ''), 'unattributed') AS bucket_name,
+        bucket_name,
         COALESCE(SUM(COALESCE(total_cost, 0)), 0)::double precision AS billed_cost,
         COALESCE(SUM(COALESCE(total_cost, 0)), 0)::double precision AS effective_cost
       FROM s3_cost_daily
       WHERE ${scoped.whereClause}
-      GROUP BY COALESCE(NULLIF(bucket_name, ''), 'unattributed')
+        AND bucket_name IS NOT NULL
+      GROUP BY bucket_name
       ORDER BY billed_cost DESC
       LIMIT $${scoped.params.length + 1};
       `,
@@ -1114,7 +1116,7 @@ export class S3CostInsightsRepository {
     );
 
     return rows.map((row) => ({
-      bucketName: String(row.bucket_name ?? "unattributed"),
+      bucketName: String(row.bucket_name ?? ""),
       billedCost: toNumber(row.billed_cost),
       effectiveCost: toNumber(row.effective_cost),
     }));
@@ -1333,6 +1335,7 @@ export class S3CostInsightsRepository {
           cost_category
         FROM s3_cost_daily
         WHERE ${scoped.whereClause}
+          AND bucket_name IS NOT NULL
           AND ${filterPredicates.clause}
       ),
       bucket_agg AS (
@@ -1405,7 +1408,7 @@ export class S3CostInsightsRepository {
     );
 
     return rows.map((row) => ({
-      bucketName: String(row.bucket_name ?? "unattributed"),
+      bucketName: String(row.bucket_name ?? ""),
       account: String(row.account ?? "Unspecified"),
       cost: toNumber(row.cost),
       storage: toNumber(row.storage),

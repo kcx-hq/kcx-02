@@ -82,7 +82,7 @@ const resolveSourceAndConnection = async ({ tenantId, billingSourceId }) => {
     throw new NotFoundError("Cloud connection not found for billing source");
   }
 
-  const roleArn = normalize(connection.billingRoleArn || connection.actionRoleArn);
+  const roleArn = normalize(connection.actionRoleArn || connection.billingRoleArn);
   if (!roleArn) {
     throw new BadRequestError("Cloud connection missing billing/action role ARN");
   }

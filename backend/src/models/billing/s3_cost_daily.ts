@@ -20,7 +20,7 @@ class S3CostDaily extends Model<
   declare regionKey: CreationOptional<number | null>;
   declare accountId: CreationOptional<string | null>;
   declare region: CreationOptional<string | null>;
-  declare bucketName: string;
+  declare bucketName: CreationOptional<string | null>;
   declare usageDate: string;
   declare costCategory: string;
   declare storageClass: string;
@@ -48,7 +48,7 @@ const createS3CostDailyModel = (sequelize: Sequelize): typeof S3CostDaily => {
       regionKey: { type: DataTypes.BIGINT, allowNull: true, field: "region_key" },
       accountId: { type: DataTypes.STRING(20), allowNull: true, field: "account_id" },
       region: { type: DataTypes.STRING(64), allowNull: true, field: "region" },
-      bucketName: { type: DataTypes.TEXT, allowNull: false, field: "bucket_name" },
+      bucketName: { type: DataTypes.TEXT, allowNull: true, field: "bucket_name" },
       usageDate: { type: DataTypes.DATEONLY, allowNull: false, field: "usage_date" },
       costCategory: { type: DataTypes.STRING(32), allowNull: false, field: "cost_category" },
       storageClass: { type: DataTypes.STRING(64), allowNull: false, field: "storage_class" },
