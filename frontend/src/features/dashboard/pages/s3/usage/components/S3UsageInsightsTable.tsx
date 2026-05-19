@@ -18,6 +18,9 @@ const quantityFormatterPrecise = new Intl.NumberFormat("en-US", {
   minimumFractionDigits: 5,
   maximumFractionDigits: 5,
 });
+const quantityFormatterCount = new Intl.NumberFormat("en-US", {
+  maximumFractionDigits: 0,
+});
 
 export type S3UsageInsightsRow = {
   usageType: string;
@@ -41,7 +44,7 @@ type Props = {
   rows: S3UsageInsightsRow[];
   bucketRows?: S3BucketUsageRow[];
   bucketQuantityLabel?: string;
-  usageCategory?: "" | "storage" | "data_transfer" | "request";
+  usageCategory?: "" | "storage" | "data_transfer" | "request" | "object_count";
   showAllCategoryBreakdown?: boolean;
   onBucketClick?: (bucketName: string) => void;
 };
@@ -62,7 +65,14 @@ export function S3UsageInsightsTable({
       { headerName: "Usage Type", field: "usageType", minWidth: 260 },
       { headerName: "Operation", field: "operation", minWidth: 220 },
       {
-        headerName: usageCategory === "storage" ? "Storage (GB)" : usageCategory === "request" ? "Requests (Count)" : "Usage Quantity",
+        headerName:
+          usageCategory === "storage"
+            ? "Storage (GB)"
+            : usageCategory === "request"
+              ? "Requests (Count)"
+              : usageCategory === "object_count"
+                ? "Object Count"
+                : "Usage Quantity",
         field: "quantity",
         minWidth: 170,
         valueFormatter: (params) => quantityFormatter.format(Number(params.value ?? 0)),
@@ -113,6 +123,15 @@ export function S3UsageInsightsTable({
           );
         },
       },
+      {
+        headerName: bucketQuantityLabel,
+        field: "quantity",
+        minWidth: 180,
+        valueFormatter: (params: { value: number }) =>
+          usageCategory === "request" || usageCategory === "object_count"
+            ? quantityFormatterCount.format(Number(params.value ?? 0))
+            : quantityFormatterPrecise.format(Number(params.value ?? 0)),
+      },
       ...(showAllCategoryBreakdown
         ? ([
             {
@@ -138,7 +157,7 @@ export function S3UsageInsightsTable({
       { headerName: "Region", field: "region", minWidth: 150 },
       { headerName: "Usage Info", field: "usageInfo", minWidth: 240 },
     ],
-    [bucketQuantityLabel, onBucketClick, showAllCategoryBreakdown],
+    [bucketQuantityLabel, onBucketClick, showAllCategoryBreakdown, usageCategory],
   );
 
   const showingBucketTable = Array.isArray(bucketRows) && bucketRows.length > 0;

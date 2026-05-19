@@ -16,8 +16,8 @@ import type { S3UsageFilterValue } from "./usage/components/s3Usage.types";
 const DEFAULT_FILTERS: S3UsageFilterValue = {
   seriesBy: "bucket",
   seriesValue: "",
-  category: "",
-  region: "",
+  category: "storage",
+  compareMode: "none",
   storageClass: "",
   xAxis: "date",
   yAxisMetric: "usage_quantity",
@@ -25,10 +25,15 @@ const DEFAULT_FILTERS: S3UsageFilterValue = {
 };
 
 const X_AXIS_OPTIONS: Array<S3UsageFilterValue["xAxis"]> = ["date", "bucket", "region", "account"];
-const Y_AXIS_OPTIONS: Array<S3UsageFilterValue["yAxisMetric"]> = ["usage_quantity"];
 const CHART_OPTIONS: Array<S3UsageFilterValue["chartType"]> = ["bar", "line"];
 
 const normalizeUsageView = (next: S3UsageFilterValue): S3UsageFilterValue => {
+  if (next.category === "object_count") {
+    return { ...next, seriesBy: "bucket", xAxis: "date" };
+  }
+  if (next.compareMode === "previous_period") {
+    return { ...next, xAxis: "date", chartType: "line" };
+  }
   if (next.seriesBy === "bucket" && next.yAxisMetric === "usage_quantity" && next.xAxis !== "date") {
     return { ...next, xAxis: "date" };
   }
@@ -37,35 +42,36 @@ const normalizeUsageView = (next: S3UsageFilterValue): S3UsageFilterValue => {
 
 const parseFiltersFromSearch = (search: string): S3UsageFilterValue => {
   const params = new URLSearchParams(search);
+  const seriesBy = params.get("s3SeriesBy");
   const seriesValues = (params.get("s3SeriesValues") ?? "")
     .split(",")
     .map((item) => item.trim())
     .filter((item) => item.length > 0);
-  const region = (params.get("s3Region") ?? "").trim();
   const storageClass = (params.get("s3StorageClass") ?? "")
     .split(",")
     .map((item) => item.trim())
     .find((item) => item.length > 0) ?? "";
   const xAxis = params.get("s3CostBy");
-  const yAxisMetric = params.get("s3YAxisMetric");
   const chartType = params.get("s3ChartType");
   const category = params.get("s3Category");
+  const compareMode = params.get("s3Compare");
 
   return {
-    seriesBy: "bucket",
+    seriesBy:
+      seriesBy === "bucket" || seriesBy === "usage_type" || seriesBy === "operation" || seriesBy === "storage_class"
+        ? seriesBy
+        : "bucket",
     seriesValue: seriesValues[0] ?? "",
     category:
-      category === "storage" || category === "data_transfer" || category === "request"
+      category === "storage" || category === "data_transfer" || category === "request" || category === "object_count"
         ? category
         : DEFAULT_FILTERS.category,
-    region,
+    compareMode: compareMode === "previous_period" ? "previous_period" : "none",
     storageClass,
     xAxis: X_AXIS_OPTIONS.includes(xAxis as S3UsageFilterValue["xAxis"])
       ? (xAxis as S3UsageFilterValue["xAxis"])
       : DEFAULT_FILTERS.xAxis,
-    yAxisMetric: Y_AXIS_OPTIONS.includes(yAxisMetric as S3UsageFilterValue["yAxisMetric"])
-      ? (yAxisMetric as S3UsageFilterValue["yAxisMetric"])
-      : DEFAULT_FILTERS.yAxisMetric,
+    yAxisMetric: "usage_quantity",
     chartType: CHART_OPTIONS.includes(chartType as S3UsageFilterValue["chartType"])
       ? (chartType as S3UsageFilterValue["chartType"])
       : DEFAULT_FILTERS.chartType,
@@ -87,17 +93,16 @@ export default function S3UsagePage() {
     else params.delete("s3SeriesValues");
     if (normalizedNext.category) params.set("s3Category", normalizedNext.category);
     else params.delete("s3Category");
-    if (normalizedNext.region) params.set("s3Region", normalizedNext.region);
-    else params.delete("s3Region");
+    params.delete("s3Region");
     if (normalizedNext.storageClass) params.set("s3StorageClass", normalizedNext.storageClass);
     else params.delete("s3StorageClass");
     if (normalizedNext.xAxis !== DEFAULT_FILTERS.xAxis) params.set("s3CostBy", normalizedNext.xAxis);
     else params.delete("s3CostBy");
-    if (normalizedNext.yAxisMetric !== DEFAULT_FILTERS.yAxisMetric) params.set("s3YAxisMetric", normalizedNext.yAxisMetric);
-    else params.delete("s3YAxisMetric");
+    params.delete("s3YAxisMetric");
     if (normalizedNext.chartType !== DEFAULT_FILTERS.chartType) params.set("s3ChartType", normalizedNext.chartType);
     else params.delete("s3ChartType");
-    params.delete("s3Compare");
+    if (normalizedNext.compareMode !== DEFAULT_FILTERS.compareMode) params.set("s3Compare", normalizedNext.compareMode);
+    else params.delete("s3Compare");
     params.delete("s3TopN");
     params.delete("s3SortOrder");
 
@@ -105,28 +110,45 @@ export default function S3UsagePage() {
   };
 
   const queryFilters = useMemo<S3CostInsightsFiltersQuery>(
-    () => ({
-      ...(debouncedFilters.seriesValue ? { seriesValues: [debouncedFilters.seriesValue] } : {}),
-      ...(debouncedFilters.category
-        ? {
-            costCategory: [
-              debouncedFilters.category === "storage"
-                ? "Storage"
-                : debouncedFilters.category === "data_transfer"
-                  ? "Transfer"
-                  : "Request",
-            ],
-          }
-        : debouncedFilters.seriesBy === "cost_category" && debouncedFilters.seriesValue
-          ? { costCategory: [debouncedFilters.seriesValue] }
-          : {}),
-      ...(debouncedFilters.region ? { region: [debouncedFilters.region] } : {}),
-      ...(debouncedFilters.storageClass ? { storageClass: [debouncedFilters.storageClass] } : {}),
-      seriesBy: debouncedFilters.seriesBy,
-      costBy: debouncedFilters.xAxis,
-      yAxisMetric: debouncedFilters.yAxisMetric,
-      responseMode: "overview",
-    }),
+    () => {
+      const isBucketUsage = debouncedFilters.seriesBy === "bucket";
+      const normalizedBucketCategory =
+        isBucketUsage && debouncedFilters.category === "object_count" ? "storage" : debouncedFilters.category;
+      const usageYAxis: S3CostInsightsFiltersQuery["usageYAxis"] | undefined =
+        debouncedFilters.yAxisMetric === "usage_quantity"
+          ? normalizedBucketCategory === "request"
+            ? "request_count"
+            : normalizedBucketCategory === "data_transfer"
+              ? "transfer_gb"
+              : normalizedBucketCategory === "object_count"
+                ? "object_count"
+                : "storage_gb"
+          : undefined;
+
+      return {
+        ...(debouncedFilters.seriesValue ? { seriesValues: [debouncedFilters.seriesValue] } : {}),
+        ...(normalizedBucketCategory && !isBucketUsage
+          && normalizedBucketCategory !== "object_count"
+          ? {
+              costCategory: [
+                normalizedBucketCategory === "storage"
+                  ? "Storage"
+                  : normalizedBucketCategory === "data_transfer"
+                    ? "Transfer"
+                    : "Request",
+              ],
+            }
+          : debouncedFilters.seriesBy === "cost_category" && debouncedFilters.seriesValue
+            ? { costCategory: [debouncedFilters.seriesValue] }
+            : {}),
+        ...(debouncedFilters.storageClass ? { storageClass: [debouncedFilters.storageClass] } : {}),
+        seriesBy: debouncedFilters.seriesBy,
+        costBy: debouncedFilters.xAxis,
+        ...(usageYAxis ? { usageYAxis } : {}),
+        yAxisMetric: debouncedFilters.yAxisMetric,
+        responseMode: "overview",
+      };
+    },
     [debouncedFilters],
   );
 
@@ -159,7 +181,6 @@ export default function S3UsagePage() {
     costCategory: ["Storage"],
     seriesBy: "bucket",
     costBy: "date",
-    yAxisMetric: "usage_quantity",
     responseMode: "quick",
   }, { enabled: shouldLoadStorageBreakdown, staleTime: 120_000 });
   const transferBreakdownQuery = useS3CostInsightsQuery({
@@ -167,7 +188,6 @@ export default function S3UsagePage() {
     costCategory: ["Transfer"],
     seriesBy: "bucket",
     costBy: "date",
-    yAxisMetric: "usage_quantity",
     responseMode: "quick",
   }, { enabled: shouldLoadTransferBreakdown, staleTime: 120_000 });
   const requestBreakdownQuery = useS3CostInsightsQuery({
@@ -175,7 +195,6 @@ export default function S3UsagePage() {
     costCategory: ["Request"],
     seriesBy: "bucket",
     costBy: "date",
-    yAxisMetric: "usage_quantity",
     responseMode: "quick",
   }, { enabled: shouldLoadRequestBreakdown, staleTime: 120_000 });
   const usageRows = useMemo(() => (query.data?.usageOperationTable ?? []) as S3UsageInsightsRow[], [query.data?.usageOperationTable]);
@@ -203,17 +222,35 @@ export default function S3UsagePage() {
         item.values.reduce((sum, value) => sum + Number(value ?? 0), 0),
       ]),
     );
+    const objectCountByBucket = new Map(
+      (query.data?.chart.breakdown.series ?? []).map((item) => {
+        const totalObjectCount = item.values.reduce((sum, value) => sum + Number(value ?? 0), 0);
+        return [String(item.name ?? "").trim(), totalObjectCount];
+      }),
+    );
 
     const rows = bucketRows.map((item) => {
       const bucketName = String(item.bucketName ?? "").trim();
+      const objectCount = Number(objectCountByBucket.get(bucketName) ?? 0);
       const usageKinds = [
         { key: "Storage", value: Number(storageByBucket.get(bucketName) ?? 0) },
         { key: "Transfer", value: Number(transferByBucket.get(bucketName) ?? 0) },
         { key: "Request", value: Number(requestByBucket.get(bucketName) ?? 0) },
+        { key: "Object Count", value: objectCount },
       ].sort((a, b) => b.value - a.value);
+      const quantity =
+        filters.category === "storage"
+          ? Number(storageByBucket.get(bucketName) ?? 0)
+          : filters.category === "data_transfer"
+            ? Number(transferByBucket.get(bucketName) ?? 0)
+            : filters.category === "request"
+              ? Number(requestByBucket.get(bucketName) ?? 0)
+              : filters.category === "object_count"
+                ? objectCount
+                : Number(usageKinds[0]?.value ?? 0);
       return {
         bucketName,
-        quantity: Number(usageKinds[0]?.value ?? 0),
+        quantity,
         storageGb: Number(storageByBucket.get(bucketName) ?? 0),
         transferGb: Number(transferByBucket.get(bucketName) ?? 0),
         requestCount: Number(requestByBucket.get(bucketName) ?? 0),
@@ -226,12 +263,24 @@ export default function S3UsagePage() {
       .filter((row) => row.bucketName.length > 0)
       .sort((a, b) => b.quantity - a.quantity);
   }, [
+    filters.category,
     query.data?.bucketTable,
+    query.data?.chart.breakdown.series,
     requestBreakdownQuery.data?.chart.breakdown.series,
     storageBreakdownQuery.data?.chart.breakdown.series,
     transferBreakdownQuery.data?.chart.breakdown.series,
   ]);
   const showAllCategoryBreakdown = filters.category === "";
+  const bucketQuantityLabel =
+    filters.category === "object_count"
+      ? "Object Count"
+      : filters.category === "request"
+        ? "Requests (Count)"
+        : filters.category === "data_transfer"
+          ? "Transfer (GB)"
+          : filters.category === "storage"
+            ? "Storage (GB)"
+            : "Usage";
   const isInitialLoading = query.isLoading && !query.data;
   const hasBlockingError = query.isError && !query.data;
 
@@ -285,7 +334,7 @@ export default function S3UsagePage() {
             <S3UsageInsightsTable
               rows={usageRows}
               bucketRows={bucketUsageRows}
-              bucketQuantityLabel="Usage"
+              bucketQuantityLabel={bucketQuantityLabel}
               usageCategory={filters.category}
               showAllCategoryBreakdown={showAllCategoryBreakdown}
               onBucketClick={(bucketName) => {

@@ -1,6 +1,7 @@
 import type { Request, Response } from "express";
 
 import { HTTP_STATUS } from "../../../constants/http-status.js";
+import { BadRequestError } from "../../../errors/http-errors.js";
 import { sendSuccess } from "../../../utils/api-response.js";
 import { buildDashboardRequest } from "../shared/dashboard-request-builder.js";
 import { DashboardScopeResolver } from "../shared/dashboard-scope-resolver.service.js";
@@ -10,6 +11,8 @@ import type { S3CostInsightsFilters } from "./s3-cost-insights.types.js";
 
 const scopeResolver = new DashboardScopeResolver();
 const s3CostInsightsService = new S3CostInsightsService();
+const ALLOWED_Y_AXIS_METRICS = new Set(["gross_cost", "billed_cost", "effective_cost", "amortized_cost", "usage_quantity"]);
+const ALLOWED_USAGE_Y_AXIS = new Set(["storage_gb", "request_count", "transfer_gb", "object_count"]);
 
 const parseOptionalString = (value: unknown): string | null => {
   if (typeof value === "undefined" || value === null) return null;
@@ -46,7 +49,19 @@ const parseS3Filters = (req: Request): Partial<S3CostInsightsFilters> => ({
   yAxisMetric: (parseOptionalString(req.query.yAxisMetric) ?? undefined) as
     | S3CostInsightsFilters["yAxisMetric"]
     | undefined,
+  usageYAxis: (parseOptionalString(req.query.usageYAxis) ?? undefined) as
+    | S3CostInsightsFilters["usageYAxis"]
+    | undefined,
 });
+
+const validateS3Filters = (filters: Partial<S3CostInsightsFilters>): void => {
+  if (filters.yAxisMetric && !ALLOWED_Y_AXIS_METRICS.has(filters.yAxisMetric)) {
+    throw new BadRequestError(`Invalid yAxisMetric: ${filters.yAxisMetric}`);
+  }
+  if (filters.usageYAxis && !ALLOWED_USAGE_Y_AXIS.has(filters.usageYAxis)) {
+    throw new BadRequestError(`Invalid usageYAxis: ${filters.usageYAxis}`);
+  }
+};
 
 const parseResponseMode = (req: Request): "full" | "core" | "quick" | "overview" => {
   const mode = (parseOptionalString(req.query.responseMode) ?? "full").toLowerCase();
@@ -60,7 +75,9 @@ export async function handleGetS3CostInsights(req: Request, res: Response): Prom
   validateDashboardRequest(dashboardRequest);
 
   const scope = await scopeResolver.resolve(dashboardRequest);
-  const data = await s3CostInsightsService.getInsights(scope, parseS3Filters(req), {
+  const parsedFilters = parseS3Filters(req);
+  validateS3Filters(parsedFilters);
+  const data = await s3CostInsightsService.getInsights(scope, parsedFilters, {
     responseMode: parseResponseMode(req),
   });
 

@@ -101,25 +101,20 @@ export function S3UsageChartPanel({
 
   const isBucketStorageView = seriesBy === "bucket" && yAxisMetric === "usage_quantity" && category === "storage";
   const isRequestCountView = yAxisMetric === "usage_quantity" && category === "request";
+  const isObjectCountView = yAxisMetric === "usage_quantity" && category === "object_count";
   const usageQuantityUnitLabel = useMemo(() => {
     if (yAxisMetric !== "usage_quantity") return "Units";
-    return "ByteHrs";
+    if (category === "request" || category === "object_count") return "Count";
+    return "GB";
   }, [yAxisMetric]);
 
   const normalizedBreakdownSeries = useMemo(() => {
     const series = breakdown?.series ?? [];
-    if (!(isBucketStorageView && yAxisMetric === "usage_quantity")) {
-      return series.map((item) => ({
-        ...item,
-        values: item.values.map((value) => Number(value ?? 0)),
-      }));
-    }
-
     return series.map((item) => ({
       ...item,
-      values: item.values.map((value) => Number(value ?? 0) / 24),
+      values: item.values.map((value) => Number(value ?? 0)),
     }));
-  }, [breakdown?.series, isBucketStorageView, yAxisMetric]);
+  }, [breakdown?.series]);
 
   const chartReady = Boolean(breakdown && breakdown.labels.length > 0 && breakdown.series.length > 0);
   const seriesCount = breakdown?.series.length ?? 0;
@@ -154,7 +149,7 @@ export function S3UsageChartPanel({
         axisPointer: { type: isLine ? "line" : "shadow" },
         valueFormatter: (value: unknown) =>
           isQuantity
-            ? isRequestCountView
+            ? isRequestCountView || isObjectCountView
               ? numberFormatterCount.format(Number(value ?? 0))
               : numberFormatterPrecise.format(Number(value ?? 0))
             : currencyFormatter.format(Number(value ?? 0)),
@@ -190,11 +185,15 @@ export function S3UsageChartPanel({
         min: isLine ? undefined : 0,
         name:
           yAxisMetric === "usage_quantity"
-            ? isBucketStorageView
-              ? "Average Daily Storage (GB)"
-              : category === "request"
-                ? "Total Requests"
-                : `Usage Quantity (${usageQuantityUnitLabel})`
+            ? category === "storage"
+              ? "Storage (GB)"
+              : category === "data_transfer"
+                ? "Transfer (GB)"
+                : category === "request"
+                  ? "Requests (Count)"
+                  : category === "object_count"
+                    ? "Object Count"
+                    : `Usage Quantity (${usageQuantityUnitLabel})`
             : getYAxisLabel(yAxisMetric),
         nameLocation: "middle",
         nameRotate: 90,
@@ -207,7 +206,7 @@ export function S3UsageChartPanel({
           fontSize: 11,
           formatter: (value: number) =>
             isQuantity
-              ? isRequestCountView
+              ? isRequestCountView || isObjectCountView
                 ? numberFormatterCount.format(value)
                 : numberFormatterPrecise.format(value)
               : currencyFormatter.format(value),
@@ -234,6 +233,7 @@ export function S3UsageChartPanel({
     category,
     chartType,
     isBucketStorageView,
+    isObjectCountView,
     isRequestCountView,
     labels,
     normalizedBreakdownSeries,
@@ -266,7 +266,9 @@ export function S3UsageChartPanel({
   return (
     <section className="cost-explorer-chart-panel s3-overview-chart-panel s3-usage-chart-panel" aria-label="S3 usage chart">
       <div className="cost-explorer-chart-panel__header">
-        <h2 className="cost-explorer-chart-panel__title">{isBucketStorageView ? "S3 Usage by Date" : "S3 Usage vs Date"}</h2>
+        <h2 className="cost-explorer-chart-panel__title">
+          {isObjectCountView ? "S3 Object Count vs Date" : isBucketStorageView ? "S3 Usage by Date" : "S3 Usage vs Date"}
+        </h2>
         <div className="s3-overview-chart-panel__chart-type" ref={chartTypeMenuRef}>
           <button
             type="button"
@@ -323,8 +325,12 @@ export function S3UsageChartPanel({
           <BaseEChart option={option} height={chartHeight} onPointClick={handleChartPointClick} />
         ) : (
           <div className="dashboard-empty-state-block">
-            <p className="dashboard-empty-state-block__title">No S3 usage data for this selection</p>
-            <p className="dashboard-empty-state-block__message">Try changing the usage split, region, or metric filters.</p>
+            <p className="dashboard-empty-state-block__title">
+              {isObjectCountView ? "No object count data available for this selection." : "No S3 usage data for this selection"}
+            </p>
+            <p className="dashboard-empty-state-block__message">
+              {isObjectCountView ? "Try changing the usage split or date range." : "Try changing the usage split or metric filters."}
+            </p>
             {onReset ? (
               <div className="dashboard-empty-state-block__actions">
                 <button type="button" className="cost-explorer-state-btn" onClick={onReset}>

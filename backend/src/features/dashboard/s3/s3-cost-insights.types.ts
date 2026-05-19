@@ -25,7 +25,7 @@ export type S3CostFeatureTrendInsight = {
 };
 
 export type S3CostChartBy = "date" | "bucket" | "region" | "account";
-export type S3CostSeriesBy = "none" | "cost_category" | "usage_type" | "operation" | "product_family" | "bucket" | "storage_class";
+export type S3CostSeriesBy = "none" | "cost_category" | "usage_type" | "operation" | "bucket" | "storage_class";
 export type S3CostYAxisMetric =
   | "gross_cost"
   | "billed_cost"
@@ -49,6 +49,7 @@ export type S3CostInsightsFilters = {
   costBy: S3CostChartBy;
   seriesBy: S3CostSeriesBy;
   yAxisMetric: S3CostYAxisMetric;
+  usageYAxis?: "storage_gb" | "request_count" | "transfer_gb" | "object_count" | null;
 };
 
 export type S3CostBreakdownChart = {
@@ -56,6 +57,12 @@ export type S3CostBreakdownChart = {
   series: Array<{
     name: string;
     values: number[];
+  }>;
+  operationGroupTooltip?: Array<{
+    usageDate: string;
+    operationGroup: "Read" | "Write" | "List & Metadata" | "Other";
+    operation: string;
+    cost: number;
   }>;
 };
 
@@ -113,6 +120,15 @@ export type S3UsageTypeCostTableInsight = {
   grossCost: number;
   trendPct: number;
   topBucketName: string;
+};
+
+export type S3StorageTypeCostTableInsight = {
+  storageType: string;
+  grossCost: number;
+  percentOfStorageCost: number;
+  trendPct: number;
+  topBucketName: string;
+  optimizationSignal: "Storage Heavy" | "Request Heavy" | "Transfer Heavy" | "Retrieval Heavy" | "Other Heavy" | "Balanced";
 };
 
 export type S3FinopsBucketBase = {
@@ -340,7 +356,6 @@ export type S3CostInsightsResponse = {
     | "product_usage_type"
     | "operation"
     | "line_item_description"
-    | "product_family"
     | "region_name"
     | "sub_account_name"
     | "tag_value"
@@ -402,6 +417,7 @@ export type S3CostInsightsResponse = {
   costCategoryTable: S3CostCategoryTableInsight[];
   usageOperationTable: S3UsageOperationTableInsight[];
   usageTypeCostTable: S3UsageTypeCostTableInsight[];
+  storageTypeCostTable: S3StorageTypeCostTableInsight[];
   chart: {
     bucketCosts: S3CostBucketInsight[];
     trend: S3CostTrendInsight[];
@@ -412,7 +428,6 @@ export type S3CostInsightsResponse = {
     costCategory: S3CostCategory[];
     usageType: string[];
     operation: string[];
-    productFamily: string[];
     bucket: string[];
     storageClass: string[];
     region: string[];

@@ -116,6 +116,14 @@ const buildChartModel = (input: {
   })();
   const isLineChart = chartType === "line";
   const metricIsUsage = yAxisMetric === "usage_quantity";
+  const operationTooltipRows = breakdown?.operationGroupTooltip ?? [];
+  const operationTooltipMap = new Map<string, Array<{ operation: string; cost: number }>>();
+  for (const row of operationTooltipRows) {
+    const key = `${row.usageDate}||${row.operationGroup}`;
+    const list = operationTooltipMap.get(key) ?? [];
+    list.push({ operation: row.operation, cost: Number(row.cost ?? 0) });
+    operationTooltipMap.set(key, list);
+  }
 
   const preparedSeries = (() => {
     if (isLineChart) return rawSeries;
@@ -155,8 +163,79 @@ const buildChartModel = (input: {
       easing: "cubicOut",
     },
     tooltip: {
-      trigger: "axis",
-      axisPointer: { type: isLineChart ? "line" : "shadow" },
+      trigger: isLineChart ? "axis" : "item",
+      axisPointer: { type: isLineChart ? "line" : "none" },
+      confine: true,
+      backgroundColor: "#102744",
+      borderColor: "rgba(140, 182, 232, 0.36)",
+      borderWidth: 1,
+      textStyle: { color: "#e7eef8", fontSize: 12, fontWeight: 500 },
+      extraCssText:
+        "border-radius:10px; box-shadow:0 12px 28px rgba(2,10,24,0.48); padding:12px 14px; max-width:360px; max-height:320px; overflow:auto;",
+      formatter: (params: unknown) => {
+        if (costBy === "date" && seriesBy === "operation" && params && !Array.isArray(params)) {
+          const point = params as { name?: unknown; seriesName?: unknown; value?: unknown; marker?: unknown };
+          const usageDateLabel = String(point.name ?? "");
+          const rawDate = (breakdown?.labels ?? []).find((label) => {
+            const parsed = new Date(`${label}T00:00:00.000Z`);
+            const display = Number.isNaN(parsed.getTime()) ? label : xAxisFormatter.format(parsed);
+            return display === usageDateLabel;
+          }) ?? usageDateLabel;
+          const groupName = String(point.seriesName ?? "Other");
+          const key = `${rawDate}||${groupName}`;
+          const operations = (operationTooltipMap.get(key) ?? [])
+            .filter((item) => Number(item.cost ?? 0) !== 0)
+            .slice(0, 15);
+          const lines = operations
+            .map(
+              (item) =>
+                `<div style="display:flex;justify-content:space-between;gap:16px;color:#c7d6ea;">
+                  <span>${item.operation}</span><span>${graphCurrencyFormatter.format(Number(item.cost ?? 0))}</span>
+                </div>`,
+            )
+            .join("<br/>");
+          return `
+            <div style="display:flex;flex-direction:column;gap:8px;min-width:220px;">
+              <div style="font-size:15px;font-weight:700;color:#f4f8ff;">${usageDateLabel}</div>
+              <div style="display:flex;justify-content:space-between;align-items:center;gap:16px;color:#eaf2ff;font-size:14px;font-weight:650;">
+                <span>${String(point.marker ?? "")}${groupName}</span>
+                <span>${graphCurrencyFormatter.format(Number(point.value ?? 0))}</span>
+              </div>
+              <div style="color:#9fb9d8;font-size:12px;font-weight:600;">Operations in ${groupName}</div>
+              ${
+                lines.length > 0
+                  ? `<div style="margin-top:2px;padding-top:8px;border-top:1px solid rgba(160,192,228,0.22);display:flex;flex-direction:column;gap:5px;">
+                       ${lines}
+                     </div>`
+                  : `<div style="margin-top:2px;padding-top:8px;border-top:1px solid rgba(160,192,228,0.22);color:#9fb9d8;">No operation-level entries for this point.</div>`
+              }
+            </div>
+          `;
+        }
+        if (!Array.isArray(params) && params) {
+          const item = params as { name?: unknown; marker?: unknown; seriesName?: unknown; value?: unknown };
+          const numericValue = Number(item.value ?? 0);
+          const valueText = metricIsUsage
+            ? graphUsageFormatter.format(numericValue)
+            : graphCurrencyFormatter.format(numericValue);
+          return `${String(item.name ?? "")}<br/>${String(item.marker ?? "")}${String(item.seriesName ?? "")}: ${valueText}`;
+        }
+        const points = Array.isArray(params) ? params : [];
+        if (points.length === 0) return "";
+        const first = points[0] as { axisValueLabel?: string; name?: string };
+        const headerValue = String(first.axisValueLabel ?? first.name ?? "");
+        const lines = points
+          .map((point) => {
+            const item = point as { marker?: string; seriesName?: string; value?: unknown };
+            const numericValue = Number(item.value ?? 0);
+            const valueText = metricIsUsage
+              ? graphUsageFormatter.format(numericValue)
+              : graphCurrencyFormatter.format(numericValue);
+            return `${String(item.marker ?? "")}${String(item.seriesName ?? "")}: ${valueText}`;
+          })
+          .join("<br/>");
+        return `${headerValue}<br/>${lines}`;
+      },
       valueFormatter: (value: unknown) =>
         metricIsUsage
           ? graphUsageFormatter.format(Number(value ?? 0))
@@ -217,11 +296,11 @@ const buildChartModel = (input: {
       barCategoryGap: isLineChart ? undefined : "8%",
       barGap: isLineChart ? undefined : "0%",
       lineStyle: isLineChart ? { width: 2.3 } : undefined,
-      itemStyle: isLineChart ? undefined : { borderRadius: [2, 2, 0, 0] },
+      itemStyle: isLineChart ? undefined : { borderRadius: [0, 0, 0, 0] },
       progressive: 5000,
       progressiveThreshold: 3000,
       universalTransition: true,
-      emphasis: { focus: "series" },
+      emphasis: { focus: "none" },
       animationDuration: isLineChart ? 520 : 780,
       animationDurationUpdate: isLineChart ? 380 : 560,
       animationEasing: "cubicOut",

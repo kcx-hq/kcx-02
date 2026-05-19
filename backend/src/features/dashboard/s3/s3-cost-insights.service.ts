@@ -65,7 +65,6 @@ const sanitizeFilters = (filters?: Partial<S3CostInsightsFilters>): S3CostInsigh
     "cost_category",
     "usage_type",
     "operation",
-    "product_family",
     "bucket",
     "storage_class",
   ];
@@ -83,6 +82,31 @@ const sanitizeFilters = (filters?: Partial<S3CostInsightsFilters>): S3CostInsigh
     "Retrieval",
     "Other",
   ]);
+  const allowedUsageYAxis = new Set(["storage_gb", "request_count", "transfer_gb", "object_count"]);
+  const inputYAxisMetric = String(filters?.yAxisMetric ?? "").trim();
+  const inferredUsageYAxisFromCategory =
+    (Array.isArray(filters?.costCategory) && filters?.costCategory.length === 1
+      ? String(filters?.costCategory?.[0] ?? "").trim().toLowerCase()
+      : "") === "request"
+      ? "request_count"
+      : (Array.isArray(filters?.costCategory) && filters?.costCategory.length === 1
+          ? String(filters?.costCategory?.[0] ?? "").trim().toLowerCase()
+          : "") === "transfer"
+        ? "transfer_gb"
+        : (Array.isArray(filters?.costCategory) && filters?.costCategory.length === 1
+            ? String(filters?.costCategory?.[0] ?? "").trim().toLowerCase()
+            : "") === "storage"
+          ? "storage_gb"
+          : null;
+  const explicitUsageYAxis =
+    filters?.usageYAxis && allowedUsageYAxis.has(String(filters.usageYAxis))
+      ? (String(filters.usageYAxis) as NonNullable<S3CostInsightsFilters["usageYAxis"]>)
+      : null;
+  const resolvedUsageYAxis = explicitUsageYAxis ?? inferredUsageYAxisFromCategory;
+  const shouldUseImplicitUsageQuantity =
+    inputYAxisMetric.length === 0 &&
+    filters?.seriesBy === "bucket" &&
+    resolvedUsageYAxis !== null;
 
   return {
     costCategory: toUnique(filters?.costCategory as string[]).filter((item) =>
@@ -99,9 +123,12 @@ const sanitizeFilters = (filters?: Partial<S3CostInsightsFilters>): S3CostInsigh
     seriesBy: allowedSeriesBy.includes(filters?.seriesBy as S3CostInsightsFilters["seriesBy"])
       ? (filters?.seriesBy as S3CostInsightsFilters["seriesBy"])
       : "bucket",
-    yAxisMetric: allowedYAxisMetric.includes(filters?.yAxisMetric as S3CostInsightsFilters["yAxisMetric"])
-      ? (filters?.yAxisMetric as S3CostInsightsFilters["yAxisMetric"])
-      : "gross_cost",
+    yAxisMetric: shouldUseImplicitUsageQuantity
+      ? "usage_quantity"
+      : allowedYAxisMetric.includes(filters?.yAxisMetric as S3CostInsightsFilters["yAxisMetric"])
+        ? (filters?.yAxisMetric as S3CostInsightsFilters["yAxisMetric"])
+        : "gross_cost",
+    usageYAxis: resolvedUsageYAxis,
   };
 };
 
@@ -146,13 +173,12 @@ export class S3CostInsightsService {
       costCategory: ["Storage", "Request", "Transfer", "Retrieval", "Other"],
       usageType: [],
       operation: [],
-      productFamily: [],
       bucket: [],
       storageClass: [],
       region: [],
       account: [],
       costBy: ["date", "bucket", "region", "account"],
-      seriesBy: ["none", "bucket", "usage_type", "cost_category", "operation", "product_family", "storage_class"],
+      seriesBy: ["none", "bucket", "usage_type", "cost_category", "operation", "storage_class"],
       yAxisMetric: ["gross_cost", "effective_cost", "billed_cost", "amortized_cost", "usage_quantity"],
     };
 
@@ -195,8 +221,16 @@ export class S3CostInsightsService {
       isLeanMode ? Promise.resolve([]) : this.repository.getBucketCosts(scope),
       isLeanMode ? Promise.resolve([]) : this.repository.getTrend(scope),
       isLeanMode ? Promise.resolve([]) : this.repository.getFeatureTrend(scope),
-      this.repository.getBreakdownChart(scope, effectiveFilters),
-      isCoreMode ? Promise.resolve(quickFilterOptions) : this.repository.getBreakdownFilterOptions(scope),
+      this.repository.getBreakdownChart(scope, effectiveFilters).catch((error: unknown) => {
+        console.error("[S3CostInsightsService] Failed to load breakdown chart", error);
+        return { labels: [], series: [], operationGroupTooltip: [] };
+      }),
+      isCoreMode
+        ? Promise.resolve(quickFilterOptions)
+        : this.repository.getBreakdownFilterOptions(scope).catch((error: unknown) => {
+            console.error("[S3CostInsightsService] Failed to load breakdown filter options", error);
+            return quickFilterOptions;
+          }),
     ]);
 
     const [costCategoryTable, usageOperationTable, currentBucketTable, previousBucketTable] = await Promise.all([
@@ -245,12 +279,39 @@ export class S3CostInsightsService {
             })
           : Promise.resolve([]),
     ]);
+    const [currentStorageTypeCostTable, previousStorageTypeCostTable] = await Promise.all([
+      isQuickMode
+        ? Promise.resolve([])
+        : this.repository.getStorageTypeCostTable(scope, effectiveFilters).catch((error: unknown) => {
+            console.error("[S3CostInsightsService] Failed to load currentStorageTypeCostTable", error);
+            return [];
+          }),
+      isCoreMode
+        ? Promise.resolve([])
+        : previousScope
+          ? this.repository.getStorageTypeCostTable(previousScope, effectiveFilters).catch((error: unknown) => {
+              console.error("[S3CostInsightsService] Failed to load previousStorageTypeCostTable", error);
+              return [];
+            })
+          : Promise.resolve([]),
+    ]);
 
     const previousGrossByUsageType = new Map(
       previousUsageTypeCostTable.map((row) => [row.usageType, row.grossCost]),
     );
     const usageTypeCostTable = currentUsageTypeCostTable.map((row) => {
       const previousGross = previousGrossByUsageType.get(row.usageType) ?? 0;
+      const trendPct = previousGross > 0 ? ((row.grossCost - previousGross) / previousGross) * 100 : 0;
+      return {
+        ...row,
+        trendPct,
+      };
+    });
+    const previousGrossByStorageType = new Map(
+      previousStorageTypeCostTable.map((row) => [row.storageType, row.grossCost]),
+    );
+    const storageTypeCostTable = currentStorageTypeCostTable.map((row) => {
+      const previousGross = previousGrossByStorageType.get(row.storageType) ?? 0;
       const trendPct = previousGross > 0 ? ((row.grossCost - previousGross) / previousGross) * 100 : 0;
       return {
         ...row,
@@ -386,7 +447,6 @@ export class S3CostInsightsService {
         "product_usage_type",
         "operation",
         "line_item_description",
-        "product_family",
         "region_name",
         "sub_account_name",
         "tag_value",
@@ -406,6 +466,7 @@ export class S3CostInsightsService {
       costCategoryTable,
       usageOperationTable,
       usageTypeCostTable,
+      storageTypeCostTable,
       chart: {
         bucketCosts,
         trend,

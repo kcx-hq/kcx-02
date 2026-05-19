@@ -10,6 +10,7 @@ import type { S3BucketTableRow } from "./components/S3BucketInsightsTable.types"
 import type { S3CostCategoryTableRow } from "./components/S3CostCategoryTable";
 import type { S3UsageOperationTableRow } from "./components/S3UsageOperationTable";
 import type { S3UsageTypeCostTableRow } from "./components/S3UsageTypeCostTable";
+import type { S3StorageTypeCostTableRow } from "./components/S3StorageTypeCostTable";
 import type { S3OverviewFilterOptions, S3OverviewFilterValue } from "./components/s3Overview.types";
 import { S3OverviewFilters } from "./components/S3OverviewFilters";
 import { S3BucketKpiSection } from "./components/S3BucketKpiSection";
@@ -35,6 +36,11 @@ const S3UsageOperationTable = lazy(async () => {
   return { default: module.S3UsageOperationTable };
 });
 
+const S3StorageTypeCostTable = lazy(async () => {
+  const module = await import("./components/S3StorageTypeCostTable");
+  return { default: module.S3StorageTypeCostTable };
+});
+
 const DEFAULT_FILTERS: S3OverviewFilterValue = {
   seriesBy: "bucket",
   seriesValues: [],
@@ -50,7 +56,6 @@ const SERIES_BY_OPTIONS: Array<S3OverviewFilterValue["seriesBy"]> = [
   "bucket",
   "usage_type",
   "operation",
-  "product_family",
   "storage_class",
 ];
 const COST_BY_OPTIONS: Array<S3OverviewFilterValue["costBy"]> = ["date", "bucket", "region", "account"];
@@ -283,6 +288,10 @@ export default function S3OverviewPage() {
     () => (tableSource?.usageTypeCostTable ?? []) as S3UsageTypeCostTableRow[],
     [tableSource?.usageTypeCostTable],
   );
+  const storageTypeCostRows = useMemo(
+    () => (tableSource?.storageTypeCostTable ?? []) as S3StorageTypeCostTableRow[],
+    [tableSource?.storageTypeCostTable],
+  );
 
   const resolvedFilterOptions = useMemo<S3OverviewFilterOptions>(() => {
     const bucketsFromTable = uniqueNonEmpty(bucketRows.map((row) => row.bucketName));
@@ -298,23 +307,17 @@ export default function S3OverviewPage() {
     const storageClassesFromTable = uniqueNonEmpty(
       bucketRows.flatMap((row) => (row.storageLens?.storageClassDistribution ?? []).map((item) => item.name)),
     );
-    const productFamiliesFromSeries =
-      filters.seriesBy === "product_family"
-        ? uniqueNonEmpty((graphSource?.chart.breakdown.series ?? []).map((series) => series.name))
-        : [];
-
     return {
       ...(filterOptions ?? {
         costCategory: [],
         usageType: [],
         operation: [],
-        productFamily: [],
         bucket: [],
         storageClass: [],
         region: [],
         account: [],
         costBy: ["date", "bucket", "region", "account"],
-        seriesBy: ["none", "usage_type", "operation", "product_family", "bucket", "storage_class"],
+        seriesBy: ["none", "usage_type", "operation", "bucket", "storage_class"],
         yAxisMetric: ["gross_cost", "effective_cost"],
       }),
       bucket: (filterOptions?.bucket?.length ?? 0) > 0 ? filterOptions?.bucket ?? [] : uniqueNonEmpty([...bucketsFromTable, ...bucketsFromSeries]),
@@ -324,10 +327,6 @@ export default function S3OverviewPage() {
           : costCategoriesFromTable,
       usageType: (filterOptions?.usageType?.length ?? 0) > 0 ? filterOptions?.usageType ?? [] : usageTypesFromTable,
       operation: (filterOptions?.operation?.length ?? 0) > 0 ? filterOptions?.operation ?? [] : operationsFromTable,
-      productFamily:
-        (filterOptions?.productFamily?.length ?? 0)
-          ? filterOptions?.productFamily ?? []
-          : productFamiliesFromSeries,
       storageClass:
         (filterOptions?.storageClass?.length ?? 0) > 0 ? filterOptions?.storageClass ?? [] : storageClassesFromTable,
     };
@@ -345,6 +344,7 @@ export default function S3OverviewPage() {
   const showCostCategoryUsageInsightTable = showCostCategoryTable && filters.seriesValues.length > 0;
   const showUsageTypeCostTable = filters.seriesBy === "usage_type";
   const showUsageOperationTable = filters.seriesBy === "operation";
+  const showStorageTypeCostTable = filters.seriesBy === "storage_class";
 
   const hasAnyData = Boolean(graphSource || tableSource);
   const isInitialLoading = !hasAnyData && overviewQuery.isLoading;
@@ -484,6 +484,8 @@ export default function S3OverviewPage() {
                   />
                 ) : showUsageOperationTable ? (
                   <S3UsageOperationTable rows={usageOperationRows} />
+                ) : showStorageTypeCostTable ? (
+                  <S3StorageTypeCostTable rows={storageTypeCostRows} />
                 ) : (
                   <S3BucketInsightsTable
                     rows={filteredBucketRows}

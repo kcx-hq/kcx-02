@@ -12,6 +12,7 @@ import type {
   S3CostInsightsFilters,
   S3CostSeriesBy,
   S3UsageOperationTableInsight,
+  S3StorageTypeCostTableInsight,
   S3UsageTypeCostTableInsight,
   S3CostYAxisMetric,
   S3CostFeatureTrendInsight,
@@ -109,10 +110,29 @@ type S3UsageTypeCostTableRow = {
   top_bucket_name: string | null;
 };
 
+type S3StorageTypeCostTableRow = {
+  storage_type: string | null;
+  gross_cost: number | string | null;
+  percent_of_storage_cost: number | string | null;
+  top_bucket_name: string | null;
+  storage_cost: number | string | null;
+  request_cost: number | string | null;
+  transfer_cost: number | string | null;
+  retrieval_cost: number | string | null;
+  other_cost: number | string | null;
+};
+
 type S3BreakdownRow = {
   x_value: string | null;
   series_value: string | null;
   metric_cost: number | string | null;
+};
+
+type S3OperationGroupTooltipRow = {
+  usage_date: string | null;
+  operation_group: string | null;
+  operation_name: string | null;
+  cost: number | string | null;
 };
 
 type S3StorageLensRow = {
@@ -308,7 +328,7 @@ const S3_COST_CATEGORY_OPTIONS: S3CostCategory[] = [
 ];
 
 const S3_COST_BY_OPTIONS: S3CostChartBy[] = ["date", "bucket", "region", "account"];
-const S3_SERIES_BY_OPTIONS: S3CostSeriesBy[] = ["none", "bucket", "usage_type", "cost_category", "operation", "product_family", "storage_class"];
+const S3_SERIES_BY_OPTIONS: S3CostSeriesBy[] = ["none", "bucket", "usage_type", "cost_category", "operation", "storage_class"];
 const S3_Y_AXIS_METRIC_OPTIONS: S3CostYAxisMetric[] = [
   "gross_cost",
   "billed_cost",
@@ -316,6 +336,41 @@ const S3_Y_AXIS_METRIC_OPTIONS: S3CostYAxisMetric[] = [
   "amortized_cost",
   "usage_quantity",
 ];
+
+const S3_OPERATION_GROUP_SQL = `
+CASE
+  WHEN (
+    LOWER(COALESCE(operation, '')) LIKE '%put%'
+    OR LOWER(COALESCE(operation, '')) LIKE '%post%'
+    OR LOWER(COALESCE(operation, '')) LIKE '%copy%'
+    OR LOWER(COALESCE(operation, '')) LIKE '%upload%'
+    OR LOWER(COALESCE(operation, '')) LIKE '%write%'
+    OR LOWER(COALESCE(operation, '')) LIKE '%multipart%'
+  ) THEN 'Write'
+  WHEN (
+    LOWER(COALESCE(operation, '')) LIKE '%list%'
+    OR LOWER(COALESCE(operation, '')) LIKE '%head%'
+    OR LOWER(COALESCE(operation, '')) LIKE '%acl%'
+    OR LOWER(COALESCE(operation, '')) LIKE '%tag%'
+    OR LOWER(COALESCE(operation, '')) LIKE '%policy%'
+    OR LOWER(COALESCE(operation, '')) LIKE '%metadata%'
+    OR LOWER(COALESCE(operation, '')) LIKE '%inventory%'
+    OR LOWER(COALESCE(operation, '')) LIKE '%analytics%'
+    OR LOWER(COALESCE(operation, '')) LIKE '%metrics%'
+    OR LOWER(COALESCE(operation, '')) LIKE '%location%'
+    OR LOWER(COALESCE(operation, '')) LIKE '%notification%'
+  ) THEN 'List & Metadata'
+  WHEN (
+    LOWER(COALESCE(operation, '')) LIKE '%get%'
+    OR LOWER(COALESCE(operation, '')) LIKE '%read%'
+    OR LOWER(COALESCE(operation, '')) LIKE '%select%'
+    OR LOWER(COALESCE(operation, '')) LIKE '%retrieve%'
+    OR LOWER(COALESCE(operation, '')) LIKE '%restore%'
+    OR LOWER(COALESCE(operation, '')) LIKE '%download%'
+  ) THEN 'Read'
+  ELSE 'Other'
+END
+`;
 
 const OWNER_TAG_KEYS_SQL = `
 (
@@ -357,6 +412,9 @@ const STORAGE_COST_PER_GIB_MONTH = {
 const bytesToGib = (bytes: number): number => bytes / (1024 ** 3);
 
 export class S3CostInsightsRepository {
+  private getOperationGroupSql(): string {
+    return S3_OPERATION_GROUP_SQL;
+  }
   async getStorageCostDashboard(scope: DashboardScope): Promise<{
     latestUsageDate: string | null;
     totalStorageByClass: Array<{
@@ -745,9 +803,7 @@ export class S3CostInsightsRepository {
       } else if (filters.seriesBy === "usage_type") {
         push(`COALESCE(NULLIF(usage_type, ''), 'Unspecified') = ANY(?::text[])`, filters.seriesValues);
       } else if (filters.seriesBy === "operation") {
-        push(`COALESCE(NULLIF(operation, ''), 'Unspecified') = ANY(?::text[])`, filters.seriesValues);
-      } else if (filters.seriesBy === "product_family") {
-        push(`COALESCE(NULLIF(product_family, ''), 'Unspecified') = ANY(?::text[])`, filters.seriesValues);
+        push(`${S3_OPERATION_GROUP_SQL} = ANY(?::text[])`, filters.seriesValues);
       } else if (filters.seriesBy === "bucket") {
         push(`bucket_name = ANY(?::text[])`, filters.seriesValues);
       }
@@ -780,9 +836,7 @@ export class S3CostInsightsRepository {
       case "usage_type":
         return "COALESCE(NULLIF(usage_type, ''), 'Unspecified')";
       case "operation":
-        return "COALESCE(NULLIF(operation, ''), 'Unspecified')";
-      case "product_family":
-        return "COALESCE(NULLIF(product_family, ''), 'Unspecified')";
+        return S3_OPERATION_GROUP_SQL;
       case "bucket":
         return "bucket_name";
       case "storage_class":
@@ -855,7 +909,21 @@ END
   ): Promise<{
     labels: string[];
     series: Array<{ name: string; values: number[] }>;
+    operationGroupTooltip?: Array<{
+      usageDate: string;
+      operationGroup: "Read" | "Write" | "List & Metadata" | "Other";
+      operation: string;
+      cost: number;
+    }>;
   }> {
+    if (
+      filters.yAxisMetric === "usage_quantity" &&
+      filters.seriesBy === "bucket" &&
+      filters.usageYAxis
+    ) {
+      return this.getBucketUsageYAxisBreakdown(scope, filters);
+    }
+
     const scoped = this.buildS3DailyScopedWhere(scope);
     const filterPredicates = this.buildS3FilterPredicates(filters, scoped.nextIndex);
     const xExpr = this.getXAxisExpression(filters.costBy);
@@ -872,7 +940,6 @@ END
           COALESCE(NULLIF(account_id, ''), 'Unspecified') AS account_name,
           usage_type,
           operation,
-          product_family,
           storage_class,
           cost_category,
           COALESCE(${metricCostExpr}, 0)::double precision AS metric_cost
@@ -983,14 +1050,393 @@ END
       });
     }
 
-    return { labels: chartLabels, series };
+    const operationGroupTooltip =
+      filters.seriesBy === "operation" && filters.costBy === "date"
+        ? await this.getOperationGroupTooltip(scope, filters)
+        : [];
+
+    return { labels: chartLabels, series, operationGroupTooltip };
+  }
+
+  private async getBucketUsageYAxisBreakdown(
+    scope: DashboardScope,
+    filters: S3CostInsightsFilters,
+  ): Promise<{
+    labels: string[];
+    series: Array<{ name: string; values: number[] }>;
+    operationGroupTooltip?: Array<{
+      usageDate: string;
+      operationGroup: "Read" | "Write" | "List & Metadata" | "Other";
+      operation: string;
+      cost: number;
+    }>;
+  }> {
+    const usageYAxis = filters.usageYAxis ?? "storage_gb";
+    if (usageYAxis === "object_count") {
+      return this.getBucketObjectCountBreakdownFromStorageLens(scope, filters);
+    }
+
+    return this.getBucketUsageQuantityBreakdownFromS3CostDaily(scope, filters, usageYAxis);
+  }
+
+  private async getBucketObjectCountBreakdownFromStorageLens(
+    scope: DashboardScope,
+    filters: S3CostInsightsFilters,
+  ): Promise<{
+    labels: string[];
+    series: Array<{ name: string; values: number[] }>;
+    operationGroupTooltip?: Array<{
+      usageDate: string;
+      operationGroup: "Read" | "Write" | "List & Metadata" | "Other";
+      operation: string;
+      cost: number;
+    }>;
+  }> {
+    const scoped = this.buildS3DailyScopedWhere(scope);
+    const params: unknown[] = [...scoped.params];
+    const filterClauses: string[] = [
+      "object_count IS NOT NULL",
+      "bucket_name IS NOT NULL",
+      "NULLIF(BTRIM(bucket_name), '') IS NOT NULL",
+    ];
+    if (filters.bucket && filters.bucket.trim().length > 0) {
+      params.push(`%${filters.bucket.trim()}%`);
+      filterClauses.push(`LOWER(bucket_name) LIKE LOWER($${params.length})`);
+    }
+    if (filters.seriesBy === "bucket" && filters.seriesValues.length > 0) {
+      params.push(filters.seriesValues);
+      filterClauses.push(`bucket_name = ANY($${params.length}::text[])`);
+    }
+    if (filters.region.length > 0) {
+      params.push(filters.region);
+      filterClauses.push(`
+        COALESCE(
+          (SELECT COALESCE(dr.region_name, dr.region_id, 'global') FROM dim_region dr WHERE dr.id = s3_storage_lens_daily.region_key),
+          'global'
+        ) = ANY($${params.length}::text[])
+      `);
+    }
+    if (filters.account.length > 0) {
+      params.push(filters.account);
+      filterClauses.push(`
+        COALESCE(
+          (SELECT COALESCE(dsa.sub_account_name, dsa.sub_account_id, 'Unspecified') FROM dim_sub_account dsa WHERE dsa.id = s3_storage_lens_daily.sub_account_key),
+          'Unspecified'
+        ) = ANY($${params.length}::text[])
+      `);
+    }
+    params.push(filters.costBy);
+    const xAxisBindIndex = params.length;
+
+    const rows = await sequelize.query<S3BreakdownRow>(
+      `
+      WITH aggregated AS (
+        SELECT
+          usage_date::text AS usage_date,
+          bucket_name,
+          MAX(object_count)::double precision AS object_count
+        FROM s3_storage_lens_daily
+        WHERE ${scoped.whereClause}
+          AND ${filterClauses.join("\n          AND ")}
+        GROUP BY usage_date::text, bucket_name
+      ),
+      ranked_x AS (
+        SELECT
+          CASE
+            WHEN $${xAxisBindIndex}::text = 'bucket' THEN bucket_name
+            WHEN $${xAxisBindIndex}::text = 'date' THEN usage_date
+            ELSE usage_date
+          END AS x_value,
+          SUM(object_count)::double precision AS total_cost,
+          ROW_NUMBER() OVER (
+            ORDER BY
+              SUM(object_count) DESC,
+              CASE
+                WHEN $${xAxisBindIndex}::text = 'bucket' THEN bucket_name
+                WHEN $${xAxisBindIndex}::text = 'date' THEN usage_date
+                ELSE usage_date
+              END ASC
+          ) AS rn
+        FROM aggregated
+        GROUP BY
+          CASE
+            WHEN $${xAxisBindIndex}::text = 'bucket' THEN bucket_name
+            WHEN $${xAxisBindIndex}::text = 'date' THEN usage_date
+            ELSE usage_date
+          END
+      ),
+      reduced AS (
+        SELECT
+          a.*,
+          CASE
+            WHEN $${xAxisBindIndex}::text = 'bucket' THEN bucket_name
+            WHEN $${xAxisBindIndex}::text = 'date' THEN usage_date
+            ELSE usage_date
+          END AS x_value,
+          CASE
+            WHEN $${xAxisBindIndex}::text = 'date' THEN TRUE
+            ELSE COALESCE(rx.rn, 999999) <= 30
+          END AS keep_x
+        FROM aggregated a
+        LEFT JOIN ranked_x rx ON rx.x_value = (
+          CASE
+            WHEN $${xAxisBindIndex}::text = 'bucket' THEN a.bucket_name
+            WHEN $${xAxisBindIndex}::text = 'date' THEN a.usage_date
+            ELSE a.usage_date
+          END
+        )
+      )
+      SELECT
+        x_value,
+        bucket_name AS series_value,
+        SUM(object_count)::double precision AS metric_cost
+      FROM reduced
+      WHERE keep_x = TRUE
+      GROUP BY x_value, bucket_name
+      ORDER BY
+        CASE WHEN $${xAxisBindIndex}::text = 'date' THEN x_value END ASC,
+        CASE WHEN $${xAxisBindIndex}::text <> 'date' THEN SUM(object_count) END DESC;
+      `,
+      { bind: params, type: QueryTypes.SELECT },
+    );
+
+    const byX = new Map<string, Map<string, number>>();
+    const totalsByX = new Map<string, number>();
+
+    for (const row of rows) {
+      const x = String(row.x_value ?? "Unspecified");
+      const series = String(row.series_value ?? "Unspecified");
+      const cost = toNumber(row.metric_cost);
+      if (!byX.has(x)) byX.set(x, new Map());
+      const seriesMap = byX.get(x)!;
+      seriesMap.set(series, (seriesMap.get(series) ?? 0) + cost);
+      totalsByX.set(x, (totalsByX.get(x) ?? 0) + cost);
+    }
+
+    const labels = [...byX.keys()];
+    if (filters.costBy === "date") labels.sort((a, b) => a.localeCompare(b));
+    else labels.sort((a, b) => (totalsByX.get(b) ?? 0) - (totalsByX.get(a) ?? 0));
+
+    const chartTotalsBySeries = new Map<string, number>();
+    for (const label of labels) {
+      const seriesMap = byX.get(label);
+      if (!seriesMap) continue;
+      for (const [seriesName, value] of seriesMap.entries()) {
+        chartTotalsBySeries.set(seriesName, (chartTotalsBySeries.get(seriesName) ?? 0) + value);
+      }
+    }
+
+    const sortedSeries = [...chartTotalsBySeries.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .map(([name]) => name);
+    const series = sortedSeries.map((name) => ({
+      name,
+      values: labels.map((label) => byX.get(label)?.get(name) ?? 0),
+    }));
+
+    return { labels, series, operationGroupTooltip: [] };
+  }
+
+  private async getBucketUsageQuantityBreakdownFromS3CostDaily(
+    scope: DashboardScope,
+    filters: S3CostInsightsFilters,
+    usageYAxis: NonNullable<S3CostInsightsFilters["usageYAxis"]>,
+  ): Promise<{
+    labels: string[];
+    series: Array<{ name: string; values: number[] }>;
+    operationGroupTooltip?: Array<{
+      usageDate: string;
+      operationGroup: "Read" | "Write" | "List & Metadata" | "Other";
+      operation: string;
+      cost: number;
+    }>;
+  }> {
+    const scoped = this.buildS3DailyScopedWhere(scope);
+    const bucketUsageFilters: S3CostInsightsFilters = {
+      ...filters,
+      costCategory: [],
+    };
+    const filterPredicates = this.buildS3FilterPredicates(bucketUsageFilters, scoped.nextIndex);
+    const xExpr = this.getXAxisExpression(filters.costBy);
+    const categoryCondition =
+      usageYAxis === "request_count"
+        ? `(
+            LOWER(TRIM(COALESCE(NULLIF(cost_category, ''), ''))) IN ('request', 'requests')
+            OR LOWER(COALESCE(usage_type, '')) LIKE 'requests%'
+          )`
+        : usageYAxis === "transfer_gb"
+          ? `(
+              LOWER(TRIM(COALESCE(NULLIF(cost_category, ''), ''))) IN ('transfer', 'data_transfer', 'data transfer')
+              OR LOWER(COALESCE(usage_type, '')) LIKE '%datatransfer%'
+            )`
+          : `(
+              LOWER(TRIM(COALESCE(NULLIF(cost_category, ''), ''))) = 'storage'
+              OR LOWER(COALESCE(usage_type, '')) LIKE '%timedstorage%'
+            )`;
+
+    const rows = await sequelize.query<S3BreakdownRow>(
+      `
+      WITH filtered AS (
+        SELECT
+          usage_date::text AS usage_date,
+          COALESCE(bucket_name, 'unattributed') AS bucket_name,
+          COALESCE(NULLIF(region, ''), 'global') AS region_name,
+          COALESCE(NULLIF(account_id, ''), 'Unspecified') AS account_name,
+          COALESCE(usage_quantity, 0)::double precision AS metric_cost
+        FROM s3_cost_daily
+        WHERE ${scoped.whereClause}
+          AND ${filterPredicates.clause}
+          AND ${categoryCondition}
+      ),
+      ranked_x AS (
+        SELECT
+          ${xExpr} AS x_value,
+          SUM(metric_cost)::double precision AS total_cost,
+          ROW_NUMBER() OVER (ORDER BY SUM(metric_cost) DESC, ${xExpr} ASC) AS rn
+        FROM filtered
+        GROUP BY ${xExpr}
+      ),
+      reduced AS (
+        SELECT
+          f.*,
+          CASE
+            WHEN $${scoped.nextIndex + filterPredicates.params.length}::text = 'date' THEN TRUE
+            ELSE COALESCE(rx.rn, 999999) <= 30
+          END AS keep_x
+        FROM filtered f
+        LEFT JOIN ranked_x rx ON rx.x_value = ${xExpr}
+      )
+      SELECT
+        ${xExpr} AS x_value,
+        bucket_name AS series_value,
+        SUM(metric_cost)::double precision AS metric_cost
+      FROM reduced
+      WHERE keep_x = TRUE
+      GROUP BY ${xExpr}, bucket_name
+      ORDER BY
+        CASE WHEN $${scoped.nextIndex + filterPredicates.params.length}::text = 'date' THEN ${xExpr} END ASC,
+        CASE WHEN $${scoped.nextIndex + filterPredicates.params.length}::text <> 'date' THEN SUM(metric_cost) END DESC;
+      `,
+      {
+        bind: [...scoped.params, ...filterPredicates.params, filters.costBy],
+        type: QueryTypes.SELECT,
+      },
+    );
+
+    const byX = new Map<string, Map<string, number>>();
+    const totalsByX = new Map<string, number>();
+    for (const row of rows) {
+      const x = String(row.x_value ?? "Unspecified");
+      const series = String(row.series_value ?? "Unspecified");
+      const val = toNumber(row.metric_cost);
+      if (!byX.has(x)) byX.set(x, new Map());
+      const seriesMap = byX.get(x)!;
+      seriesMap.set(series, (seriesMap.get(series) ?? 0) + val);
+      totalsByX.set(x, (totalsByX.get(x) ?? 0) + val);
+    }
+
+    const labels = [...byX.keys()];
+    if (filters.costBy === "date") labels.sort((a, b) => a.localeCompare(b));
+    else labels.sort((a, b) => (totalsByX.get(b) ?? 0) - (totalsByX.get(a) ?? 0));
+
+    const chartTotalsBySeries = new Map<string, number>();
+    for (const label of labels) {
+      const seriesMap = byX.get(label);
+      if (!seriesMap) continue;
+      for (const [seriesName, value] of seriesMap.entries()) {
+        chartTotalsBySeries.set(seriesName, (chartTotalsBySeries.get(seriesName) ?? 0) + value);
+      }
+    }
+
+    const topSeries = [...chartTotalsBySeries.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 8)
+      .map(([name]) => name);
+    const topSeriesSet = new Set(topSeries);
+    const includeOther = [...chartTotalsBySeries.keys()].some((name) => !topSeriesSet.has(name));
+
+    const series = topSeries.map((name) => ({
+      name,
+      values: labels.map((label) => byX.get(label)?.get(name) ?? 0),
+    }));
+
+    if (includeOther) {
+      series.push({
+        name: "Other",
+        values: labels.map((label) => {
+          const items = byX.get(label) ?? new Map<string, number>();
+          let sum = 0;
+          for (const [name, value] of items.entries()) {
+            if (!topSeriesSet.has(name)) sum += value;
+          }
+          return sum;
+        }),
+      });
+    }
+
+    return { labels, series, operationGroupTooltip: [] };
+  }
+
+  private async getOperationGroupTooltip(
+    scope: DashboardScope,
+    filters: S3CostInsightsFilters,
+  ): Promise<
+    Array<{
+      usageDate: string;
+      operationGroup: "Read" | "Write" | "List & Metadata" | "Other";
+      operation: string;
+      cost: number;
+    }>
+  > {
+    const scoped = this.buildS3DailyScopedWhere(scope);
+    const filterPredicates = this.buildS3FilterPredicates(filters, scoped.nextIndex);
+    const metricCostExpr = this.getMetricCostExpression(filters.yAxisMetric);
+    const rows = await sequelize.query<S3OperationGroupTooltipRow>(
+      `
+      WITH filtered AS (
+        SELECT
+          usage_date::text AS usage_date,
+          ${this.getOperationGroupSql()} AS operation_group,
+          COALESCE(NULLIF(operation, ''), 'Unspecified') AS operation_name,
+          COALESCE(${metricCostExpr}, 0)::double precision AS metric_cost
+        FROM s3_cost_daily
+        WHERE ${scoped.whereClause}
+          AND ${filterPredicates.clause}
+      )
+      SELECT
+        usage_date,
+        operation_group,
+        operation_name,
+        SUM(metric_cost)::double precision AS cost
+      FROM filtered
+      GROUP BY usage_date, operation_group, operation_name
+      ORDER BY usage_date ASC, operation_group ASC, cost DESC, operation_name ASC;
+      `,
+      { bind: [...scoped.params, ...filterPredicates.params], type: QueryTypes.SELECT },
+    );
+
+    const allowedGroups = new Set(["Read", "Write", "List & Metadata", "Other"]);
+    return rows
+      .map((row) => {
+        const operationGroup = String(row.operation_group ?? "Other").trim();
+        return {
+          usageDate: String(row.usage_date ?? ""),
+          operationGroup: (allowedGroups.has(operationGroup) ? operationGroup : "Other") as
+            | "Read"
+            | "Write"
+            | "List & Metadata"
+            | "Other",
+          operation: String(row.operation_name ?? "Unspecified"),
+          cost: toNumber(row.cost),
+        };
+      })
+      .filter((row) => row.usageDate.length > 0);
   }
 
   async getBreakdownFilterOptions(scope: DashboardScope): Promise<{
     costCategory: S3CostCategory[];
     usageType: string[];
     operation: string[];
-    productFamily: string[];
     bucket: string[];
     storageClass: string[];
     region: string[];
@@ -1017,7 +1463,7 @@ END
       )
     `;
 
-    const [usageTypeRows, operationRows, productFamilyRows, bucketRows, storageRows, regionRows, accountRows] = await Promise.all([
+    const [usageTypeRows, operationRows, bucketRows, storageRows, regionRows, accountRows] = await Promise.all([
       sequelize.query<S3OptionRow>(
         `
         ${baseCte}
@@ -1032,22 +1478,11 @@ END
       sequelize.query<S3OptionRow>(
         `
         ${baseCte}
-        SELECT COALESCE(NULLIF(operation, ''), 'Unspecified') AS value
+        SELECT ${S3_OPERATION_GROUP_SQL} AS value
         FROM scoped
-        GROUP BY COALESCE(NULLIF(operation, ''), 'Unspecified')
+        GROUP BY ${S3_OPERATION_GROUP_SQL}
         ORDER BY SUM(billed_cost) DESC, value ASC
-        LIMIT 200;
-        `,
-        { bind: scoped.params, type: QueryTypes.SELECT },
-      ),
-      sequelize.query<S3OptionRow>(
-        `
-        ${baseCte}
-        SELECT COALESCE(NULLIF(product_family, ''), 'Unspecified') AS value
-        FROM scoped
-        GROUP BY COALESCE(NULLIF(product_family, ''), 'Unspecified')
-        ORDER BY SUM(billed_cost) DESC, value ASC
-        LIMIT 200;
+        LIMIT 10;
         `,
         { bind: scoped.params, type: QueryTypes.SELECT },
       ),
@@ -1104,7 +1539,6 @@ END
       costCategory: S3_COST_CATEGORY_OPTIONS,
       usageType: normalize(usageTypeRows),
       operation: normalize(operationRows),
-      productFamily: normalize(productFamilyRows),
       bucket: normalize(bucketRows),
       storageClass: normalize(storageRows),
       region: normalize(regionRows),
@@ -1478,7 +1912,7 @@ END
       SELECT
         COALESCE(NULLIF(usage_type, ''), 'Unspecified') AS usage_type,
         COALESCE(NULLIF(operation, ''), 'Unspecified') AS operation,
-        COALESCE(SUM(billed_cost), 0)::double precision AS cost,
+        COALESCE(SUM(CASE WHEN billed_cost > 0 THEN billed_cost ELSE 0 END), 0)::double precision AS cost,
         COALESCE(SUM(quantity), 0)::double precision AS quantity,
         CASE
           WHEN COUNT(DISTINCT unit) = 1 THEN MIN(unit)
@@ -1572,6 +2006,113 @@ END
       grossCost: toNumber(row.gross_cost),
       topBucketName: String(row.top_bucket_name ?? "unattributed"),
     }));
+  }
+
+  async getStorageTypeCostTable(
+    scope: DashboardScope,
+    filters: S3CostInsightsFilters,
+    limit: number = 100,
+  ): Promise<Array<Omit<S3StorageTypeCostTableInsight, "trendPct">>> {
+    const scoped = this.buildS3DailyScopedWhere(scope);
+    const filterPredicates = this.buildS3FilterPredicates(filters, scoped.nextIndex);
+    const limitPlaceholder = scoped.params.length + filterPredicates.params.length + 1;
+
+    const rows = await sequelize.query<S3StorageTypeCostTableRow>(
+      `
+      WITH filtered AS (
+        SELECT
+          COALESCE(NULLIF(storage_class, ''), 'Unknown') AS storage_type,
+          COALESCE(bucket_name, 'unattributed') AS bucket_name,
+          COALESCE(total_cost, 0)::double precision AS billed_cost,
+          COALESCE(cost_category, 'Other') AS cost_category
+        FROM s3_cost_daily
+        WHERE ${scoped.whereClause}
+          AND ${filterPredicates.clause}
+      ),
+      gross AS (
+        SELECT
+          storage_type,
+          bucket_name,
+          cost_category,
+          CASE WHEN billed_cost > 0 THEN billed_cost ELSE 0 END AS gross_cost
+        FROM filtered
+      ),
+      storage_totals AS (
+        SELECT
+          storage_type,
+          COALESCE(SUM(gross_cost), 0)::double precision AS gross_cost,
+          COALESCE(SUM(CASE WHEN cost_category = 'Storage' THEN gross_cost ELSE 0 END), 0)::double precision AS storage_cost,
+          COALESCE(SUM(CASE WHEN cost_category = 'Request' THEN gross_cost ELSE 0 END), 0)::double precision AS request_cost,
+          COALESCE(SUM(CASE WHEN cost_category = 'Transfer' THEN gross_cost ELSE 0 END), 0)::double precision AS transfer_cost,
+          COALESCE(SUM(CASE WHEN cost_category = 'Retrieval' THEN gross_cost ELSE 0 END), 0)::double precision AS retrieval_cost,
+          COALESCE(SUM(CASE WHEN cost_category = 'Other' THEN gross_cost ELSE 0 END), 0)::double precision AS other_cost
+        FROM gross
+        GROUP BY storage_type
+      ),
+      top_bucket AS (
+        SELECT
+          storage_type,
+          bucket_name,
+          SUM(gross_cost)::double precision AS bucket_cost,
+          ROW_NUMBER() OVER (
+            PARTITION BY storage_type
+            ORDER BY SUM(gross_cost) DESC, bucket_name ASC
+          ) AS rn
+        FROM gross
+        GROUP BY storage_type, bucket_name
+      ),
+      totals AS (
+        SELECT COALESCE(SUM(gross_cost), 0)::double precision AS total_gross
+        FROM storage_totals
+      )
+      SELECT
+        st.storage_type,
+        st.gross_cost,
+        CASE WHEN t.total_gross > 0 THEN (st.gross_cost / t.total_gross) * 100 ELSE 0 END::double precision AS percent_of_storage_cost,
+        COALESCE(tb.bucket_name, 'unattributed') AS top_bucket_name,
+        st.storage_cost,
+        st.request_cost,
+        st.transfer_cost,
+        st.retrieval_cost,
+        st.other_cost
+      FROM storage_totals st
+      CROSS JOIN totals t
+      LEFT JOIN top_bucket tb
+        ON tb.storage_type = st.storage_type
+       AND tb.rn = 1
+      ORDER BY st.gross_cost DESC, st.storage_type ASC
+      LIMIT $${limitPlaceholder};
+      `,
+      { bind: [...scoped.params, ...filterPredicates.params, limit], type: QueryTypes.SELECT },
+    );
+
+    return rows.map((row) => {
+      const storageCost = toNumber(row.storage_cost);
+      const requestCost = toNumber(row.request_cost);
+      const transferCost = toNumber(row.transfer_cost);
+      const retrievalCost = toNumber(row.retrieval_cost);
+      const otherCost = toNumber(row.other_cost);
+      const grossCost = toNumber(row.gross_cost);
+      const dominant = Math.max(storageCost, requestCost, transferCost, retrievalCost, otherCost);
+      const dominantShare = grossCost > 0 ? dominant / grossCost : 0;
+
+      let optimizationSignal: S3StorageTypeCostTableInsight["optimizationSignal"] = "Balanced";
+      if (dominantShare >= 0.6) {
+        if (dominant === storageCost) optimizationSignal = "Storage Heavy";
+        else if (dominant === requestCost) optimizationSignal = "Request Heavy";
+        else if (dominant === transferCost) optimizationSignal = "Transfer Heavy";
+        else if (dominant === retrievalCost) optimizationSignal = "Retrieval Heavy";
+        else optimizationSignal = "Other Heavy";
+      }
+
+      return {
+        storageType: String(row.storage_type ?? "Unknown"),
+        grossCost,
+        percentOfStorageCost: toNumber(row.percent_of_storage_cost),
+        topBucketName: String(row.top_bucket_name ?? "unattributed"),
+        optimizationSignal,
+      };
+    });
   }
 
   async getBucketCostBreakdown(

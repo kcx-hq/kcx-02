@@ -37,18 +37,16 @@ export function S3OverviewFilters({
     "bucket",
     "usage_type",
     "operation",
-    "product_family",
     "storage_class",
   ];
 
   const getSeriesByLabel = (seriesBy: NonNullable<S3CostInsightsFiltersQuery["seriesBy"]>) => {
     if (seriesBy === "none") return "None";
-    if (seriesBy === "usage_type") return "Usage Type";
+    if (seriesBy === "usage_type") return "Cost Type";
     if (seriesBy === "storage_class") return "Storage Type";
-    if (seriesBy === "operation") return "Operation";
-    if (seriesBy === "product_family") return "Product Family";
+    if (seriesBy === "operation") return "Operation Group";
     if (seriesBy === "bucket") return "Bucket";
-    return "Usage Type";
+    return "Cost Type";
   };
 
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -92,10 +90,9 @@ export function S3OverviewFilters({
     if (draftSeriesBy === "none") return [];
     if (draftSeriesBy === "storage_class") return filterOptions?.storageClass ?? [];
     if (draftSeriesBy === "operation") return filterOptions?.operation ?? [];
-    if (draftSeriesBy === "product_family") return filterOptions?.productFamily ?? [];
     if (draftSeriesBy === "bucket") return filterOptions?.bucket ?? [];
     return filterOptions?.costCategory ?? [];
-  }, [draftSeriesBy, filterOptions?.bucket, filterOptions?.costCategory, filterOptions?.operation, filterOptions?.productFamily, filterOptions?.storageClass]);
+  }, [draftSeriesBy, filterOptions?.bucket, filterOptions?.costCategory, filterOptions?.operation, filterOptions?.storageClass]);
   const hasFilterOptions = Boolean(filterOptions) && !isLoading;
   const controlsDisabled = !hasFilterOptions;
 

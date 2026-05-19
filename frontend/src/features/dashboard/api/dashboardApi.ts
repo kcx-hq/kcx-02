@@ -611,6 +611,9 @@ function withS3CostInsightsFilters(
   if (filters?.yAxisMetric) {
     params.set("yAxisMetric", filters.yAxisMetric);
   }
+  if (filters?.usageYAxis) {
+    params.set("usageYAxis", filters.usageYAxis);
+  }
   if (filters?.responseMode) {
     params.set("responseMode", filters.responseMode);
   }

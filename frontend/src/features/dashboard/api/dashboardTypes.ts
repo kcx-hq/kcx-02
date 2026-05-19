@@ -1670,7 +1670,7 @@ export type S3CostInsightsResponse = {
       region: string[];
         account: string[];
         costBy: "date" | "bucket" | "region" | "account";
-        seriesBy: "none" | "cost_category" | "usage_type" | "operation" | "product_family" | "bucket" | "storage_class";
+        seriesBy: "none" | "cost_category" | "usage_type" | "operation" | "bucket" | "storage_class";
         yAxisMetric: "gross_cost" | "billed_cost" | "effective_cost" | "amortized_cost" | "usage_quantity";
       };
   };
@@ -1684,7 +1684,6 @@ export type S3CostInsightsResponse = {
     | "product_usage_type"
     | "operation"
     | "line_item_description"
-    | "product_family"
     | "region_name"
     | "sub_account_name"
     | "tag_value"
@@ -1794,6 +1793,14 @@ export type S3CostInsightsResponse = {
     trendPct: number;
     topBucketName: string;
   }>;
+  storageTypeCostTable: Array<{
+    storageType: string;
+    grossCost: number;
+    percentOfStorageCost: number;
+    trendPct: number;
+    topBucketName: string;
+    optimizationSignal: "Storage Heavy" | "Request Heavy" | "Transfer Heavy" | "Retrieval Heavy" | "Other Heavy" | "Balanced";
+  }>;
   chart: {
     bucketCosts: Array<{
       bucketName: string;
@@ -1822,19 +1829,24 @@ export type S3CostInsightsResponse = {
         name: string;
         values: number[];
       }>;
+      operationGroupTooltip?: Array<{
+        usageDate: string;
+        operationGroup: "Read" | "Write" | "List & Metadata" | "Other";
+        operation: string;
+        cost: number;
+      }>;
     };
   };
   filterOptions: {
     costCategory: string[];
     usageType: string[];
     operation: string[];
-    productFamily: string[];
     bucket: string[];
     storageClass: string[];
     region: string[];
       account: string[];
       costBy: Array<"date" | "bucket" | "region" | "account">;
-      seriesBy: Array<"none" | "cost_category" | "usage_type" | "operation" | "product_family" | "bucket" | "storage_class">;
+      seriesBy: Array<"none" | "cost_category" | "usage_type" | "operation" | "bucket" | "storage_class">;
       yAxisMetric: Array<"gross_cost" | "billed_cost" | "effective_cost" | "amortized_cost" | "usage_quantity">;
     };
   storageAnomalies: {
@@ -2021,8 +2033,9 @@ export type S3CostInsightsFiltersQuery = {
   account?: string[];
   responseMode?: "full" | "core" | "quick" | "overview";
   costBy?: "date" | "bucket" | "region" | "account";
-  seriesBy?: "none" | "cost_category" | "usage_type" | "operation" | "product_family" | "bucket" | "storage_class";
+  seriesBy?: "none" | "cost_category" | "usage_type" | "operation" | "bucket" | "storage_class";
   yAxisMetric?: "gross_cost" | "billed_cost" | "effective_cost" | "amortized_cost" | "usage_quantity";
+  usageYAxis?: "storage_gb" | "request_count" | "transfer_gb" | "object_count";
 };
 
 export type S3PolicyAppliedStatus = "APPLIED" | "NOT_APPLIED" | "FAILED" | "EXTERNAL";

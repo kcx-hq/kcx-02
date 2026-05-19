@@ -6309,7 +6309,7 @@
 .s3-overview-page {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 8px;
 }
 
 .s3-overview-kpi-surface {
@@ -6346,16 +6346,21 @@
   position: relative !important;
   top: auto !important;
   z-index: 300 !important;
-  border: 1px solid color-mix(in srgb, var(--dashboard-border-light) 74%, var(--dashboard-white-strong) 26%);
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--dashboard-surface-card) 92%, var(--dashboard-white-strong) 8%);
-  box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--dashboard-border-light) 24%, transparent 76%),
-    0 1px 0 color-mix(in srgb, var(--dashboard-white-strong) 38%, transparent 62%),
-    inset 0 0 0 1px color-mix(in srgb, var(--dashboard-white-strong) 28%, transparent 72%);
+  border: 1px solid color-mix(in srgb, var(--dashboard-border-light) 78%, var(--dashboard-white-strong) 22%) !important;
+  border-radius: var(--dashboard-radius-md);
+  background: var(--dashboard-surface-quiet);
+  box-shadow: none;
   padding: 14px 16px 12px;
   margin-bottom: 8px;
   overflow: visible;
+}
+
+.s3-overview-filter-panel::after {
+  content: none;
+}
+
+.s3-overview-filter-panel > * {
+  position: static;
 }
 
 .s3-overview-filter-panel .cost-explorer-toolbar-row,
@@ -6369,13 +6374,10 @@
 
 .s3-overview-filter-panel--loading {
   min-height: 124px;
-  border: 1px solid color-mix(in srgb, var(--dashboard-border-light) 74%, var(--dashboard-white-strong) 26%);
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--dashboard-surface-card) 92%, var(--dashboard-white-strong) 8%);
-  box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--dashboard-border-light) 24%, transparent 76%),
-    0 1px 0 color-mix(in srgb, var(--dashboard-white-strong) 38%, transparent 62%),
-    inset 0 0 0 1px color-mix(in srgb, var(--dashboard-white-strong) 28%, transparent 72%);
+  border: 1px solid color-mix(in srgb, var(--dashboard-border-light) 78%, var(--dashboard-white-strong) 22%);
+  border-radius: var(--dashboard-radius-md);
+  background: var(--dashboard-surface-quiet);
+  box-shadow: none;
   padding: 14px 16px 12px;
   margin-bottom: 8px;
 }
@@ -7043,9 +7045,9 @@
 }
 
 .s3-usage-filter-panel {
-  position: static !important;
+  position: relative !important;
   top: auto !important;
-  z-index: auto !important;
+  z-index: 300 !important;
   border: 1px solid color-mix(in srgb, var(--dashboard-border-light) 74%, var(--dashboard-white-strong) 26%);
   border-radius: 12px;
   background: color-mix(in srgb, var(--dashboard-surface-card) 94%, var(--dashboard-white-strong) 6%);
@@ -7053,12 +7055,14 @@
     0 1px 1px rgba(15, 23, 42, 0.025),
     0 10px 24px rgba(15, 23, 42, 0.05);
   padding: 12px 14px 10px;
+  overflow: visible;
 }
 
 .s3-usage-filter-panel .cost-explorer-toolbar-row {
   align-items: flex-start;
   flex-wrap: nowrap;
   gap: 0 12px;
+  position: relative;
 }
 
 .s3-usage-filter-panel .cost-explorer-toolbar-item {
@@ -7066,14 +7070,11 @@
   max-width: none;
   min-width: 0;
   padding-top: 6px;
+  position: relative;
 }
 
 .s3-usage-filter-panel .s3-usage-filter-panel__item--cost-by {
   order: 1;
-}
-
-.s3-usage-filter-panel .s3-usage-filter-panel__item--y-axis {
-  order: 2;
 }
 
 .s3-usage-filter-panel .s3-usage-filter-panel__item--x-axis {
@@ -7085,7 +7086,11 @@
 }
 
 .s3-usage-filter-panel .s3-usage-filter-panel__item--compare {
-  order: 5;
+  order: 2;
+}
+
+.s3-usage-filter-panel .s3-usage-filter-panel__item--compare-mode {
+  order: 4;
 }
 
 .s3-usage-filter-panel .cost-explorer-toolbar-trigger {
@@ -7106,8 +7111,49 @@
 .s3-usage-filter-panel .s3-usage-filter-popover--cost-by,
 .s3-usage-filter-panel .s3-usage-filter-popover--region,
 .s3-usage-filter-panel .s3-usage-filter-popover--x-axis,
-.s3-usage-filter-panel .s3-usage-filter-popover--y-axis {
+.s3-usage-filter-panel .s3-usage-filter-popover--y-axis,
+.s3-usage-filter-panel .s3-usage-filter-popover--compare {
   max-width: min(420px, calc(100vw - 40px));
+  z-index: 1200;
+}
+
+.s3-usage-filter-panel .s3-usage-filter-popover--cost-by {
+  width: min(640px, calc(100vw - 84px));
+  max-width: min(640px, calc(100vw - 84px));
+  min-width: min(500px, calc(100vw - 84px));
+  height: min(380px, calc(100vh - 300px));
+  background: #f7fbfc;
+}
+
+.s3-usage-filter-panel .s3-usage-filter-popover--cost-by .cost-explorer-filter-popover__split {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: stretch;
+  height: calc(100% - 45px);
+}
+
+.s3-usage-filter-panel .s3-usage-filter-popover--cost-by .cost-explorer-filter-popover__list--group-dimensions {
+  display: flex;
+  flex-direction: column;
+  flex-wrap: nowrap;
+  gap: 0;
+  align-content: stretch;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.s3-usage-filter-panel .s3-usage-filter-popover--cost-by .cost-explorer-filter-popover__list--value-boxes {
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.s3-usage-filter-panel .s3-usage-filter-popover--cost-by .cost-explorer-filter-popover__split-pane {
+  min-height: 0;
+}
+
+.s3-usage-filter-panel .s3-usage-filter-popover--cost-by .cost-explorer-filter-popover__split-pane:first-child .cost-explorer-filter-popover__list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .s3-usage-filter-panel .s3-usage-filter-panel__static-trigger {
@@ -16695,5 +16741,33 @@
 .kcx-dashboard .cost-explorer-toolbar-trigger.is-active {
   background: color-mix(in srgb, var(--dashboard-surface-card) 90%, var(--dashboard-white-strong) 10%) !important;
   border-color: color-mix(in srgb, var(--dashboard-border-light) 75%, var(--dashboard-white-strong) 25%) !important;
+}
+
+/* S3 Cost section: remove hover effects + shadow effects */
+.s3-overview-page .cost-explorer-control-surface,
+.s3-overview-page .cost-explorer-kpi-surface,
+.s3-overview-page .cost-explorer-chart-panel,
+.s3-overview-page .s3-overview-table-panel,
+.s3-overview-page .cost-explorer-filter-popover,
+.s3-overview-page .s3-overview-chart-panel__chart-type-popover {
+  box-shadow: none !important;
+}
+
+.s3-overview-page .cost-explorer-toolbar-trigger:hover,
+.s3-overview-page .cost-explorer-toolbar-trigger.is-active,
+.s3-overview-page .cost-explorer-toolbar-trigger:focus-visible,
+.s3-overview-page .cost-explorer-filter-option:hover:not(:disabled),
+.s3-overview-page .cost-explorer-filter-option--tile:hover:not(:disabled),
+.s3-overview-page .cost-explorer-chip:hover,
+.s3-overview-page .cost-explorer-chip__edit:hover,
+.s3-overview-page .cost-explorer-chip__remove:hover,
+.s3-overview-page .cost-explorer-filter-popover__apply:hover:not(:disabled),
+.s3-overview-page .cost-explorer-state-btn:hover,
+.s3-overview-page .s3-overview-chart-panel__chart-type-option:hover {
+  box-shadow: none !important;
+  transform: none !important;
+  background: inherit !important;
+  border-color: inherit !important;
+  color: inherit !important;
 }
 

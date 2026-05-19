@@ -23,6 +23,17 @@ export type S3UsageOperationTableRow = {
   unit: string;
 };
 
+const mapUsageTypeLabel = (raw: string): string => {
+  const value = String(raw ?? "").trim();
+  const lower = value.toLowerCase();
+  if (lower.includes("aps3-requests-tier1")) return "S3 Express Requests";
+  if (lower.includes("aps3-timedstorage-bytehrs")) return "S3 Express Storage";
+  if (lower.includes("requests-tier1")) return "Standard Requests";
+  if (lower.includes("requests-tier2")) return "Advanced Requests";
+  if (lower.includes("timedstorage-bytehrs")) return "Standard Storage";
+  return value || "Unspecified";
+};
+
 type Props = {
   rows: S3UsageOperationTableRow[];
   height?: number;
@@ -37,17 +48,18 @@ export function S3UsageOperationTable({
   const columnDefs = useMemo<ColDef<S3UsageOperationTableRow>[]>(
     () => [
       {
-        headerName: "Usage Type",
-        field: "usageType",
-        minWidth: 260,
-      },
-      {
         headerName: "Operation",
         field: "operation",
         minWidth: 220,
       },
       {
-        headerName: "Cost",
+        headerName: "Usage Type",
+        field: "usageType",
+        minWidth: 260,
+        valueFormatter: (params) => mapUsageTypeLabel(String(params.value ?? "")),
+      },
+      {
+        headerName: "Gross Cost",
         field: "cost",
         minWidth: 160,
         cellClass: "s3-analytics-number-cell",
