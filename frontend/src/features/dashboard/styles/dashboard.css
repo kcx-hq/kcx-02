@@ -11162,11 +11162,12 @@
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   border: 1px solid color-mix(in srgb, var(--dashboard-border-light) 74%, var(--dashboard-white-strong) 26%);
+  border-radius: var(--dashboard-radius-md);
   background: color-mix(in srgb, var(--dashboard-surface-card) 90%, var(--dashboard-white-strong) 10%);
 }
 
 .s3-usage-kpi-row__item {
-  padding: 10px 14px;
+  padding: 14px 16px;
 }
 
 .s3-usage-kpi-row__item + .s3-usage-kpi-row__item {
@@ -11192,6 +11193,34 @@
 
 .s3-usage-kpi-row__value--text {
   font-size: 1.15rem;
+}
+
+.s3-usage-kpi-row--skeleton .s3-usage-kpi-row__item {
+  display: grid;
+  gap: 10px;
+}
+
+.s3-usage-kpi-row__skeleton-label,
+.s3-usage-kpi-row__skeleton-value {
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--dashboard-border-light) 50%, var(--dashboard-white-strong) 50%) 0%,
+    color-mix(in srgb, var(--dashboard-border-light) 36%, var(--dashboard-white-strong) 64%) 50%,
+    color-mix(in srgb, var(--dashboard-border-light) 50%, var(--dashboard-white-strong) 50%) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.35s ease-in-out infinite;
+}
+
+.s3-usage-kpi-row__skeleton-label {
+  width: 48%;
+  height: 10px;
+}
+
+.s3-usage-kpi-row__skeleton-value {
+  width: 76%;
+  height: 28px;
 }
 
 .s3-usage-visual-card {

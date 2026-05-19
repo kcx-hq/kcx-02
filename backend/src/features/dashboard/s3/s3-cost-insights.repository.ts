@@ -40,6 +40,16 @@ type S3UsageTypeKpiTotalsRow = {
   net_s3_cost: number | string | null;
 };
 
+type S3UsageSummaryKpisRow = {
+  total_storage_gb: number | string | null;
+  total_requests: number | string | null;
+  total_transfer_gb: number | string | null;
+};
+
+type S3ObjectCountKpiRow = {
+  total_object_count: number | string | null;
+};
+
 type S3UsageTypeDriverRow = {
   usage_category: string | null;
   total_cost: number | string | null;
@@ -1575,6 +1585,180 @@ END
     );
 
     return toNumber(rows[0]?.total_effective_s3_cost);
+  }
+
+  async getUsageSummaryKpis(
+    scope: DashboardScope,
+    filters: S3CostInsightsFilters,
+  ): Promise<{
+    totalStorageGb: number;
+    totalRequests: number;
+    totalTransferGb: number;
+    totalObjectCount: number;
+  }> {
+    const scoped = this.buildS3DailyScopedWhere(scope);
+    const usageFilters: S3CostInsightsFilters = { ...filters, costCategory: [] };
+    const filterPredicates = this.buildS3FilterPredicates(usageFilters, scoped.nextIndex);
+
+    const usageRows = await sequelize.query<S3UsageSummaryKpisRow>(
+      `
+      WITH filtered AS (
+        SELECT
+          bucket_name,
+          cost_category,
+          usage_type,
+          product_family,
+          line_item_description,
+          operation,
+          COALESCE(usage_quantity, 0)::double precision AS usage_quantity
+        FROM s3_cost_daily
+        WHERE ${scoped.whereClause}
+          AND ${filterPredicates.clause}
+      )
+      SELECT
+        COALESCE(
+          SUM(
+            CASE
+              WHEN (
+                LOWER(TRIM(COALESCE(NULLIF(cost_category, ''), ''))) = 'storage'
+                OR LOWER(COALESCE(usage_type, '')) LIKE '%timedstorage%'
+              )
+              THEN usage_quantity
+              ELSE 0
+            END
+          ),
+          0
+        )::double precision AS total_storage_gb,
+        COALESCE(
+          SUM(
+            CASE
+              WHEN (
+                LOWER(TRIM(COALESCE(NULLIF(cost_category, ''), ''))) IN ('request', 'requests')
+                OR LOWER(COALESCE(usage_type, '')) LIKE 'requests%'
+              )
+              THEN usage_quantity
+              ELSE 0
+            END
+          ),
+          0
+        )::double precision AS total_requests,
+        COALESCE(
+          SUM(
+            CASE
+              WHEN (
+                LOWER(TRIM(COALESCE(NULLIF(cost_category, ''), ''))) IN ('transfer', 'data_transfer', 'data transfer')
+                OR LOWER(TRIM(COALESCE(NULLIF(product_family, ''), ''))) = 'data transfer'
+                OR LOWER(COALESCE(usage_type, '')) LIKE '%datatransfer%'
+                OR LOWER(COALESCE(usage_type, '')) LIKE '%out-bytes%'
+                OR LOWER(COALESCE(usage_type, '')) LIKE '%in-bytes%'
+                OR LOWER(COALESCE(usage_type, '')) LIKE '%data%transfer%'
+                OR LOWER(COALESCE(line_item_description, '')) LIKE '%data transfer%'
+                OR LOWER(COALESCE(operation, '')) LIKE '%datatransfer%'
+              )
+              THEN usage_quantity
+              ELSE 0
+            END
+          ),
+          0
+        )::double precision AS total_transfer_gb
+      FROM filtered;
+      `,
+      { bind: [...scoped.params, ...filterPredicates.params], type: QueryTypes.SELECT },
+    );
+
+    const storageScoped = this.buildS3DailyScopedWhere(scope);
+    const objectCountParams: unknown[] = [...storageScoped.params];
+    const objectCountFilters: string[] = [
+      "sld.object_count IS NOT NULL",
+      "sld.bucket_name IS NOT NULL",
+      "NULLIF(BTRIM(sld.bucket_name), '') IS NOT NULL",
+    ];
+
+    if (filters.bucket && filters.bucket.trim().length > 0) {
+      objectCountParams.push(`%${filters.bucket.trim()}%`);
+      objectCountFilters.push(`LOWER(sld.bucket_name) LIKE LOWER($${objectCountParams.length})`);
+    }
+    if (filters.region.length > 0) {
+      objectCountParams.push(filters.region);
+      objectCountFilters.push(`
+        COALESCE(
+          (SELECT COALESCE(dr.region_name, dr.region_id, 'global') FROM dim_region dr WHERE dr.id = sld.region_key),
+          'global'
+        ) = ANY($${objectCountParams.length}::text[])
+      `);
+    }
+    if (filters.account.length > 0) {
+      objectCountParams.push(filters.account);
+      objectCountFilters.push(`
+        COALESCE(
+          (SELECT COALESCE(dsa.sub_account_name, dsa.sub_account_id, 'Unspecified') FROM dim_sub_account dsa WHERE dsa.id = sld.sub_account_key),
+          'Unspecified'
+        ) = ANY($${objectCountParams.length}::text[])
+      `);
+    }
+    if (filters.seriesBy === "bucket" && filters.seriesValues.length > 0) {
+      objectCountParams.push(filters.seriesValues);
+      objectCountFilters.push(`sld.bucket_name = ANY($${objectCountParams.length}::text[])`);
+    }
+
+    const needsBucketSelectionFromCostDaily =
+      filters.seriesValues.length > 0 &&
+      (filters.seriesBy === "usage_type" || filters.seriesBy === "operation" || filters.seriesBy === "storage_class");
+    if (needsBucketSelectionFromCostDaily) {
+      const bucketScoped = this.buildS3DailyScopedWhere(scope);
+      const bucketFilterPredicates = this.buildS3FilterPredicates(usageFilters, bucketScoped.nextIndex);
+      const bucketRows = await sequelize.query<S3OptionRow>(
+        `
+        SELECT DISTINCT bucket_name AS value
+        FROM s3_cost_daily
+        WHERE ${bucketScoped.whereClause}
+          AND ${bucketFilterPredicates.clause}
+          AND bucket_name IS NOT NULL
+          AND NULLIF(BTRIM(bucket_name), '') IS NOT NULL
+        ORDER BY bucket_name ASC;
+        `,
+        { bind: [...bucketScoped.params, ...bucketFilterPredicates.params], type: QueryTypes.SELECT },
+      );
+      const selectedBuckets = bucketRows
+        .map((row) => String(row.value ?? "").trim())
+        .filter((value) => value.length > 0);
+      if (selectedBuckets.length === 0) {
+        return {
+          totalStorageGb: toNumber(usageRows[0]?.total_storage_gb),
+          totalRequests: toNumber(usageRows[0]?.total_requests),
+          totalTransferGb: toNumber(usageRows[0]?.total_transfer_gb),
+          totalObjectCount: 0,
+        };
+      }
+      objectCountParams.push(selectedBuckets);
+      objectCountFilters.push(`sld.bucket_name = ANY($${objectCountParams.length}::text[])`);
+    }
+
+    const objectCountRows = await sequelize.query<S3ObjectCountKpiRow>(
+      `
+      WITH
+      bucket_daily AS (
+        SELECT
+          sld.usage_date::date AS usage_date,
+          sld.bucket_name,
+          MAX(sld.object_count)::double precision AS object_count
+        FROM s3_storage_lens_daily sld
+        WHERE ${storageScoped.whereClause}
+          AND ${objectCountFilters.join("\n          AND ")}
+        GROUP BY sld.usage_date::date, sld.bucket_name
+      )
+      SELECT COALESCE(SUM(object_count), 0)::double precision AS total_object_count
+      FROM bucket_daily;
+      `,
+      { bind: objectCountParams, type: QueryTypes.SELECT },
+    );
+
+    return {
+      totalStorageGb: toNumber(usageRows[0]?.total_storage_gb),
+      totalRequests: toNumber(usageRows[0]?.total_requests),
+      totalTransferGb: toNumber(usageRows[0]?.total_transfer_gb),
+      totalObjectCount: toNumber(objectCountRows[0]?.total_object_count),
+    };
   }
 
   async getBucketCostKpis(

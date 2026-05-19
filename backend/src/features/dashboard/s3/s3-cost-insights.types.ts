@@ -380,6 +380,12 @@ export type S3CostInsightsResponse = {
         percentOfTotal: number;
       } | null;
     };
+    usageSummaryKpis: {
+      totalStorageGb: number;
+      totalRequests: number;
+      totalTransferGb: number;
+      totalObjectCount: number;
+    };
   };
   storageCostDashboard: {
     currency: "USD";

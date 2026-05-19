@@ -188,6 +188,7 @@ export class S3CostInsightsService {
       effectiveCost,
       bucketCostKpis,
       usageTypeCostKpis,
+      usageSummaryKpis,
       storageCostDashboard,
       bucketCosts,
       trend,
@@ -200,6 +201,15 @@ export class S3CostInsightsService {
       this.repository.getTotalS3EffectiveCost(scope),
       this.repository.getBucketCostKpis(scope, effectiveFilters),
       this.repository.getUsageTypeCostKpis(scope, effectiveFilters),
+      this.repository.getUsageSummaryKpis(scope, effectiveFilters).catch((error: unknown) => {
+        console.error("[S3CostInsightsService] Failed to load usage summary KPIs", error);
+        return {
+          totalStorageGb: 0,
+          totalRequests: 0,
+          totalTransferGb: 0,
+          totalObjectCount: 0,
+        };
+      }),
       isLeanMode
         ? Promise.resolve({
             latestUsageDate: null,
@@ -457,6 +467,7 @@ export class S3CostInsightsService {
         effectiveCost,
         bucketCostKpis,
         usageTypeCostKpis,
+        usageSummaryKpis,
       },
       storageCostDashboard: {
         currency: "USD",

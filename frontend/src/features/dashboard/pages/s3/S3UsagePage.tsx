@@ -6,6 +6,7 @@ import { useS3CostInsightsQuery } from "../../hooks/useDashboardQueries";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue";
 import { S3UsageFilters } from "./usage/components/S3UsageFilters";
 import { S3UsageChartPanel } from "./usage/components/S3UsageChartPanel";
+import { S3UsageKpiSection } from "./usage/components/S3UsageKpiSection";
 import {
   S3UsageInsightsTable,
   type S3BucketUsageRow,
@@ -293,6 +294,8 @@ export default function S3UsagePage() {
         onReset={() => applyFilters(DEFAULT_FILTERS)}
         isLoading={isInitialLoading}
       />
+
+      <S3UsageKpiSection kpis={query.data?.kpis.usageSummaryKpis} isLoading={isInitialLoading} />
 
       <S3UsageChartPanel
         breakdown={query.data?.chart.breakdown}
