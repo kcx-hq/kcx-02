@@ -1,5 +1,5 @@
 type S3BucketKpiSectionProps = {
-  mode?: "default" | "usage_type";
+  mode?: "default" | "usage_type" | "operation" | "storage_class";
   grossBucketCost: number;
   creditAdjustedCost: number;
   netBucketCost: number;
@@ -14,6 +14,12 @@ type S3BucketKpiSectionProps = {
       percentOfTotal: number;
     } | null;
   };
+  topOperation?: {
+    operation: string;
+    cost: number;
+    percentOfTotal: number;
+  } | null;
+  topStorageClassLabel?: string;
 };
 
 const currencyFormatterStandard = new Intl.NumberFormat("en-US", {
@@ -49,10 +55,15 @@ export function S3BucketKpiSection({
   netBucketCost,
   totalBuckets,
   usageTypeCostKpis,
+  topOperation,
+  topStorageClassLabel,
 }: S3BucketKpiSectionProps) {
-  if (mode === "usage_type" && usageTypeCostKpis) {
+  if ((mode === "usage_type" || mode === "operation") && usageTypeCostKpis) {
     const topDriverText = usageTypeCostKpis.topUsageDriver
-      ? `${usageTypeCostKpis.topUsageDriver.category} • ${formatCurrency(usageTypeCostKpis.topUsageDriver.cost)} (${usageTypeCostKpis.topUsageDriver.percentOfTotal.toFixed(1)}%)`
+      ? `${usageTypeCostKpis.topUsageDriver.category} - ${formatCurrency(usageTypeCostKpis.topUsageDriver.cost)} (${usageTypeCostKpis.topUsageDriver.percentOfTotal.toFixed(1)}%)`
+      : "n/a";
+    const topOperationText = topOperation
+      ? `${topOperation.operation} - ${formatCurrency(topOperation.cost)} (${topOperation.percentOfTotal.toFixed(1)}%)`
       : "n/a";
 
     return (
@@ -71,8 +82,33 @@ export function S3BucketKpiSection({
             <p className="cost-explorer-insight-tile__value">{formatCurrency(usageTypeCostKpis.netS3Cost)}</p>
           </article>
           <article className="cost-explorer-insight-tile s3-overview-kpi-tile">
-            <p className="cost-explorer-insight-tile__label">Top Usage Driver</p>
-            <p className="cost-explorer-insight-tile__value">{topDriverText}</p>
+            <p className="cost-explorer-insight-tile__label">{mode === "operation" ? "Top Operation" : "Top Usage Driver"}</p>
+            <p className="cost-explorer-insight-tile__value">{mode === "operation" ? topOperationText : topDriverText}</p>
+          </article>
+        </div>
+      </section>
+    );
+  }
+
+  if (mode === "storage_class") {
+    return (
+      <section className="cost-explorer-kpi-surface s3-overview-kpi-surface" aria-label="S3 storage-class cost key metrics">
+        <div className="cost-explorer-chart-insights s3-overview-kpi-row">
+          <article className="cost-explorer-insight-tile s3-overview-kpi-tile">
+            <p className="cost-explorer-insight-tile__label">Gross S3 Cost</p>
+            <p className="cost-explorer-insight-tile__value">{formatCurrency(grossBucketCost)}</p>
+          </article>
+          <article className="cost-explorer-insight-tile is-positive s3-overview-kpi-tile">
+            <p className="cost-explorer-insight-tile__label">Credits</p>
+            <p className="cost-explorer-insight-tile__value">{formatCurrency(creditAdjustedCost)} Credit Applied</p>
+          </article>
+          <article className="cost-explorer-insight-tile s3-overview-kpi-tile">
+            <p className="cost-explorer-insight-tile__label">Net S3 Cost</p>
+            <p className="cost-explorer-insight-tile__value">{formatCurrency(netBucketCost)}</p>
+          </article>
+          <article className="cost-explorer-insight-tile s3-overview-kpi-tile">
+            <p className="cost-explorer-insight-tile__label">Top Storage Class</p>
+            <p className="cost-explorer-insight-tile__value">{topStorageClassLabel || "n/a"}</p>
           </article>
         </div>
       </section>
@@ -83,15 +119,15 @@ export function S3BucketKpiSection({
     <section className="cost-explorer-kpi-surface s3-overview-kpi-surface" aria-label="S3 bucket cost key metrics">
       <div className="cost-explorer-chart-insights s3-overview-kpi-row">
         <article className="cost-explorer-insight-tile s3-overview-kpi-tile">
-          <p className="cost-explorer-insight-tile__label">Gross Bucket Cost</p>
+          <p className="cost-explorer-insight-tile__label">Gross S3 Cost</p>
           <p className="cost-explorer-insight-tile__value">{formatCurrency(grossBucketCost)}</p>
         </article>
         <article className="cost-explorer-insight-tile is-positive s3-overview-kpi-tile">
-          <p className="cost-explorer-insight-tile__label">Credit Adjusted Cost</p>
+          <p className="cost-explorer-insight-tile__label">Credits</p>
           <p className="cost-explorer-insight-tile__value">{formatCurrency(creditAdjustedCost)} Credit Applied</p>
         </article>
         <article className="cost-explorer-insight-tile s3-overview-kpi-tile">
-          <p className="cost-explorer-insight-tile__label">Net Bucket Cost</p>
+          <p className="cost-explorer-insight-tile__label">Net S3 Cost</p>
           <p className="cost-explorer-insight-tile__value">{formatCurrency(netBucketCost)}</p>
         </article>
         <article className="cost-explorer-insight-tile s3-overview-kpi-tile">

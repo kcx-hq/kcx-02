@@ -14,6 +14,11 @@ const formatDataSize = (valueInGb: number): string => {
   return `${safeGb.toFixed(safeGb >= 100 ? 0 : safeGb >= 10 ? 1 : 2)} GB`;
 };
 
+const formatGb = (valueInGb: number): string => {
+  const safeGb = Number.isFinite(valueInGb) ? Math.max(0, valueInGb) : 0;
+  return `${safeGb.toFixed(safeGb >= 100 ? 0 : safeGb >= 10 ? 1 : 2)} GB`;
+};
+
 type Props = {
   kpis: S3CostInsightsResponse["kpis"]["usageSummaryKpis"] | undefined;
   isLoading?: boolean;
@@ -47,7 +52,7 @@ export function S3UsageKpiSection({ kpis, isLoading = false }: Props) {
       <div className="cost-explorer-chart-insights s3-overview-kpi-row">
         <article className="cost-explorer-insight-tile s3-overview-kpi-tile">
           <p className="cost-explorer-insight-tile__label">Total Storage</p>
-          <p className="cost-explorer-insight-tile__value">{formatDataSize(values.totalStorageGb)}</p>
+          <p className="cost-explorer-insight-tile__value">{formatGb(values.totalStorageGb)}</p>
         </article>
         <article className="cost-explorer-insight-tile s3-overview-kpi-tile">
           <p className="cost-explorer-insight-tile__label">Total Requests</p>

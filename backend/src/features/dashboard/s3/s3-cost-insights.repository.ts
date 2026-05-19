@@ -49,6 +49,9 @@ type S3UsageSummaryKpisRow = {
 type S3ObjectCountKpiRow = {
   total_object_count: number | string | null;
 };
+type S3TotalStorageGbRow = {
+  total_storage_gb: number | string | null;
+};
 
 type S3UsageTypeDriverRow = {
   usage_category: string | null;
@@ -1620,19 +1623,6 @@ END
           SUM(
             CASE
               WHEN (
-                LOWER(TRIM(COALESCE(NULLIF(cost_category, ''), ''))) = 'storage'
-                OR LOWER(COALESCE(usage_type, '')) LIKE '%timedstorage%'
-              )
-              THEN usage_quantity
-              ELSE 0
-            END
-          ),
-          0
-        )::double precision AS total_storage_gb,
-        COALESCE(
-          SUM(
-            CASE
-              WHEN (
                 LOWER(TRIM(COALESCE(NULLIF(cost_category, ''), ''))) IN ('request', 'requests')
                 OR LOWER(COALESCE(usage_type, '')) LIKE 'requests%'
               )
@@ -1704,6 +1694,7 @@ END
     const needsBucketSelectionFromCostDaily =
       filters.seriesValues.length > 0 &&
       (filters.seriesBy === "usage_type" || filters.seriesBy === "operation" || filters.seriesBy === "storage_class");
+    let selectedBuckets: string[] | null = null;
     if (needsBucketSelectionFromCostDaily) {
       const bucketScoped = this.buildS3DailyScopedWhere(scope);
       const bucketFilterPredicates = this.buildS3FilterPredicates(usageFilters, bucketScoped.nextIndex);
@@ -1719,12 +1710,12 @@ END
         `,
         { bind: [...bucketScoped.params, ...bucketFilterPredicates.params], type: QueryTypes.SELECT },
       );
-      const selectedBuckets = bucketRows
+      selectedBuckets = bucketRows
         .map((row) => String(row.value ?? "").trim())
         .filter((value) => value.length > 0);
       if (selectedBuckets.length === 0) {
         return {
-          totalStorageGb: toNumber(usageRows[0]?.total_storage_gb),
+          totalStorageGb: 0,
           totalRequests: toNumber(usageRows[0]?.total_requests),
           totalTransferGb: toNumber(usageRows[0]?.total_transfer_gb),
           totalObjectCount: 0,
@@ -1733,6 +1724,60 @@ END
       objectCountParams.push(selectedBuckets);
       objectCountFilters.push(`sld.bucket_name = ANY($${objectCountParams.length}::text[])`);
     }
+
+    const storageParams: unknown[] = [...storageScoped.params];
+    const storageFilters: string[] = [
+      "sld.current_version_bytes IS NOT NULL",
+      "sld.bucket_name IS NOT NULL",
+      "NULLIF(BTRIM(sld.bucket_name), '') IS NOT NULL",
+    ];
+    if (filters.bucket && filters.bucket.trim().length > 0) {
+      storageParams.push(`%${filters.bucket.trim()}%`);
+      storageFilters.push(`LOWER(sld.bucket_name) LIKE LOWER($${storageParams.length})`);
+    }
+    if (filters.region.length > 0) {
+      storageParams.push(filters.region);
+      storageFilters.push(`
+        COALESCE(
+          (SELECT COALESCE(dr.region_name, dr.region_id, 'global') FROM dim_region dr WHERE dr.id = sld.region_key),
+          'global'
+        ) = ANY($${storageParams.length}::text[])
+      `);
+    }
+    if (filters.account.length > 0) {
+      storageParams.push(filters.account);
+      storageFilters.push(`
+        COALESCE(
+          (SELECT COALESCE(dsa.sub_account_name, dsa.sub_account_id, 'Unspecified') FROM dim_sub_account dsa WHERE dsa.id = sld.sub_account_key),
+          'Unspecified'
+        ) = ANY($${storageParams.length}::text[])
+      `);
+    }
+    if (filters.seriesBy === "bucket" && filters.seriesValues.length > 0) {
+      storageParams.push(filters.seriesValues);
+      storageFilters.push(`sld.bucket_name = ANY($${storageParams.length}::text[])`);
+    }
+    if (selectedBuckets && selectedBuckets.length > 0) {
+      storageParams.push(selectedBuckets);
+      storageFilters.push(`sld.bucket_name = ANY($${storageParams.length}::text[])`);
+    }
+
+    const totalStorageRows = await sequelize.query<S3TotalStorageGbRow>(
+      `
+      WITH bucket_latest AS (
+        SELECT DISTINCT ON (sld.bucket_name)
+          sld.bucket_name,
+          COALESCE(sld.current_version_bytes, 0)::double precision AS current_version_bytes
+        FROM s3_storage_lens_daily sld
+        WHERE ${storageScoped.whereClause}
+          AND ${storageFilters.join("\n          AND ")}
+        ORDER BY sld.bucket_name ASC, sld.usage_date DESC
+      )
+      SELECT COALESCE(SUM(current_version_bytes) / 1073741824.0, 0)::double precision AS total_storage_gb
+      FROM bucket_latest;
+      `,
+      { bind: storageParams, type: QueryTypes.SELECT },
+    );
 
     const objectCountRows = await sequelize.query<S3ObjectCountKpiRow>(
       `
@@ -1754,7 +1799,7 @@ END
     );
 
     return {
-      totalStorageGb: toNumber(usageRows[0]?.total_storage_gb),
+      totalStorageGb: toNumber(totalStorageRows[0]?.total_storage_gb),
       totalRequests: toNumber(usageRows[0]?.total_requests),
       totalTransferGb: toNumber(usageRows[0]?.total_transfer_gb),
       totalObjectCount: toNumber(objectCountRows[0]?.total_object_count),

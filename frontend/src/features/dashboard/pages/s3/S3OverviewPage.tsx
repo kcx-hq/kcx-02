@@ -284,6 +284,19 @@ export default function S3OverviewPage() {
     () => (tableSource?.usageOperationTable ?? []) as S3UsageOperationTableRow[],
     [tableSource?.usageOperationTable],
   );
+  const topOperationKpi = useMemo(() => {
+    if (usageOperationRows.length === 0) return null;
+    const topRow = [...usageOperationRows]
+      .sort((a, b) => Number(b.cost ?? 0) - Number(a.cost ?? 0))[0];
+    if (!topRow) return null;
+    const grossS3Cost = Number(overviewQuery.data?.kpis.usageTypeCostKpis.grossS3Cost ?? 0);
+    const topCost = Number(topRow.cost ?? 0);
+    return {
+      operation: String(topRow.operation ?? "").trim() || "n/a",
+      cost: topCost,
+      percentOfTotal: grossS3Cost > 0 ? (topCost / grossS3Cost) * 100 : 0,
+    };
+  }, [overviewQuery.data?.kpis.usageTypeCostKpis.grossS3Cost, usageOperationRows]);
   const usageTypeCostRows = useMemo(
     () => (tableSource?.usageTypeCostTable ?? []) as S3UsageTypeCostTableRow[],
     [tableSource?.usageTypeCostTable],
@@ -292,6 +305,11 @@ export default function S3OverviewPage() {
     () => (tableSource?.storageTypeCostTable ?? []) as S3StorageTypeCostTableRow[],
     [tableSource?.storageTypeCostTable],
   );
+  const topStorageClassLabel = useMemo(() => {
+    if (storageTypeCostRows.length === 0) return "n/a";
+    const top = [...storageTypeCostRows].sort((a, b) => Number(b.grossCost ?? 0) - Number(a.grossCost ?? 0))[0];
+    return String(top?.storageType ?? "").trim() || "n/a";
+  }, [storageTypeCostRows]);
 
   const resolvedFilterOptions = useMemo<S3OverviewFilterOptions>(() => {
     const bucketsFromTable = uniqueNonEmpty(bucketRows.map((row) => row.bucketName));
@@ -404,12 +422,22 @@ export default function S3OverviewPage() {
         }}
       />
       <S3BucketKpiSection
-        mode={filters.seriesBy === "usage_type" ? "usage_type" : "default"}
+        mode={
+          filters.seriesBy === "usage_type"
+            ? "usage_type"
+            : filters.seriesBy === "operation"
+              ? "operation"
+              : filters.seriesBy === "storage_class"
+                ? "storage_class"
+                : "default"
+        }
         grossBucketCost={overviewQuery.data?.kpis.bucketCostKpis.grossBucketCost ?? 0}
         creditAdjustedCost={overviewQuery.data?.kpis.bucketCostKpis.creditAdjustedCost ?? 0}
         netBucketCost={overviewQuery.data?.kpis.bucketCostKpis.netBucketCost ?? 0}
         totalBuckets={overviewQuery.data?.kpis.bucketCostKpis.totalBuckets ?? 0}
         usageTypeCostKpis={overviewQuery.data?.kpis.usageTypeCostKpis}
+        topOperation={topOperationKpi}
+        topStorageClassLabel={topStorageClassLabel}
       />
 
       <Suspense
