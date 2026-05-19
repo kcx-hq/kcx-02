@@ -49,7 +49,7 @@ export type S3CostInsightsFilters = {
   costBy: S3CostChartBy;
   seriesBy: S3CostSeriesBy;
   yAxisMetric: S3CostYAxisMetric;
-  usageYAxis?: "storage_gb" | "request_count" | "transfer_gb" | "object_count" | null;
+  usageYAxis?: "storage_gb" | "request_count" | "transfer_gb" | "object_count" | "api_operations" | null;
 };
 
 export type S3CostBreakdownChart = {
@@ -86,6 +86,13 @@ export type S3CostBucketTableInsight = {
   primaryUsagePattern?: string;
   optimizationSignal?: string;
   trendPct: number;
+  objectCount?: number | null;
+  storageGb?: number | null;
+  storageSizeGb?: number | null;
+  transferGb?: number | null;
+  requestCount?: number | null;
+  dominantUsageType?: "Request Heavy" | "Storage Heavy" | "Transfer Heavy" | "Retrieval Heavy" | "Mixed Heavy";
+  usageInfo?: string;
   storageLens?: {
     usageDate: string;
     objectCount: number | null;

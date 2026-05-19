@@ -1767,6 +1767,13 @@ export type S3CostInsightsResponse = {
     primaryUsagePattern?: string;
     optimizationSignal?: string;
     trendPct: number;
+    objectCount?: number | null;
+    storageGb?: number | null;
+    storageSizeGb?: number | null;
+    transferGb?: number | null;
+    requestCount?: number | null;
+    dominantUsageType?: "Request Heavy" | "Storage Heavy" | "Transfer Heavy" | "Retrieval Heavy" | "Mixed Heavy";
+    usageInfo?: string;
     storageLens?: {
       usageDate: string;
       objectCount: number | null;
@@ -2043,7 +2050,7 @@ export type S3CostInsightsFiltersQuery = {
   costBy?: "date" | "bucket" | "region" | "account";
   seriesBy?: "none" | "cost_category" | "usage_type" | "operation" | "bucket" | "storage_class";
   yAxisMetric?: "gross_cost" | "billed_cost" | "effective_cost" | "amortized_cost" | "usage_quantity";
-  usageYAxis?: "storage_gb" | "request_count" | "transfer_gb" | "object_count";
+  usageYAxis?: "storage_gb" | "request_count" | "transfer_gb" | "object_count" | "api_operations";
 };
 
 export type S3PolicyAppliedStatus = "APPLIED" | "NOT_APPLIED" | "FAILED" | "EXTERNAL";

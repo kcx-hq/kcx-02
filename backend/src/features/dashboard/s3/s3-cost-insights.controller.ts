@@ -12,7 +12,7 @@ import type { S3CostInsightsFilters } from "./s3-cost-insights.types.js";
 const scopeResolver = new DashboardScopeResolver();
 const s3CostInsightsService = new S3CostInsightsService();
 const ALLOWED_Y_AXIS_METRICS = new Set(["gross_cost", "billed_cost", "effective_cost", "amortized_cost", "usage_quantity"]);
-const ALLOWED_USAGE_Y_AXIS = new Set(["storage_gb", "request_count", "transfer_gb", "object_count"]);
+const ALLOWED_USAGE_Y_AXIS = new Set(["storage_gb", "request_count", "transfer_gb", "object_count", "api_operations"]);
 
 const parseOptionalString = (value: unknown): string | null => {
   if (typeof value === "undefined" || value === null) return null;

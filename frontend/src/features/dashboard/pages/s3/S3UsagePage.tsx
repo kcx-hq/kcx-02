@@ -64,7 +64,7 @@ const parseFiltersFromSearch = (search: string): S3UsageFilterValue => {
         : "bucket",
     seriesValue: seriesValues[0] ?? "",
     category:
-      category === "storage" || category === "data_transfer" || category === "request" || category === "object_count"
+      category === "storage" || category === "data_transfer" || category === "request" || category === "object_count" || category === "api_operations"
         ? category
         : DEFAULT_FILTERS.category,
     compareMode: compareMode === "previous_period" ? "previous_period" : "none",
@@ -113,28 +113,28 @@ export default function S3UsagePage() {
   const queryFilters = useMemo<S3CostInsightsFiltersQuery>(
     () => {
       const isBucketUsage = debouncedFilters.seriesBy === "bucket";
-      const normalizedBucketCategory =
-        isBucketUsage && debouncedFilters.category === "object_count" ? "storage" : debouncedFilters.category;
       const usageYAxis: S3CostInsightsFiltersQuery["usageYAxis"] | undefined =
         debouncedFilters.yAxisMetric === "usage_quantity"
-          ? normalizedBucketCategory === "request"
+          ? debouncedFilters.category === "request"
             ? "request_count"
-            : normalizedBucketCategory === "data_transfer"
+            : debouncedFilters.category === "data_transfer"
               ? "transfer_gb"
-              : normalizedBucketCategory === "object_count"
+              : debouncedFilters.category === "object_count"
                 ? "object_count"
+                : debouncedFilters.category === "api_operations"
+                  ? "api_operations"
                 : "storage_gb"
           : undefined;
 
       return {
         ...(debouncedFilters.seriesValue ? { seriesValues: [debouncedFilters.seriesValue] } : {}),
-        ...(normalizedBucketCategory && !isBucketUsage
-          && normalizedBucketCategory !== "object_count"
+        ...(debouncedFilters.category && !isBucketUsage
+          && debouncedFilters.category !== "object_count"
           ? {
               costCategory: [
-                normalizedBucketCategory === "storage"
+                debouncedFilters.category === "storage"
                   ? "Storage"
-                  : normalizedBucketCategory === "data_transfer"
+                  : debouncedFilters.category === "data_transfer"
                     ? "Transfer"
                     : "Request",
               ],
@@ -224,45 +224,38 @@ export default function S3UsagePage() {
       ]),
     );
     const objectCountByBucket = new Map(
-      (query.data?.chart.breakdown.series ?? []).map((item) => {
-        const totalObjectCount = item.values.reduce((sum, value) => sum + Number(value ?? 0), 0);
-        return [String(item.name ?? "").trim(), totalObjectCount];
+      bucketRows.map((item) => {
+        const bucketName = String(item.bucketName ?? "").trim();
+        const objectCount = Number(item.objectCount ?? item.storageLens?.objectCount ?? 0);
+        return [bucketName, objectCount];
       }),
     );
 
     const rows = bucketRows.map((item) => {
       const bucketName = String(item.bucketName ?? "").trim();
       const objectCount = Number(objectCountByBucket.get(bucketName) ?? 0);
-      const usageKinds = [
-        { key: "Storage", value: Number(storageByBucket.get(bucketName) ?? 0) },
-        { key: "Transfer", value: Number(transferByBucket.get(bucketName) ?? 0) },
-        { key: "Request", value: Number(requestByBucket.get(bucketName) ?? 0) },
-        { key: "Object Count", value: objectCount },
-      ].sort((a, b) => b.value - a.value);
-      const quantity =
-        filters.category === "storage"
-          ? Number(storageByBucket.get(bucketName) ?? 0)
-          : filters.category === "data_transfer"
-            ? Number(transferByBucket.get(bucketName) ?? 0)
-            : filters.category === "request"
-              ? Number(requestByBucket.get(bucketName) ?? 0)
-              : filters.category === "object_count"
-                ? objectCount
-                : Number(usageKinds[0]?.value ?? 0);
+      const storageGb = Number(item.storageGb ?? item.storageSizeGb ?? storageByBucket.get(bucketName) ?? 0);
+      const transferGb = Number(item.transferGb ?? transferByBucket.get(bucketName) ?? 0);
+      const requestCount = Number(item.requestCount ?? requestByBucket.get(bucketName) ?? 0);
+      const dominantUsageType = String(item.dominantUsageType ?? "Mixed Heavy");
       return {
         bucketName,
-        quantity,
-        storageGb: Number(storageByBucket.get(bucketName) ?? 0),
-        transferGb: Number(transferByBucket.get(bucketName) ?? 0),
-        requestCount: Number(requestByBucket.get(bucketName) ?? 0),
+        quantity: requestCount,
+        storageGb,
+        transferGb,
+        requestCount,
+        objectCount,
         region: String(item.region ?? "global"),
-        usageInfo: `Primary usage: ${usageKinds[0]?.key ?? "Storage"}`,
+        dominantUsageType:
+          dominantUsageType === "Request Heavy" || dominantUsageType === "Storage Heavy" || dominantUsageType === "Transfer Heavy" || dominantUsageType === "Retrieval Heavy"
+            ? dominantUsageType
+            : "Mixed Heavy",
       };
     });
 
     return rows
       .filter((row) => row.bucketName.length > 0)
-      .sort((a, b) => b.quantity - a.quantity);
+      .sort((a, b) => b.storageGb - a.storageGb || b.requestCount - a.requestCount || b.transferGb - a.transferGb);
   }, [
     filters.category,
     query.data?.bucketTable,
@@ -271,17 +264,8 @@ export default function S3UsagePage() {
     storageBreakdownQuery.data?.chart.breakdown.series,
     transferBreakdownQuery.data?.chart.breakdown.series,
   ]);
-  const showAllCategoryBreakdown = filters.category === "";
-  const bucketQuantityLabel =
-    filters.category === "object_count"
-      ? "Object Count"
-      : filters.category === "request"
-        ? "Requests (Count)"
-        : filters.category === "data_transfer"
-          ? "Transfer (GB)"
-          : filters.category === "storage"
-            ? "Storage (GB)"
-            : "Usage";
+  const showAllCategoryBreakdown = false;
+  const bucketQuantityLabel = "Request Count";
   const isInitialLoading = query.isLoading && !query.data;
   const hasBlockingError = query.isError && !query.data;
 

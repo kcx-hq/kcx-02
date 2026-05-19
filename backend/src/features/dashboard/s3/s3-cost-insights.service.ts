@@ -82,7 +82,7 @@ const sanitizeFilters = (filters?: Partial<S3CostInsightsFilters>): S3CostInsigh
     "Retrieval",
     "Other",
   ]);
-  const allowedUsageYAxis = new Set(["storage_gb", "request_count", "transfer_gb", "object_count"]);
+  const allowedUsageYAxis = new Set(["storage_gb", "request_count", "transfer_gb", "object_count", "api_operations"]);
   const inputYAxisMetric = String(filters?.yAxisMetric ?? "").trim();
   const inferredUsageYAxisFromCategory =
     (Array.isArray(filters?.costCategory) && filters?.costCategory.length === 1
@@ -341,14 +341,63 @@ export class S3CostInsightsService {
         });
 
     const previousCostByBucket = new Map(previousBucketTable.map((row) => [row.bucketName, row.cost]));
-    const bucketTable = currentBucketTable.map((row) => {
-      const previousCost = previousCostByBucket.get(row.bucketName) ?? 0;
-      const trendPct = previousCost > 0 ? ((row.cost - previousCost) / previousCost) * 100 : 0;
-      return {
-        ...row,
+    const currentByBucket = new Map(currentBucketTable.map((row) => [row.bucketName, row]));
+    const bucketUsageRollup = await this.repository.getBucketUsageRollup(scope, effectiveFilters).catch((error: unknown) => {
+      console.warn("[S3CostInsightsService] Failed to load bucket usage rollup; using fallback values", error);
+      return new Map();
+    });
+    const bucketNames = Array.from(
+      new Set([
+        ...currentBucketTable.map((row) => row.bucketName),
+        ...Array.from(bucketUsageRollup.keys()),
+      ]),
+    );
+    const bucketTable = bucketNames.map((bucketName) => {
+      const row = currentByBucket.get(bucketName);
+      const previousCost = previousCostByBucket.get(bucketName) ?? 0;
+      const cost = row?.cost ?? 0;
+      const trendPct = previousCost > 0 ? ((cost - previousCost) / previousCost) * 100 : 0;
+      const storageLens = storageLensByBucket.get(bucketName) ?? null;
+      const rollup = bucketUsageRollup.get(bucketName);
+      const storageSizeGb = rollup?.storageGb ?? (
+        storageLens?.storageClassDistribution?.reduce((sum: number, item: { bytes: number }) => sum + (Number(item.bytes ?? 0) / (1024 ** 3)), 0) ?? null
+      );
+      const dominantUsageType = rollup?.dominantUsageType ?? "Mixed Heavy";
+      const tableRow = {
+        bucketName,
+        account: row?.account ?? "Unspecified",
+        cost,
+        storage: row?.storage ?? 0,
+        requests: row?.requests ?? 0,
+        transfer: row?.transfer ?? 0,
+        owner: row?.owner ?? "Unassigned",
+        savings: row?.savings ?? 0,
+        retrieval: row?.retrieval ?? 0,
+        other: row?.other ?? 0,
+        replicationStatus: row?.replicationStatus ?? null,
+        versioningStatus: row?.versioningStatus ?? null,
+        encryptionStatus: row?.encryptionStatus ?? null,
+        publicAccessStatus: row?.publicAccessStatus ?? "Unknown",
         trendPct,
-        storageLens: storageLensByBucket.get(row.bucketName) ?? null,
+        driver: dominantUsageType,
+        objectCount: rollup?.objectCount ?? storageLens?.objectCount ?? null,
+        storageGb: storageSizeGb,
+        storageSizeGb,
+        transferGb: rollup?.transferGb ?? 0,
+        requestCount: rollup?.requestCount ?? 0,
+        usageInfo: `Primary usage: ${dominantUsageType}`,
+        region: rollup?.region ?? row?.region ?? "global",
+        dominantUsageType,
+        storageLens,
       };
+      console.log({
+        bucketName: tableRow.bucketName,
+        storageGb: tableRow.storageGb ?? 0,
+        transferGb: tableRow.transferGb ?? 0,
+        requestCount: tableRow.requestCount ?? 0,
+        objectCount: tableRow.objectCount ?? 0,
+      });
+      return tableRow;
     });
 
     const anomaliesResult = shouldSkipDeepInsights
@@ -391,6 +440,7 @@ export class S3CostInsightsService {
           optimizationSignal,
         };
       });
+    console.log("bucketTable", bucketTableWithConfig.slice(0, 3));
 
     const optimizationScores = shouldSkipDeepInsights
       ? { items: [], total: 0 }

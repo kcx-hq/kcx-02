@@ -100,13 +100,13 @@ export function S3UsageChartPanel({
   }, [isChartTypeMenuOpen]);
 
   const isBucketStorageView = seriesBy === "bucket" && yAxisMetric === "usage_quantity" && category === "storage";
-  const isRequestCountView = yAxisMetric === "usage_quantity" && category === "request";
+  const isRequestCountView = yAxisMetric === "usage_quantity" && (category === "request" || category === "api_operations");
   const isObjectCountView = yAxisMetric === "usage_quantity" && category === "object_count";
   const usageQuantityUnitLabel = useMemo(() => {
     if (yAxisMetric !== "usage_quantity") return "Units";
-    if (category === "request" || category === "object_count") return "Count";
+    if (category === "request" || category === "object_count" || category === "api_operations") return "Count";
     return "GB";
-  }, [yAxisMetric]);
+  }, [category, yAxisMetric]);
 
   const normalizedBreakdownSeries = useMemo(() => {
     const series = breakdown?.series ?? [];
@@ -191,6 +191,8 @@ export function S3UsageChartPanel({
                 ? "Transfer (GB)"
                 : category === "request"
                   ? "Requests (Count)"
+                  : category === "api_operations"
+                    ? "API Operations (Count)"
                   : category === "object_count"
                     ? "Object Count"
                     : `Usage Quantity (${usageQuantityUnitLabel})`

@@ -36,8 +36,9 @@ export type S3BucketUsageRow = {
   storageGb?: number;
   transferGb?: number;
   requestCount?: number;
+  objectCount?: number;
   region: string;
-  usageInfo: string;
+  dominantUsageType: "Request Heavy" | "Storage Heavy" | "Transfer Heavy" | "Retrieval Heavy" | "Mixed Heavy";
 };
 
 type Props = {
@@ -124,40 +125,33 @@ export function S3UsageInsightsTable({
         },
       },
       {
-        headerName: bucketQuantityLabel,
-        field: "quantity",
-        minWidth: 180,
-        valueFormatter: (params: { value: number }) =>
-          usageCategory === "request" || usageCategory === "object_count"
-            ? quantityFormatterCount.format(Number(params.value ?? 0))
-            : quantityFormatterPrecise.format(Number(params.value ?? 0)),
+        headerName: "Storage (GB)",
+        field: "storageGb",
+        minWidth: 170,
+        valueFormatter: (params: { value: number }) => quantityFormatterPrecise.format(Number(params.value ?? 0)),
       },
-      ...(showAllCategoryBreakdown
-        ? ([
-            {
-              headerName: "Storage (GB)",
-              field: "storageGb",
-              minWidth: 170,
-              valueFormatter: (params: { value: number }) => quantityFormatterPrecise.format(Number(params.value ?? 0)),
-            },
-            {
-              headerName: "Transfer (GB)",
-              field: "transferGb",
-              minWidth: 170,
-              valueFormatter: (params: { value: number }) => quantityFormatterPrecise.format(Number(params.value ?? 0)),
-            },
-            {
-              headerName: "Request (Count)",
-              field: "requestCount",
-              minWidth: 180,
-              valueFormatter: (params: { value: number }) => quantityFormatterPrecise.format(Number(params.value ?? 0)),
-            },
-          ] as ColDef<any>[])
-        : []),
+      {
+        headerName: "Transfer (GB)",
+        field: "transferGb",
+        minWidth: 170,
+        valueFormatter: (params: { value: number }) => quantityFormatterPrecise.format(Number(params.value ?? 0)),
+      },
+      {
+        headerName: "Request Count",
+        field: "requestCount",
+        minWidth: 180,
+        valueFormatter: (params: { value: number }) => quantityFormatterCount.format(Number(params.value ?? 0)),
+      },
+      {
+        headerName: "Object Count",
+        field: "objectCount",
+        minWidth: 170,
+        valueFormatter: (params: { value: number }) => quantityFormatterCount.format(Number(params.value ?? 0)),
+      },
       { headerName: "Region", field: "region", minWidth: 150 },
-      { headerName: "Usage Info", field: "usageInfo", minWidth: 240 },
+      { headerName: "Dominant Usage Type", field: "dominantUsageType", minWidth: 240 },
     ],
-    [bucketQuantityLabel, onBucketClick, showAllCategoryBreakdown, usageCategory],
+    [onBucketClick],
   );
 
   const showingBucketTable = Array.isArray(bucketRows) && bucketRows.length > 0;
@@ -166,11 +160,11 @@ export function S3UsageInsightsTable({
     return (bucketRows ?? []).filter((row) => {
       const bucketName = String(row.bucketName ?? "").toLowerCase();
       const region = String(row.region ?? "").toLowerCase();
-      const usageInfo = String(row.usageInfo ?? "").toLowerCase();
+      const dominantUsageType = String(row.dominantUsageType ?? "").toLowerCase();
       return (
         bucketName.includes(normalizedSearch) ||
         region.includes(normalizedSearch) ||
-        usageInfo.includes(normalizedSearch)
+        dominantUsageType.includes(normalizedSearch)
       );
     });
   }, [bucketRows, normalizedSearch, showingBucketTable]);
