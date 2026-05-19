@@ -90,6 +90,68 @@ export function getS3OperationGroup(operation?: string | null): string {
   return "Other";
 }
 
+export function getS3StorageClass(
+  usageType?: string | null,
+  operation?: string | null,
+  productUsageType?: string | null,
+): string | null {
+  const value = [usageType, operation, productUsageType]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+
+  if (!value) return null;
+
+  if (
+    value.includes("deeparchive") ||
+    value.includes("deep archive")
+  ) {
+    return "Deep Archive";
+  }
+
+  if (
+    value.includes("intelligenttiering") ||
+    value.includes("intelligent-tiering") ||
+    value.includes("intelligent tiering")
+  ) {
+    return "Intelligent Tiering";
+  }
+
+  if (
+    value.includes("onezoneia") ||
+    value.includes("one zone") ||
+    value.includes("onezone")
+  ) {
+    return "One Zone-IA";
+  }
+
+  if (
+    value.includes("standardia") ||
+    value.includes("standard-ia") ||
+    value.includes("standard infrequent access")
+  ) {
+    return "Standard-IA";
+  }
+
+  if (
+    value.includes("glacier") ||
+    value.includes("archive")
+  ) {
+    return "Glacier";
+  }
+
+  if (
+    value.includes("standardstorage") ||
+    value.includes("standard storage") ||
+    value.includes("timedstorage-bytehrs") ||
+    value.includes("bytehrs")
+  ) {
+    return "S3 Standard";
+  }
+
+  return null;
+}
+
 export function isValidS3BucketName(value?: string | null): boolean {
   if (!value) return false;
 
@@ -105,6 +167,7 @@ export function isValidS3BucketName(value?: string | null): boolean {
 
 type DeletedCountRow = { deleted_rows: number | string };
 type InsertedCountRow = { inserted_rows: number | string };
+type SourceCountRow = { source_rows: number | string };
 
 export async function syncS3CostDaily(params: SyncS3CostDailyParams): Promise<{
   rowsDeleted: number;
@@ -125,43 +188,83 @@ export async function syncS3CostDaily(params: SyncS3CostDailyParams): Promise<{
   const accountId = normalizeTrim(params.accountId) || null;
   const region = normalizeTrim(params.region) || null;
 
-  let rowsDeleted = 0;
-  if (params.rebuildRange !== false) {
-    const deletedRows = await sequelize.query<DeletedCountRow>(
-      `
-      WITH deleted AS (
-        DELETE FROM s3_cost_daily
-        WHERE tenant_id = CAST(:tenantId AS uuid)
-          AND usage_date >= CAST(:startDate AS date)
-          AND usage_date <= CAST(:endDate AS date)
-          AND (CAST(:cloudConnectionId AS uuid) IS NULL OR cloud_connection_id = CAST(:cloudConnectionId AS uuid))
-          AND (:billingSourceId::bigint IS NULL OR billing_source_id = :billingSourceId::bigint)
-          AND (:providerId::bigint IS NULL OR provider_id = :providerId::bigint)
-          AND (:accountId::text IS NULL OR account_id = :accountId::text)
-          AND (:region::text IS NULL OR region = :region::text)
-        RETURNING 1
-      )
-      SELECT COUNT(*)::int AS deleted_rows FROM deleted;
-      `,
-      {
-        replacements: {
-          tenantId,
-          startDate: params.startDate,
-          endDate: params.endDate,
-          cloudConnectionId,
-          billingSourceId,
-          providerId,
-          accountId,
-          region,
-        },
-        type: QueryTypes.SELECT,
-      },
-    );
-    rowsDeleted = Number(deletedRows[0]?.deleted_rows ?? 0) || 0;
+  const replacements = {
+    tenantId,
+    startDate: params.startDate,
+    endDate: params.endDate,
+    cloudConnectionId,
+    billingSourceId,
+    providerId,
+    accountId,
+    region,
+    defaultOperationGroup: getS3OperationGroup(null),
+  };
+
+  const sourceRows = await sequelize.query<SourceCountRow>(
+    `
+    SELECT COUNT(*)::int AS source_rows
+    FROM fact_cost_line_items f
+    LEFT JOIN dim_date dd ON dd.id = f.usage_date_key
+    LEFT JOIN billing_sources bs ON bs.id = f.billing_source_id
+    LEFT JOIN dim_service ds ON ds.id = f.service_key
+    LEFT JOIN dim_resource dres ON dres.id = f.resource_key
+    LEFT JOIN dim_region dr ON dr.id = f.region_key
+    LEFT JOIN dim_sub_account dsa ON dsa.id = f.sub_account_key
+    LEFT JOIN dim_billing_account dba ON dba.id = f.billing_account_key
+    WHERE f.tenant_id = CAST(:tenantId AS uuid)
+      AND COALESCE(dd.full_date, DATE(COALESCE(f.usage_start_time, f.usage_end_time))) >= CAST(:startDate AS date)
+      AND COALESCE(dd.full_date, DATE(COALESCE(f.usage_start_time, f.usage_end_time))) <= CAST(:endDate AS date)
+      AND (CAST(:cloudConnectionId AS uuid) IS NULL OR bs.cloud_connection_id = CAST(:cloudConnectionId AS uuid))
+      AND (:billingSourceId::bigint IS NULL OR f.billing_source_id = :billingSourceId::bigint)
+      AND (:providerId::bigint IS NULL OR f.provider_id = :providerId::bigint)
+      AND (:accountId::text IS NULL OR COALESCE(NULLIF(TRIM(dsa.sub_account_id), ''), NULLIF(TRIM(dba.billing_account_id), '')) = :accountId::text)
+      AND (:region::text IS NULL OR COALESCE(NULLIF(TRIM(dr.region_name), ''), NULLIF(TRIM(dr.region_id), ''), 'global') = :region::text)
+      AND (
+        LOWER(COALESCE(ds.service_name, '')) LIKE '%s3%'
+        OR LOWER(COALESCE(ds.service_name, '')) LIKE '%simple storage service%'
+        OR LOWER(COALESCE(f.usage_type, '')) LIKE '%s3%'
+        OR LOWER(COALESCE(dres.resource_id, '')) LIKE 'arn:aws:s3:::%'
+        OR LOWER(COALESCE(dres.resource_id, '')) LIKE 's3://%'
+      );
+    `,
+    { replacements, type: QueryTypes.SELECT },
+  );
+
+  const sourceRowCount = Number(sourceRows[0]?.source_rows ?? 0) || 0;
+  if (sourceRowCount === 0) {
+    return { rowsDeleted: 0, rowsInserted: 0 };
   }
 
-  const insertedRows = await sequelize.query<InsertedCountRow>(
-    `
+  const result = await sequelize.transaction(async (transaction) => {
+    let rowsDeleted = 0;
+    if (params.rebuildRange !== false) {
+      const deletedRows = await sequelize.query<DeletedCountRow>(
+        `
+        WITH deleted AS (
+          DELETE FROM s3_cost_daily
+          WHERE tenant_id = CAST(:tenantId AS uuid)
+            AND usage_date >= CAST(:startDate AS date)
+            AND usage_date <= CAST(:endDate AS date)
+            AND (CAST(:cloudConnectionId AS uuid) IS NULL OR cloud_connection_id = CAST(:cloudConnectionId AS uuid))
+            AND (:billingSourceId::bigint IS NULL OR billing_source_id = :billingSourceId::bigint)
+            AND (:providerId::bigint IS NULL OR provider_id = :providerId::bigint)
+            AND (:accountId::text IS NULL OR account_id = :accountId::text)
+            AND (:region::text IS NULL OR region = :region::text)
+          RETURNING 1
+        )
+        SELECT COUNT(*)::int AS deleted_rows FROM deleted;
+        `,
+        {
+          replacements,
+          type: QueryTypes.SELECT,
+          transaction,
+        },
+      );
+      rowsDeleted = Number(deletedRows[0]?.deleted_rows ?? 0) || 0;
+    }
+
+    const insertedRows = await sequelize.query<InsertedCountRow>(
+      `
     WITH raw AS (
       SELECT
         f.tenant_id,
@@ -246,16 +349,40 @@ export async function syncS3CostDaily(params: SyncS3CostDailyParams): Promise<{
           ELSE 'Other'
         END AS cost_category,
         CASE
-          WHEN LOWER(COALESCE(f.product_usage_type, f.usage_type, '')) LIKE '%intelligenttiering%' THEN 'Intelligent-Tiering'
-          WHEN LOWER(COALESCE(f.product_usage_type, f.usage_type, '')) LIKE '%onezoneia%' THEN 'One Zone-IA'
-          WHEN LOWER(COALESCE(f.product_usage_type, f.usage_type, '')) LIKE '%standardiastorage-bytehrs%'
-            OR LOWER(COALESCE(f.product_usage_type, f.usage_type, '')) LIKE '%standard-ia%'
-            OR LOWER(COALESCE(f.product_usage_type, f.usage_type, '')) LIKE '%standard ia%' THEN 'Standard-IA'
-          WHEN LOWER(COALESCE(f.product_usage_type, f.usage_type, '')) LIKE '%deeparchive%' THEN 'Deep Archive'
-          WHEN LOWER(COALESCE(f.product_usage_type, f.usage_type, '')) LIKE '%glacier%' OR LOWER(COALESCE(f.operation, '')) LIKE '%glacier%' THEN 'Glacier'
-          WHEN LOWER(COALESCE(f.product_usage_type, f.usage_type, '')) LIKE '%timedstorage%'
-            OR LOWER(COALESCE(f.product_usage_type, f.usage_type, '')) LIKE '%standardstorage%' THEN 'S3 Standard'
-          ELSE 'Unknown'
+          WHEN (
+            LOWER(COALESCE(f.usage_type, '')) LIKE '%timedstorage%'
+            OR LOWER(COALESCE(f.usage_type, '')) LIKE '%storage%'
+            OR LOWER(COALESCE(f.usage_type, '')) LIKE '%bytehrs%'
+            OR LOWER(COALESCE(f.usage_type, '')) LIKE '%gb-month%'
+            OR LOWER(COALESCE(f.usage_type, '')) LIKE '%gbytehrs%'
+          ) THEN
+            CASE
+              WHEN LOWER(COALESCE(f.usage_type, '') || ' ' || COALESCE(f.operation, '') || ' ' || COALESCE(f.product_usage_type, '')) LIKE '%deeparchive%'
+                OR LOWER(COALESCE(f.usage_type, '') || ' ' || COALESCE(f.operation, '') || ' ' || COALESCE(f.product_usage_type, '')) LIKE '%deep archive%'
+              THEN 'Deep Archive'
+              WHEN LOWER(COALESCE(f.usage_type, '') || ' ' || COALESCE(f.operation, '') || ' ' || COALESCE(f.product_usage_type, '')) LIKE '%intelligenttiering%'
+                OR LOWER(COALESCE(f.usage_type, '') || ' ' || COALESCE(f.operation, '') || ' ' || COALESCE(f.product_usage_type, '')) LIKE '%intelligent-tiering%'
+                OR LOWER(COALESCE(f.usage_type, '') || ' ' || COALESCE(f.operation, '') || ' ' || COALESCE(f.product_usage_type, '')) LIKE '%intelligent tiering%'
+              THEN 'Intelligent Tiering'
+              WHEN LOWER(COALESCE(f.usage_type, '') || ' ' || COALESCE(f.operation, '') || ' ' || COALESCE(f.product_usage_type, '')) LIKE '%onezoneia%'
+                OR LOWER(COALESCE(f.usage_type, '') || ' ' || COALESCE(f.operation, '') || ' ' || COALESCE(f.product_usage_type, '')) LIKE '%one zone%'
+                OR LOWER(COALESCE(f.usage_type, '') || ' ' || COALESCE(f.operation, '') || ' ' || COALESCE(f.product_usage_type, '')) LIKE '%onezone%'
+              THEN 'One Zone-IA'
+              WHEN LOWER(COALESCE(f.usage_type, '') || ' ' || COALESCE(f.operation, '') || ' ' || COALESCE(f.product_usage_type, '')) LIKE '%standardia%'
+                OR LOWER(COALESCE(f.usage_type, '') || ' ' || COALESCE(f.operation, '') || ' ' || COALESCE(f.product_usage_type, '')) LIKE '%standard-ia%'
+                OR LOWER(COALESCE(f.usage_type, '') || ' ' || COALESCE(f.operation, '') || ' ' || COALESCE(f.product_usage_type, '')) LIKE '%standard infrequent access%'
+              THEN 'Standard-IA'
+              WHEN LOWER(COALESCE(f.usage_type, '') || ' ' || COALESCE(f.operation, '') || ' ' || COALESCE(f.product_usage_type, '')) LIKE '%glacier%'
+                OR LOWER(COALESCE(f.usage_type, '') || ' ' || COALESCE(f.operation, '') || ' ' || COALESCE(f.product_usage_type, '')) LIKE '%archive%'
+              THEN 'Glacier'
+              WHEN LOWER(COALESCE(f.usage_type, '') || ' ' || COALESCE(f.operation, '') || ' ' || COALESCE(f.product_usage_type, '')) LIKE '%standardstorage%'
+                OR LOWER(COALESCE(f.usage_type, '') || ' ' || COALESCE(f.operation, '') || ' ' || COALESCE(f.product_usage_type, '')) LIKE '%standard storage%'
+                OR LOWER(COALESCE(f.usage_type, '') || ' ' || COALESCE(f.operation, '') || ' ' || COALESCE(f.product_usage_type, '')) LIKE '%timedstorage-bytehrs%'
+                OR LOWER(COALESCE(f.usage_type, '') || ' ' || COALESCE(f.operation, '') || ' ' || COALESCE(f.product_usage_type, '')) LIKE '%bytehrs%'
+              THEN 'S3 Standard'
+              ELSE NULL
+            END
+          ELSE NULL
         END AS storage_class,
         COALESCE(NULLIF(f.usage_type, ''), 'Unspecified') AS usage_type,
         COALESCE(NULLIF(f.operation, ''), 'Unspecified') AS operation,
@@ -372,25 +499,21 @@ export async function syncS3CostDaily(params: SyncS3CostDailyParams): Promise<{
     )
     SELECT COUNT(*)::int AS inserted_rows FROM inserted;
     `,
-    {
-      replacements: {
-        tenantId,
-        startDate: params.startDate,
-        endDate: params.endDate,
-        cloudConnectionId,
-        billingSourceId,
-        providerId,
-        accountId,
-        region,
-        defaultOperationGroup: getS3OperationGroup(null),
+      {
+        replacements,
+        type: QueryTypes.SELECT,
+        transaction,
       },
-      type: QueryTypes.SELECT,
-    },
-  );
+    );
 
-  return {
-    rowsDeleted,
-    rowsInserted: Number(insertedRows[0]?.inserted_rows ?? 0) || 0,
-  };
+    const rowsInserted = Number(insertedRows[0]?.inserted_rows ?? 0) || 0;
+    if (rowsInserted <= 0 && rowsDeleted > 0) {
+      throw new Error("s3_cost_daily rebuild produced zero inserted rows; rolling back delete");
+    }
+
+    return { rowsDeleted, rowsInserted };
+  });
+
+  return result;
 }
 

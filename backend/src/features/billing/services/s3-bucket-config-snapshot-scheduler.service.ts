@@ -99,8 +99,20 @@ async function runS3BucketConfigSnapshotSweep(): Promise<void> {
           bucketsScanned: result.bucketsScanned,
           snapshotsCreated: result.snapshotsCreated,
           costSummaryRowsInserted: costSummary.rowsInserted,
+          s3CostDailyRowsDeleted: s3CostDaily.rowsDeleted,
           s3CostDailyRowsInserted: s3CostDaily.rowsInserted,
         });
+        if (s3CostDaily.rowsInserted === 0) {
+          logger.warn("S3 bucket config scheduler source run inserted zero s3_cost_daily rows", {
+            tenantId,
+            billingSourceId,
+            cloudConnectionId,
+            startDate,
+            endDate,
+            s3CostDailyRowsDeleted: s3CostDaily.rowsDeleted,
+            s3CostDailyRowsInserted: s3CostDaily.rowsInserted,
+          });
+        }
       } catch (error) {
         failed += 1;
         logger.warn("S3 bucket config scheduler source run failed", {
