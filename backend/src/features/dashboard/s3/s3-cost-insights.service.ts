@@ -367,16 +367,28 @@ export class S3CostInsightsService {
           return [];
         });
     const bucketBaseByBucketName = new Map(bucketBase.map((item) => [item.bucketName, item]));
-    const bucketTableWithConfig = shouldSkipDeepInsights
-      ? bucketTable
-      : bucketTable.map((row) => {
-        const config = bucketBaseByBucketName.get(row.bucketName);
+    const bucketTableWithConfig = bucketTable.map((row) => {
+        const config = shouldSkipDeepInsights ? undefined : bucketBaseByBucketName.get(row.bucketName);
+        const primaryUsagePattern = (() => {
+          const driver = String(row.driver ?? "").trim();
+          return driver.length > 0 ? `${driver} heavy` : "Balanced";
+        })();
+        const optimizationSignal = (() => {
+          const publicStatus = String(config?.publicAccessStatus ?? row.publicAccessStatus ?? "Unknown").toLowerCase();
+          const lifecycleMissing = !config?.hasLifecyclePolicy;
+          if (publicStatus === "public") return "At Risk";
+          if (lifecycleMissing) return "Needs Review";
+          if ((row.trendPct ?? 0) >= 20) return "Growth Watch";
+          return "Optimized";
+        })();
         return {
           ...row,
           replicationStatus: config?.replicationStatus ?? row.replicationStatus ?? null,
           versioningStatus: config?.versioningStatus ?? row.versioningStatus ?? null,
           encryptionStatus: config?.encryptionStatus ?? row.encryptionStatus ?? null,
           publicAccessStatus: config?.publicAccessStatus ?? row.publicAccessStatus ?? "Unknown",
+          primaryUsagePattern,
+          optimizationSignal,
         };
       });
 

@@ -6902,6 +6902,111 @@
   margin-top: 2px;
 }
 
+.s3-bucket-section--skeleton .s3-bucket-kpi-row {
+  background: var(--dashboard-surface-card);
+}
+
+.s3-bucket-kpi-tile--skeleton {
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 9px;
+}
+
+.s3-bucket-skeleton-line {
+  display: block;
+  position: relative;
+  overflow: hidden;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--dashboard-surface-soft-2) 78%, var(--dashboard-white-strong) 22%);
+}
+
+.s3-bucket-skeleton-line::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in srgb, var(--dashboard-white-strong) 60%, transparent 40%) 48%,
+    transparent 100%
+  );
+  animation: s3-bucket-skeleton-flow 1.35s ease-in-out infinite;
+}
+
+.s3-bucket-skeleton-line--label {
+  width: 42%;
+  max-width: 150px;
+  height: 12px;
+}
+
+.s3-bucket-skeleton-line--value {
+  width: 60%;
+  max-width: 196px;
+  height: 22px;
+}
+
+.s3-bucket-table-skeleton {
+  border: 1px solid color-mix(in srgb, var(--dashboard-border-light) 78%, var(--dashboard-white-strong) 22%);
+  background: var(--dashboard-surface-card);
+  display: flex;
+  flex-direction: column;
+  min-height: 570px;
+}
+
+.s3-bucket-table-skeleton__header,
+.s3-bucket-table-skeleton__row {
+  display: grid;
+  grid-template-columns: 2.1fr 1fr 1fr 1fr 1.5fr 1.7fr 1.1fr 1fr;
+  gap: 12px;
+  padding: 14px 16px;
+  border-bottom: 1px solid color-mix(in srgb, var(--dashboard-border-light) 78%, var(--dashboard-white-strong) 22%);
+}
+
+.s3-bucket-table-skeleton__body {
+  display: flex;
+  flex-direction: column;
+}
+
+.s3-bucket-table-skeleton__row {
+  padding-top: 13px;
+  padding-bottom: 13px;
+}
+
+.s3-bucket-skeleton-line--cell {
+  width: 100%;
+  height: 16px;
+}
+
+.s3-bucket-table-skeleton__footer {
+  margin-top: auto;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 16px;
+  padding: 12px 16px;
+}
+
+.s3-bucket-skeleton-line--pagination-left {
+  width: 120px;
+  height: 15px;
+}
+
+.s3-bucket-skeleton-line--pagination-right {
+  width: 186px;
+  height: 15px;
+}
+
+@keyframes s3-bucket-skeleton-flow {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
 .s3-bucket-table-toolbar {
   display: flex;
   align-items: flex-end;

@@ -1764,6 +1764,8 @@ export type S3CostInsightsResponse = {
     versioningStatus: string | null;
     encryptionStatus: string | null;
     publicAccessStatus: "Public" | "Private" | "Unknown";
+    primaryUsagePattern?: string;
+    optimizationSignal?: string;
     trendPct: number;
     storageLens?: {
       usageDate: string;

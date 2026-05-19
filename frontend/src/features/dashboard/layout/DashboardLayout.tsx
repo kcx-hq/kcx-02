@@ -9,6 +9,50 @@ import { CostExplorerSkeleton } from "../pages/cost-explorer/components";
 import { HistorySectionSkeleton } from "../pages/cost/history/components/HistorySectionSkeleton";
 import { EC2ExplorerUnifiedSkeleton } from "../pages/ec2/components";
 
+function S3BucketLoadingSkeleton() {
+  return (
+    <div className="dashboard-page">
+      <div className="s3-bucket-section s3-bucket-section--skeleton" aria-label="Loading S3 bucket insights">
+        <section className="cost-explorer-widget-shell s3-bucket-kpi-shell">
+          <div className="s3-bucket-kpi-row" aria-hidden="true">
+            {Array.from({ length: 4 }).map((_, index) => (
+              <article key={`s3-bucket-kpi-skeleton-${index}`} className="s3-bucket-kpi-tile s3-bucket-kpi-tile--skeleton">
+                <div className="s3-bucket-skeleton-line s3-bucket-skeleton-line--label" />
+                <div className="s3-bucket-skeleton-line s3-bucket-skeleton-line--value" />
+              </article>
+            ))}
+          </div>
+        </section>
+        <section className="cost-explorer-widget-shell s3-bucket-table-shell">
+          <div className="s3-bucket-table-skeleton" aria-hidden="true">
+            <div className="s3-bucket-table-skeleton__header">
+              {Array.from({ length: 8 }).map((_, index) => (
+                <span key={`s3-bucket-head-${index}`} className="s3-bucket-skeleton-line s3-bucket-skeleton-line--cell" />
+              ))}
+            </div>
+            <div className="s3-bucket-table-skeleton__body">
+              {Array.from({ length: 11 }).map((_, rowIndex) => (
+                <div key={`s3-bucket-row-${rowIndex}`} className="s3-bucket-table-skeleton__row">
+                  {Array.from({ length: 8 }).map((_, colIndex) => (
+                    <span
+                      key={`s3-bucket-cell-${rowIndex}-${colIndex}`}
+                      className="s3-bucket-skeleton-line s3-bucket-skeleton-line--cell"
+                    />
+                  ))}
+                </div>
+              ))}
+            </div>
+            <div className="s3-bucket-table-skeleton__footer">
+              <span className="s3-bucket-skeleton-line s3-bucket-skeleton-line--pagination-left" />
+              <span className="s3-bucket-skeleton-line s3-bucket-skeleton-line--pagination-right" />
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+  );
+}
+
 function S3ExplorerLoadingSkeleton() {
   return (
     <div className="s3-bucket-page">
@@ -132,6 +176,7 @@ function DashboardScopeGate() {
     location.pathname.startsWith("/dashboard/cost/explorer") || location.pathname.startsWith("/dashboard/cost-explorer");
   const isCostHistoryRoute = location.pathname.startsWith("/dashboard/cost/history");
   const isEc2ExplorerRoute = location.pathname.startsWith("/dashboard/ec2/explorer");
+  const isS3BucketRoute = location.pathname.startsWith("/dashboard/s3/bucket");
   const isS3ExplorerLikeRoute =
     location.pathname.startsWith("/dashboard/s3/cost") ||
     location.pathname.startsWith("/dashboard/s3/usage") ||
@@ -164,6 +209,9 @@ function DashboardScopeGate() {
           <EC2ExplorerUnifiedSkeleton />
         </div>
       );
+    }
+    if (isS3BucketRoute) {
+      return <S3BucketLoadingSkeleton />;
     }
     if (isS3ExplorerLikeRoute) {
       return <S3ExplorerLoadingSkeleton />;
