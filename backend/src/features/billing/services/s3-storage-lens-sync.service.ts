@@ -14,6 +14,7 @@ import { downloadExportFile, listExportFiles } from "../../cloud-connections/aws
 import { detectFileFormatFromKey, parseCsv, readParquetRowChunksFromBuffer } from "./file-reader.service.js";
 import {
   extractStorageLensSnapshotFromRow,
+  getStorageLensRowDropReason,
   mergeStorageLensSnapshot,
   upsertStorageLensSnapshots,
 } from "./s3-storage-lens-ingestion.service.js";
@@ -22,6 +23,45 @@ import { refreshS3BucketCostSummaryForBillingSource } from "./s3-bucket-cost-sum
 import { syncS3CostDaily } from "./s3-cost-daily.service.js";
 
 const normalize = (value) => String(value ?? "").trim();
+
+const toErrorMessage = (error: unknown): string =>
+  error instanceof Error ? error.message : String(error);
+
+const toSerializable = (value: unknown): unknown => {
+  if (value == null) return value;
+  if (value instanceof Error) {
+    return {
+      name: value.name,
+      message: value.message,
+      stack: value.stack,
+    };
+  }
+  if (typeof value === "object") {
+    try {
+      return JSON.parse(JSON.stringify(value));
+    } catch {
+      return String(value);
+    }
+  }
+  return value;
+};
+
+const buildDetailedErrorMessage = (error: unknown): string => {
+  if (!(error instanceof Error)) return String(error);
+  const asAny = error as Record<string, unknown>;
+  const payload = {
+    name: error.name,
+    message: error.message,
+    stack: error.stack,
+    errors: toSerializable(asAny.errors),
+    fields: toSerializable(asAny.fields),
+    parent: toSerializable(asAny.parent),
+    original: toSerializable(asAny.original),
+    sql: toSerializable(asAny.sql),
+  };
+  const serialized = JSON.stringify(payload);
+  return serialized.length > 3900 ? `${serialized.slice(0, 3900)}...<truncated>` : serialized;
+};
 
 const sortByLastModifiedDesc = (items) =>
   [...items].sort((a, b) => {
@@ -32,7 +72,21 @@ const sortByLastModifiedDesc = (items) =>
 
 const isProcessableKey = (key) => {
   const normalized = normalize(key).toLowerCase();
-  return normalized.endsWith(".csv") || normalized.endsWith(".parquet") || normalized.endsWith(".par");
+  const hasSupportedExtension =
+    normalized.endsWith(".csv") || normalized.endsWith(".parquet") || normalized.endsWith(".par");
+  if (!hasSupportedExtension) return false;
+
+  // Guardrail: only process actual Storage Lens export objects in this sync path.
+  const isStorageLensPath =
+    normalized.includes("/storage-lens/") &&
+    normalized.includes("/storagelens/") &&
+    normalized.includes("/reports/");
+  if (!isStorageLensPath) return false;
+
+  // Explicitly reject CUR/data-export objects even if extension matches.
+  if (normalized.includes("/data-exports/cur2/")) return false;
+
+  return true;
 };
 
 const pickStorageLensObjects = (objects, maxFiles) => {
@@ -117,23 +171,44 @@ export async function syncStorageLensFromClientAccount({
     const resolveRegionKey = async (providerId: string | number, regionNameRaw: unknown): Promise<number | null> => {
       const regionName = normalize(regionNameRaw);
       if (!regionName) return null;
-      const cacheKey = `${providerId}|${regionName.toLowerCase()}`;
+      const providerIdValue = String(providerId);
+      const regionId = regionName.toLowerCase();
+      const cacheKey = `${providerIdValue}|${regionId}`;
       if (regionKeyCache.has(cacheKey)) return regionKeyCache.get(cacheKey) ?? null;
 
-      const [row] = await DimRegion.findOrCreate({
+      const existing = await DimRegion.findOne({
         where: {
-          providerId: String(providerId),
-          regionId: regionName,
-          regionName,
-          availabilityZone: null,
-        },
-        defaults: {
-          providerId: String(providerId),
-          regionId: regionName,
-          regionName,
-          availabilityZone: null,
+          providerId: providerIdValue,
+          regionId,
         },
       });
+
+      if (existing?.id) {
+        const existingKey = Number(existing.id);
+        regionKeyCache.set(cacheKey, existingKey);
+        return existingKey;
+      }
+
+      let row = null;
+      try {
+        row = await DimRegion.create({
+          providerId: providerIdValue,
+          regionId,
+          regionName: regionName || regionId,
+          availabilityZone: null,
+        });
+      } catch (error) {
+        // Another concurrent worker may have inserted this region between findOne and create.
+        const raceWinner = await DimRegion.findOne({
+          where: {
+            providerId: providerIdValue,
+            regionId,
+          },
+        });
+        if (!raceWinner) throw error;
+        row = raceWinner;
+      }
+
       const key = row?.id ? Number(row.id) : null;
       regionKeyCache.set(cacheKey, key);
       return key;
@@ -194,6 +269,8 @@ export async function syncStorageLensFromClientAccount({
     let rowsScanned = 0;
     let rowsRejected = 0;
     let filesProcessed = 0;
+    const rejectionReasonCounts = new Map<string, number>();
+    const rejectionSamples = new Map<string, { keys: string[]; bucketLike?: string | null; usageLike?: string | null }>();
 
     for (const objectItem of selectedObjects) {
       const objectKey = String(objectItem.key);
@@ -268,6 +345,23 @@ export async function syncStorageLensFromClientAccount({
               appendSnapshot(snapshotMap, snapshot);
             } else {
               rowsRejected += 1;
+              const reason = getStorageLensRowDropReason({ rawRow, normalizedRow: rawRow });
+              rejectionReasonCounts.set(reason, (rejectionReasonCounts.get(reason) ?? 0) + 1);
+              if (!rejectionSamples.has(reason)) {
+                const keys = Object.keys(rawRow ?? {}).slice(0, 20);
+                rejectionSamples.set(reason, {
+                  keys,
+                  bucketLike: String(rawRow?.bucket_name ?? rawRow?.BucketName ?? rawRow?.record_value ?? "").trim() || null,
+                  usageLike: String(
+                    rawRow?.usage_date ??
+                    rawRow?.UsageDate ??
+                    rawRow?.report_date ??
+                    rawRow?.ReportDate ??
+                    rawRow?.report_time ??
+                    "",
+                  ).trim() || null,
+                });
+              }
             }
           }
         } else {
@@ -295,6 +389,23 @@ export async function syncStorageLensFromClientAccount({
                 appendSnapshot(snapshotMap, snapshot);
               } else {
                 rowsRejected += 1;
+                const reason = getStorageLensRowDropReason({ rawRow, normalizedRow: rawRow });
+                rejectionReasonCounts.set(reason, (rejectionReasonCounts.get(reason) ?? 0) + 1);
+                if (!rejectionSamples.has(reason)) {
+                  const keys = Object.keys(rawRow ?? {}).slice(0, 20);
+                  rejectionSamples.set(reason, {
+                    keys,
+                    bucketLike: String(rawRow?.bucket_name ?? rawRow?.BucketName ?? rawRow?.record_value ?? "").trim() || null,
+                    usageLike: String(
+                      rawRow?.usage_date ??
+                      rawRow?.UsageDate ??
+                      rawRow?.report_date ??
+                      rawRow?.ReportDate ??
+                      rawRow?.report_time ??
+                      "",
+                    ).trim() || null,
+                  });
+                }
               }
             }
           }
@@ -306,14 +417,34 @@ export async function syncStorageLensFromClientAccount({
           processedAt: new Date(),
         });
       } catch (error) {
+        logger.warn("Storage Lens file processing failed", {
+          tenantId: source.tenantId,
+          billingSourceId: source.id,
+          ingestionRunId: ingestionRun.id,
+          storageBucket: resolvedBucket,
+          storageKey: objectKey,
+          reason: toErrorMessage(error),
+          details: buildDetailedErrorMessage(error),
+        });
         await trackedFile.update({
           status: "failed",
-          errorMessage: error instanceof Error ? error.message : String(error),
+          errorMessage: buildDetailedErrorMessage(error),
         });
       }
     }
 
     const snapshots = Array.from(snapshotMap.values());
+    const rejectionSummary = [...rejectionReasonCounts.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .map(([reason, count]) => ({ reason, count, sample: rejectionSamples.get(reason) ?? null }));
+    logger.info("Storage Lens row parse summary", {
+      tenantId: source.tenantId,
+      billingSourceId: source.id,
+      rowsScanned,
+      rowsRejected,
+      rowsAccepted: snapshots.length,
+      rejectionSummary,
+    });
     const upsertedCount = await upsertStorageLensSnapshots(snapshots);
     const configCollectionResult = await collectS3BucketConfigSnapshotsForBillingSource({
       tenantId: source.tenantId,
@@ -338,15 +469,34 @@ export async function syncStorageLensFromClientAccount({
       rebuildRange: true,
     });
 
+    const runStatus =
+      filesProcessed === 0 && selectedObjects.length > 0
+        ? "failed"
+        : rowsRejected > 0
+          ? "completed_with_warnings"
+          : "completed";
+    const runStep = runStatus === "failed" ? "failed" : runStatus;
+    const runMessage =
+      runStatus === "failed"
+        ? "Storage Lens ingestion failed (all discovered files failed)"
+        : runStatus === "completed_with_warnings"
+          ? "Storage Lens ingestion completed with warnings"
+          : "Storage Lens ingestion completed";
+    const runError =
+      runStatus === "failed"
+        ? "All discovered Storage Lens files failed during processing. Check storage_lens_raw_files.error_message for per-file details."
+        : null;
+
     await ingestionRun.update({
-      status: "completed",
-      currentStep: "completed",
+      status: runStatus,
+      currentStep: runStep,
       progressPercent: 100,
-      statusMessage: "Storage Lens ingestion completed",
+      statusMessage: runMessage,
       filesProcessed,
       rowsRead: rowsScanned,
       rowsLoaded: upsertedCount,
       rowsFailed: rowsRejected,
+      errorMessage: runError,
       finishedAt: new Date(),
     });
 
@@ -364,6 +514,7 @@ export async function syncStorageLensFromClientAccount({
       bucketConfigSnapshotsCreated: configCollectionResult.snapshotsCreated,
       bucketConfigBucketsScanned: configCollectionResult.bucketsScanned,
       costSummaryRowsInserted: costSummaryResult.rowsInserted,
+      s3CostDailyRowsDeleted: s3CostDailyResult.rowsDeleted,
       s3CostDailyRowsInserted: s3CostDailyResult.rowsInserted,
     });
 
@@ -380,6 +531,7 @@ export async function syncStorageLensFromClientAccount({
       bucketConfigSnapshotsCreated: configCollectionResult.snapshotsCreated,
       bucketConfigBucketsScanned: configCollectionResult.bucketsScanned,
       costSummaryRowsInserted: costSummaryResult.rowsInserted,
+      s3CostDailyRowsDeleted: s3CostDailyResult.rowsDeleted,
       s3CostDailyRowsInserted: s3CostDailyResult.rowsInserted,
     };
   } catch (error) {

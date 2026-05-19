@@ -323,6 +323,70 @@ export function extractStorageLensSnapshotFromRow({
   return snapshot;
 }
 
+export function getStorageLensRowDropReason({
+  rawRow,
+  normalizedRow,
+}: {
+  rawRow: Record<string, unknown>;
+  normalizedRow?: Record<string, unknown> | null;
+}): string {
+  const recordTypeRaw = lookupByAliases(rawRow, ["record_type", "RecordType"]);
+  const recordType = String(recordTypeRaw ?? "").trim().toUpperCase();
+  if (recordType && recordType !== "BUCKET") {
+    return "record_type_not_bucket";
+  }
+
+  const bucketValue =
+    lookupByAliases(rawRow, ["bucket_name", "BucketName", "bucket", "bucketName"]) ??
+    lookupByAliases(rawRow, ["record_value", "RecordValue"]) ??
+    normalizedRow?.ResourceId ??
+    normalizedRow?.ResourceName;
+  const bucketName = parseBucketNameFromArn(bucketValue);
+  if (!bucketName) return "missing_bucket_name";
+
+  const usageDate =
+    parseDateOnly(
+      lookupByAliases(rawRow, [
+        "usage_date",
+        "UsageDate",
+        "report_date",
+        "ReportDate",
+        "report_time",
+        "RecordValueDate",
+        "record_value_date",
+      ]),
+    ) ??
+    parseDateOnly(normalizedRow?.usage_start_time) ??
+    parseDateOnly(normalizedRow?.ChargePeriodStart);
+  if (!usageDate) return "missing_usage_date";
+
+  const metricNameRaw = lookupByAliases(rawRow, ["metric_name", "MetricName"]);
+  const metricValueRaw = lookupByAliases(rawRow, ["metric_value", "MetricValue"]);
+  if (metricNameRaw !== undefined && metricValueRaw !== undefined) {
+    const metricKey = METRIC_NAME_KEY_MAP[normalizeKey(metricNameRaw)];
+    const metricValue = parseNumeric(metricValueRaw);
+    if (!metricKey || metricValue === null) {
+      return "metric_name_value_not_mapped";
+    }
+    return "accepted";
+  }
+
+  const inferredMetrics = [
+    parseNumeric(lookupByAliases(rawRow, ["object_count", "ObjectCount", "current_version_object_count"])),
+    parseNumeric(lookupByAliases(rawRow, ["current_version_bytes", "CurrentVersionBytes", "current_version_total_storage_bytes"])),
+    parseNumeric(lookupByAliases(rawRow, ["avg_object_size_bytes", "AvgObjectSizeBytes", "avg_object_size"])),
+    parseNumeric(lookupByAliases(rawRow, ["access_count", "AccessCount", "all_request_count"])),
+    parseNumeric(lookupByAliases(rawRow, ["bytes_standard", "BytesStandard", "standard_storage_bytes"])),
+    parseNumeric(lookupByAliases(rawRow, ["bytes_standard_ia", "BytesStandardIa", "standard_ia_storage_bytes"])),
+    parseNumeric(lookupByAliases(rawRow, ["bytes_onezone_ia", "BytesOnezoneIa", "onezone_ia_storage_bytes"])),
+    parseNumeric(lookupByAliases(rawRow, ["bytes_intelligent_tiering", "BytesIntelligentTiering", "intelligent_tiering_storage_bytes"])),
+    parseNumeric(lookupByAliases(rawRow, ["bytes_glacier", "BytesGlacier", "glacier_storage_bytes"])),
+    parseNumeric(lookupByAliases(rawRow, ["bytes_deep_archive", "BytesDeepArchive", "deep_archive_storage_bytes"])),
+  ];
+  const hasAnyMetric = inferredMetrics.some((value) => value !== null);
+  return hasAnyMetric ? "accepted" : "no_recognized_metrics";
+}
+
 export function mergeStorageLensSnapshot(existingSnapshot, incomingSnapshot) {
   const merged = { ...existingSnapshot };
   for (const metricField of STORAGE_LENS_METRIC_FIELDS) {
