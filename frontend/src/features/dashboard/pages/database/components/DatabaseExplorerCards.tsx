@@ -2,11 +2,6 @@ import { KpiCard, KpiGrid } from "../../../common/components";
 import type { DatabaseExplorerCards as DatabaseExplorerCardsData } from "../../../api/dashboardTypes";
 import {
   NULL_MARKER,
-  formatCompactCurrency,
-  formatCompactNumber,
-  formatInteger,
-  formatNumber,
-  formatPercentFromRatio,
 } from "./databaseExplorer.formatters";
 
 type DatabaseExplorerCardsProps = {
@@ -14,31 +9,38 @@ type DatabaseExplorerCardsProps = {
   isLoading?: boolean;
 };
 
-const loadingCards: DatabaseExplorerCardsData = {
-  totalCost: 0,
-  costTrendPct: null,
-  activeResources: 0,
-  dataFootprintGb: 0,
-  avgLoad: null,
-  connections: null,
-};
-
 export function DatabaseExplorerCards({ cards, isLoading = false }: DatabaseExplorerCardsProps) {
-  const safeCards = isLoading ? loadingCards : cards;
-  const trendTone =
-    safeCards.costTrendPct === null ? "neutral" : safeCards.costTrendPct > 0 ? "negative" : "positive";
+  const safeCards = isLoading ? [] : cards;
 
   return (
     <KpiGrid className="db-explorer-kpi-grid">
-      <KpiCard label="Total Cost" value={formatCompactCurrency(safeCards.totalCost)} />
-      <KpiCard
-        label="Cost Trend %"
-        value={isLoading ? NULL_MARKER : formatPercentFromRatio(safeCards.costTrendPct)}
-        deltaTone={trendTone}
-      />
-      <KpiCard label="Active DB Resources" value={formatInteger(safeCards.activeResources)} />
-      <KpiCard label="Data Footprint" value={formatNumber(safeCards.dataFootprintGb, " GB")} />
-      <KpiCard label="Avg Load" value={formatCompactNumber(safeCards.avgLoad)} />
+      {safeCards.map((card) => {
+        const tone =
+          card.state === "warning"
+            ? "negative"
+            : card.state === "unavailable" || card.state === "partial"
+              ? "neutral"
+              : card.trend?.direction === "up"
+                ? "negative"
+                : card.trend?.direction === "down"
+                  ? "positive"
+                  : "neutral";
+        const trendLabel =
+          card.trend?.value === null || typeof card.trend?.value === "undefined"
+            ? undefined
+            : `${card.trend.value >= 0 ? "+" : ""}${(card.trend.value * 100).toFixed(1)}%`;
+
+        return (
+          <KpiCard
+            key={card.id}
+            label={card.title}
+            value={card.value || NULL_MARKER}
+            delta={trendLabel}
+            deltaTone={tone}
+            meta={card.subValue ?? card.note ?? undefined}
+          />
+        );
+      })}
     </KpiGrid>
   );
 }

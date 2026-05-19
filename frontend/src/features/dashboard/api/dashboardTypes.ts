@@ -97,7 +97,6 @@ export const DATABASE_EXPLORER_SCOPES = [
 export type DatabaseExplorerScopeValue = (typeof DATABASE_EXPLORER_SCOPES)[number];
 
 export type DatabaseExplorerGroupBy =
-  | "db_type"
   | "db_service"
   | "db_engine"
   | "region"
@@ -106,9 +105,12 @@ export type DatabaseExplorerGroupBy =
   | "cluster"
   | "cost_category";
 
+export type DatabaseExplorerAllowedGroupByByMetric = Record<DatabaseExplorerMetric, DatabaseExplorerGroupBy[]>;
+
 export type DatabaseExplorerFilters = {
   metric: DatabaseExplorerMetric;
   groupBy: DatabaseExplorerGroupBy;
+  groupValues?: string[];
   /** Filters which db_service rows are included (independent from `groupBy`). */
   databaseScope?: DatabaseExplorerScopeValue;
   regionKey?: number | string;
@@ -128,16 +130,25 @@ export type DatabaseExplorerAppliedFilters = {
   dbEngine?: string;
   metric: DatabaseExplorerMetric;
   groupBy: DatabaseExplorerGroupBy;
+  groupValues?: string[];
 };
 
-export type DatabaseExplorerCards = {
-  totalCost: number;
-  costTrendPct: number | null;
-  activeResources: number;
-  dataFootprintGb: number;
-  avgLoad: number | null;
-  connections: number | null;
+export type DatabaseExplorerKpiState = "normal" | "empty" | "partial" | "unavailable" | "warning";
+
+export type DatabaseExplorerKpiTrend = {
+  value: number | null;
+  direction: "up" | "down" | "flat" | "unknown";
 };
+
+export type DatabaseExplorerCards = Array<{
+  id: string;
+  title: string;
+  value: string;
+  subValue: string | null;
+  trend?: DatabaseExplorerKpiTrend | null;
+  state: DatabaseExplorerKpiState;
+  note?: string | null;
+}>;
 
 export type DatabaseExplorerCostTrendItem = {
   date: string;
@@ -197,6 +208,8 @@ export type DatabaseExplorerTrendGrouped = {
 
 export type DatabaseExplorerResponse = {
   filters: DatabaseExplorerAppliedFilters;
+  allowedGroupBy: DatabaseExplorerGroupBy[];
+  allowedGroupByByMetric: DatabaseExplorerAllowedGroupByByMetric;
   filterOptions: DatabaseExplorerFilterOptions;
   cards: DatabaseExplorerCards;
   trend: Array<DatabaseExplorerCostTrendItem | DatabaseExplorerUsageTrendItem>;

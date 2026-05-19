@@ -1,5 +1,9 @@
 import { DatabaseExplorerRepository } from "./explorer.repository.js";
-import type { ExplorerQueryParams, ExplorerResponse } from "./explorer.types.js";
+import {
+  EXPLORER_ALLOWED_GROUP_BY_BY_METRIC,
+  type ExplorerQueryParams,
+  type ExplorerResponse,
+} from "./explorer.types.js";
 
 export class DatabaseExplorerService {
   constructor(
@@ -17,6 +21,11 @@ export class DatabaseExplorerService {
 
     return {
       filters: params,
+      allowedGroupBy: [...EXPLORER_ALLOWED_GROUP_BY_BY_METRIC[params.metric]],
+      allowedGroupByByMetric: {
+        cost: [...EXPLORER_ALLOWED_GROUP_BY_BY_METRIC.cost],
+        usage: [...EXPLORER_ALLOWED_GROUP_BY_BY_METRIC.usage],
+      },
       filterOptions,
       cards,
       trend,

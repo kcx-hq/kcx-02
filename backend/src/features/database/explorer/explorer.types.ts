@@ -20,7 +20,6 @@ export const EXPLORER_DATABASE_SCOPES = [
 export type ExplorerDatabaseScope = (typeof EXPLORER_DATABASE_SCOPES)[number];
 
 export const EXPLORER_GROUP_BY = [
-  "db_type",
   "db_service",
   "db_engine",
   "region",
@@ -32,6 +31,12 @@ export const EXPLORER_GROUP_BY = [
 
 export type ExplorerMetric = (typeof EXPLORER_METRICS)[number];
 export type ExplorerGroupBy = (typeof EXPLORER_GROUP_BY)[number];
+export type ExplorerAllowedGroupByByMetric = Record<ExplorerMetric, ExplorerGroupBy[]>;
+
+export const EXPLORER_ALLOWED_GROUP_BY_BY_METRIC: ExplorerAllowedGroupByByMetric = {
+  cost: ["db_service", "db_engine", "region", "cost_category", "resource_type"],
+  usage: ["db_service", "db_engine", "region", "instance_class", "cluster"],
+};
 
 export type ExplorerQueryParams = {
   tenantId: string;
@@ -45,15 +50,24 @@ export type ExplorerQueryParams = {
   dbEngine?: string;
   metric: ExplorerMetric;
   groupBy: ExplorerGroupBy;
+  groupValues?: string[];
 };
 
-export type ExplorerCards = {
-  totalCost: number;
-  costTrendPct: number | null;
-  activeResources: number;
-  dataFootprintGb: number;
-  avgLoad: number | null;
-  connections: number | null;
+export type ExplorerKpiState = "normal" | "empty" | "partial" | "unavailable" | "warning";
+
+export type ExplorerKpiTrend = {
+  value: number | null;
+  direction: "up" | "down" | "flat" | "unknown";
+};
+
+export type ExplorerKpiCard = {
+  id: string;
+  title: string;
+  value: string;
+  subValue: string | null;
+  trend?: ExplorerKpiTrend | null;
+  state: ExplorerKpiState;
+  note?: string | null;
 };
 
 export type ExplorerCostTrendItem = {
@@ -116,8 +130,10 @@ export type ExplorerFilterOptions = {
 
 export type ExplorerResponse = {
   filters: ExplorerQueryParams;
+  allowedGroupBy: ExplorerGroupBy[];
+  allowedGroupByByMetric: ExplorerAllowedGroupByByMetric;
   filterOptions: ExplorerFilterOptions;
-  cards: ExplorerCards;
+  cards: ExplorerKpiCard[];
   trend: ExplorerTrendItem[];
   trendGrouped?: ExplorerTrendGrouped;
   table: ExplorerTableRow[];

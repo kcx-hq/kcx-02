@@ -97,6 +97,7 @@ const mapCluster = (cluster: DBCluster, defaultRegion: string): AwsRdsAuroraInve
     resourceType: "db_cluster",
     dbClusterIdentifier: toStringOrNull(cluster.DBClusterIdentifier),
     dbClusterArn: clusterArn,
+    dbClusterResourceId: toStringOrNull(cluster.DbClusterResourceId),
     engine,
     engineVersion: toStringOrNull(cluster.EngineVersion),
     status: toStringOrNull(cluster.Status),

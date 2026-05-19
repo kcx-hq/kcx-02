@@ -4,50 +4,38 @@ import { createPortal } from "react-dom";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import type {
   DatabaseExplorerGroupBy,
-  DatabaseExplorerMetric,
   DatabaseExplorerScopeValue,
 } from "../../../api/dashboardTypes";
-import { DATABASE_SCOPE_NAV_SECTIONS, isDatabaseScopeAvailable } from "../databaseExplorer.scope";
-import { deriveAutoGroupBy, getEnginesForDatabaseScope } from "../databaseExplorer.taxonomy";
+import { isDatabaseScopeAvailable } from "../databaseExplorer.scope";
 
 type DatabaseExplorerFiltersProps = {
-  metric: DatabaseExplorerMetric;
+  allowedGroupBy: DatabaseExplorerGroupBy[];
   databaseScope: DatabaseExplorerScopeValue;
   dbService: string;
   dbEngine: string;
-  groupBy: "auto" | DatabaseExplorerGroupBy;
+  groupBy: DatabaseExplorerGroupBy;
   effectiveGroupBy: DatabaseExplorerGroupBy;
+  groupValues: string[];
   availableDatabaseScopes: DatabaseExplorerScopeValue[];
   backendServiceOptions: string[];
   backendEngineOptions: string[];
   groupedValuePreview?: Partial<Record<DatabaseExplorerGroupBy, string[]>>;
   onApplyScope: (next: { databaseScope: DatabaseExplorerScopeValue; dbService: string; dbEngine: string }) => void;
-  onApplyGroupBy: (next: { groupBy: "auto" | DatabaseExplorerGroupBy }) => void;
+  onApplyGroupBy: (next: { groupBy: DatabaseExplorerGroupBy; groupValues: string[] }) => void;
   onClearAll: () => void;
 };
 
-const groupByOptions: Array<{ value: "auto" | DatabaseExplorerGroupBy; label: string }> = [
-  { value: "auto", label: "Recommended" },
-  { value: "db_type", label: "Database Type" },
-  { value: "db_service", label: "DB Service" },
-  { value: "db_engine", label: "DB Engine" },
-  { value: "region", label: "Region" },
-  { value: "resource_type", label: "Resource Type" },
-  { value: "instance_class", label: "Instance Class" },
-  { value: "cluster", label: "Cluster" },
-  { value: "cost_category", label: "Cost Category" },
+const groupByOptions: Array<{ value: DatabaseExplorerGroupBy; label: string; allLabel: string }> = [
+  { value: "db_service", label: "DB Service", allLabel: "DB Services" },
+  { value: "db_engine", label: "DB Engine", allLabel: "DB Engines" },
+  { value: "region", label: "Region", allLabel: "Regions" },
+  { value: "resource_type", label: "Resource Type", allLabel: "Resource Types" },
+  { value: "instance_class", label: "Instance Class", allLabel: "Instance Classes" },
+  { value: "cluster", label: "Cluster", allLabel: "Clusters" },
+  { value: "cost_category", label: "Cost Category", allLabel: "Cost Categories" },
 ];
 
-const groupByDimensions: Array<{ key: DatabaseExplorerGroupBy; label: string }> = [
-  { key: "db_type", label: "Database Type" },
-  { key: "region", label: "Region" },
-  { key: "cost_category", label: "Cost Category" },
-  { key: "resource_type", label: "Resource Type" },
-  { key: "instance_class", label: "Instance Class" },
-  { key: "cluster", label: "Cluster" },
-  { key: "db_service", label: "DB Service" },
-  { key: "db_engine", label: "DB Engine" },
-];
+const groupByDimensions = groupByOptions.map((option) => ({ key: option.value, label: option.label }));
 
 const serviceMatchesScope = (service: string, scope: DatabaseExplorerScopeValue): boolean => {
   const key = service.trim().toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -67,13 +55,39 @@ const serviceMatchesScope = (service: string, scope: DatabaseExplorerScopeValue)
 const uniqueSorted = (values: string[]): string[] =>
   [...new Set(values.map((value) => value.trim()).filter(Boolean))].sort((left, right) => left.localeCompare(right));
 
+const serviceToScope = (service: string): DatabaseExplorerScopeValue => {
+  const key = service.trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+  if (key.includes("aurora")) return "relational_aurora";
+  if (key.includes("elasticache")) return "in_memory_elasticache";
+  if (key.includes("memorydb")) return "in_memory_memorydb";
+  if (key.includes("rds")) return "relational_rds";
+  if (key.includes("dynamodb")) return "key_value_dynamodb";
+  if (key.includes("docdb") || key.includes("documentdb")) return "document";
+  if (key.includes("neptune")) return "graph";
+  if (key.includes("keyspaces")) return "wide_column";
+  if (key.includes("timestream")) return "time_series";
+  return "all";
+};
+
+const engineBelongsToService = (engine: string, service: string): boolean => {
+  const ek = engine.trim().toLowerCase();
+  const sk = service.trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+  if (!ek || !sk) return false;
+  if (sk.includes("aurora")) return ek.includes("aurora");
+  if (sk.includes("elasticache")) return ek.includes("redis") || ek.includes("memcached") || ek.includes("valkey");
+  if (sk.includes("memorydb")) return ek.includes("redis") || ek.includes("valkey");
+  if (sk.includes("rds")) return !ek.includes("aurora") && (ek.includes("mysql") || ek.includes("postgres") || ek.includes("maria") || ek.includes("oracle") || ek.includes("sql"));
+  return false;
+};
+
 export function DatabaseExplorerFilters({
-  metric,
+  allowedGroupBy,
   databaseScope,
   dbService,
   dbEngine,
   groupBy,
   effectiveGroupBy,
+  groupValues,
   availableDatabaseScopes,
   backendServiceOptions,
   backendEngineOptions,
@@ -99,8 +113,8 @@ export function DatabaseExplorerFilters({
   const [groupDrawerOpen, setGroupDrawerOpen] = useState(false);
   const [hoveredServiceScope, setHoveredServiceScope] = useState<DatabaseExplorerScopeValue | null>(null);
   const [engineFlyoutPosition, setEngineFlyoutPosition] = useState<{ top: number; left: number } | null>(null);
-  const [draftGroupBy, setDraftGroupBy] = useState<"auto" | DatabaseExplorerGroupBy>(groupBy);
-  const [activeGroupDimension, setActiveGroupDimension] = useState<DatabaseExplorerGroupBy>(effectiveGroupBy);
+  const [draftGroupBy, setDraftGroupBy] = useState<DatabaseExplorerGroupBy>(groupBy);
+  const [draftGroupValues, setDraftGroupValues] = useState<string[]>(groupValues);
   const flyoutHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const clearFlyoutHideTimer = () => {
@@ -119,13 +133,31 @@ export function DatabaseExplorerFilters({
 
   const availableServices = useMemo(() => uniqueSorted(backendServiceOptions), [backendServiceOptions]);
   const availableEngines = useMemo(() => uniqueSorted(backendEngineOptions), [backendEngineOptions]);
-  const effectiveGroupByLabel = groupByOptions.find((option) => option.value === effectiveGroupBy)?.label ?? "Recommended";
-  const groupByLabel = groupBy === "auto" ? `Auto - ${effectiveGroupByLabel}` : effectiveGroupByLabel;
-  const recommendedPreview = useMemo(
-    () => deriveAutoGroupBy(databaseScope, dbService, dbEngine),
-    [databaseScope, dbEngine, dbService],
+  const serviceEntries = useMemo(
+    () =>
+      availableServices
+        .map((service) => {
+          const scope = serviceToScope(service);
+          return {
+            service,
+            scope,
+            engines: availableEngines.filter((engine) => engineBelongsToService(engine, service)),
+          };
+        })
+        .filter((entry) => entry.scope !== "all" && isDatabaseScopeAvailable(entry.scope, availableDatabaseScopes)),
+    [availableDatabaseScopes, availableEngines, availableServices],
   );
-  const recommendedPreviewLabel = groupByOptions.find((o) => o.value === recommendedPreview)?.label ?? "Database Type";
+  const allowedDimensionSet = useMemo(() => new Set(allowedGroupBy), [allowedGroupBy]);
+  const visibleGroupByDimensions = useMemo(
+    () => groupByDimensions.filter((dimension) => allowedDimensionSet.has(dimension.key)),
+    [allowedDimensionSet],
+  );
+  const activeGroupByOption = groupByOptions.find((option) => option.value === effectiveGroupBy) ?? groupByOptions[0];
+  const groupByLabel = activeGroupByOption.label;
+  const groupByAllLabel = activeGroupByOption.allLabel;
+  const scopedFiltersLabel = `Filters for ${groupByLabel}`;
+  const filtersChipLabel =
+    groupValues.length === 0 ? `Filters: All ${groupByAllLabel}` : `Filters: ${groupValues.length} selected`;
 
   const databaseLabel = useMemo(() => {
     if (!dbService.trim() && !dbEngine.trim()) return "All Databases";
@@ -136,25 +168,26 @@ export function DatabaseExplorerFilters({
   const chips = [
     { key: "database", label: "Database", value: databaseLabel },
     { key: "groupBy", label: "Group By", value: groupByLabel },
+    { key: "groupValues", label: "Filters", value: filtersChipLabel.replace(/^Filters:\s*/, "") },
   ];
 
   const openGroupDrawer = () => {
     setDraftGroupBy(groupBy);
-    setActiveGroupDimension(groupBy === "auto" ? effectiveGroupBy : groupBy);
+    setDraftGroupValues(groupValues);
     setGroupDrawerOpen(true);
   };
 
-  const valuesDimension = draftGroupBy === "auto" ? activeGroupDimension : draftGroupBy;
-
   const groupedValuesPreview = useMemo(() => {
-    const preview = groupedValuePreview?.[valuesDimension];
+    const preview = groupedValuePreview?.[draftGroupBy];
     if (!Array.isArray(preview)) return [];
     return uniqueSorted(preview);
-  }, [groupedValuePreview, valuesDimension]);
+  }, [draftGroupBy, groupedValuePreview]);
 
   const applyGroupDrawer = () => {
-    const safe = metric === "usage" && draftGroupBy === "cost_category" ? "auto" : draftGroupBy;
-    onApplyGroupBy({ groupBy: safe });
+    const safeGroupBy = allowedDimensionSet.has(draftGroupBy) ? draftGroupBy : (allowedGroupBy[0] ?? "db_service");
+    const available = new Set(groupedValuesPreview);
+    const safeValues = draftGroupValues.filter((value) => available.has(value));
+    onApplyGroupBy({ groupBy: safeGroupBy, groupValues: safeValues });
     setGroupDrawerOpen(false);
   };
 
@@ -199,23 +232,18 @@ export function DatabaseExplorerFilters({
                   {!dbService.trim() && !dbEngine.trim() ? <Check className="cost-explorer-filter-option__check" size={15} aria-hidden="true" /> : null}
                 </button>
 
-                {DATABASE_SCOPE_NAV_SECTIONS.map((section) =>
-                  section.services.map((svc) => {
-                    const scopeEnabled = isDatabaseScopeAvailable(svc.scope, availableDatabaseScopes);
-                    if (!scopeEnabled) return null;
-                    const matchedService = availableServices.find((service) => serviceMatchesScope(service, svc.scope)) ?? svc.label;
-                    const selectedService = databaseScope === svc.scope || serviceMatchesScope(dbService, svc.scope);
-                    const scopedEngines = getEnginesForDatabaseScope(svc.scope);
-                    const scopedEngineSet = new Set(scopedEngines.map((engine) => engine.trim().toLowerCase()));
-                    const matchingEngines = availableEngines.filter((engine) => scopedEngineSet.has(engine.trim().toLowerCase()));
-                    const showEngines = matchingEngines.length > 0 && hoveredServiceScope === svc.scope;
+                {serviceEntries.map((entry) => {
+                    const matchedService = entry.service;
+                    const selectedService = databaseScope === entry.scope || serviceMatchesScope(dbService, entry.scope);
+                    const matchingEngines = entry.engines;
+                    const showEngines = matchingEngines.length > 0 && hoveredServiceScope === entry.scope;
                     return (
                       <div
-                        key={svc.scope}
+                        key={entry.scope}
                         style={{ position: "relative" }}
                         onMouseEnter={(event) => {
                           clearFlyoutHideTimer();
-                          setHoveredServiceScope(svc.scope);
+                          setHoveredServiceScope(entry.scope);
                           const rect = event.currentTarget.getBoundingClientRect();
                           setEngineFlyoutPosition({
                             top: rect.top,
@@ -229,7 +257,7 @@ export function DatabaseExplorerFilters({
                           className={`cost-explorer-filter-option${selectedService && !dbEngine.trim() ? " is-active" : ""}`}
                           onFocus={(event) => {
                             clearFlyoutHideTimer();
-                            setHoveredServiceScope(svc.scope);
+                            setHoveredServiceScope(entry.scope);
                             const rect = event.currentTarget.getBoundingClientRect();
                             setEngineFlyoutPosition({
                               top: rect.top,
@@ -238,7 +266,7 @@ export function DatabaseExplorerFilters({
                           }}
                           onBlur={scheduleFlyoutHide}
                           onClick={() => {
-                            onApplyScope({ databaseScope: svc.scope, dbService: matchedService, dbEngine: "" });
+                            onApplyScope({ databaseScope: entry.scope, dbService: matchedService, dbEngine: "" });
                           }}
                         >
                           <span className="cost-explorer-filter-option__label">{matchedService}</span>
@@ -269,11 +297,11 @@ export function DatabaseExplorerFilters({
                                       selectedService && dbEngine.trim().toLowerCase() === engine.trim().toLowerCase();
                                     return (
                                       <button
-                                        key={`${svc.scope}-${engine}`}
+                                        key={`${entry.scope}-${engine}`}
                                         type="button"
                                         className={`cost-explorer-filter-option${selectedEngine ? " is-active" : ""}`}
                                         onClick={() => {
-                                          onApplyScope({ databaseScope: svc.scope, dbService: matchedService, dbEngine: engine });
+                                          onApplyScope({ databaseScope: entry.scope, dbService: matchedService, dbEngine: engine });
                                           clearFlyoutHideTimer();
                                           setHoveredServiceScope(null);
                                           setEngineFlyoutPosition(null);
@@ -292,8 +320,7 @@ export function DatabaseExplorerFilters({
                           : null}
                       </div>
                     );
-                  }),
-                )}
+                  })}
               </div>
             </div>
           ) : null}
@@ -304,10 +331,26 @@ export function DatabaseExplorerFilters({
             className="cost-explorer-toolbar-trigger"
             onClick={openGroupDrawer}
             title={groupByLabel}
+            data-testid="database-explorer-groupby-control"
           >
             <span className="cost-explorer-toolbar-trigger__label">Group By</span>
             <span className="cost-explorer-toolbar-trigger__row">
               <span className="cost-explorer-toolbar-trigger__value">{groupByLabel}</span>
+              <ChevronDown className="cost-explorer-toolbar-trigger__caret" size={14} aria-hidden="true" />
+            </span>
+          </button>
+        </div>
+        <div className="cost-explorer-toolbar-item">
+          <button
+            type="button"
+            className="cost-explorer-toolbar-trigger"
+            onClick={openGroupDrawer}
+            title={scopedFiltersLabel}
+            data-testid="database-explorer-scoped-filters-control"
+          >
+            <span className="cost-explorer-toolbar-trigger__label">Filters</span>
+            <span className="cost-explorer-toolbar-trigger__row">
+              <span className="cost-explorer-toolbar-trigger__value">{filtersChipLabel.replace("Filters: ", "")}</span>
               <ChevronDown className="cost-explorer-toolbar-trigger__caret" size={14} aria-hidden="true" />
             </span>
           </button>
@@ -317,7 +360,7 @@ export function DatabaseExplorerFilters({
       <div className="cost-explorer-chip-bar" aria-label="Selected filter summary">
         <div className="cost-explorer-chip-row">
           {chips.map((chip) => (
-            <span key={chip.key} className="cost-explorer-chip">
+            <span key={chip.key} className="cost-explorer-chip" data-testid={chip.key === "groupValues" ? "database-explorer-filter-chip" : undefined}>
               <span className="cost-explorer-chip__edit">
                 {chip.label}: {chip.value}
               </span>
@@ -341,25 +384,8 @@ export function DatabaseExplorerFilters({
                   <div className="cost-explorer-filter-popover__split-pane">
                     <p className="cost-explorer-filter-popover__title">Dimensions</p>
                     <div className="cost-explorer-filter-popover__list cost-explorer-filter-popover__list--group-dimensions" role="listbox" aria-label="Group by dimensions">
-                      <button
-                        type="button"
-                        className={`cost-explorer-filter-option database-explorer-groupby__dimension-option${
-                          draftGroupBy === "auto" ? " is-active database-explorer-groupby__dimension-option--selected" : ""
-                        }`}
-                        onClick={() => {
-                          setDraftGroupBy("auto");
-                          setActiveGroupDimension(effectiveGroupBy);
-                        }}
-                        role="option"
-                        aria-selected={draftGroupBy === "auto"}
-                        style={draftGroupBy === "auto" ? groupBySelectedStyle : undefined}
-                      >
-                        <span className="cost-explorer-filter-option__label">Recommended</span>
-                        {draftGroupBy === "auto" ? <Check className="cost-explorer-filter-option__check" size={15} aria-hidden="true" /> : null}
-                      </button>
-                      {groupByDimensions.map((dimension) => {
-                        const selected = draftGroupBy !== "auto" && draftGroupBy === dimension.key;
-                        const disabled = metric === "usage" && dimension.key === "cost_category";
+                      {visibleGroupByDimensions.map((dimension) => {
+                        const selected = draftGroupBy === dimension.key;
                         return (
                           <button
                             key={dimension.key}
@@ -368,20 +394,12 @@ export function DatabaseExplorerFilters({
                               selected ? " is-active database-explorer-groupby__dimension-option--selected" : ""
                             }`}
                             onClick={() => {
-                              if (disabled) return;
-                              setActiveGroupDimension(dimension.key);
                               setDraftGroupBy(dimension.key);
+                              setDraftGroupValues([]);
                             }}
                             role="option"
                             aria-selected={selected}
-                            aria-disabled={disabled}
-                            style={
-                              disabled
-                                ? { opacity: 0.55, cursor: "not-allowed" }
-                                : selected
-                                  ? groupBySelectedStyle
-                                  : undefined
-                            }
+                            style={selected ? groupBySelectedStyle : undefined}
                           >
                             <span className="cost-explorer-filter-option__label">{dimension.label}</span>
                             {selected ? <Check className="cost-explorer-filter-option__check" size={15} aria-hidden="true" /> : null}
@@ -393,7 +411,7 @@ export function DatabaseExplorerFilters({
 
                   <div className="cost-explorer-filter-popover__split-pane cost-explorer-filter-popover__split-pane--right">
                     <div className="database-explorer-groupby__panel">
-                      <p className="cost-explorer-filter-popover__title">Values</p>
+                      <p className="cost-explorer-filter-popover__title">Filters</p>
                       <div className="database-explorer-groupby__panel-body">
                         <section className="database-explorer-groupby__section" aria-labelledby="database-groupby-selection">
                           <p id="database-groupby-selection" className="database-explorer-groupby__section-label">
@@ -406,9 +424,7 @@ export function DatabaseExplorerFilters({
                               style={groupBySelectedStyle}
                             >
                               <span className="cost-explorer-filter-option__label">
-                                {draftGroupBy === "auto"
-                                  ? recommendedPreviewLabel
-                                  : (groupByOptions.find((option) => option.value === draftGroupBy)?.label ?? "Group")}
+                                {groupByOptions.find((option) => option.value === draftGroupBy)?.label ?? "Group"}
                               </span>
                               <Check className="cost-explorer-filter-option__check" size={15} aria-hidden="true" />
                             </div>
@@ -416,29 +432,38 @@ export function DatabaseExplorerFilters({
                         </section>
                         <section className="database-explorer-groupby__section" aria-labelledby="database-groupby-values">
                           <p id="database-groupby-values" className="database-explorer-groupby__section-label">
-                            Values Preview
+                            {`Filters for ${groupByOptions.find((option) => option.value === draftGroupBy)?.label ?? "Group"}`}
                           </p>
                           <div className="database-explorer-groupby__section-list">
                             {groupedValuesPreview.length > 0 ? (
                               groupedValuesPreview.map((value) => (
-                                <div
-                                  key={`${valuesDimension}-${value}`}
-                                  className="cost-explorer-filter-option"
-                                  role="status"
-                                  aria-disabled="true"
-                                  style={groupByValuePreviewStyle}
+                                <button
+                                  key={`${draftGroupBy}-${value}`}
+                                  type="button"
+                                  className={`cost-explorer-filter-option${draftGroupValues.includes(value) ? " is-active" : ""}`}
+                                  role="option"
+                                  aria-selected={draftGroupValues.includes(value)}
+                                  style={draftGroupValues.includes(value) ? groupBySelectedStyle : groupByValuePreviewStyle}
+                                  onClick={() =>
+                                    setDraftGroupValues((prev) =>
+                                      prev.includes(value) ? prev.filter((entry) => entry !== value) : [...prev, value],
+                                    )
+                                  }
                                 >
                                   <span className="cost-explorer-filter-option__label">{value}</span>
-                                </div>
+                                  {draftGroupValues.includes(value) ? (
+                                    <Check className="cost-explorer-filter-option__check" size={15} aria-hidden="true" />
+                                  ) : null}
+                                </button>
                               ))
                             ) : (
                               <p className="database-explorer-groupby__section-empty">
-                                Values are contextual for this dimension and appear when available.
+                                Filters are contextual to this Group By dimension and appear when available.
                               </p>
                             )}
                           </div>
                           <p className="database-explorer-groupby__section-empty">
-                            Preview only. Values are visible for reference and are not clickable here.
+                            Select one or more filters scoped to the selected Group By dimension.
                           </p>
                         </section>
                       </div>

@@ -54,6 +54,7 @@ export type AwsRdsAuroraInventoryCluster = {
   resourceType: "db_cluster";
   dbClusterIdentifier: string | null;
   dbClusterArn: string | null;
+  dbClusterResourceId: string | null;
   engine: string | null;
   engineVersion: string | null;
   status: string | null;

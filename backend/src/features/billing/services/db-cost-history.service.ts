@@ -102,8 +102,31 @@ END
 const DB_ENGINE_SQL = `
 CASE
   WHEN LOWER(COALESCE(f.usage_type, '')) LIKE '%aurora%' OR LOWER(COALESCE(f.product_usage_type, '')) LIKE '%aurora%' THEN 'Aurora PostgreSQL'
-  WHEN LOWER(COALESCE(f.usage_type, '')) LIKE '%instanceusage:db.%' OR LOWER(COALESCE(f.product_usage_type, '')) LIKE '%instanceusage:db.%' THEN 'RDS MySQL'
   WHEN LOWER(COALESCE(f.usage_type, '')) LIKE '%cacheddata:redis%' OR LOWER(COALESCE(f.product_usage_type, '')) LIKE '%cacheddata:redis%' THEN 'Redis'
+  WHEN LOWER(COALESCE(f.line_item_description, '')) LIKE '%running mysql%'
+    OR LOWER(COALESCE(f.line_item_description, '')) LIKE '%aurora mysql%'
+    OR LOWER(COALESCE(f.operation, '')) LIKE '%mysql%'
+    OR LOWER(COALESCE(f.usage_type, '')) LIKE '%mysql%'
+    OR LOWER(COALESCE(f.product_usage_type, '')) LIKE '%mysql%' THEN 'RDS MySQL'
+  WHEN LOWER(COALESCE(f.line_item_description, '')) LIKE '%running mariadb%'
+    OR LOWER(COALESCE(f.operation, '')) LIKE '%mariadb%'
+    OR LOWER(COALESCE(f.usage_type, '')) LIKE '%mariadb%'
+    OR LOWER(COALESCE(f.product_usage_type, '')) LIKE '%mariadb%' THEN 'RDS MariaDB'
+  WHEN LOWER(COALESCE(f.line_item_description, '')) LIKE '%running postgresql%'
+    OR LOWER(COALESCE(f.line_item_description, '')) LIKE '%running postgres%'
+    OR LOWER(COALESCE(f.operation, '')) LIKE '%postgres%'
+    OR LOWER(COALESCE(f.usage_type, '')) LIKE '%postgres%'
+    OR LOWER(COALESCE(f.product_usage_type, '')) LIKE '%postgres%' THEN 'RDS PostgreSQL'
+  WHEN LOWER(COALESCE(f.line_item_description, '')) LIKE '%running oracle%'
+    OR LOWER(COALESCE(f.operation, '')) LIKE '%oracle%'
+    OR LOWER(COALESCE(f.usage_type, '')) LIKE '%oracle%'
+    OR LOWER(COALESCE(f.product_usage_type, '')) LIKE '%oracle%' THEN 'RDS Oracle'
+  WHEN LOWER(COALESCE(f.line_item_description, '')) LIKE '%running sql server%'
+    OR LOWER(COALESCE(f.line_item_description, '')) LIKE '%sqlserver%'
+    OR LOWER(COALESCE(f.operation, '')) LIKE '%sqlserver%'
+    OR LOWER(COALESCE(f.usage_type, '')) LIKE '%sqlserver%'
+    OR LOWER(COALESCE(f.product_usage_type, '')) LIKE '%sqlserver%' THEN 'RDS SQL Server'
+  WHEN LOWER(COALESCE(f.usage_type, '')) LIKE '%instanceusage:db.%' OR LOWER(COALESCE(f.product_usage_type, '')) LIKE '%instanceusage:db.%' THEN 'RDS MySQL'
   ELSE 'Unknown'
 END
 `;
@@ -684,7 +707,7 @@ SELECT
   END AS resource_arn,
   MAX(COALESCE(NULLIF(dr.resource_name, ''), d.resource_id)) AS resource_name,
   MAX(d.db_service) AS db_service,
-  MAX(d.db_engine) AS db_engine,
+  COALESCE(MIN(NULLIF(d.db_engine, 'Unknown')), 'Unknown') AS db_engine,
   CASE
     WHEN d.resource_id LIKE 'db-scope:%' THEN 'scoped'
     WHEN LOWER(d.resource_id) LIKE 'arn:aws:rds:%:db:%' THEN 'instance'

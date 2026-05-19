@@ -8,24 +8,17 @@ import {
   servicesToAvailableDatabaseScopes,
 } from "./explorer.database-scope.js";
 import type {
-  ExplorerCards,
   ExplorerFilterOptions,
   ExplorerGroupBy,
+  ExplorerKpiCard,
+  ExplorerKpiState,
   ExplorerQueryParams,
   ExplorerTableRow,
   ExplorerTrendGrouped,
   ExplorerTrendGroupedSeries,
   ExplorerTrendItem,
+  ExplorerUsageTrendItem,
 } from "./explorer.types.js";
-
-const EMPTY_CARDS: ExplorerCards = {
-  totalCost: 0,
-  costTrendPct: null,
-  activeResources: 0,
-  dataFootprintGb: 0,
-  avgLoad: null,
-  connections: null,
-};
 
 type CardsAggregateRow = {
   totalCost: string | number | null;
@@ -34,6 +27,10 @@ type CardsAggregateRow = {
   avgLoad: string | number | null;
   connections: string | number | null;
   previousCost: string | number | null;
+  totalRows: string | number | null;
+  usageRowsWithLoad: string | number | null;
+  usageRowsWithConnections: string | number | null;
+  usageRowsWithStorage: string | number | null;
 };
 
 type CostTrendRow = {
@@ -114,6 +111,36 @@ const toNullableNumber = (value: string | number | null | undefined): number | n
   return Number.isFinite(parsed) ? parsed : null;
 };
 
+const COMPACT_NUMBER = new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 });
+const INTEGER = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 });
+const DECIMAL = new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 });
+const CURRENCY = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", notation: "compact", maximumFractionDigits: 1 });
+
+const formatCurrency = (value: number): string => CURRENCY.format(value);
+const formatInteger = (value: number): string => INTEGER.format(value);
+const formatCompact = (value: number): string => COMPACT_NUMBER.format(value);
+const formatDecimal = (value: number): string => DECIMAL.format(value);
+const formatPercent = (value: number): string => `${value >= 0 ? "+" : ""}${formatDecimal(value * 100)}%`;
+
+const resolveCoverageState = (
+  totalRows: number,
+  rowsWithSignal: number,
+): { state: ExplorerKpiState; note: string | null } => {
+  if (totalRows <= 0) {
+    return { state: "empty", note: "No resources matched the current filters/date window." };
+  }
+  if (rowsWithSignal <= 0) {
+    return { state: "unavailable", note: "CloudWatch/live utilization signal is unavailable for this selection." };
+  }
+  if (rowsWithSignal < totalRows) {
+    return { state: "partial", note: `Signal coverage is partial (${formatInteger(rowsWithSignal)}/${formatInteger(totalRows)} rows).` };
+  }
+  return { state: "normal", note: null };
+};
+
+const isUsageTrendItem = (item: ExplorerTrendItem): item is ExplorerUsageTrendItem =>
+  "load" in item && "connections" in item;
+
 const toUtcDateOnly = (value: string, fieldName: string): string => {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) {
@@ -183,18 +210,8 @@ const buildFactFilters = (
   }
 
   if (params.dbService) {
-    const normalizedService = params.dbService.trim().toLowerCase();
-    if (normalizedService.includes("aurora")) {
-      filters.push(
-        `(${pref}db_service = 'AmazonRDS' AND LOWER(COALESCE(${pref}db_engine, '')) LIKE 'aurora%')`,
-      );
-    } else if (normalizedService === "amazon rds" || normalizedService === "amazonrds") {
-      filters.push(
-        `(${pref}db_service = 'AmazonRDS' AND LOWER(COALESCE(${pref}db_engine, '')) NOT LIKE 'aurora%')`,
-      );
-    } else {
-      filters.push(`${pref}db_service = :dbService`);
-    }
+    const alias = pref ? pref.slice(0, -1) : "";
+    filters.push(`${alias ? buildDbServiceDisplaySql(alias) : buildDbServiceDisplaySqlUnqualified()} = :dbService`);
   }
 
   if (params.databaseScope && params.databaseScope !== "all") {
@@ -228,18 +245,8 @@ const buildTrendFilters = (params: ExplorerQueryParams, tableAlias = ""): string
   }
 
   if (params.dbService) {
-    const normalizedService = params.dbService.trim().toLowerCase();
-    if (normalizedService.includes("aurora")) {
-      filters.push(
-        `(${pref}db_service = 'AmazonRDS' AND LOWER(COALESCE(${pref}db_engine, '')) LIKE 'aurora%')`,
-      );
-    } else if (normalizedService === "amazon rds" || normalizedService === "amazonrds") {
-      filters.push(
-        `(${pref}db_service = 'AmazonRDS' AND LOWER(COALESCE(${pref}db_engine, '')) NOT LIKE 'aurora%')`,
-      );
-    } else {
-      filters.push(`${pref}db_service = :dbService`);
-    }
+    const alias = pref ? pref.slice(0, -1) : "";
+    filters.push(`${alias ? buildDbServiceDisplaySql(alias) : buildDbServiceDisplaySqlUnqualified()} = :dbService`);
   }
 
   if (params.databaseScope && params.databaseScope !== "all") {
@@ -251,6 +258,45 @@ const buildTrendFilters = (params: ExplorerQueryParams, tableAlias = ""): string
   }
 
   return filters.join("\n    AND ");
+};
+
+const groupedExpressionForFact = (groupBy: ExplorerGroupBy): string | null => {
+  if (groupBy === "cost_category") return null;
+  return GROUP_BY_COLUMNS[groupBy].selectExpression;
+};
+
+const groupedExpressionForCostHistory = (groupBy: ExplorerGroupBy): string | null => {
+  if (groupBy !== "cost_category") return null;
+  return COST_CATEGORY_LABEL_CASE;
+};
+
+const buildGroupedValuesFilter = (
+  params: ExplorerQueryParams,
+  source: "fact" | "cost_history",
+  tableAlias = "",
+): string | null => {
+  if (!Array.isArray(params.groupValues) || params.groupValues.length === 0) {
+    return null;
+  }
+
+  const expression = source === "fact" ? groupedExpressionForFact(params.groupBy) : groupedExpressionForCostHistory(params.groupBy);
+  if (!expression) {
+    return null;
+  }
+
+  const trimmed = [...new Set(params.groupValues.map((value) => value.trim().toLowerCase()).filter((value) => value.length > 0))];
+  if (trimmed.length === 0) {
+    return null;
+  }
+
+  params.groupValues = trimmed;
+
+  if (source === "fact" && tableAlias) {
+    const expr = expression.replaceAll("f.", `${tableAlias}.`);
+    return `LOWER(BTRIM(${expr})) IN (:groupValues)`;
+  }
+
+  return `LOWER(BTRIM(${expression})) IN (:groupValues)`;
 };
 
 const buildFilterOptionsFilters = (
@@ -293,6 +339,7 @@ latest_inventory AS (
     s.tenant_id,
     s.cloud_connection_id,
     s.resource_id,
+    s.db_engine,
     s.instance_class,
     s.cluster_id
   FROM db_resource_inventory_snapshots s
@@ -314,6 +361,43 @@ ${options.withInventory ? `LEFT JOIN latest_inventory li
   ON li.tenant_id = f.tenant_id
  AND li.resource_id = f.resource_id
  AND li.cloud_connection_id IS NOT DISTINCT FROM f.cloud_connection_id` : ""}
+`;
+
+const buildDbServiceDisplaySql = (tableAlias: string): string => `
+CASE
+  WHEN LOWER(COALESCE(${tableAlias}.db_engine, '')) LIKE 'aurora%' THEN 'Amazon Aurora'
+  WHEN LOWER(COALESCE(${tableAlias}.db_service, '')) IN ('amazonrds', 'amazon rds', 'amazonrelationaldatabaseservice') THEN 'Amazon RDS'
+  WHEN LOWER(COALESCE(${tableAlias}.db_service, '')) IN ('amazonelasticache', 'amazon elasticache', 'elasticache') THEN 'Amazon ElastiCache'
+  WHEN LOWER(COALESCE(${tableAlias}.db_service, '')) IN ('amazonmemorydb', 'amazon memorydb', 'memorydb') THEN 'Amazon MemoryDB'
+  WHEN LOWER(COALESCE(${tableAlias}.db_service, '')) IN ('amazondynamodb', 'amazon dynamodb', 'dynamodb') THEN 'Amazon DynamoDB'
+  WHEN LOWER(COALESCE(${tableAlias}.db_service, '')) IN ('amazondocdb', 'amazon docdb', 'amazon documentdb', 'documentdb') THEN 'Amazon DocumentDB'
+  WHEN LOWER(COALESCE(${tableAlias}.db_service, '')) IN ('amazonneptune', 'amazon neptune', 'neptune') THEN 'Amazon Neptune'
+  WHEN LOWER(COALESCE(${tableAlias}.db_service, '')) IN ('amazonkeyspaces', 'amazon keyspaces', 'keyspaces') THEN 'Amazon Keyspaces'
+  WHEN LOWER(COALESCE(${tableAlias}.db_service, '')) IN ('amazontimestream', 'amazon timestream', 'timestream') THEN 'Amazon Timestream'
+  ELSE 'Unknown service'
+END
+`;
+
+const buildDbServiceDisplaySqlUnqualified = (): string => `
+CASE
+  WHEN LOWER(COALESCE(db_engine, '')) LIKE 'aurora%' THEN 'Amazon Aurora'
+  WHEN LOWER(COALESCE(db_service, '')) IN ('amazonrds', 'amazon rds', 'amazonrelationaldatabaseservice') THEN 'Amazon RDS'
+  WHEN LOWER(COALESCE(db_service, '')) IN ('amazonelasticache', 'amazon elasticache', 'elasticache') THEN 'Amazon ElastiCache'
+  WHEN LOWER(COALESCE(db_service, '')) IN ('amazonmemorydb', 'amazon memorydb', 'memorydb') THEN 'Amazon MemoryDB'
+  WHEN LOWER(COALESCE(db_service, '')) IN ('amazondynamodb', 'amazon dynamodb', 'dynamodb') THEN 'Amazon DynamoDB'
+  WHEN LOWER(COALESCE(db_service, '')) IN ('amazondocdb', 'amazon docdb', 'amazon documentdb', 'documentdb') THEN 'Amazon DocumentDB'
+  WHEN LOWER(COALESCE(db_service, '')) IN ('amazonneptune', 'amazon neptune', 'neptune') THEN 'Amazon Neptune'
+  WHEN LOWER(COALESCE(db_service, '')) IN ('amazonkeyspaces', 'amazon keyspaces', 'keyspaces') THEN 'Amazon Keyspaces'
+  WHEN LOWER(COALESCE(db_service, '')) IN ('amazontimestream', 'amazon timestream', 'timestream') THEN 'Amazon Timestream'
+  ELSE 'Unknown service'
+END
+`;
+
+const buildDbServiceDisplayKeySql = (tableAlias: string): string => `
+COALESCE(
+  NULLIF(LOWER(REGEXP_REPLACE((${buildDbServiceDisplaySql(tableAlias)}), '[^a-z0-9]+', '-', 'g')), ''),
+  'unknown-service'
+)
 `;
 
 const DB_TYPE_SERVICE_SOURCE_SQL = `
@@ -388,38 +472,21 @@ END
 `;
 
 const GROUP_BY_COLUMNS = {
-  db_type: {
-    selectExpression: DB_TYPE_CLASSIFICATION_CASE,
-    groupExpression: DB_TYPE_CLASSIFICATION_CASE,
-    keyExpression:
-      "COALESCE(NULLIF(LOWER(REGEXP_REPLACE((" + DB_TYPE_CLASSIFICATION_CASE + "), '[^a-z0-9]+', '-', 'g')), ''), 'unknown-database-type')",
-    requiresInventory: false,
-    requiresRegion: false,
-  },
   db_service: {
-    selectExpression: `CASE
-      WHEN LOWER(COALESCE(f.db_engine, '')) LIKE 'aurora%' THEN 'Amazon Aurora'
-      WHEN COALESCE(NULLIF(BTRIM(f.db_service), ''), '') <> '' THEN 'Amazon RDS'
-      ELSE 'Unknown service'
-    END`,
-    groupExpression: `CASE
-      WHEN LOWER(COALESCE(f.db_engine, '')) LIKE 'aurora%' THEN 'Amazon Aurora'
-      WHEN COALESCE(NULLIF(BTRIM(f.db_service), ''), '') <> '' THEN 'Amazon RDS'
-      ELSE 'Unknown service'
-    END`,
-    keyExpression: `CASE
-      WHEN LOWER(COALESCE(f.db_engine, '')) LIKE 'aurora%' THEN 'amazon-aurora'
-      WHEN COALESCE(NULLIF(BTRIM(f.db_service), ''), '') <> '' THEN 'amazon-rds'
-      ELSE 'unknown-service'
-    END`,
+    selectExpression: buildDbServiceDisplaySql("f"),
+    groupExpression: buildDbServiceDisplaySql("f"),
+    keyExpression: buildDbServiceDisplayKeySql("f"),
     requiresInventory: false,
     requiresRegion: false,
   },
   db_engine: {
-    selectExpression: "COALESCE(NULLIF(BTRIM(f.db_engine), ''), 'Unknown engine')",
-    groupExpression: "COALESCE(NULLIF(BTRIM(f.db_engine), ''), 'Unknown engine')",
-    keyExpression: "COALESCE(NULLIF(BTRIM(f.db_engine), ''), 'unknown-engine')",
-    requiresInventory: false,
+    selectExpression:
+      "COALESCE(NULLIF(NULLIF(LOWER(BTRIM(f.db_engine)), 'unknown'), ''), NULLIF(LOWER(BTRIM(li.db_engine)), ''), 'Unknown engine')",
+    groupExpression:
+      "COALESCE(NULLIF(NULLIF(LOWER(BTRIM(f.db_engine)), 'unknown'), ''), NULLIF(LOWER(BTRIM(li.db_engine)), ''), 'Unknown engine')",
+    keyExpression:
+      "COALESCE(NULLIF(NULLIF(LOWER(BTRIM(f.db_engine)), 'unknown'), ''), NULLIF(LOWER(BTRIM(li.db_engine)), ''), 'unknown-engine')",
+    requiresInventory: true,
     requiresRegion: false,
   },
   region: {
@@ -453,7 +520,6 @@ const GROUP_BY_COLUMNS = {
 } as const;
 
 const GROUPED_UNKNOWN_LABELS: Record<ExplorerGroupBy, string> = {
-  db_type: "Unknown database type",
   db_service: "Unknown service",
   db_engine: "Unknown engine",
   region: "Unknown region",
@@ -481,16 +547,24 @@ const OPERATIONAL_COST_CATEGORIES = ["compute", "storage", "io", "backup", "data
 
 const buildResourceDrilldownFilters = (params: ExplorerQueryParams, tableAlias = ""): string => {
   const pref = tableAlias ? `${tableAlias}.` : "";
-  return `${buildTrendFilters(params, tableAlias)}
+  const base = `${buildTrendFilters(params, tableAlias)}
     AND COALESCE(LOWER(BTRIM(${pref}resource_type)), '') <> 'scoped'
     AND ${pref}resource_id NOT LIKE 'db-scope:%'`;
+  const groupedValuesFilter = buildGroupedValuesFilter(params, "fact", tableAlias || "fact_db_resource_daily");
+  if (!groupedValuesFilter) return base;
+  return `${base}
+    AND ${groupedValuesFilter}`;
 };
 
 const buildCostHistoryDrilldownFilters = (params: ExplorerQueryParams, tableAlias = ""): string => {
   const pref = tableAlias ? `${tableAlias}.` : "";
-  return `${buildTrendFilters(params, tableAlias)}
+  const base = `${buildTrendFilters(params, tableAlias)}
     AND ${pref}resource_id NOT LIKE 'db-scope:%'
     AND ${pref}resource_id NOT LIKE 'db-unattributed:%'`;
+  const groupedValuesFilter = buildGroupedValuesFilter(params, "cost_history", tableAlias);
+  if (!groupedValuesFilter) return base;
+  return `${base}
+    AND ${groupedValuesFilter}`;
 };
 
 export class DatabaseExplorerRepository {
@@ -506,14 +580,13 @@ export class DatabaseExplorerRepository {
     );
     const discoveryFilters = buildScopeDiscoveryFilters(discoveryParams);
 
-    const [discoveryServiceRows, serviceRows, engineRows, regionRows, resourceTypeRows, instanceClassRows, clusterRows, costCategoryRows, dbTypeRows, dbServicePreviewRows] = await Promise.all([
+    const [discoveryServiceRows, serviceRows, engineRows, regionRows, resourceTypeRows, instanceClassRows, clusterRows, costCategoryRows, dbServicePreviewRows] = await Promise.all([
       sequelize.query<FilterOptionValueRow>(
         `
-SELECT DISTINCT db_service AS value
-FROM fact_db_resource_daily
+SELECT DISTINCT ${buildDbServiceDisplaySql("f")} AS value
+FROM fact_db_resource_daily f
 WHERE ${discoveryFilters}
-  AND db_service IS NOT NULL
-  AND BTRIM(db_service) <> ''
+  AND ${buildDbServiceDisplaySql("f")} <> 'Unknown service'
 ORDER BY value ASC;
 `,
         {
@@ -523,11 +596,10 @@ ORDER BY value ASC;
       ),
       sequelize.query<FilterOptionValueRow>(
         `
-SELECT DISTINCT db_service AS value
-FROM fact_db_resource_daily
+SELECT DISTINCT ${buildDbServiceDisplaySql("f")} AS value
+FROM fact_db_resource_daily f
 WHERE ${filters}
-  AND db_service IS NOT NULL
-  AND BTRIM(db_service) <> ''
+  AND ${buildDbServiceDisplaySql("f")} <> 'Unknown service'
 ORDER BY value ASC;
 `,
         {
@@ -537,12 +609,18 @@ ORDER BY value ASC;
       ),
       sequelize.query<FilterOptionValueRow>(
         `
-SELECT DISTINCT db_engine AS value
-FROM fact_db_resource_daily
-WHERE ${filters}
-  AND db_engine IS NOT NULL
-  AND BTRIM(db_engine) <> ''
-  AND LOWER(BTRIM(db_engine)) <> 'unknown'
+WITH ${latestInventoryCteSql}
+SELECT DISTINCT
+  COALESCE(
+    NULLIF(NULLIF(LOWER(BTRIM(f.db_engine)), 'unknown'), ''),
+    NULLIF(LOWER(BTRIM(li.db_engine)), '')
+  ) AS value
+${fromFactBaseSql({ withInventory: true, withRegion: false })}
+WHERE ${buildTrendFilters(queryParams, "f")}
+  AND COALESCE(
+    NULLIF(NULLIF(LOWER(BTRIM(f.db_engine)), 'unknown'), ''),
+    NULLIF(LOWER(BTRIM(li.db_engine)), '')
+  ) IS NOT NULL
 ORDER BY value ASC;
 `,
         {
@@ -601,23 +679,11 @@ ORDER BY value ASC;
       ),
       sequelize.query<FilterOptionValueRow>(
         `
-SELECT DISTINCT ${DB_TYPE_CLASSIFICATION_CASE} AS value
-FROM fact_db_resource_daily f
-WHERE ${buildTrendFilters(queryParams, "f")}
-ORDER BY value ASC;
-`,
-        { replacements: queryParams, type: QueryTypes.SELECT },
-      ),
-      sequelize.query<FilterOptionValueRow>(
-        `
 SELECT DISTINCT
-  CASE
-    WHEN LOWER(COALESCE(f.db_engine, '')) LIKE 'aurora%' THEN 'Amazon Aurora'
-    WHEN COALESCE(NULLIF(BTRIM(f.db_service), ''), '') <> '' THEN 'Amazon RDS'
-    ELSE 'Unknown service'
-  END AS value
+  ${buildDbServiceDisplaySql("f")} AS value
 FROM fact_db_resource_daily f
 WHERE ${buildTrendFilters(queryParams, "f")}
+  AND ${buildDbServiceDisplaySql("f")} <> 'Unknown service'
 ORDER BY value ASC;
 `,
         { replacements: queryParams, type: QueryTypes.SELECT },
@@ -636,7 +702,6 @@ ORDER BY value ASC;
         .map((row) => (typeof row.value === "string" ? row.value.trim() : ""))
         .filter((value) => value.length > 0),
       groupedValuePreview: {
-        db_type: dbTypeRows.map((row) => (typeof row.value === "string" ? row.value.trim() : "")).filter((value) => value.length > 0),
         db_service: dbServicePreviewRows.map((row) => (typeof row.value === "string" ? row.value.trim() : "")).filter((value) => value.length > 0),
         db_engine: engineRows.map((row) => (typeof row.value === "string" ? row.value.trim() : "")).filter((value) => value.length > 0),
         region: regionRows.map((row) => (typeof row.value === "string" ? row.value.trim() : "")).filter((value) => value.length > 0),
@@ -649,7 +714,7 @@ ORDER BY value ASC;
     };
   }
 
-  async getCards(params: ExplorerQueryParams): Promise<ExplorerCards> {
+  async getCards(params: ExplorerQueryParams): Promise<ExplorerKpiCard[]> {
     const previousPeriod = getPreviousPeriod(params);
     const queryParams = buildExplorerReplacements({
       ...params,
@@ -667,8 +732,12 @@ WITH current_period AS (
     COALESCE(SUM(total_billed_cost), 0) AS "totalCost",
     COUNT(DISTINCT resource_id) AS "activeResources",
     COALESCE(SUM(data_footprint_gb), 0) AS "dataFootprintGb",
-    AVG(load_avg) AS "avgLoad",
-    AVG(connections_avg) AS "connections"
+    AVG(COALESCE(load_avg, cpu_avg)) AS "avgLoad",
+    AVG(connections_avg) AS "connections",
+    COUNT(*) AS "totalRows",
+    COUNT(*) FILTER (WHERE COALESCE(load_avg, cpu_avg) IS NOT NULL) AS "usageRowsWithLoad",
+    COUNT(*) FILTER (WHERE connections_avg IS NOT NULL) AS "usageRowsWithConnections",
+    COUNT(*) FILTER (WHERE data_footprint_gb IS NOT NULL) AS "usageRowsWithStorage"
   FROM fact_db_resource_daily
   WHERE ${currentFilters}
 ),
@@ -684,6 +753,10 @@ SELECT
   current_period."dataFootprintGb",
   current_period."avgLoad",
   current_period."connections",
+  current_period."totalRows",
+  current_period."usageRowsWithLoad",
+  current_period."usageRowsWithConnections",
+  current_period."usageRowsWithStorage",
   previous_period."previousCost"
 FROM current_period
 CROSS JOIN previous_period;
@@ -696,20 +769,150 @@ CROSS JOIN previous_period;
 
     const row = rows[0];
     if (!row) {
-      return EMPTY_CARDS;
+      return [];
     }
 
     const totalCost = toNumber(row.totalCost);
     const previousCost = toNumber(row.previousCost);
+    const costTrend = previousCost === 0 ? null : (totalCost - previousCost) / previousCost;
+    const activeResources = toNumber(row.activeResources);
+    const dataFootprintGb = toNumber(row.dataFootprintGb);
+    const connections = toNullableNumber(row.connections);
+    const totalRows = toNumber(row.totalRows);
+    const loadRows = toNumber(row.usageRowsWithLoad);
+    const connectionRows = toNumber(row.usageRowsWithConnections);
+    const storageRows = toNumber(row.usageRowsWithStorage);
 
-    return {
-      totalCost,
-      costTrendPct: previousCost === 0 ? null : (totalCost - previousCost) / previousCost,
-      activeResources: toNumber(row.activeResources),
-      dataFootprintGb: toNumber(row.dataFootprintGb),
-      avgLoad: toNullableNumber(row.avgLoad),
-      connections: toNullableNumber(row.connections),
-    };
+    if (params.metric === "cost") {
+      const topTableRows = await this.getTable({ ...params, metric: "cost", groupBy: "db_service" });
+      const topRegionRows = await this.getTable({ ...params, metric: "cost", groupBy: "region" });
+      const topCostCategoryRows = await this.getTable({ ...params, metric: "cost", groupBy: "cost_category" });
+      const topCostDriver = topCostCategoryRows[0];
+      const topService = topTableRows[0];
+      const topRegion = topRegionRows[0];
+      const isEmpty = activeResources <= 0 && totalCost <= 0;
+
+      return [
+        {
+          id: "total_database_spend",
+          title: "Total Database Spend",
+          value: formatCurrency(totalCost),
+          subValue: `Active resources: ${formatInteger(activeResources)}`,
+          state: isEmpty ? "empty" : "normal",
+          note: "Source: db_cost_history_daily / fact_db_resource_daily",
+        },
+        {
+          id: "cost_trend_pct",
+          title: "Cost Trend %",
+          value: costTrend === null ? "N/A" : formatPercent(costTrend),
+          subValue: previousCost === 0 ? "No previous-period baseline" : `Previous period: ${formatCurrency(previousCost)}`,
+          trend: {
+            value: costTrend,
+            direction: costTrend === null ? "unknown" : costTrend > 0 ? "up" : costTrend < 0 ? "down" : "flat",
+          },
+          state: previousCost === 0 ? (isEmpty ? "empty" : "partial") : "normal",
+          note: "Compares current window vs previous aligned window.",
+        },
+        {
+          id: "top_cost_driver",
+          title: "Top Cost Driver",
+          value: topCostDriver ? topCostDriver.group : "N/A",
+          subValue: topCostDriver ? formatCurrency(topCostDriver.totalCost) : "No cost-category data",
+          state: topCostDriver ? "normal" : (isEmpty ? "empty" : "partial"),
+          note: "From db_cost_history_daily grouped by cost_category.",
+        },
+        {
+          id: "top_charging_service",
+          title: "Top Charging Service",
+          value: topService ? topService.group : "N/A",
+          subValue: topService ? formatCurrency(topService.totalCost) : "No service cost data",
+          state: topService ? "normal" : (isEmpty ? "empty" : "partial"),
+          note: "From fact_db_resource_daily grouped by db_service.",
+        },
+        {
+          id: "highest_cost_region",
+          title: "Highest Cost Region",
+          value: topRegion ? topRegion.group : "N/A",
+          subValue: topRegion ? formatCurrency(topRegion.totalCost) : "No regional cost data",
+          state: topRegion ? "normal" : (isEmpty ? "empty" : "partial"),
+          note: "From fact_db_resource_daily grouped by region.",
+        },
+      ];
+    }
+
+    const loadCoverage = resolveCoverageState(totalRows, loadRows);
+    const connCoverage = resolveCoverageState(totalRows, connectionRows);
+    const storageCoverage = resolveCoverageState(totalRows, storageRows);
+    const usageServiceTrendGrouped = await this.getTrendGrouped({ ...params, metric: "usage", groupBy: "db_service" });
+    const usageRegionTrendGrouped = await this.getTrendGrouped({ ...params, metric: "usage", groupBy: "region" });
+    const topUsageService = usageServiceTrendGrouped.series
+      .slice()
+      .sort((a, b) => (b.total ?? 0) - (a.total ?? 0))[0];
+    const topUsageRegion = usageRegionTrendGrouped.series
+      .slice()
+      .sort((a, b) => (b.total ?? 0) - (a.total ?? 0))[0];
+    const trendRows = (await this.getTrend({ ...params, metric: "usage" })).filter(isUsageTrendItem);
+    const peakLoad = trendRows.reduce<number | null>((peak, item) => {
+      if (item.load === null) return peak;
+      if (peak === null || item.load > peak) return item.load;
+      return peak;
+    }, null);
+    const firstLoad = trendRows.find((item) => item.load !== null);
+    const lastLoad = [...trendRows].reverse().find((item) => item.load !== null);
+    const activityTrend = firstLoad && lastLoad && firstLoad.load !== null && lastLoad.load !== null
+      ? (lastLoad.load - firstLoad.load) / (firstLoad.load === 0 ? 1 : firstLoad.load)
+      : null;
+
+    return [
+      {
+        id: "active_db_resources",
+        title: "Active DB Resources",
+        value: formatInteger(activeResources),
+        subValue: `Rows in scope: ${formatInteger(totalRows)}`,
+        state: activeResources <= 0 ? "empty" : "normal",
+        note: "Distinct resources from fact_db_resource_daily.",
+      },
+      {
+        id: "peak_usage_driver",
+        title: "Peak Usage Driver",
+        value: topUsageService?.label ?? "N/A",
+        subValue: peakLoad === null ? "No load telemetry" : `Peak avg load: ${formatCompact(peakLoad)}`,
+        trend: {
+          value: activityTrend,
+          direction: activityTrend === null ? "unknown" : activityTrend > 0 ? "up" : activityTrend < 0 ? "down" : "flat",
+        },
+        state: loadCoverage.state,
+        note: loadCoverage.note ?? "Derived from usage trend grouped by DB service.",
+      },
+      {
+        id: "operational_hotspot",
+        title: "Operational Hotspot",
+        value: topUsageRegion?.label ?? "N/A",
+        subValue: topUsageRegion?.total ? `Usage score: ${formatCompact(topUsageRegion.total)}` : "No region usage signal",
+        state: loadCoverage.state,
+        note: loadCoverage.note ?? "Derived from usage trend grouped by region.",
+      },
+      {
+        id: "storage_footprint",
+        title: "Storage Footprint",
+        value: `${formatCompact(dataFootprintGb)} GB`,
+        subValue: storageRows > 0 ? `Telemetry rows: ${formatInteger(storageRows)}` : "No storage telemetry",
+        state: storageCoverage.state,
+        note: storageCoverage.note ?? "From data_footprint_gb in fact_db_resource_daily.",
+      },
+      {
+        id: "activity_trend",
+        title: "Activity Trend",
+        value: activityTrend === null ? "N/A" : formatPercent(activityTrend),
+        subValue: connections === null ? "Connections unavailable" : `Avg connections: ${formatCompact(connections)}`,
+        trend: {
+          value: activityTrend,
+          direction: activityTrend === null ? "unknown" : activityTrend > 0 ? "up" : activityTrend < 0 ? "down" : "flat",
+        },
+        state: connCoverage.state === "normal" ? loadCoverage.state : connCoverage.state,
+        note: connCoverage.note ?? loadCoverage.note ?? "From load/connections daily trend in fact_db_resource_daily.",
+      },
+    ];
   }
 
   async getTrend(params: ExplorerQueryParams): Promise<ExplorerTrendItem[]> {
@@ -717,17 +920,19 @@ CROSS JOIN previous_period;
     const filters = buildTrendFilters(queryParams);
 
     if (queryParams.metric === "usage") {
+      const groupedValuesFilter = buildGroupedValuesFilter(queryParams, "fact", "f");
+      const usageFilters = groupedValuesFilter ? `${filters}\n  AND ${groupedValuesFilter}` : filters;
       const rows = await sequelize.query<UsageTrendRow>(
         `
 SELECT
-  usage_date AS date,
-  AVG(load_avg) AS load,
-  AVG(connections_avg) AS connections
-FROM fact_db_resource_daily
-WHERE ${filters}
-  AND (load_avg IS NOT NULL OR connections_avg IS NOT NULL)
-GROUP BY usage_date
-ORDER BY usage_date ASC;
+  f.usage_date AS date,
+  AVG(COALESCE(f.load_avg, f.cpu_avg)) AS load,
+  AVG(f.connections_avg) AS connections
+FROM fact_db_resource_daily f
+WHERE ${usageFilters}
+  AND (f.load_avg IS NOT NULL OR f.cpu_avg IS NOT NULL OR f.connections_avg IS NOT NULL)
+GROUP BY f.usage_date
+ORDER BY f.usage_date ASC;
 `,
         {
           replacements: queryParams,
@@ -824,7 +1029,7 @@ SELECT
   COALESCE(SUM(f.io_cost), 0) AS "ioCost",
   COALESCE(SUM(f.backup_cost), 0) AS "backupCost",
   COUNT(DISTINCT f.resource_id) AS "resourceCount",
-  AVG(f.load_avg) AS "avgLoad",
+  AVG(COALESCE(f.load_avg, f.cpu_avg)) AS "avgLoad",
   AVG(f.connections_avg) AS "connections"
 ${fromFactBaseSql({ withInventory, withRegion })}
 WHERE ${filters}
@@ -942,7 +1147,7 @@ ORDER BY ch.usage_date ASC;
     const withRegion = groupBy.requiresRegion;
 
     const valueExpression = isUsage
-      ? "AVG(f.load_avg)"
+      ? "AVG(COALESCE(f.load_avg, f.cpu_avg))"
       : "COALESCE(SUM(f.total_billed_cost), SUM(f.total_effective_cost), 0)";
 
     const rows = await sequelize.query<GroupedTrendAggregateRow>(

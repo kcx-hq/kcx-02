@@ -408,6 +408,16 @@ WITH scoped_fact AS (
   FROM fact_db_resource_daily f
   WHERE ${scopedSql}
 ),
+scoped_util AS (
+  SELECT u.*
+  FROM db_utilization_daily u
+  WHERE u.tenant_id = CAST(:tenantId AS uuid)
+    AND u.usage_date BETWEEN CAST(:startDate AS date) AND CAST(:endDate AS date)
+    AND (
+      :cloudConnectionId IS NULL
+      OR u.cloud_connection_id = CAST(:cloudConnectionId AS uuid)
+    )
+),
 aggregated_assets AS (
   SELECT
     f.tenant_id,
@@ -431,8 +441,18 @@ aggregated_assets AS (
     MAX(f.cpu_max) AS max_cpu,
     AVG(f.connections_avg) AS avg_connections,
     MAX(f.connections_max) AS max_connections,
-    AVG(COALESCE(f.read_iops, 0) + COALESCE(f.write_iops, 0)) AS avg_iops,
-    AVG(COALESCE(f.read_throughput_bytes, 0) + COALESCE(f.write_throughput_bytes, 0)) AS avg_throughput_bytes,
+    AVG(
+      CASE
+        WHEN f.read_iops IS NULL AND f.write_iops IS NULL THEN NULL
+        ELSE COALESCE(f.read_iops, 0) + COALESCE(f.write_iops, 0)
+      END
+    ) AS avg_iops,
+    AVG(
+      CASE
+        WHEN f.read_throughput_bytes IS NULL AND f.write_throughput_bytes IS NULL THEN NULL
+        ELSE COALESCE(f.read_throughput_bytes, 0) + COALESCE(f.write_throughput_bytes, 0)
+      END
+    ) AS avg_throughput_bytes,
     COALESCE(SUM(f.total_billed_cost), 0) AS total_billed_cost,
     COALESCE(SUM(f.total_effective_cost), 0) AS total_effective_cost,
     COALESCE(SUM(f.total_list_cost), 0) AS total_list_cost,
@@ -441,6 +461,49 @@ aggregated_assets AS (
     MAX(f.usage_date) AS latest_usage_date
   FROM scoped_fact f
   GROUP BY f.tenant_id, f.cloud_connection_id, f.resource_id
+),
+aggregated_util AS (
+  SELECT
+    u.tenant_id,
+    u.cloud_connection_id,
+    u.resource_id,
+    AVG(u.cpu_avg) AS avg_cpu,
+    MAX(u.cpu_max) AS max_cpu,
+    AVG(u.connections_avg) AS avg_connections,
+    MAX(u.connections_max) AS max_connections,
+    AVG(
+      CASE
+        WHEN u.read_iops IS NULL AND u.write_iops IS NULL THEN NULL
+        ELSE COALESCE(u.read_iops, 0) + COALESCE(u.write_iops, 0)
+      END
+    ) AS avg_iops,
+    AVG(
+      CASE
+        WHEN u.read_throughput_bytes IS NULL AND u.write_throughput_bytes IS NULL THEN NULL
+        ELSE COALESCE(u.read_throughput_bytes, 0) + COALESCE(u.write_throughput_bytes, 0)
+      END
+    ) AS avg_throughput_bytes
+  FROM scoped_util u
+  GROUP BY u.tenant_id, u.cloud_connection_id, u.resource_id
+),
+latest_util AS (
+  SELECT ranked.*
+  FROM (
+    SELECT
+      u.tenant_id,
+      u.cloud_connection_id,
+      u.resource_id,
+      u.usage_date,
+      u.allocated_storage_gb,
+      u.storage_used_gb,
+      u.updated_at,
+      ROW_NUMBER() OVER (
+        PARTITION BY u.tenant_id, u.cloud_connection_id, u.resource_id
+        ORDER BY u.usage_date DESC, u.updated_at DESC
+      ) AS row_num
+    FROM scoped_util u
+  ) ranked
+  WHERE ranked.row_num = 1
 ),
 latest_inventory AS (
   SELECT ranked.*
@@ -512,15 +575,15 @@ final_assets AS (
     COALESCE(li.status, a.status) AS status,
     COALESCE(li.cluster_id, a.cluster_id) AS cluster_id,
     COALESCE(li.is_cluster_resource, a.is_cluster_resource, false) AS is_cluster_resource,
-    COALESCE(li.allocated_storage_gb, a.fact_allocated_storage_gb) AS allocated_storage_gb,
-    a.fact_storage_used_gb AS storage_used_gb,
+    COALESCE(lu.allocated_storage_gb, li.allocated_storage_gb, a.fact_allocated_storage_gb) AS allocated_storage_gb,
+    COALESCE(lu.storage_used_gb, a.fact_storage_used_gb) AS storage_used_gb,
     COALESCE(li.data_footprint_gb, a.fact_data_footprint_gb) AS data_footprint_gb,
-    a.avg_cpu,
-    a.max_cpu,
-    a.avg_connections,
-    a.max_connections,
-    a.avg_iops,
-    a.avg_throughput_bytes,
+    COALESCE(au.avg_cpu, a.avg_cpu) AS avg_cpu,
+    COALESCE(au.max_cpu, a.max_cpu) AS max_cpu,
+    COALESCE(au.avg_connections, a.avg_connections) AS avg_connections,
+    COALESCE(au.max_connections, a.max_connections) AS max_connections,
+    COALESCE(au.avg_iops, a.avg_iops) AS avg_iops,
+    COALESCE(au.avg_throughput_bytes, a.avg_throughput_bytes) AS avg_throughput_bytes,
     a.total_billed_cost,
     a.total_effective_cost,
     a.total_list_cost,
@@ -546,6 +609,20 @@ final_assets AS (
    AND (
      rc.cloud_connection_id = a.cloud_connection_id
      OR (rc.cloud_connection_id IS NULL AND a.cloud_connection_id IS NULL)
+   )
+  LEFT JOIN aggregated_util au
+    ON au.tenant_id = a.tenant_id
+   AND au.resource_id = a.resource_id
+   AND (
+     au.cloud_connection_id = a.cloud_connection_id
+     OR (au.cloud_connection_id IS NULL AND a.cloud_connection_id IS NULL)
+   )
+  LEFT JOIN latest_util lu
+    ON lu.tenant_id = a.tenant_id
+   AND lu.resource_id = a.resource_id
+   AND (
+     lu.cloud_connection_id = a.cloud_connection_id
+     OR (lu.cloud_connection_id IS NULL AND a.cloud_connection_id IS NULL)
    )
   WHERE ${postJoinSql}
 )
@@ -621,6 +698,7 @@ LIMIT :pageSize OFFSET :offset;
         replacements: {
           ...scoped.replacements,
           ...postJoin.replacements,
+          cloudConnectionId: params.cloudConnectionId ?? null,
           pageSize: params.pageSize,
           offset,
         },
@@ -710,6 +788,7 @@ FROM final_assets fa;
         replacements: {
           ...scoped.replacements,
           ...postJoin.replacements,
+          cloudConnectionId: params.cloudConnectionId ?? null,
         },
         type: QueryTypes.SELECT,
       },
@@ -853,24 +932,24 @@ SELECT
   cost_summary."taxCost",
   cost_summary."creditAmount",
   cost_summary."refundAmount",
-  fact_summary."avgCpu",
-  fact_summary."maxCpu",
+  COALESCE(util_summary."avgCpu", fact_summary."avgCpu") AS "avgCpu",
+  COALESCE(util_summary."maxCpu", fact_summary."maxCpu") AS "maxCpu",
   fact_summary."avgLoad",
   fact_summary."maxLoad",
-  fact_summary."avgConnections",
-  fact_summary."maxConnections",
+  COALESCE(util_summary."avgConnections", fact_summary."avgConnections") AS "avgConnections",
+  COALESCE(util_summary."maxConnections", fact_summary."maxConnections") AS "maxConnections",
   fact_summary."requestCount",
-  fact_summary."allocatedStorageGb",
-  fact_summary."storageUsedGb",
+  COALESCE(util_summary."allocatedStorageGb", fact_summary."allocatedStorageGb") AS "allocatedStorageGb",
+  COALESCE(util_summary."storageUsedGb", fact_summary."storageUsedGb") AS "storageUsedGb",
   fact_summary."dataFootprintGb",
-  fact_summary."avgIops",
-  fact_summary."maxIops",
-  fact_summary."avgThroughputBytes",
-  fact_summary."maxThroughputBytes",
-  fact_summary."readIops",
-  fact_summary."writeIops",
-  fact_summary."readThroughputBytes",
-  fact_summary."writeThroughputBytes",
+  COALESCE(util_summary."avgIops", fact_summary."avgIops") AS "avgIops",
+  COALESCE(util_summary."maxIops", fact_summary."maxIops") AS "maxIops",
+  COALESCE(util_summary."avgThroughputBytes", fact_summary."avgThroughputBytes") AS "avgThroughputBytes",
+  COALESCE(util_summary."maxThroughputBytes", fact_summary."maxThroughputBytes") AS "maxThroughputBytes",
+  COALESCE(util_summary."readIops", fact_summary."readIops") AS "readIops",
+  COALESCE(util_summary."writeIops", fact_summary."writeIops") AS "writeIops",
+  COALESCE(util_summary."readThroughputBytes", fact_summary."readThroughputBytes") AS "readThroughputBytes",
+  COALESCE(util_summary."writeThroughputBytes", fact_summary."writeThroughputBytes") AS "writeThroughputBytes",
   fact_summary."dayCount"
 FROM (
   SELECT
@@ -888,10 +967,30 @@ FROM (
     MAX(f.allocated_storage_gb) AS "allocatedStorageGb",
     MAX(f.storage_used_gb) AS "storageUsedGb",
     MAX(f.data_footprint_gb) AS "dataFootprintGb",
-    AVG(COALESCE(f.read_iops, 0) + COALESCE(f.write_iops, 0)) AS "avgIops",
-    MAX(COALESCE(f.read_iops, 0) + COALESCE(f.write_iops, 0)) AS "maxIops",
-    AVG(COALESCE(f.read_throughput_bytes, 0) + COALESCE(f.write_throughput_bytes, 0)) AS "avgThroughputBytes",
-    MAX(COALESCE(f.read_throughput_bytes, 0) + COALESCE(f.write_throughput_bytes, 0)) AS "maxThroughputBytes",
+    AVG(
+      CASE
+        WHEN f.read_iops IS NULL AND f.write_iops IS NULL THEN NULL
+        ELSE COALESCE(f.read_iops, 0) + COALESCE(f.write_iops, 0)
+      END
+    ) AS "avgIops",
+    MAX(
+      CASE
+        WHEN f.read_iops IS NULL AND f.write_iops IS NULL THEN NULL
+        ELSE COALESCE(f.read_iops, 0) + COALESCE(f.write_iops, 0)
+      END
+    ) AS "maxIops",
+    AVG(
+      CASE
+        WHEN f.read_throughput_bytes IS NULL AND f.write_throughput_bytes IS NULL THEN NULL
+        ELSE COALESCE(f.read_throughput_bytes, 0) + COALESCE(f.write_throughput_bytes, 0)
+      END
+    ) AS "avgThroughputBytes",
+    MAX(
+      CASE
+        WHEN f.read_throughput_bytes IS NULL AND f.write_throughput_bytes IS NULL THEN NULL
+        ELSE COALESCE(f.read_throughput_bytes, 0) + COALESCE(f.write_throughput_bytes, 0)
+      END
+    ) AS "maxThroughputBytes",
     AVG(f.read_iops) AS "readIops",
     AVG(f.write_iops) AS "writeIops",
     AVG(f.read_throughput_bytes) AS "readThroughputBytes",
@@ -904,6 +1003,48 @@ FROM (
     AND COALESCE(LOWER(BTRIM(f.resource_type)), '') <> 'scoped'
     AND f.usage_date BETWEEN CAST(:startDate AS date) AND CAST(:endDate AS date)
 ) fact_summary
+CROSS JOIN (
+  SELECT
+    AVG(u.cpu_avg) AS "avgCpu",
+    MAX(u.cpu_max) AS "maxCpu",
+    AVG(u.connections_avg) AS "avgConnections",
+    MAX(u.connections_max) AS "maxConnections",
+    MAX(u.allocated_storage_gb) AS "allocatedStorageGb",
+    MAX(u.storage_used_gb) AS "storageUsedGb",
+    AVG(
+      CASE
+        WHEN u.read_iops IS NULL AND u.write_iops IS NULL THEN NULL
+        ELSE COALESCE(u.read_iops, 0) + COALESCE(u.write_iops, 0)
+      END
+    ) AS "avgIops",
+    MAX(
+      CASE
+        WHEN u.read_iops IS NULL AND u.write_iops IS NULL THEN NULL
+        ELSE COALESCE(u.read_iops, 0) + COALESCE(u.write_iops, 0)
+      END
+    ) AS "maxIops",
+    AVG(
+      CASE
+        WHEN u.read_throughput_bytes IS NULL AND u.write_throughput_bytes IS NULL THEN NULL
+        ELSE COALESCE(u.read_throughput_bytes, 0) + COALESCE(u.write_throughput_bytes, 0)
+      END
+    ) AS "avgThroughputBytes",
+    MAX(
+      CASE
+        WHEN u.read_throughput_bytes IS NULL AND u.write_throughput_bytes IS NULL THEN NULL
+        ELSE COALESCE(u.read_throughput_bytes, 0) + COALESCE(u.write_throughput_bytes, 0)
+      END
+    ) AS "maxThroughputBytes",
+    AVG(u.read_iops) AS "readIops",
+    AVG(u.write_iops) AS "writeIops",
+    AVG(u.read_throughput_bytes) AS "readThroughputBytes",
+    AVG(u.write_throughput_bytes) AS "writeThroughputBytes"
+  FROM db_utilization_daily u
+  WHERE u.tenant_id = CAST(:tenantId AS uuid)
+    AND u.cloud_connection_id = CAST(:cloudConnectionId AS uuid)
+    AND u.resource_id = :resourceId
+    AND u.usage_date BETWEEN CAST(:startDate AS date) AND CAST(:endDate AS date)
+) util_summary
 CROSS JOIN (
   SELECT
     COALESCE(SUM(ch.billed_cost), 0) AS "totalCost",
@@ -1008,64 +1149,166 @@ ORDER BY ch.usage_date ASC;
         ),
         sequelize.query<UsageTrendRow>(
           `
+WITH fact_daily AS (
+  SELECT
+    f.usage_date AS date,
+    AVG(f.cpu_avg) AS "factAvgCpu",
+    MAX(f.cpu_max) AS "factMaxCpu",
+    AVG(f.load_avg) AS "avgLoad",
+    MAX(f.load_avg) AS "maxLoad",
+    AVG(f.connections_avg) AS "factAvgConnections",
+    MAX(f.connections_max) AS "factMaxConnections",
+    SUM(f.request_count) AS "requestCount"
+  FROM fact_db_resource_daily f
+  WHERE f.tenant_id = CAST(:tenantId AS uuid)
+    AND f.cloud_connection_id = CAST(:cloudConnectionId AS uuid)
+    AND f.resource_id = :resourceId
+    AND COALESCE(LOWER(BTRIM(f.resource_type)), '') <> 'scoped'
+    AND f.usage_date BETWEEN CAST(:startDate AS date) AND CAST(:endDate AS date)
+  GROUP BY f.usage_date
+),
+util_daily AS (
+  SELECT
+    u.usage_date AS date,
+    AVG(u.cpu_avg) AS "utilAvgCpu",
+    MAX(u.cpu_max) AS "utilMaxCpu",
+    AVG(u.connections_avg) AS "utilAvgConnections",
+    MAX(u.connections_max) AS "utilMaxConnections"
+  FROM db_utilization_daily u
+  WHERE u.tenant_id = CAST(:tenantId AS uuid)
+    AND u.cloud_connection_id = CAST(:cloudConnectionId AS uuid)
+    AND u.resource_id = :resourceId
+    AND u.usage_date BETWEEN CAST(:startDate AS date) AND CAST(:endDate AS date)
+  GROUP BY u.usage_date
+)
 SELECT
-  f.usage_date AS date,
-  AVG(f.cpu_avg) AS "avgCpu",
-  MAX(f.cpu_max) AS "maxCpu",
-  AVG(f.load_avg) AS "avgLoad",
-  MAX(f.load_avg) AS "maxLoad",
-  AVG(f.connections_avg) AS "avgConnections",
-  MAX(f.connections_max) AS "maxConnections",
-  SUM(f.request_count) AS "requestCount"
-FROM fact_db_resource_daily f
-WHERE f.tenant_id = CAST(:tenantId AS uuid)
-  AND f.cloud_connection_id = CAST(:cloudConnectionId AS uuid)
-  AND f.resource_id = :resourceId
-  AND COALESCE(LOWER(BTRIM(f.resource_type)), '') <> 'scoped'
-  AND f.usage_date BETWEEN CAST(:startDate AS date) AND CAST(:endDate AS date)
-GROUP BY f.usage_date
-ORDER BY f.usage_date ASC;
+  COALESCE(fd.date, ud.date) AS date,
+  COALESCE(ud."utilAvgCpu", fd."factAvgCpu") AS "avgCpu",
+  COALESCE(ud."utilMaxCpu", fd."factMaxCpu") AS "maxCpu",
+  fd."avgLoad" AS "avgLoad",
+  fd."maxLoad" AS "maxLoad",
+  COALESCE(ud."utilAvgConnections", fd."factAvgConnections") AS "avgConnections",
+  COALESCE(ud."utilMaxConnections", fd."factMaxConnections") AS "maxConnections",
+  fd."requestCount" AS "requestCount"
+FROM fact_daily fd
+FULL OUTER JOIN util_daily ud
+  ON ud.date = fd.date
+ORDER BY COALESCE(fd.date, ud.date) ASC;
 `,
           { replacements, type: QueryTypes.SELECT },
         ),
         sequelize.query<StorageTrendRow>(
           `
+WITH fact_daily AS (
+  SELECT
+    f.usage_date AS date,
+    MAX(f.allocated_storage_gb) AS "factAllocatedStorageGb",
+    MAX(f.storage_used_gb) AS "factStorageUsedGb",
+    MAX(f.data_footprint_gb) AS "dataFootprintGb"
+  FROM fact_db_resource_daily f
+  WHERE f.tenant_id = CAST(:tenantId AS uuid)
+    AND f.cloud_connection_id = CAST(:cloudConnectionId AS uuid)
+    AND f.resource_id = :resourceId
+    AND COALESCE(LOWER(BTRIM(f.resource_type)), '') <> 'scoped'
+    AND f.usage_date BETWEEN CAST(:startDate AS date) AND CAST(:endDate AS date)
+  GROUP BY f.usage_date
+),
+util_daily AS (
+  SELECT
+    u.usage_date AS date,
+    MAX(u.allocated_storage_gb) AS "utilAllocatedStorageGb",
+    MAX(u.storage_used_gb) AS "utilStorageUsedGb"
+  FROM db_utilization_daily u
+  WHERE u.tenant_id = CAST(:tenantId AS uuid)
+    AND u.cloud_connection_id = CAST(:cloudConnectionId AS uuid)
+    AND u.resource_id = :resourceId
+    AND u.usage_date BETWEEN CAST(:startDate AS date) AND CAST(:endDate AS date)
+  GROUP BY u.usage_date
+)
 SELECT
-  f.usage_date AS date,
-  MAX(f.allocated_storage_gb) AS "allocatedStorageGb",
-  MAX(f.storage_used_gb) AS "storageUsedGb",
-  MAX(f.data_footprint_gb) AS "dataFootprintGb"
-FROM fact_db_resource_daily f
-WHERE f.tenant_id = CAST(:tenantId AS uuid)
-  AND f.cloud_connection_id = CAST(:cloudConnectionId AS uuid)
-  AND f.resource_id = :resourceId
-  AND COALESCE(LOWER(BTRIM(f.resource_type)), '') <> 'scoped'
-  AND f.usage_date BETWEEN CAST(:startDate AS date) AND CAST(:endDate AS date)
-GROUP BY f.usage_date
-ORDER BY f.usage_date ASC;
+  COALESCE(fd.date, ud.date) AS date,
+  COALESCE(ud."utilAllocatedStorageGb", fd."factAllocatedStorageGb") AS "allocatedStorageGb",
+  COALESCE(ud."utilStorageUsedGb", fd."factStorageUsedGb") AS "storageUsedGb",
+  fd."dataFootprintGb" AS "dataFootprintGb"
+FROM fact_daily fd
+FULL OUTER JOIN util_daily ud
+  ON ud.date = fd.date
+ORDER BY COALESCE(fd.date, ud.date) ASC;
 `,
           { replacements, type: QueryTypes.SELECT },
         ),
         sequelize.query<PerformanceTrendRow>(
           `
+WITH fact_daily AS (
+  SELECT
+    f.usage_date AS date,
+    AVG(f.read_iops) AS "factReadIops",
+    AVG(f.write_iops) AS "factWriteIops",
+    AVG(
+      CASE
+        WHEN f.read_iops IS NULL AND f.write_iops IS NULL THEN NULL
+        ELSE COALESCE(f.read_iops, 0) + COALESCE(f.write_iops, 0)
+      END
+    ) AS "factTotalIops",
+    AVG(f.read_throughput_bytes) AS "factReadThroughputBytes",
+    AVG(f.write_throughput_bytes) AS "factWriteThroughputBytes",
+    AVG(
+      CASE
+        WHEN f.read_throughput_bytes IS NULL AND f.write_throughput_bytes IS NULL THEN NULL
+        ELSE COALESCE(f.read_throughput_bytes, 0) + COALESCE(f.write_throughput_bytes, 0)
+      END
+    ) AS "factTotalThroughputBytes",
+    AVG(f.load_avg) AS "avgLoad",
+    AVG(f.connections_avg) AS "factAvgConnections"
+  FROM fact_db_resource_daily f
+  WHERE f.tenant_id = CAST(:tenantId AS uuid)
+    AND f.cloud_connection_id = CAST(:cloudConnectionId AS uuid)
+    AND f.resource_id = :resourceId
+    AND COALESCE(LOWER(BTRIM(f.resource_type)), '') <> 'scoped'
+    AND f.usage_date BETWEEN CAST(:startDate AS date) AND CAST(:endDate AS date)
+  GROUP BY f.usage_date
+),
+util_daily AS (
+  SELECT
+    u.usage_date AS date,
+    AVG(u.read_iops) AS "utilReadIops",
+    AVG(u.write_iops) AS "utilWriteIops",
+    AVG(
+      CASE
+        WHEN u.read_iops IS NULL AND u.write_iops IS NULL THEN NULL
+        ELSE COALESCE(u.read_iops, 0) + COALESCE(u.write_iops, 0)
+      END
+    ) AS "utilTotalIops",
+    AVG(u.read_throughput_bytes) AS "utilReadThroughputBytes",
+    AVG(u.write_throughput_bytes) AS "utilWriteThroughputBytes",
+    AVG(
+      CASE
+        WHEN u.read_throughput_bytes IS NULL AND u.write_throughput_bytes IS NULL THEN NULL
+        ELSE COALESCE(u.read_throughput_bytes, 0) + COALESCE(u.write_throughput_bytes, 0)
+      END
+    ) AS "utilTotalThroughputBytes",
+    AVG(u.connections_avg) AS "utilAvgConnections"
+  FROM db_utilization_daily u
+  WHERE u.tenant_id = CAST(:tenantId AS uuid)
+    AND u.cloud_connection_id = CAST(:cloudConnectionId AS uuid)
+    AND u.resource_id = :resourceId
+    AND u.usage_date BETWEEN CAST(:startDate AS date) AND CAST(:endDate AS date)
+  GROUP BY u.usage_date
+)
 SELECT
-  f.usage_date AS date,
-  AVG(f.read_iops) AS "readIops",
-  AVG(f.write_iops) AS "writeIops",
-  AVG(COALESCE(f.read_iops, 0) + COALESCE(f.write_iops, 0)) AS "totalIops",
-  AVG(f.read_throughput_bytes) AS "readThroughputBytes",
-  AVG(f.write_throughput_bytes) AS "writeThroughputBytes",
-  AVG(COALESCE(f.read_throughput_bytes, 0) + COALESCE(f.write_throughput_bytes, 0)) AS "totalThroughputBytes",
-  AVG(f.load_avg) AS "avgLoad",
-  AVG(f.connections_avg) AS "avgConnections"
-FROM fact_db_resource_daily f
-WHERE f.tenant_id = CAST(:tenantId AS uuid)
-  AND f.cloud_connection_id = CAST(:cloudConnectionId AS uuid)
-  AND f.resource_id = :resourceId
-  AND COALESCE(LOWER(BTRIM(f.resource_type)), '') <> 'scoped'
-  AND f.usage_date BETWEEN CAST(:startDate AS date) AND CAST(:endDate AS date)
-GROUP BY f.usage_date
-ORDER BY f.usage_date ASC;
+  COALESCE(fd.date, ud.date) AS date,
+  COALESCE(ud."utilReadIops", fd."factReadIops") AS "readIops",
+  COALESCE(ud."utilWriteIops", fd."factWriteIops") AS "writeIops",
+  COALESCE(ud."utilTotalIops", fd."factTotalIops") AS "totalIops",
+  COALESCE(ud."utilReadThroughputBytes", fd."factReadThroughputBytes") AS "readThroughputBytes",
+  COALESCE(ud."utilWriteThroughputBytes", fd."factWriteThroughputBytes") AS "writeThroughputBytes",
+  COALESCE(ud."utilTotalThroughputBytes", fd."factTotalThroughputBytes") AS "totalThroughputBytes",
+  fd."avgLoad" AS "avgLoad",
+  COALESCE(ud."utilAvgConnections", fd."factAvgConnections") AS "avgConnections"
+FROM fact_daily fd
+FULL OUTER JOIN util_daily ud
+  ON ud.date = fd.date
+ORDER BY COALESCE(fd.date, ud.date) ASC;
 `,
           { replacements, type: QueryTypes.SELECT },
         ),

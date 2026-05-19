@@ -1,10 +1,11 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import { DashboardPageHeader } from "../../components/DashboardPageHeader";
 import { useDashboardScope } from "../../hooks/useDashboardScope";
 import { useDatabaseExplorerQuery } from "../../hooks/useDashboardQueries";
 import type {
+  DatabaseExplorerAllowedGroupByByMetric,
   DatabaseExplorerFilters as DatabaseExplorerFiltersQuery,
   DatabaseExplorerGroupBy,
   DatabaseExplorerMetric,
@@ -16,7 +17,16 @@ import {
   DatabaseExplorerGroupedTable,
   DatabaseExplorerTrend,
 } from "./components";
-import { deriveAutoGroupBy } from "./databaseExplorer.taxonomy";
+
+const DEFAULT_GROUP_BY: Record<DatabaseExplorerMetric, DatabaseExplorerGroupBy> = {
+  cost: "db_service",
+  usage: "db_engine",
+};
+
+const FALLBACK_ALLOWED_GROUP_BY: Record<DatabaseExplorerMetric, DatabaseExplorerGroupBy[]> = {
+  cost: ["db_service", "db_engine", "region", "cost_category", "resource_type"],
+  usage: ["db_service", "db_engine", "region", "instance_class", "cluster"],
+};
 
 const metricOptions: Array<{ value: DatabaseExplorerMetric; label: string }> = [
   { value: "cost", label: "Cost" },
@@ -37,41 +47,92 @@ export default function DatabaseExplorerPage() {
   const navigate = useNavigate();
   const { scope } = useDashboardScope();
   const [metric, setMetric] = useState<DatabaseExplorerMetric>("cost");
-  const [groupBy, setGroupBy] = useState<"auto" | DatabaseExplorerGroupBy>("auto");
+  const [groupBy, setGroupBy] = useState<DatabaseExplorerGroupBy>("db_service");
+  const [groupValues, setGroupValues] = useState<string[]>([]);
   const [databaseScope, setDatabaseScope] = useState<DatabaseExplorerScopeValue>("all");
   const [dbService, setDbService] = useState("");
   const [dbEngine, setDbEngine] = useState("");
-
-  const effectiveGroupBy = useMemo<DatabaseExplorerGroupBy>(
-    () => (groupBy === "auto" ? deriveAutoGroupBy(databaseScope, dbService, dbEngine) : groupBy),
-    [databaseScope, dbEngine, dbService, groupBy],
-  );
+  const effectiveGroupBy = groupBy;
 
   const filters = useMemo<DatabaseExplorerFiltersQuery>(
     () => ({
       metric,
       groupBy: effectiveGroupBy,
+      ...(groupValues.length > 0 ? { groupValues } : {}),
       ...(databaseScope !== "all" ? { databaseScope } : {}),
       ...(dbService.trim() ? { dbService: dbService.trim() } : {}),
       ...(dbEngine.trim() ? { dbEngine: dbEngine.trim() } : {}),
     }),
-    [databaseScope, dbEngine, dbService, effectiveGroupBy, metric],
+    [databaseScope, dbEngine, dbService, effectiveGroupBy, groupValues, metric],
   );
 
   const query = useDatabaseExplorerQuery(filters);
   const data = query.data;
+  const allowedGroupByByMetric = data?.allowedGroupByByMetric;
+  const allowedGroupBy = data?.allowedGroupBy ?? [];
 
   const pageLoading = query.isLoading && !data;
   const showError = query.isError && !data;
+
+  const resolveAllowedGroupBy = (
+    targetMetric: DatabaseExplorerMetric,
+    byMetric?: DatabaseExplorerAllowedGroupByByMetric,
+    currentAllowed?: DatabaseExplorerGroupBy[],
+  ): DatabaseExplorerGroupBy[] => {
+    const fromMap = byMetric?.[targetMetric];
+    if (Array.isArray(fromMap) && fromMap.length > 0) return fromMap;
+    if (targetMetric === metric && Array.isArray(currentAllowed) && currentAllowed.length > 0) return currentAllowed;
+    return FALLBACK_ALLOWED_GROUP_BY[targetMetric];
+  };
+
+  const resolveDefaultGroupBy = (
+    targetMetric: DatabaseExplorerMetric,
+    byMetric?: DatabaseExplorerAllowedGroupByByMetric,
+    currentAllowed?: DatabaseExplorerGroupBy[],
+  ): DatabaseExplorerGroupBy => {
+    const allowed = resolveAllowedGroupBy(targetMetric, byMetric, currentAllowed);
+    if (allowed.includes(DEFAULT_GROUP_BY[targetMetric])) return DEFAULT_GROUP_BY[targetMetric];
+    return allowed[0] ?? DEFAULT_GROUP_BY[targetMetric];
+  };
+
   const handleMetricChange = (nextMetric: DatabaseExplorerMetric) => {
+    const allowed = new Set(resolveAllowedGroupBy(nextMetric, allowedGroupByByMetric, allowedGroupBy));
     setMetric(nextMetric);
-    if (nextMetric === "usage" && groupBy === "cost_category") {
-      setGroupBy("auto");
+    setGroupValues([]);
+    if (!allowed.has(groupBy)) {
+      setGroupBy(resolveDefaultGroupBy(nextMetric, allowedGroupByByMetric, allowedGroupBy));
     }
   };
 
+  useEffect(() => {
+    if (metric !== "usage" || groupBy !== "db_engine") return;
+    const engineOptions = data?.filterOptions?.groupedValuePreview?.db_engine ?? [];
+    if (engineOptions.length === 0) {
+      setGroupBy("db_service");
+      setGroupValues([]);
+    }
+  }, [data?.filterOptions?.groupedValuePreview?.db_engine, groupBy, metric]);
+
+  useEffect(() => {
+    const values = data?.filterOptions?.groupedValuePreview?.[groupBy] ?? [];
+    if (groupValues.length === 0 || values.length === 0) return;
+    const available = new Set(values);
+    const filtered = groupValues.filter((value) => available.has(value));
+    if (filtered.length !== groupValues.length) {
+      setGroupValues(filtered);
+    }
+  }, [data?.filterOptions?.groupedValuePreview, groupBy, groupValues]);
+
+  useEffect(() => {
+    const allowed = new Set(resolveAllowedGroupBy(metric, allowedGroupByByMetric, allowedGroupBy));
+    if (allowed.has(groupBy)) return;
+    setGroupBy(resolveDefaultGroupBy(metric, allowedGroupByByMetric, allowedGroupBy));
+    setGroupValues([]);
+  }, [allowedGroupBy, allowedGroupByByMetric, groupBy, metric]);
+
   const handleClearAll = () => {
-    setGroupBy("auto");
+    setGroupBy(DEFAULT_GROUP_BY[metric]);
+    setGroupValues([]);
     setDatabaseScope("all");
     setDbService("");
     setDbEngine("");
@@ -83,8 +144,14 @@ export default function DatabaseExplorerPage() {
     setDbEngine(next.dbEngine);
   };
 
-  const handleApplyGroupBy = (next: { groupBy: "auto" | DatabaseExplorerGroupBy }) => {
+  const handleApplyGroupBy = (next: { groupBy: DatabaseExplorerGroupBy; groupValues: string[] }) => {
+    if (next.groupBy !== groupBy) {
+      setGroupBy(next.groupBy);
+      setGroupValues([]);
+      return;
+    }
     setGroupBy(next.groupBy);
+    setGroupValues(next.groupValues);
   };
 
   const availableDatabaseScopes = data?.filterOptions?.availableDatabaseScopes ?? ["all"];
@@ -177,12 +244,13 @@ export default function DatabaseExplorerPage() {
       />
 
       <DatabaseExplorerFilters
-        metric={metric}
+        allowedGroupBy={resolveAllowedGroupBy(metric, allowedGroupByByMetric, allowedGroupBy)}
         databaseScope={databaseScope}
         dbService={dbService}
         dbEngine={dbEngine}
         groupBy={groupBy}
         effectiveGroupBy={effectiveGroupBy}
+        groupValues={groupValues}
         availableDatabaseScopes={availableDatabaseScopes}
         backendServiceOptions={backendServiceOptions}
         backendEngineOptions={backendEngineOptions}
@@ -198,16 +266,7 @@ export default function DatabaseExplorerPage() {
       {!showError ? (
         <>
           <DatabaseExplorerCards
-            cards={
-              data?.cards ?? {
-                totalCost: 0,
-                costTrendPct: null,
-                activeResources: 0,
-                dataFootprintGb: 0,
-                avgLoad: null,
-                connections: null,
-              }
-            }
+            cards={data?.cards ?? []}
             isLoading={pageLoading}
           />
           <DatabaseExplorerTrend

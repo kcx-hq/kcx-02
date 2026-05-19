@@ -116,6 +116,10 @@ Resources:
                 Effect: Allow
                 Action:
                   - sts:GetCallerIdentity
+                  - rds:DescribeDBInstances
+                  - rds:DescribeDBClusters
+                  - elasticache:DescribeCacheClusters
+                  - elasticache:DescribeReplicationGroups
                   - ec2:DescribeRegions
                   - ec2:DescribeInstances
                   - ec2:DescribeVolumes

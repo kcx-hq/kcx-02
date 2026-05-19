@@ -211,6 +211,9 @@ function withDatabaseExplorerFilters(
   if (scope.to) params.set("end_date", scope.to);
   if (filters.metric) params.set("metric", filters.metric);
   if (filters.groupBy) params.set("group_by", filters.groupBy);
+  if (Array.isArray(filters.groupValues) && filters.groupValues.length > 0) {
+    params.set("group_values", filters.groupValues.join(","));
+  }
   if (typeof filters.databaseScope === "string" && filters.databaseScope.trim().length > 0 && filters.databaseScope !== "all") {
     params.set("database_scope", filters.databaseScope.trim());
   }
