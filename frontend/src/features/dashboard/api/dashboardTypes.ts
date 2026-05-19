@@ -799,6 +799,7 @@ export type Ec2ExplorerFiltersQuery = {
   granularity?: Ec2ExplorerGranularity;
   volumeView?: Ec2ExplorerVolumeView;
   groupBy: Ec2ExplorerGroupBy;
+  groupValues?: string[];
   tagKey?: string | null;
   regions?: string[];
   tags?: string[];
@@ -807,7 +808,6 @@ export type Ec2ExplorerFiltersQuery = {
   usageType?: Ec2ExplorerUsageType;
   aggregation?: Ec2ExplorerAggregation;
   condition?: Ec2ExplorerCondition;
-  groupValues?: string[];
   minCost?: number | null;
   maxCost?: number | null;
   minCpu?: number | null;
@@ -1054,6 +1054,7 @@ export type LoadBalancerExplorerFiltersQuery = {
     | "errors";
   granularity?: LoadBalancerExplorerGranularity;
   groupBy: LoadBalancerExplorerGroupBy;
+  groupValues?: string[];
   tagKey?: string | null;
   loadBalancerArn?: string | null;
   accountId?: string | null;
@@ -1065,7 +1066,6 @@ export type LoadBalancerExplorerFiltersQuery = {
   products?: string[];
   environments?: string[];
   tags?: string[];
-  groupValues?: string[];
 };
 
 export type LoadBalancerExplorerSummaryResponse = {
@@ -2400,7 +2400,6 @@ export type CostExplorerResponse = {
     compareKey: CostExplorerCompareKey | null;
     tagKey?: string | null;
     tagValue?: string | null;
-    groupValues?: string[];
     scopeType: DashboardResolvedScope["scopeType"];
   };
   kpis: {
@@ -2478,4 +2477,5 @@ export type CostHistoryResponse = {
     costExplorerGranularity: CostExplorerGranularity;
   };
 };
+
 

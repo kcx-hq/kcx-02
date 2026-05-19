@@ -76,7 +76,9 @@ const engineBelongsToService = (engine: string, service: string): boolean => {
   if (sk.includes("aurora")) return ek.includes("aurora");
   if (sk.includes("elasticache")) return ek.includes("redis") || ek.includes("memcached") || ek.includes("valkey");
   if (sk.includes("memorydb")) return ek.includes("redis") || ek.includes("valkey");
-  if (sk.includes("rds")) return !ek.includes("aurora") && (ek.includes("mysql") || ek.includes("postgres") || ek.includes("maria") || ek.includes("oracle") || ek.includes("sql"));
+  if (sk.includes("rds")) {
+    return !ek.includes("aurora") && (ek.includes("mysql") || ek.includes("postgres") || ek.includes("maria") || ek.includes("oracle") || ek.includes("sql"));
+  }
   return false;
 };
 
@@ -154,10 +156,8 @@ export function DatabaseExplorerFilters({
   );
   const activeGroupByOption = groupByOptions.find((option) => option.value === effectiveGroupBy) ?? groupByOptions[0];
   const groupByLabel = activeGroupByOption.label;
-  const groupByAllLabel = activeGroupByOption.allLabel;
-  const scopedFiltersLabel = `Filters for ${groupByLabel}`;
   const filtersChipLabel =
-    groupValues.length === 0 ? `Filters: All ${groupByAllLabel}` : `Filters: ${groupValues.length} selected`;
+    groupValues.length === 0 ? `All ${activeGroupByOption.allLabel}` : `${groupValues.length} selected`;
 
   const databaseLabel = useMemo(() => {
     if (!dbService.trim() && !dbEngine.trim()) return "All Databases";
@@ -168,7 +168,7 @@ export function DatabaseExplorerFilters({
   const chips = [
     { key: "database", label: "Database", value: databaseLabel },
     { key: "groupBy", label: "Group By", value: groupByLabel },
-    { key: "groupValues", label: "Filters", value: filtersChipLabel.replace(/^Filters:\s*/, "") },
+    { key: "groupValues", label: "Filters", value: filtersChipLabel },
   ];
 
   const openGroupDrawer = () => {
@@ -233,15 +233,29 @@ export function DatabaseExplorerFilters({
                 </button>
 
                 {serviceEntries.map((entry) => {
-                    const matchedService = entry.service;
-                    const selectedService = databaseScope === entry.scope || serviceMatchesScope(dbService, entry.scope);
-                    const matchingEngines = entry.engines;
-                    const showEngines = matchingEngines.length > 0 && hoveredServiceScope === entry.scope;
-                    return (
-                      <div
-                        key={entry.scope}
-                        style={{ position: "relative" }}
-                        onMouseEnter={(event) => {
+                  const matchedService = entry.service;
+                  const selectedService = databaseScope === entry.scope || serviceMatchesScope(dbService, entry.scope);
+                  const matchingEngines = entry.engines;
+                  const showEngines = matchingEngines.length > 0 && hoveredServiceScope === entry.scope;
+                  return (
+                    <div
+                      key={entry.scope}
+                      style={{ position: "relative" }}
+                      onMouseEnter={(event) => {
+                        clearFlyoutHideTimer();
+                        setHoveredServiceScope(entry.scope);
+                        const rect = event.currentTarget.getBoundingClientRect();
+                        setEngineFlyoutPosition({
+                          top: rect.top,
+                          left: rect.right + 6,
+                        });
+                      }}
+                      onMouseLeave={scheduleFlyoutHide}
+                    >
+                      <button
+                        type="button"
+                        className={`cost-explorer-filter-option${selectedService && !dbEngine.trim() ? " is-active" : ""}`}
+                        onFocus={(event) => {
                           clearFlyoutHideTimer();
                           setHoveredServiceScope(entry.scope);
                           const rect = event.currentTarget.getBoundingClientRect();
@@ -250,77 +264,63 @@ export function DatabaseExplorerFilters({
                             left: rect.right + 6,
                           });
                         }}
-                        onMouseLeave={scheduleFlyoutHide}
+                        onBlur={scheduleFlyoutHide}
+                        onClick={() => {
+                          onApplyScope({ databaseScope: entry.scope, dbService: matchedService, dbEngine: "" });
+                        }}
                       >
-                        <button
-                          type="button"
-                          className={`cost-explorer-filter-option${selectedService && !dbEngine.trim() ? " is-active" : ""}`}
-                          onFocus={(event) => {
-                            clearFlyoutHideTimer();
-                            setHoveredServiceScope(entry.scope);
-                            const rect = event.currentTarget.getBoundingClientRect();
-                            setEngineFlyoutPosition({
-                              top: rect.top,
-                              left: rect.right + 6,
-                            });
-                          }}
-                          onBlur={scheduleFlyoutHide}
-                          onClick={() => {
-                            onApplyScope({ databaseScope: entry.scope, dbService: matchedService, dbEngine: "" });
-                          }}
-                        >
-                          <span className="cost-explorer-filter-option__label">{matchedService}</span>
-                          {selectedService && !dbEngine.trim() ? <Check className="cost-explorer-filter-option__check" size={15} aria-hidden="true" /> : null}
-                        </button>
-                        {showEngines && engineFlyoutPosition
-                          ? createPortal(
-                              <div
-                                className="cost-explorer-filter-popover"
-                                style={{
-                                  position: "fixed",
-                                  top: engineFlyoutPosition.top,
-                                  left: engineFlyoutPosition.left,
-                                  minWidth: 220,
-                                  zIndex: 110,
-                                  maxHeight: 320,
-                                  overflowY: "auto",
-                                }}
-                                role="menu"
-                                aria-label={`${matchedService} engines`}
-                                onMouseEnter={clearFlyoutHideTimer}
-                                onMouseLeave={scheduleFlyoutHide}
-                              >
-                                <p className="cost-explorer-filter-popover__title">Engines</p>
-                                <div className="cost-explorer-filter-popover__list" role="listbox">
-                                  {matchingEngines.map((engine) => {
-                                    const selectedEngine =
-                                      selectedService && dbEngine.trim().toLowerCase() === engine.trim().toLowerCase();
-                                    return (
-                                      <button
-                                        key={`${entry.scope}-${engine}`}
-                                        type="button"
-                                        className={`cost-explorer-filter-option${selectedEngine ? " is-active" : ""}`}
-                                        onClick={() => {
-                                          onApplyScope({ databaseScope: entry.scope, dbService: matchedService, dbEngine: engine });
-                                          clearFlyoutHideTimer();
-                                          setHoveredServiceScope(null);
-                                          setEngineFlyoutPosition(null);
-                                          setDatabaseMenuOpen(false);
-                                        }}
-                                      >
-                                        <span className="cost-explorer-filter-option__label">{engine}</span>
-                                        {selectedEngine ? <Check className="cost-explorer-filter-option__check" size={15} aria-hidden="true" /> : null}
-                                      </button>
-                                    );
-                                  })}
-                                </div>
-                              </div>,
-                              document.body,
-                            )
-                          : null}
-                      </div>
-                    );
-                  })}
+                        <span className="cost-explorer-filter-option__label">{matchedService}</span>
+                        {selectedService && !dbEngine.trim() ? <Check className="cost-explorer-filter-option__check" size={15} aria-hidden="true" /> : null}
+                      </button>
+                      {showEngines && engineFlyoutPosition
+                        ? createPortal(
+                            <div
+                              className="cost-explorer-filter-popover"
+                              style={{
+                                position: "fixed",
+                                top: engineFlyoutPosition.top,
+                                left: engineFlyoutPosition.left,
+                                minWidth: 220,
+                                zIndex: 110,
+                                maxHeight: 320,
+                                overflowY: "auto",
+                              }}
+                              role="menu"
+                              aria-label={`${matchedService} engines`}
+                              onMouseEnter={clearFlyoutHideTimer}
+                              onMouseLeave={scheduleFlyoutHide}
+                            >
+                              <p className="cost-explorer-filter-popover__title">Engines</p>
+                              <div className="cost-explorer-filter-popover__list" role="listbox">
+                                {matchingEngines.map((engine) => {
+                                  const selectedEngine =
+                                    selectedService && dbEngine.trim().toLowerCase() === engine.trim().toLowerCase();
+                                  return (
+                                    <button
+                                      key={`${entry.scope}-${engine}`}
+                                      type="button"
+                                      className={`cost-explorer-filter-option${selectedEngine ? " is-active" : ""}`}
+                                      onClick={() => {
+                                        onApplyScope({ databaseScope: entry.scope, dbService: matchedService, dbEngine: engine });
+                                        clearFlyoutHideTimer();
+                                        setHoveredServiceScope(null);
+                                        setEngineFlyoutPosition(null);
+                                        setDatabaseMenuOpen(false);
+                                      }}
+                                    >
+                                      <span className="cost-explorer-filter-option__label">{engine}</span>
+                                      {selectedEngine ? <Check className="cost-explorer-filter-option__check" size={15} aria-hidden="true" /> : null}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>,
+                            document.body,
+                          )
+                        : null}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           ) : null}
@@ -336,21 +336,6 @@ export function DatabaseExplorerFilters({
             <span className="cost-explorer-toolbar-trigger__label">Group By</span>
             <span className="cost-explorer-toolbar-trigger__row">
               <span className="cost-explorer-toolbar-trigger__value">{groupByLabel}</span>
-              <ChevronDown className="cost-explorer-toolbar-trigger__caret" size={14} aria-hidden="true" />
-            </span>
-          </button>
-        </div>
-        <div className="cost-explorer-toolbar-item">
-          <button
-            type="button"
-            className="cost-explorer-toolbar-trigger"
-            onClick={openGroupDrawer}
-            title={scopedFiltersLabel}
-            data-testid="database-explorer-scoped-filters-control"
-          >
-            <span className="cost-explorer-toolbar-trigger__label">Filters</span>
-            <span className="cost-explorer-toolbar-trigger__row">
-              <span className="cost-explorer-toolbar-trigger__value">{filtersChipLabel.replace("Filters: ", "")}</span>
               <ChevronDown className="cost-explorer-toolbar-trigger__caret" size={14} aria-hidden="true" />
             </span>
           </button>
