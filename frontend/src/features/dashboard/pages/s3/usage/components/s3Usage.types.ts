@@ -3,7 +3,7 @@ import type { S3CostInsightsFiltersQuery, S3CostInsightsResponse } from "../../.
 export type S3UsageFilterValue = {
   seriesBy: NonNullable<S3CostInsightsFiltersQuery["seriesBy"]>;
   seriesValue: string;
-  category: "" | "storage" | "data_transfer" | "request" | "object_count";
+  category: "" | "storage" | "data_transfer" | "request" | "object_count" | "api_operations";
   compareMode: "none" | "previous_period";
   storageClass: string;
   xAxis: NonNullable<S3CostInsightsFiltersQuery["costBy"]>;

@@ -33,6 +33,7 @@ const getCategoryLabel = (category: S3UsageFilterValue["category"]) => {
   if (category === "data_transfer") return "Data transfer";
   if (category === "request") return "Request";
   if (category === "object_count") return "Object count";
+  if (category === "api_operations") return "API Operations";
   return "All";
 };
 
@@ -59,6 +60,7 @@ export function S3UsageFilters({ value, filterOptions, onChange, onReset, isLoad
     "request",
     "data_transfer",
     "object_count",
+    "api_operations",
   ];
   const compareOptions: Array<S3UsageFilterValue["compareMode"]> = ["none", "previous_period"];
   const hasFilterOptions = Boolean(filterOptions);

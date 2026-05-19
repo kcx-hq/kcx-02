@@ -181,6 +181,16 @@ type S3StorageLatestBucketRow = {
   bytes_deep_archive: number | string | null;
 };
 
+type S3BucketUsageRollupRow = {
+  bucket_name: string | null;
+  storage_gb: number | string | null;
+  object_count: number | string | null;
+  transfer_gb: number | string | null;
+  request_count: number | string | null;
+  region: string | null;
+  dominant_usage_type: string | null;
+};
+
 const S3_FILTER_SQL = `
 (
   LOWER(COALESCE(ds.service_name, '')) LIKE '%s3%'
@@ -420,6 +430,18 @@ const STORAGE_COST_PER_GIB_MONTH = {
 } as const;
 
 const bytesToGib = (bytes: number): number => bytes / (1024 ** 3);
+const generateDateRange = (from: string, to: string): string[] => {
+  const start = new Date(`${from}T00:00:00.000Z`);
+  const end = new Date(`${to}T00:00:00.000Z`);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || start > end) return [];
+  const labels: string[] = [];
+  const cursor = new Date(start);
+  while (cursor <= end) {
+    labels.push(cursor.toISOString().slice(0, 10));
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+  return labels;
+};
 
 export class S3CostInsightsRepository {
   private getOperationGroupSql(): string {
@@ -937,8 +959,25 @@ END
     const scoped = this.buildS3DailyScopedWhere(scope);
     const filterPredicates = this.buildS3FilterPredicates(filters, scoped.nextIndex);
     const xExpr = this.getXAxisExpression(filters.costBy);
-    const seriesExpr = this.getSeriesExpression(filters.seriesBy);
+    const isApiOperationsUsage =
+      filters.yAxisMetric === "usage_quantity" &&
+      filters.usageYAxis === "api_operations";
+    const seriesExpr =
+      isApiOperationsUsage && filters.seriesBy === "usage_type"
+        ? "COALESCE(NULLIF(operation, ''), 'Unspecified')"
+        : this.getSeriesExpression(filters.seriesBy);
     const metricCostExpr = this.getMetricCostExpression(filters.yAxisMetric);
+    const apiOperationsCondition = isApiOperationsUsage
+      ? `
+            LOWER(TRIM(COALESCE(NULLIF(pricing_unit, ''), ''))) = 'requests'
+            AND bucket_name IS NOT NULL
+            AND NULLIF(BTRIM(bucket_name), '') IS NOT NULL
+            AND COALESCE(total_cost, 0) >= 0
+            AND operation IS NOT NULL
+            AND NULLIF(BTRIM(operation), '') IS NOT NULL
+            AND LOWER(TRIM(COALESCE(operation, ''))) NOT IN ('unspecified', 'none')
+          `
+      : "TRUE";
 
     const rows = await sequelize.query<S3BreakdownRow>(
       `
@@ -956,6 +995,7 @@ END
         FROM s3_cost_daily
         WHERE ${scoped.whereClause}
           AND ${filterPredicates.clause}
+          AND (${apiOperationsCondition})
           AND (
             $${scoped.nextIndex + filterPredicates.params.length + 1}::text <> 'gross_cost'
             OR (
@@ -1014,14 +1054,10 @@ END
       totalsByX.set(x, (totalsByX.get(x) ?? 0) + cost);
     }
 
-    const labels = [...byX.keys()];
-    if (filters.costBy === "date") {
-      labels.sort((a, b) => a.localeCompare(b));
-    } else {
-      labels.sort((a, b) => (totalsByX.get(b) ?? 0) - (totalsByX.get(a) ?? 0));
-    }
-
-    const chartLabels = labels;
+    const labels = filters.costBy === "date"
+      ? generateDateRange(scope.from, scope.to)
+      : [...byX.keys()].sort((a, b) => (totalsByX.get(b) ?? 0) - (totalsByX.get(a) ?? 0));
+    const chartLabels = filters.costBy === "date" ? generateDateRange(scope.from, scope.to) : labels;
 
     const chartTotalsBySeries = new Map<string, number>();
     for (const label of chartLabels) {
@@ -1085,8 +1121,173 @@ END
     if (usageYAxis === "object_count") {
       return this.getBucketObjectCountBreakdownFromStorageLens(scope, filters);
     }
+    if (usageYAxis === "storage_gb") {
+      return this.getBucketStorageBreakdownFromStorageLens(scope, filters);
+    }
 
     return this.getBucketUsageQuantityBreakdownFromS3CostDaily(scope, filters, usageYAxis);
+  }
+
+  private async getBucketStorageBreakdownFromStorageLens(
+    scope: DashboardScope,
+    filters: S3CostInsightsFilters,
+  ): Promise<{
+    labels: string[];
+    series: Array<{ name: string; values: number[] }>;
+    operationGroupTooltip?: Array<{
+      usageDate: string;
+      operationGroup: "Read" | "Write" | "List & Metadata" | "Other";
+      operation: string;
+      cost: number;
+    }>;
+  }> {
+    const scoped = this.buildS3DailyScopedWhere(scope);
+    const params: unknown[] = [...scoped.params];
+    const filterClauses: string[] = [
+      "bucket_name IS NOT NULL",
+      "NULLIF(BTRIM(bucket_name), '') IS NOT NULL",
+    ];
+    if (filters.bucket && filters.bucket.trim().length > 0) {
+      params.push(`%${filters.bucket.trim()}%`);
+      filterClauses.push(`LOWER(bucket_name) LIKE LOWER($${params.length})`);
+    }
+    if (filters.seriesBy === "bucket" && filters.seriesValues.length > 0) {
+      params.push(filters.seriesValues);
+      filterClauses.push(`bucket_name = ANY($${params.length}::text[])`);
+    }
+    if (filters.region.length > 0) {
+      params.push(filters.region);
+      filterClauses.push(`
+        COALESCE(
+          (SELECT COALESCE(dr.region_name, dr.region_id, 'global') FROM dim_region dr WHERE dr.id = s3_storage_lens_daily.region_key),
+          'global'
+        ) = ANY($${params.length}::text[])
+      `);
+    }
+    if (filters.account.length > 0) {
+      params.push(filters.account);
+      filterClauses.push(`
+        COALESCE(
+          (SELECT COALESCE(dsa.sub_account_name, dsa.sub_account_id, 'Unspecified') FROM dim_sub_account dsa WHERE dsa.id = s3_storage_lens_daily.sub_account_key),
+          'Unspecified'
+        ) = ANY($${params.length}::text[])
+      `);
+    }
+    params.push(filters.costBy);
+    const xAxisBindIndex = params.length;
+
+    const rows = await sequelize.query<S3BreakdownRow>(
+      `
+      WITH aggregated AS (
+        SELECT
+          usage_date::text AS usage_date,
+          bucket_name,
+          (
+            COALESCE(bytes_standard, 0)
+            + COALESCE(bytes_standard_ia, 0)
+            + COALESCE(bytes_onezone_ia, 0)
+            + COALESCE(bytes_intelligent_tiering, 0)
+            + COALESCE(bytes_glacier, 0)
+            + COALESCE(bytes_deep_archive, 0)
+          )::double precision / POWER(1024, 3)::double precision AS storage_gb
+        FROM s3_storage_lens_daily
+        WHERE ${scoped.whereClause}
+          AND ${filterClauses.join("\n          AND ")}
+      ),
+      ranked_x AS (
+        SELECT
+          CASE
+            WHEN $${xAxisBindIndex}::text = 'bucket' THEN bucket_name
+            WHEN $${xAxisBindIndex}::text = 'date' THEN usage_date
+            ELSE usage_date
+          END AS x_value,
+          SUM(storage_gb)::double precision AS total_cost,
+          ROW_NUMBER() OVER (
+            ORDER BY
+              SUM(storage_gb) DESC,
+              CASE
+                WHEN $${xAxisBindIndex}::text = 'bucket' THEN bucket_name
+                WHEN $${xAxisBindIndex}::text = 'date' THEN usage_date
+                ELSE usage_date
+              END ASC
+          ) AS rn
+        FROM aggregated
+        GROUP BY
+          CASE
+            WHEN $${xAxisBindIndex}::text = 'bucket' THEN bucket_name
+            WHEN $${xAxisBindIndex}::text = 'date' THEN usage_date
+            ELSE usage_date
+          END
+      ),
+      reduced AS (
+        SELECT
+          a.*,
+          CASE
+            WHEN $${xAxisBindIndex}::text = 'bucket' THEN bucket_name
+            WHEN $${xAxisBindIndex}::text = 'date' THEN usage_date
+            ELSE usage_date
+          END AS x_value,
+          CASE
+            WHEN $${xAxisBindIndex}::text = 'date' THEN TRUE
+            ELSE COALESCE(rx.rn, 999999) <= 30
+          END AS keep_x
+        FROM aggregated a
+        LEFT JOIN ranked_x rx ON rx.x_value = (
+          CASE
+            WHEN $${xAxisBindIndex}::text = 'bucket' THEN a.bucket_name
+            WHEN $${xAxisBindIndex}::text = 'date' THEN a.usage_date
+            ELSE a.usage_date
+          END
+        )
+      )
+      SELECT
+        x_value,
+        bucket_name AS series_value,
+        SUM(storage_gb)::double precision AS metric_cost
+      FROM reduced
+      WHERE keep_x = TRUE
+      GROUP BY x_value, bucket_name
+      ORDER BY
+        CASE WHEN $${xAxisBindIndex}::text = 'date' THEN x_value END ASC,
+        CASE WHEN $${xAxisBindIndex}::text <> 'date' THEN SUM(storage_gb) END DESC;
+      `,
+      { bind: params, type: QueryTypes.SELECT },
+    );
+
+    const byX = new Map<string, Map<string, number>>();
+    const totalsByX = new Map<string, number>();
+    for (const row of rows) {
+      const x = String(row.x_value ?? "Unspecified");
+      const series = String(row.series_value ?? "Unspecified");
+      const val = toNumber(row.metric_cost);
+      if (!byX.has(x)) byX.set(x, new Map());
+      const seriesMap = byX.get(x)!;
+      seriesMap.set(series, (seriesMap.get(series) ?? 0) + val);
+      totalsByX.set(x, (totalsByX.get(x) ?? 0) + val);
+    }
+
+    const labels = filters.costBy === "date"
+      ? generateDateRange(scope.from, scope.to)
+      : [...byX.keys()].sort((a, b) => (totalsByX.get(b) ?? 0) - (totalsByX.get(a) ?? 0));
+
+    const chartTotalsBySeries = new Map<string, number>();
+    for (const label of labels) {
+      const seriesMap = byX.get(label);
+      if (!seriesMap) continue;
+      for (const [seriesName, value] of seriesMap.entries()) {
+        chartTotalsBySeries.set(seriesName, (chartTotalsBySeries.get(seriesName) ?? 0) + value);
+      }
+    }
+
+    const sortedSeries = [...chartTotalsBySeries.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .map(([name]) => name);
+    const series = sortedSeries.map((name) => ({
+      name,
+      values: labels.map((label) => byX.get(label)?.get(name) ?? 0),
+    }));
+
+    return { labels, series, operationGroupTooltip: [] };
   }
 
   private async getBucketObjectCountBreakdownFromStorageLens(
@@ -1223,9 +1424,9 @@ END
       totalsByX.set(x, (totalsByX.get(x) ?? 0) + cost);
     }
 
-    const labels = [...byX.keys()];
-    if (filters.costBy === "date") labels.sort((a, b) => a.localeCompare(b));
-    else labels.sort((a, b) => (totalsByX.get(b) ?? 0) - (totalsByX.get(a) ?? 0));
+    const labels = filters.costBy === "date"
+      ? generateDateRange(scope.from, scope.to)
+      : [...byX.keys()].sort((a, b) => (totalsByX.get(b) ?? 0) - (totalsByX.get(a) ?? 0));
 
     const chartTotalsBySeries = new Map<string, number>();
     for (const label of labels) {
@@ -1270,26 +1471,27 @@ END
     const xExpr = this.getXAxisExpression(filters.costBy);
     const categoryCondition =
       usageYAxis === "request_count"
-        ? `(
-            LOWER(TRIM(COALESCE(NULLIF(cost_category, ''), ''))) IN ('request', 'requests')
-            OR LOWER(COALESCE(usage_type, '')) LIKE 'requests%'
-          )`
+        ? `LOWER(TRIM(COALESCE(NULLIF(pricing_unit, ''), ''))) = 'requests'`
+        : usageYAxis === "api_operations"
+          ? `(
+              LOWER(TRIM(COALESCE(NULLIF(pricing_unit, ''), ''))) = 'requests'
+              AND operation IS NOT NULL
+              AND NULLIF(BTRIM(operation), '') IS NOT NULL
+              AND LOWER(TRIM(COALESCE(operation, ''))) NOT IN ('unspecified', 'none')
+            )`
         : usageYAxis === "transfer_gb"
           ? `(
-              LOWER(TRIM(COALESCE(NULLIF(cost_category, ''), ''))) IN ('transfer', 'data_transfer', 'data transfer')
-              OR LOWER(COALESCE(usage_type, '')) LIKE '%datatransfer%'
+              LOWER(TRIM(COALESCE(NULLIF(cost_category, ''), ''))) = 'transfer'
+              AND LOWER(TRIM(COALESCE(NULLIF(pricing_unit, ''), ''))) = 'gb'
             )`
-          : `(
-              LOWER(TRIM(COALESCE(NULLIF(cost_category, ''), ''))) = 'storage'
-              OR LOWER(COALESCE(usage_type, '')) LIKE '%timedstorage%'
-            )`;
+          : "FALSE";
 
     const rows = await sequelize.query<S3BreakdownRow>(
       `
       WITH filtered AS (
         SELECT
           usage_date::text AS usage_date,
-          COALESCE(bucket_name, 'unattributed') AS bucket_name,
+          bucket_name,
           COALESCE(NULLIF(region, ''), 'global') AS region_name,
           COALESCE(NULLIF(account_id, ''), 'Unspecified') AS account_name,
           COALESCE(usage_quantity, 0)::double precision AS metric_cost
@@ -1297,6 +1499,11 @@ END
         WHERE ${scoped.whereClause}
           AND ${filterPredicates.clause}
           AND ${categoryCondition}
+          AND bucket_name IS NOT NULL
+          AND NULLIF(BTRIM(bucket_name), '') IS NOT NULL
+          AND COALESCE(total_cost, 0) >= 0
+          AND LOWER(COALESCE(usage_type, '')) <> 'use1-storagelens-objcount'
+          AND LOWER(COALESCE(operation, '')) <> 'storagelens'
       ),
       ranked_x AS (
         SELECT
@@ -1587,6 +1794,169 @@ END
     return toNumber(rows[0]?.total_effective_s3_cost);
   }
 
+  async getBucketUsageRollup(
+    scope: DashboardScope,
+    filters: S3CostInsightsFilters,
+  ): Promise<
+    Map<
+      string,
+      {
+        storageGb: number;
+        objectCount: number;
+        transferGb: number;
+        requestCount: number;
+        region: string | null;
+        dominantUsageType: "Request Heavy" | "Storage Heavy" | "Transfer Heavy" | "Retrieval Heavy" | "Mixed Heavy";
+      }
+    >
+  > {
+    const scoped = this.buildS3DailyScopedWhere(scope);
+    const storageLensScopedWhere = scoped.whereClause.replaceAll("usage_date", "sl.usage_date");
+    const params: unknown[] = [...scoped.params];
+
+    const bucketFilters: string[] = [];
+    if (filters.bucket && filters.bucket.trim().length > 0) {
+      params.push(`%${filters.bucket.trim()}%`);
+      const idx = params.length;
+      bucketFilters.push(`LOWER(b.bucket_name) LIKE LOWER($${idx})`);
+    }
+
+    const rows = await sequelize.query<S3BucketUsageRollupRow>(
+      `
+      WITH latest_lens_date AS (
+        SELECT MAX(usage_date::date) AS usage_date
+        FROM s3_storage_lens_daily
+        WHERE ${scoped.whereClause}
+      ),
+      storage_by_bucket AS (
+        SELECT
+          sl.bucket_name,
+          SUM(
+            COALESCE(sl.bytes_standard, 0)
+            + COALESCE(sl.bytes_standard_ia, 0)
+            + COALESCE(sl.bytes_onezone_ia, 0)
+            + COALESCE(sl.bytes_intelligent_tiering, 0)
+            + COALESCE(sl.bytes_glacier, 0)
+            + COALESCE(sl.bytes_deep_archive, 0)
+          )::double precision / POWER(1024, 3)::double precision AS storage_gb,
+          SUM(COALESCE(sl.object_count, 0))::double precision AS object_count
+        FROM s3_storage_lens_daily sl
+        JOIN latest_lens_date l ON sl.usage_date::date = l.usage_date
+        WHERE ${storageLensScopedWhere}
+          AND sl.bucket_name IS NOT NULL
+          AND NULLIF(BTRIM(sl.bucket_name), '') IS NOT NULL
+        GROUP BY sl.bucket_name
+      ),
+      request_by_bucket AS (
+        SELECT
+          bucket_name,
+          SUM(COALESCE(usage_quantity, 0))::double precision AS request_count
+        FROM s3_cost_daily
+        WHERE ${scoped.whereClause}
+          AND LOWER(TRIM(COALESCE(NULLIF(pricing_unit, ''), ''))) = 'requests'
+          AND bucket_name IS NOT NULL
+          AND NULLIF(BTRIM(bucket_name), '') IS NOT NULL
+          AND COALESCE(total_cost, 0) >= 0
+          AND LOWER(COALESCE(usage_type, '')) <> 'use1-storagelens-objcount'
+          AND LOWER(COALESCE(operation, '')) <> 'storagelens'
+        GROUP BY bucket_name
+      ),
+      transfer_by_bucket AS (
+        SELECT
+          bucket_name,
+          SUM(COALESCE(usage_quantity, 0))::double precision AS transfer_gb
+        FROM s3_cost_daily
+        WHERE ${scoped.whereClause}
+          AND LOWER(TRIM(COALESCE(NULLIF(cost_category, ''), ''))) = 'transfer'
+          AND LOWER(TRIM(COALESCE(NULLIF(pricing_unit, ''), ''))) = 'gb'
+          AND bucket_name IS NOT NULL
+          AND NULLIF(BTRIM(bucket_name), '') IS NOT NULL
+          AND COALESCE(total_cost, 0) >= 0
+          AND LOWER(COALESCE(usage_type, '')) <> 'use1-storagelens-objcount'
+          AND LOWER(COALESCE(operation, '')) <> 'storagelens'
+        GROUP BY bucket_name
+      ),
+      bucket_list AS (
+        SELECT bucket_name FROM storage_by_bucket
+        UNION
+        SELECT bucket_name FROM request_by_bucket
+        UNION
+        SELECT bucket_name FROM transfer_by_bucket
+      ),
+      bucket_regions AS (
+        SELECT
+          bucket_name,
+          MAX(region) AS region
+        FROM s3_cost_daily
+        WHERE ${scoped.whereClause}
+          AND bucket_name IS NOT NULL
+          AND NULLIF(BTRIM(bucket_name), '') IS NOT NULL
+        GROUP BY bucket_name
+      )
+      SELECT
+        b.bucket_name,
+        COALESCE(s.storage_gb, 0)::double precision AS storage_gb,
+        COALESCE(s.object_count, 0)::double precision AS object_count,
+        COALESCE(t.transfer_gb, 0)::double precision AS transfer_gb,
+        COALESCE(r.request_count, 0)::double precision AS request_count,
+        br.region,
+        CASE
+          WHEN COALESCE(r.request_count, 0) = 0
+            AND COALESCE(s.storage_gb, 0) = 0
+            AND COALESCE(t.transfer_gb, 0) = 0
+            THEN 'Mixed Heavy'
+          WHEN COALESCE(r.request_count, 0) >= GREATEST(COALESCE(s.storage_gb, 0) * 1000, COALESCE(t.transfer_gb, 0) * 1000)
+            THEN 'Request Heavy'
+          WHEN COALESCE(s.storage_gb, 0) >= GREATEST(COALESCE(t.transfer_gb, 0), COALESCE(r.request_count, 0) / 1000)
+            THEN 'Storage Heavy'
+          WHEN COALESCE(t.transfer_gb, 0) >= GREATEST(COALESCE(s.storage_gb, 0), COALESCE(r.request_count, 0) / 1000)
+            THEN 'Transfer Heavy'
+          ELSE 'Mixed Heavy'
+        END AS dominant_usage_type
+      FROM bucket_list b
+      LEFT JOIN storage_by_bucket s ON s.bucket_name = b.bucket_name
+      LEFT JOIN request_by_bucket r ON r.bucket_name = b.bucket_name
+      LEFT JOIN transfer_by_bucket t ON t.bucket_name = b.bucket_name
+      LEFT JOIN bucket_regions br ON br.bucket_name = b.bucket_name
+      ${bucketFilters.length > 0 ? `WHERE ${bucketFilters.join("\n        AND ")}` : ""}
+      ORDER BY storage_gb DESC, request_count DESC, transfer_gb DESC;
+      `,
+      { bind: params, type: QueryTypes.SELECT },
+    );
+
+    const result = new Map<
+      string,
+      {
+        storageGb: number;
+        objectCount: number;
+        transferGb: number;
+        requestCount: number;
+        region: string | null;
+        dominantUsageType: "Request Heavy" | "Storage Heavy" | "Transfer Heavy" | "Retrieval Heavy" | "Mixed Heavy";
+      }
+    >();
+
+    for (const row of rows) {
+      const bucketName = String(row.bucket_name ?? "").trim();
+      if (!bucketName) continue;
+      const dominantRaw = String(row.dominant_usage_type ?? "Mixed Heavy").trim();
+      const dominantUsageType =
+        dominantRaw === "Request Heavy" || dominantRaw === "Storage Heavy" || dominantRaw === "Transfer Heavy" || dominantRaw === "Retrieval Heavy"
+          ? dominantRaw
+          : "Mixed Heavy";
+      result.set(bucketName, {
+        storageGb: toNumber(row.storage_gb),
+        objectCount: toNumber(row.object_count),
+        transferGb: toNumber(row.transfer_gb),
+        requestCount: toNumber(row.request_count),
+        region: row.region ? String(row.region) : null,
+        dominantUsageType,
+      });
+    }
+
+    return result;
+  }
+
   async getUsageSummaryKpis(
     scope: DashboardScope,
     filters: S3CostInsightsFilters,
@@ -1606,36 +1976,26 @@ END
         SELECT
           bucket_name,
           cost_category,
-          usage_type,
-          product_family,
-          line_item_description,
           operation,
+          pricing_unit,
+          total_cost,
+          usage_type,
           COALESCE(usage_quantity, 0)::double precision AS usage_quantity
         FROM s3_cost_daily
         WHERE ${scoped.whereClause}
           AND ${filterPredicates.clause}
+          AND bucket_name IS NOT NULL
+          AND NULLIF(BTRIM(bucket_name), '') IS NOT NULL
+          AND COALESCE(total_cost, 0) >= 0
+          AND LOWER(COALESCE(usage_type, '')) <> 'use1-storagelens-objcount'
+          AND LOWER(COALESCE(operation, '')) <> 'storagelens'
       )
       SELECT
+        0::double precision AS total_storage_gb,
         COALESCE(
           SUM(
             CASE
-              WHEN (
-                LOWER(TRIM(COALESCE(NULLIF(cost_category, ''), ''))) = 'storage'
-                OR LOWER(COALESCE(usage_type, '')) LIKE '%timedstorage%'
-              )
-              THEN usage_quantity
-              ELSE 0
-            END
-          ),
-          0
-        )::double precision AS total_storage_gb,
-        COALESCE(
-          SUM(
-            CASE
-              WHEN (
-                LOWER(TRIM(COALESCE(NULLIF(cost_category, ''), ''))) IN ('request', 'requests')
-                OR LOWER(COALESCE(usage_type, '')) LIKE 'requests%'
-              )
+              WHEN LOWER(TRIM(COALESCE(NULLIF(pricing_unit, ''), ''))) = 'requests'
               THEN usage_quantity
               ELSE 0
             END
@@ -1646,14 +2006,8 @@ END
           SUM(
             CASE
               WHEN (
-                LOWER(TRIM(COALESCE(NULLIF(cost_category, ''), ''))) IN ('transfer', 'data_transfer', 'data transfer')
-                OR LOWER(TRIM(COALESCE(NULLIF(product_family, ''), ''))) = 'data transfer'
-                OR LOWER(COALESCE(usage_type, '')) LIKE '%datatransfer%'
-                OR LOWER(COALESCE(usage_type, '')) LIKE '%out-bytes%'
-                OR LOWER(COALESCE(usage_type, '')) LIKE '%in-bytes%'
-                OR LOWER(COALESCE(usage_type, '')) LIKE '%data%transfer%'
-                OR LOWER(COALESCE(line_item_description, '')) LIKE '%data transfer%'
-                OR LOWER(COALESCE(operation, '')) LIKE '%datatransfer%'
+                LOWER(TRIM(COALESCE(NULLIF(cost_category, ''), ''))) = 'transfer'
+                AND LOWER(TRIM(COALESCE(NULLIF(pricing_unit, ''), ''))) = 'gb'
               )
               THEN usage_quantity
               ELSE 0
@@ -1737,24 +2091,60 @@ END
     const objectCountRows = await sequelize.query<S3ObjectCountKpiRow>(
       `
       WITH
-      bucket_daily AS (
-        SELECT
-          sld.usage_date::date AS usage_date,
-          sld.bucket_name,
-          MAX(sld.object_count)::double precision AS object_count
+      latest AS (
+        SELECT MAX(sld.usage_date::date) AS latest_date
         FROM s3_storage_lens_daily sld
         WHERE ${storageScoped.whereClause}
           AND ${objectCountFilters.join("\n          AND ")}
-        GROUP BY sld.usage_date::date, sld.bucket_name
+      ),
+      bucket_latest AS (
+        SELECT
+          sld.bucket_name,
+          COALESCE(MAX(sld.object_count), 0)::double precision AS object_count
+        FROM s3_storage_lens_daily sld
+        CROSS JOIN latest l
+        WHERE ${storageScoped.whereClause}
+          AND ${objectCountFilters.join("\n          AND ")}
+          AND sld.usage_date::date = l.latest_date
+        GROUP BY sld.bucket_name
       )
       SELECT COALESCE(SUM(object_count), 0)::double precision AS total_object_count
-      FROM bucket_daily;
+      FROM bucket_latest;
+      `,
+      { bind: objectCountParams, type: QueryTypes.SELECT },
+    );
+
+    const storageRows = await sequelize.query<{ total_storage_gb: number | string | null }>(
+      `
+      WITH latest AS (
+        SELECT MAX(sld.usage_date::date) AS latest_date
+        FROM s3_storage_lens_daily sld
+        WHERE ${storageScoped.whereClause}
+          AND ${objectCountFilters.join("\n          AND ")}
+      )
+      SELECT
+        COALESCE(
+          SUM(
+            COALESCE(sld.bytes_standard, 0)
+            + COALESCE(sld.bytes_standard_ia, 0)
+            + COALESCE(sld.bytes_onezone_ia, 0)
+            + COALESCE(sld.bytes_intelligent_tiering, 0)
+            + COALESCE(sld.bytes_glacier, 0)
+            + COALESCE(sld.bytes_deep_archive, 0)
+          ),
+          0
+        )::double precision / POWER(1024, 3)::double precision AS total_storage_gb
+      FROM s3_storage_lens_daily sld
+      CROSS JOIN latest l
+      WHERE ${storageScoped.whereClause}
+        AND ${objectCountFilters.join("\n        AND ")}
+        AND sld.usage_date::date = l.latest_date;
       `,
       { bind: objectCountParams, type: QueryTypes.SELECT },
     );
 
     return {
-      totalStorageGb: toNumber(usageRows[0]?.total_storage_gb),
+      totalStorageGb: toNumber(storageRows[0]?.total_storage_gb),
       totalRequests: toNumber(usageRows[0]?.total_requests),
       totalTransferGb: toNumber(usageRows[0]?.total_transfer_gb),
       totalObjectCount: toNumber(objectCountRows[0]?.total_object_count),
