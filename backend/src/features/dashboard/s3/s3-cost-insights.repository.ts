@@ -12,6 +12,7 @@ import type {
   S3CostInsightsFilters,
   S3CostSeriesBy,
   S3UsageOperationTableInsight,
+  S3UsageTypeCostTableInsight,
   S3CostYAxisMetric,
   S3CostFeatureTrendInsight,
   S3CostTrendInsight,
@@ -23,6 +24,24 @@ type S3KpiRow = {
 
 type S3EffectiveKpiRow = {
   total_effective_s3_cost: number | string | null;
+};
+
+type S3BucketKpiRow = {
+  gross_bucket_cost: number | string | null;
+  credit_adjusted_cost: number | string | null;
+  net_bucket_cost: number | string | null;
+  total_buckets: number | string | null;
+};
+
+type S3UsageTypeKpiTotalsRow = {
+  gross_s3_cost: number | string | null;
+  credits: number | string | null;
+  net_s3_cost: number | string | null;
+};
+
+type S3UsageTypeDriverRow = {
+  usage_category: string | null;
+  total_cost: number | string | null;
 };
 
 type S3BucketRow = {
@@ -82,6 +101,12 @@ type S3UsageOperationTableRow = {
   cost: number | string | null;
   quantity: number | string | null;
   unit: string | null;
+};
+
+type S3UsageTypeCostTableRow = {
+  usage_type: string | null;
+  gross_cost: number | string | null;
+  top_bucket_name: string | null;
 };
 
 type S3BreakdownRow = {
@@ -284,7 +309,13 @@ const S3_COST_CATEGORY_OPTIONS: S3CostCategory[] = [
 
 const S3_COST_BY_OPTIONS: S3CostChartBy[] = ["date", "bucket", "region", "account"];
 const S3_SERIES_BY_OPTIONS: S3CostSeriesBy[] = ["none", "bucket", "usage_type", "cost_category", "operation", "product_family", "storage_class"];
-const S3_Y_AXIS_METRIC_OPTIONS: S3CostYAxisMetric[] = ["billed_cost", "effective_cost", "amortized_cost", "usage_quantity"];
+const S3_Y_AXIS_METRIC_OPTIONS: S3CostYAxisMetric[] = [
+  "gross_cost",
+  "billed_cost",
+  "effective_cost",
+  "amortized_cost",
+  "usage_quantity",
+];
 
 const OWNER_TAG_KEYS_SQL = `
 (
@@ -764,6 +795,14 @@ export class S3CostInsightsRepository {
 
   private getMetricCostExpression(metric: S3CostYAxisMetric): string {
     switch (metric) {
+      case "gross_cost":
+        return `
+CASE
+  WHEN cost_category IN ('Storage', 'Request', 'Retrieval', 'Transfer', 'Other') AND total_cost > 0
+    THEN total_cost
+  ELSE 0
+END
+`;
       case "usage_quantity":
         return "usage_quantity";
       case "effective_cost":
@@ -840,6 +879,13 @@ export class S3CostInsightsRepository {
         FROM s3_cost_daily
         WHERE ${scoped.whereClause}
           AND ${filterPredicates.clause}
+          AND (
+            $${scoped.nextIndex + filterPredicates.params.length + 1}::text <> 'gross_cost'
+            OR (
+              cost_category IN ('Storage', 'Request', 'Retrieval', 'Transfer', 'Other')
+              AND COALESCE(total_cost, 0) > 0
+            )
+          )
       ),
       ranked_x AS (
         SELECT
@@ -871,7 +917,7 @@ export class S3CostInsightsRepository {
         CASE WHEN $${scoped.nextIndex + filterPredicates.params.length}::text <> 'date' THEN SUM(metric_cost) END DESC;
       `,
       {
-        bind: [...scoped.params, ...filterPredicates.params, filters.costBy],
+        bind: [...scoped.params, ...filterPredicates.params, filters.costBy, filters.yAxisMetric],
         type: QueryTypes.SELECT,
       },
     );
@@ -1097,6 +1143,153 @@ export class S3CostInsightsRepository {
     return toNumber(rows[0]?.total_effective_s3_cost);
   }
 
+  async getBucketCostKpis(
+    scope: DashboardScope,
+    filters: S3CostInsightsFilters,
+  ): Promise<{
+    grossBucketCost: number;
+    creditAdjustedCost: number;
+    netBucketCost: number;
+    totalBuckets: number;
+  }> {
+    const scoped = this.buildS3DailyScopedWhere(scope);
+    const filterPredicates = this.buildS3FilterPredicates(filters, scoped.nextIndex);
+    const rows = await sequelize.query<S3BucketKpiRow>(
+      `
+      WITH filtered AS (
+        SELECT
+          bucket_name,
+          cost_category,
+          COALESCE(total_cost, 0)::double precision AS total_cost
+        FROM s3_cost_daily
+        WHERE ${scoped.whereClause}
+          AND ${filterPredicates.clause}
+      )
+      SELECT
+        COALESCE(
+          SUM(
+            CASE
+              WHEN cost_category IN ('Storage', 'Request', 'Retrieval', 'Transfer', 'Other') AND total_cost > 0
+                THEN total_cost
+              ELSE 0
+            END
+          ),
+          0
+        )::double precision AS gross_bucket_cost,
+        COALESCE(SUM(CASE WHEN total_cost < 0 THEN ABS(total_cost) ELSE 0 END), 0)::double precision AS credit_adjusted_cost,
+        COALESCE(
+          SUM(CASE WHEN total_cost > 0 THEN total_cost ELSE 0 END)
+          - SUM(CASE WHEN total_cost < 0 THEN ABS(total_cost) ELSE 0 END),
+          0
+        )::double precision AS net_bucket_cost,
+        COALESCE(COUNT(DISTINCT NULLIF(TRIM(bucket_name), '')), 0)::bigint AS total_buckets
+      FROM filtered;
+      `,
+      { bind: [...scoped.params, ...filterPredicates.params], type: QueryTypes.SELECT },
+    );
+
+    return {
+      grossBucketCost: toNumber(rows[0]?.gross_bucket_cost),
+      creditAdjustedCost: toNumber(rows[0]?.credit_adjusted_cost),
+      netBucketCost: toNumber(rows[0]?.net_bucket_cost),
+      totalBuckets: Math.max(0, Math.round(toNumber(rows[0]?.total_buckets))),
+    };
+  }
+
+  async getUsageTypeCostKpis(
+    scope: DashboardScope,
+    filters: S3CostInsightsFilters,
+  ): Promise<{
+    grossS3Cost: number;
+    credits: number;
+    netS3Cost: number;
+    topUsageDriver: {
+      category: "Request" | "Storage" | "Transfer" | "Retrieval" | "Replication" | "Lifecycle" | "Other";
+      cost: number;
+      percentOfTotal: number;
+    } | null;
+  }> {
+    const scoped = this.buildS3DailyScopedWhere(scope);
+    const filterPredicates = this.buildS3FilterPredicates(filters, scoped.nextIndex);
+    const bind = [...scoped.params, ...filterPredicates.params];
+    const categorySql = `
+CASE
+  WHEN LOWER(COALESCE(usage_type, '')) LIKE '%replication%' OR LOWER(COALESCE(operation, '')) LIKE '%replication%' THEN 'Replication'
+  WHEN LOWER(COALESCE(usage_type, '')) LIKE '%lifecycle%' OR LOWER(COALESCE(operation, '')) LIKE '%lifecycle%'
+    OR LOWER(COALESCE(operation, '')) LIKE '%transition%' OR LOWER(COALESCE(operation, '')) LIKE '%expire%' THEN 'Lifecycle'
+  WHEN cost_category = 'Request' THEN 'Request'
+  WHEN cost_category = 'Storage' THEN 'Storage'
+  WHEN cost_category = 'Transfer' THEN 'Transfer'
+  WHEN cost_category = 'Retrieval' THEN 'Retrieval'
+  ELSE 'Other'
+END
+`;
+
+    const totalsRows = await sequelize.query<S3UsageTypeKpiTotalsRow>(
+      `
+      WITH filtered AS (
+        SELECT COALESCE(total_cost, 0)::double precision AS total_cost
+        FROM s3_cost_daily
+        WHERE ${scoped.whereClause}
+          AND ${filterPredicates.clause}
+      )
+      SELECT
+        COALESCE(SUM(CASE WHEN total_cost > 0 THEN total_cost ELSE 0 END), 0)::double precision AS gross_s3_cost,
+        COALESCE(SUM(CASE WHEN total_cost < 0 THEN ABS(total_cost) ELSE 0 END), 0)::double precision AS credits,
+        COALESCE(
+          SUM(CASE WHEN total_cost > 0 THEN total_cost ELSE 0 END)
+          - SUM(CASE WHEN total_cost < 0 THEN ABS(total_cost) ELSE 0 END),
+          0
+        )::double precision AS net_s3_cost
+      FROM filtered;
+      `,
+      { bind, type: QueryTypes.SELECT },
+    );
+
+    const driverRows = await sequelize.query<S3UsageTypeDriverRow>(
+      `
+      WITH filtered AS (
+        SELECT
+          ${categorySql} AS usage_category,
+          COALESCE(total_cost, 0)::double precision AS total_cost
+        FROM s3_cost_daily
+        WHERE ${scoped.whereClause}
+          AND ${filterPredicates.clause}
+      )
+      SELECT
+        usage_category,
+        SUM(CASE WHEN total_cost > 0 THEN total_cost ELSE 0 END)::double precision AS total_cost
+      FROM filtered
+      GROUP BY usage_category
+      ORDER BY total_cost DESC, usage_category ASC
+      LIMIT 1;
+      `,
+      { bind, type: QueryTypes.SELECT },
+    );
+
+    const grossS3Cost = toNumber(totalsRows[0]?.gross_s3_cost);
+    const credits = toNumber(totalsRows[0]?.credits);
+    const netS3Cost = toNumber(totalsRows[0]?.net_s3_cost);
+    const topDriverCategory = String(driverRows[0]?.usage_category ?? "").trim();
+    const topDriverCost = toNumber(driverRows[0]?.total_cost);
+    const allowedCategories = new Set(["Request", "Storage", "Transfer", "Retrieval", "Replication", "Lifecycle", "Other"]);
+    const normalizedTopDriver =
+      allowedCategories.has(topDriverCategory) && topDriverCost > 0
+        ? {
+            category: topDriverCategory as "Request" | "Storage" | "Transfer" | "Retrieval" | "Replication" | "Lifecycle" | "Other",
+            cost: topDriverCost,
+            percentOfTotal: grossS3Cost > 0 ? (topDriverCost / grossS3Cost) * 100 : 0,
+          }
+        : null;
+
+    return {
+      grossS3Cost,
+      credits,
+      netS3Cost,
+      topUsageDriver: normalizedTopDriver,
+    };
+  }
+
   async getBucketCosts(scope: DashboardScope, limit: number = 250): Promise<S3CostBucketInsight[]> {
     const scoped = this.buildS3DailyScopedWhere(scope);
     const rows = await sequelize.query<S3BucketRow>(
@@ -1311,6 +1504,73 @@ export class S3CostInsightsRepository {
       cost: toNumber(row.cost),
       quantity: toNumber(row.quantity),
       unit: isTransferOnly ? "GB" : isRequestOnly ? "Requests" : String(row.unit ?? "Units"),
+    }));
+  }
+
+  async getUsageTypeCostTable(
+    scope: DashboardScope,
+    filters: S3CostInsightsFilters,
+    limit: number = 200,
+  ): Promise<Array<Omit<S3UsageTypeCostTableInsight, "trendPct">>> {
+    const scoped = this.buildS3DailyScopedWhere(scope);
+    const filterPredicates = this.buildS3FilterPredicates(filters, scoped.nextIndex);
+    const limitPlaceholder = scoped.params.length + filterPredicates.params.length + 1;
+
+    const rows = await sequelize.query<S3UsageTypeCostTableRow>(
+      `
+      WITH filtered AS (
+        SELECT
+          COALESCE(NULLIF(usage_type, ''), 'Unspecified') AS usage_type,
+          COALESCE(bucket_name, 'unattributed') AS bucket_name,
+          COALESCE(total_cost, 0)::double precision AS total_cost
+        FROM s3_cost_daily
+        WHERE ${scoped.whereClause}
+          AND ${filterPredicates.clause}
+      ),
+      gross AS (
+        SELECT
+          usage_type,
+          bucket_name,
+          CASE WHEN total_cost > 0 THEN total_cost ELSE 0 END AS gross_cost
+        FROM filtered
+      ),
+      usage_totals AS (
+        SELECT
+          usage_type,
+          COALESCE(SUM(gross_cost), 0)::double precision AS gross_cost
+        FROM gross
+        GROUP BY usage_type
+      ),
+      top_bucket AS (
+        SELECT
+          usage_type,
+          bucket_name,
+          SUM(gross_cost)::double precision AS bucket_cost,
+          ROW_NUMBER() OVER (
+            PARTITION BY usage_type
+            ORDER BY SUM(gross_cost) DESC, bucket_name ASC
+          ) AS rn
+        FROM gross
+        GROUP BY usage_type, bucket_name
+      )
+      SELECT
+        ut.usage_type,
+        ut.gross_cost,
+        COALESCE(tb.bucket_name, 'unattributed') AS top_bucket_name
+      FROM usage_totals ut
+      LEFT JOIN top_bucket tb
+        ON tb.usage_type = ut.usage_type
+       AND tb.rn = 1
+      ORDER BY ut.gross_cost DESC, ut.usage_type ASC
+      LIMIT $${limitPlaceholder};
+      `,
+      { bind: [...scoped.params, ...filterPredicates.params, limit], type: QueryTypes.SELECT },
+    );
+
+    return rows.map((row) => ({
+      usageType: String(row.usage_type ?? "Unspecified"),
+      grossCost: toNumber(row.gross_cost),
+      topBucketName: String(row.top_bucket_name ?? "unattributed"),
     }));
   }
 

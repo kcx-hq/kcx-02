@@ -1671,7 +1671,7 @@ export type S3CostInsightsResponse = {
         account: string[];
         costBy: "date" | "bucket" | "region" | "account";
         seriesBy: "none" | "cost_category" | "usage_type" | "operation" | "product_family" | "bucket" | "storage_class";
-        yAxisMetric: "billed_cost" | "effective_cost" | "amortized_cost" | "usage_quantity";
+        yAxisMetric: "gross_cost" | "billed_cost" | "effective_cost" | "amortized_cost" | "usage_quantity";
       };
   };
   columnsUsed: Array<
@@ -1693,6 +1693,22 @@ export type S3CostInsightsResponse = {
     totalS3Cost: number;
     monthToDateCost: number;
     effectiveCost: number;
+    bucketCostKpis: {
+      grossBucketCost: number;
+      creditAdjustedCost: number;
+      netBucketCost: number;
+      totalBuckets: number;
+    };
+    usageTypeCostKpis: {
+      grossS3Cost: number;
+      credits: number;
+      netS3Cost: number;
+      topUsageDriver: {
+        category: "Request" | "Storage" | "Transfer" | "Retrieval" | "Replication" | "Lifecycle" | "Other";
+        cost: number;
+        percentOfTotal: number;
+      } | null;
+    };
   };
   storageCostDashboard: {
     currency: "USD";
@@ -1772,6 +1788,12 @@ export type S3CostInsightsResponse = {
     quantity: number;
     unit: string;
   }>;
+  usageTypeCostTable: Array<{
+    usageType: string;
+    grossCost: number;
+    trendPct: number;
+    topBucketName: string;
+  }>;
   chart: {
     bucketCosts: Array<{
       bucketName: string;
@@ -1813,7 +1835,7 @@ export type S3CostInsightsResponse = {
       account: string[];
       costBy: Array<"date" | "bucket" | "region" | "account">;
       seriesBy: Array<"none" | "cost_category" | "usage_type" | "operation" | "product_family" | "bucket" | "storage_class">;
-      yAxisMetric: Array<"billed_cost" | "effective_cost" | "amortized_cost" | "usage_quantity">;
+      yAxisMetric: Array<"gross_cost" | "billed_cost" | "effective_cost" | "amortized_cost" | "usage_quantity">;
     };
   storageAnomalies: {
     items: Array<{
@@ -2000,7 +2022,7 @@ export type S3CostInsightsFiltersQuery = {
   responseMode?: "full" | "core" | "quick" | "overview";
   costBy?: "date" | "bucket" | "region" | "account";
   seriesBy?: "none" | "cost_category" | "usage_type" | "operation" | "product_family" | "bucket" | "storage_class";
-  yAxisMetric?: "billed_cost" | "effective_cost" | "amortized_cost" | "usage_quantity";
+  yAxisMetric?: "gross_cost" | "billed_cost" | "effective_cost" | "amortized_cost" | "usage_quantity";
 };
 
 export type S3PolicyAppliedStatus = "APPLIED" | "NOT_APPLIED" | "FAILED" | "EXTERNAL";

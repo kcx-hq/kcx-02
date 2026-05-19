@@ -185,13 +185,13 @@ const buildChartModel = (input: {
       type: "value",
       min: isLineChart ? undefined : 0,
       name:
-        yAxisMetric === "effective_cost"
+        yAxisMetric === "gross_cost"
+          ? "Gross Cost ($)"
+          : yAxisMetric === "effective_cost"
           ? "Effective Cost ($)"
-          : yAxisMetric === "amortized_cost"
-            ? "Amortized Cost ($)"
             : yAxisMetric === "usage_quantity"
               ? "Usage Quantity"
-              : "Billed Cost ($)",
+              : "Effective Cost ($)",
       nameLocation: "middle",
       nameRotate: 90,
       nameGap: 64,
