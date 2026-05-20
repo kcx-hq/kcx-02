@@ -2,10 +2,10 @@ import { useMemo } from "react";
 import type { EChartsOption } from "echarts";
 
 import { BaseEChart } from "../../../common/charts/BaseEChart";
-import type { S3CostInsightsResponse } from "../../../api/dashboardApi";
+import type { S3BucketDetailResponse } from "../../../api/dashboardApi";
 
 type Props = {
-  breakdown: S3CostInsightsResponse["chart"]["breakdown"] | undefined;
+  charts: S3BucketDetailResponse["charts"] | undefined;
   isLoading?: boolean;
   isError?: boolean;
   errorMessage?: string;
@@ -31,53 +31,32 @@ const SERIES_COLORS: Record<string, string> = {
   request: "#b48a2f",
 };
 
-const normalizeSeriesKey = (value: string): "storage" | "transfer" | "request" | "other" => {
-  const normalized = value.trim().toLowerCase();
-  if (normalized.includes("storage")) return "storage";
-  if (normalized.includes("transfer")) return "transfer";
-  if (normalized.includes("request")) return "request";
-  return "other";
-};
-
 const SERIES_ORDER: Array<{ key: "storage" | "request" | "transfer"; label: string; yAxisName: string }> = [
   { key: "storage", label: "Storage Usage vs Date", yAxisName: "Storage (GB)" },
   { key: "request", label: "Request Usage vs Date", yAxisName: "Requests (Count)" },
   { key: "transfer", label: "Transfer Usage vs Date", yAxisName: "Transfer (GB)" },
 ];
 
-export function S3BucketUsageTrendPanel({ breakdown, isLoading = false, isError = false, errorMessage }: Props) {
-  const labels = useMemo(
-    () =>
-      (breakdown?.labels ?? []).map((label) => {
-        const parsed = new Date(`${label}T00:00:00.000Z`);
-        return Number.isNaN(parsed.getTime()) ? label : xAxisFormatter.format(parsed);
-      }),
-    [breakdown?.labels],
-  );
+export function S3BucketUsageTrendPanel({ charts, isLoading = false, isError = false, errorMessage }: Props) {
+  const labels = useMemo(() => {
+    const source = charts?.storageUsage ?? charts?.requestUsage ?? charts?.transferUsage ?? [];
+    return source.map((item) => {
+      const label = String(item.date ?? "");
+      const parsed = new Date(`${label}T00:00:00.000Z`);
+      return Number.isNaN(parsed.getTime()) ? label : xAxisFormatter.format(parsed);
+    });
+  }, [charts?.requestUsage, charts?.storageUsage, charts?.transferUsage]);
 
   const seriesByType = useMemo(() => {
-    const data = new Map<"storage" | "request" | "transfer", number[]>();
-    data.set("storage", []);
-    data.set("request", []);
-    data.set("transfer", []);
-
-    for (const item of breakdown?.series ?? []) {
-      const key = normalizeSeriesKey(String(item.name ?? ""));
-      if (key === "other") continue;
-      const values = item.values.map((value) => Number(value ?? 0));
-      const existing = data.get(key) ?? [];
-      if (existing.length === 0) {
-        data.set(key, values);
-      } else {
-        data.set(
-          key,
-          values.map((value, index) => Number(existing[index] ?? 0) + value),
-        );
-      }
-    }
-
-    return data;
-  }, [breakdown?.series]);
+    const storage = (charts?.storageUsage ?? []).map((item) => (item.value == null ? null : Number(item.value)));
+    const request = (charts?.requestUsage ?? []).map((item) => (item.value == null ? null : Number(item.value)));
+    const transfer = (charts?.transferUsage ?? []).map((item) => (item.value == null ? null : Number(item.value)));
+    return new Map<"storage" | "request" | "transfer", Array<number | null>>([
+      ["storage", storage],
+      ["request", request],
+      ["transfer", transfer],
+    ]);
+  }, [charts?.requestUsage, charts?.storageUsage, charts?.transferUsage]);
 
   const chartItems = useMemo(
     () =>
@@ -132,7 +111,7 @@ export function S3BucketUsageTrendPanel({ breakdown, isLoading = false, isError 
     [labels, seriesByType],
   );
 
-  const hasChartData = labels.length > 0 && chartItems.some((item) => item.values.some((value) => value > 0));
+  const hasChartData = labels.length > 0 && chartItems.some((item) => item.values.some((value) => Number(value ?? 0) > 0));
 
   return (
     <section className="cost-explorer-chart-panel s3-overview-chart-panel s3-bucket-usage-trend-panel" aria-label="Bucket usage vs date">

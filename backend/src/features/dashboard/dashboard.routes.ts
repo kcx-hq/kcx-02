@@ -52,6 +52,7 @@ import { handleGetAnomalies as handleGetAnomaliesAlertsDashboard } from "./anoma
 import { handleGetReportDashboard } from "./report/report.controller.js";
 import { handleGetResourcesDashboard } from "./resources/resources.controller.js";
 import { handleGetS3CostInsights } from "./s3/s3-cost-insights.controller.js";
+import { handleGetS3BucketDetail } from "./s3/s3-bucket-detail.controller.js";
 import {
   handleApplyS3BucketLifecyclePolicy,
   handleApplyS3ReplicationSetup,
@@ -168,6 +169,7 @@ router.get(
 );
 router.get("/dashboard/anomalies-alerts", asyncHandler(handleGetAnomaliesAlertsDashboard));
 router.get("/dashboard/s3/cost-insights", asyncHandler(handleGetS3CostInsights));
+router.get("/dashboard/s3/buckets/:bucketName/detail", asyncHandler(handleGetS3BucketDetail));
 router.get("/dashboard/s3/optimization", asyncHandler(handleGetS3Optimization));
 router.get("/dashboard/s3/replication", asyncHandler(handleGetS3Replication));
 router.get("/dashboard/s3/replication/destination-buckets", asyncHandler(handleGetS3ReplicationDestinationBuckets));
@@ -187,3 +189,4 @@ router.get("/dashboard/report", asyncHandler(handleGetReportDashboard));
 router.get("/dashboard/test-total-spend", asyncHandler(handleGetDashboardTestTotalSpend));
 
 export default router;
+

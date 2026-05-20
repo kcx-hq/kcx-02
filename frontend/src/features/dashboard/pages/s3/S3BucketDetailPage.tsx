@@ -1,18 +1,9 @@
 import { useMemo } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 
-import { type S3CostInsightsFiltersQuery } from "../../api/dashboardApi";
-import { useS3CostInsightsQuery } from "../../hooks/useDashboardQueries";
+import { useS3BucketDetailQuery } from "../../hooks/useDashboardQueries";
 import { S3BucketDetailPanel } from "./components/S3BucketDetailPanel";
 import type { S3BucketTableRow } from "./components/S3BucketInsightsTable.types";
-
-const parseListParam = (value: string | null): string[] => {
-  if (!value) return [];
-  return value
-    .split(",")
-    .map((item) => item.trim())
-    .filter((item) => item.length > 0);
-};
 
 export default function S3BucketDetailPage() {
   const navigate = useNavigate();
@@ -20,41 +11,46 @@ export default function S3BucketDetailPage() {
   const params = useParams<{ bucketName: string }>();
   const bucketNameParam = decodeURIComponent(params.bucketName ?? "").trim();
 
-  const queryFilters = useMemo<S3CostInsightsFiltersQuery>(() => {
-    const search = new URLSearchParams(location.search);
-    const seriesBy = search.get("s3SeriesBy");
-    const costBy = search.get("s3CostBy");
-    const yAxisMetric = search.get("s3YAxisMetric");
-    const seriesValues = parseListParam(search.get("s3SeriesValues"));
-    const storageClass = parseListParam(search.get("s3StorageClass"));
-    const region = (search.get("s3Region") ?? "").trim();
-
+  const query = useS3BucketDetailQuery(bucketNameParam, {
+    enabled: bucketNameParam.length > 0,
+    staleTime: 180_000,
+  });
+  const selectedBucket = useMemo<S3BucketTableRow | null>(() => {
+    const detail = query.data;
+    if (!detail) return null;
     return {
-      ...(seriesValues.length > 0 ? { seriesValues } : {}),
-      ...(storageClass.length > 0 ? { storageClass } : {}),
-      ...(region ? { region: [region] } : {}),
-      ...(seriesBy ? { seriesBy: seriesBy as NonNullable<S3CostInsightsFiltersQuery["seriesBy"]> } : {}),
-      ...(costBy ? { costBy: costBy as NonNullable<S3CostInsightsFiltersQuery["costBy"]> } : {}),
-      ...(yAxisMetric ? { yAxisMetric: yAxisMetric as NonNullable<S3CostInsightsFiltersQuery["yAxisMetric"]> } : {}),
+      bucketName: detail.bucketName,
+      account: detail.metadata.accountId ?? "Unspecified",
+      cost: 0,
+      storage: 0,
+      requests: 0,
+      transfer: 0,
+      region: detail.metadata.region ?? "Unknown",
+      owner: detail.metadata.owner ?? "Unassigned",
+      driver: "Storage",
+      retrieval: 0,
+      other: 0,
+      replicationStatus: detail.replicationInsight.status,
+      versioningStatus: detail.metadata.versioning,
+      encryptionStatus: detail.metadata.encryption,
+      publicAccessStatus:
+        String(detail.metadata.publicAccess ?? "").toLowerCase() === "public"
+          ? "Public"
+          : String(detail.metadata.publicAccess ?? "").toLowerCase() === "private"
+            ? "Private"
+            : "Unknown",
+      trendPct: 0,
+      storageLens: {
+        usageDate: detail.filtersApplied.to,
+        objectCount: detail.objectInsights.objectCount,
+        currentVersionBytes: detail.objectInsights.currentVersionBytes,
+        avgObjectSizeBytes: detail.objectInsights.avgObjectSize,
+        accessCount: detail.usageMetrics.requestCount,
+        percentInGlacier: 0,
+        storageClassDistribution: [],
+      },
     };
-  }, [location.search]);
-
-  const query = useS3CostInsightsQuery(
-    {
-      ...queryFilters,
-      bucket: bucketNameParam,
-      responseMode: "overview",
-    },
-    {
-      enabled: bucketNameParam.length > 0,
-      staleTime: 180_000,
-    },
-  );
-  const rows = useMemo(() => (query.data?.bucketTable ?? []) as S3BucketTableRow[], [query.data?.bucketTable]);
-  const selectedBucket = useMemo(() => {
-    const normalized = bucketNameParam.toLowerCase();
-    return rows.find((row) => String(row.bucketName ?? "").trim().toLowerCase() === normalized) ?? null;
-  }, [bucketNameParam, rows]);
+  }, [query.data]);
 
   const handleBack = () => {
     navigate({
@@ -76,7 +72,12 @@ export default function S3BucketDetailPage() {
       {!query.isLoading && !query.isError && selectedBucket ? (
         <S3BucketDetailPanel
           bucket={selectedBucket}
-          usageMetrics={{ storageGb: 0, transferGb: 0, requestCount: 0 }}
+          usageMetrics={{
+            storageGb: query.data?.usageMetrics.storageGb ?? 0,
+            transferGb: query.data?.usageMetrics.transferGb ?? 0,
+            requestCount: query.data?.usageMetrics.requestCount ?? 0,
+          }}
+          storageLens={selectedBucket.storageLens}
           onClose={handleBack}
         />
       ) : null}

@@ -53,6 +53,7 @@ import type {
 
   S3CostInsightsFiltersQuery,
   S3CostInsightsResponse,
+  S3BucketDetailResponse,
   S3BucketLifecycleInsightResponse,
   S3LifecyclePolicyApplyRequest,
   S3LifecyclePolicyApplyResponse,
@@ -948,6 +949,15 @@ export const dashboardApi = {
   getS3CostInsights(scope: DashboardResolvedScope, filters?: S3CostInsightsFiltersQuery, init?: RequestInit) {
     return apiGet<S3CostInsightsResponse>(withS3CostInsightsFilters("/dashboard/s3/cost-insights", scope, filters), init);
   },
+  getS3BucketDetail(scope: DashboardResolvedScope, bucketName: string, init?: RequestInit) {
+    return apiGet<S3BucketDetailResponse>(
+      withDashboardQuery(`/dashboard/s3/buckets/${encodeURIComponent(bucketName)}/detail`, scope),
+      init,
+    ).then((response) => {
+      console.log("NEW BUCKET DETAIL RESPONSE", response);
+      return response;
+    });
+  },
   getS3Optimization(scope: DashboardResolvedScope) {
     return apiGet<S3OptimizationResponse>(withDashboardQuery("/dashboard/s3/optimization", scope));
   },
@@ -1083,6 +1093,7 @@ export type {
   LoadBalancerExplorerGroupByResponse,
   S3CostInsightsFiltersQuery,
   S3CostInsightsResponse,
+  S3BucketDetailResponse,
   S3BucketLifecycleInsightResponse,
   S3OptimizationResponse,
   S3ReplicationDestinationBucketsResponse,

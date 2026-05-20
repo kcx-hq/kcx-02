@@ -38,6 +38,7 @@ import {
 
   type S3CostInsightsFiltersQuery,
   type S3CostInsightsResponse,
+  type S3BucketDetailResponse,
   type S3BucketLifecycleInsightResponse,
   type S3LifecyclePolicyApplyRequest,
   type S3LifecyclePolicyApplyResponse,
@@ -563,6 +564,25 @@ export function useS3CostInsightsQuery(
     staleTime: options?.staleTime ?? 90_000,
     refetchOnWindowFocus: false,
     refetchInterval: options?.refetchInterval ?? false,
+  });
+}
+
+export function useS3BucketDetailQuery(
+  bucketName: string | null,
+  options?: {
+    enabled?: boolean;
+    staleTime?: number;
+  },
+) {
+  const { scope } = useDashboardScope();
+  const normalizedBucketName = String(bucketName ?? "").trim();
+  return useQuery<S3BucketDetailResponse, Error>({
+    queryKey: ["dashboard", "s3", "bucket-detail", scope, normalizedBucketName],
+    queryFn: ({ signal }) => dashboardApi.getS3BucketDetail(assertScope(scope), normalizedBucketName, { signal }),
+    enabled: Boolean(scope) && Boolean(normalizedBucketName) && (options?.enabled ?? true),
+    placeholderData: (previous) => previous,
+    staleTime: options?.staleTime ?? 90_000,
+    refetchOnWindowFocus: false,
   });
 }
 
