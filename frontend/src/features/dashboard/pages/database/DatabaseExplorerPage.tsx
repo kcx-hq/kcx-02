@@ -6,6 +6,7 @@ import { useDashboardScope } from "../../hooks/useDashboardScope";
 import { useDatabaseExplorerQuery } from "../../hooks/useDashboardQueries";
 import type {
   DatabaseExplorerAllowedGroupByByMetric,
+  DatabaseExplorerCostBasis,
   DatabaseExplorerFilters as DatabaseExplorerFiltersQuery,
   DatabaseExplorerGroupBy,
   DatabaseExplorerMetric,
@@ -32,6 +33,7 @@ const metricOptions: Array<{ value: DatabaseExplorerMetric; label: string }> = [
   { value: "cost", label: "Cost" },
   { value: "usage", label: "Usage" },
 ];
+const DEFAULT_COST_BASIS: DatabaseExplorerCostBasis = "billed_cost";
 
 const DATABASE_ASSETS_PATH = "/dashboard/services/database/assets";
 
@@ -49,6 +51,9 @@ export default function DatabaseExplorerPage() {
   const [metric, setMetric] = useState<DatabaseExplorerMetric>("cost");
   const [groupBy, setGroupBy] = useState<DatabaseExplorerGroupBy>("db_service");
   const [groupValues, setGroupValues] = useState<string[]>([]);
+  const [resourceTypeValues, setResourceTypeValues] = useState<string[]>([]);
+  const [costCategoryValues, setCostCategoryValues] = useState<string[]>([]);
+  const [costBasis, setCostBasis] = useState<DatabaseExplorerCostBasis>(DEFAULT_COST_BASIS);
   const [databaseScope, setDatabaseScope] = useState<DatabaseExplorerScopeValue>("all");
   const [dbService, setDbService] = useState("");
   const [dbEngine, setDbEngine] = useState("");
@@ -57,13 +62,16 @@ export default function DatabaseExplorerPage() {
   const filters = useMemo<DatabaseExplorerFiltersQuery>(
     () => ({
       metric,
+      ...(metric === "cost" ? { costBasis } : {}),
       groupBy: effectiveGroupBy,
       ...(groupValues.length > 0 ? { groupValues } : {}),
+      ...(resourceTypeValues.length > 0 ? { resourceTypeValues } : {}),
+      ...(costCategoryValues.length > 0 ? { costCategoryValues } : {}),
       ...(databaseScope !== "all" ? { databaseScope } : {}),
       ...(dbService.trim() ? { dbService: dbService.trim() } : {}),
       ...(dbEngine.trim() ? { dbEngine: dbEngine.trim() } : {}),
     }),
-    [databaseScope, dbEngine, dbService, effectiveGroupBy, groupValues, metric],
+    [costBasis, costCategoryValues, databaseScope, dbEngine, dbService, effectiveGroupBy, groupValues, metric, resourceTypeValues],
   );
 
   const query = useDatabaseExplorerQuery(filters);
@@ -133,6 +141,9 @@ export default function DatabaseExplorerPage() {
   const handleClearAll = () => {
     setGroupBy(DEFAULT_GROUP_BY[metric]);
     setGroupValues([]);
+    setResourceTypeValues([]);
+    setCostCategoryValues([]);
+    setCostBasis(DEFAULT_COST_BASIS);
     setDatabaseScope("all");
     setDbService("");
     setDbEngine("");
@@ -244,6 +255,8 @@ export default function DatabaseExplorerPage() {
       />
 
       <DatabaseExplorerFilters
+        metric={metric}
+        costBasis={costBasis}
         allowedGroupBy={resolveAllowedGroupBy(metric, allowedGroupByByMetric, allowedGroupBy)}
         databaseScope={databaseScope}
         dbService={dbService}
@@ -251,12 +264,17 @@ export default function DatabaseExplorerPage() {
         groupBy={groupBy}
         effectiveGroupBy={effectiveGroupBy}
         groupValues={groupValues}
+        resourceTypeValues={resourceTypeValues}
+        costCategoryValues={costCategoryValues}
         availableDatabaseScopes={availableDatabaseScopes}
         backendServiceOptions={backendServiceOptions}
         backendEngineOptions={backendEngineOptions}
         groupedValuePreview={data?.filterOptions?.groupedValuePreview}
         onApplyScope={handleApplyScope}
         onApplyGroupBy={handleApplyGroupBy}
+        onApplyCostBasis={setCostBasis}
+        onApplyResourceTypeValues={setResourceTypeValues}
+        onApplyCostCategoryValues={setCostCategoryValues}
         onClearAll={handleClearAll}
       />
 
@@ -280,6 +298,7 @@ export default function DatabaseExplorerPage() {
             }}
           />
           <DatabaseExplorerGroupedTable
+            metric={metric}
             rows={data?.table ?? []}
             isLoading={pageLoading}
             onRowClick={(row) => {

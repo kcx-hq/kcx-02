@@ -3,12 +3,16 @@ import { useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import type {
+  DatabaseExplorerCostBasis,
   DatabaseExplorerGroupBy,
+  DatabaseExplorerMetric,
   DatabaseExplorerScopeValue,
 } from "../../../api/dashboardTypes";
 import { isDatabaseScopeAvailable } from "../databaseExplorer.scope";
 
 type DatabaseExplorerFiltersProps = {
+  metric: DatabaseExplorerMetric;
+  costBasis: DatabaseExplorerCostBasis;
   allowedGroupBy: DatabaseExplorerGroupBy[];
   databaseScope: DatabaseExplorerScopeValue;
   dbService: string;
@@ -16,12 +20,17 @@ type DatabaseExplorerFiltersProps = {
   groupBy: DatabaseExplorerGroupBy;
   effectiveGroupBy: DatabaseExplorerGroupBy;
   groupValues: string[];
+  resourceTypeValues: string[];
+  costCategoryValues: string[];
   availableDatabaseScopes: DatabaseExplorerScopeValue[];
   backendServiceOptions: string[];
   backendEngineOptions: string[];
   groupedValuePreview?: Partial<Record<DatabaseExplorerGroupBy, string[]>>;
   onApplyScope: (next: { databaseScope: DatabaseExplorerScopeValue; dbService: string; dbEngine: string }) => void;
   onApplyGroupBy: (next: { groupBy: DatabaseExplorerGroupBy; groupValues: string[] }) => void;
+  onApplyCostBasis: (next: DatabaseExplorerCostBasis) => void;
+  onApplyResourceTypeValues: (next: string[]) => void;
+  onApplyCostCategoryValues: (next: string[]) => void;
   onClearAll: () => void;
 };
 
@@ -36,6 +45,12 @@ const groupByOptions: Array<{ value: DatabaseExplorerGroupBy; label: string; all
 ];
 
 const groupByDimensions = groupByOptions.map((option) => ({ key: option.value, label: option.label }));
+const costBasisOptions: Array<{ value: DatabaseExplorerCostBasis; label: string }> = [
+  { value: "billed_cost", label: "Billed Cost" },
+  { value: "effective_cost", label: "Effective Cost" },
+  { value: "amortized_cost", label: "Amortized Cost" },
+  { value: "net_amortized_cost", label: "Net Amortized Cost" },
+];
 
 const serviceMatchesScope = (service: string, scope: DatabaseExplorerScopeValue): boolean => {
   const key = service.trim().toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -83,6 +98,8 @@ const engineBelongsToService = (engine: string, service: string): boolean => {
 };
 
 export function DatabaseExplorerFilters({
+  metric,
+  costBasis,
   allowedGroupBy,
   databaseScope,
   dbService,
@@ -90,12 +107,17 @@ export function DatabaseExplorerFilters({
   groupBy,
   effectiveGroupBy,
   groupValues,
+  resourceTypeValues,
+  costCategoryValues,
   availableDatabaseScopes,
   backendServiceOptions,
   backendEngineOptions,
   groupedValuePreview,
   onApplyScope,
   onApplyGroupBy,
+  onApplyCostBasis,
+  onApplyResourceTypeValues,
+  onApplyCostCategoryValues,
   onClearAll,
 }: DatabaseExplorerFiltersProps) {
   const groupBySelectedStyle = {
@@ -112,6 +134,9 @@ export function DatabaseExplorerFilters({
   } as const;
 
   const [databaseMenuOpen, setDatabaseMenuOpen] = useState(false);
+  const [costBasisMenuOpen, setCostBasisMenuOpen] = useState(false);
+  const [resourceTypeMenuOpen, setResourceTypeMenuOpen] = useState(false);
+  const [costCategoryMenuOpen, setCostCategoryMenuOpen] = useState(false);
   const [groupDrawerOpen, setGroupDrawerOpen] = useState(false);
   const [hoveredServiceScope, setHoveredServiceScope] = useState<DatabaseExplorerScopeValue | null>(null);
   const [engineFlyoutPosition, setEngineFlyoutPosition] = useState<{ top: number; left: number } | null>(null);
@@ -176,12 +201,13 @@ export function DatabaseExplorerFilters({
     setDraftGroupValues(groupValues);
     setGroupDrawerOpen(true);
   };
-
   const groupedValuesPreview = useMemo(() => {
     const preview = groupedValuePreview?.[draftGroupBy];
     if (!Array.isArray(preview)) return [];
     return uniqueSorted(preview);
   }, [draftGroupBy, groupedValuePreview]);
+  const resourceTypePreview = useMemo(() => uniqueSorted(groupedValuePreview?.resource_type ?? []), [groupedValuePreview]);
+  const costCategoryPreview = useMemo(() => uniqueSorted(groupedValuePreview?.cost_category ?? []), [groupedValuePreview]);
 
   const applyGroupDrawer = () => {
     const safeGroupBy = allowedDimensionSet.has(draftGroupBy) ? draftGroupBy : (allowedGroupBy[0] ?? "db_service");
@@ -194,6 +220,63 @@ export function DatabaseExplorerFilters({
   return (
     <section className="cost-explorer-control-surface" aria-label="Database explorer controls">
       <div className="cost-explorer-toolbar-row">
+        <div className="cost-explorer-toolbar-item">
+          <button
+            type="button"
+            className="cost-explorer-toolbar-trigger"
+            onClick={openGroupDrawer}
+            title={groupByLabel}
+            data-testid="database-explorer-groupby-control"
+          >
+            <span className="cost-explorer-toolbar-trigger__label">Group By</span>
+            <span className="cost-explorer-toolbar-trigger__row">
+              <span className="cost-explorer-toolbar-trigger__value">{groupByLabel}</span>
+              <ChevronDown className="cost-explorer-toolbar-trigger__caret" size={14} aria-hidden="true" />
+            </span>
+          </button>
+        </div>
+        {metric === "cost" ? (
+          <div className="cost-explorer-toolbar-item" style={{ position: "relative" }}>
+            <button
+              type="button"
+              className={`cost-explorer-toolbar-trigger${costBasisMenuOpen ? " is-active" : ""}`}
+              onClick={() => setCostBasisMenuOpen((prev) => !prev)}
+              title={costBasisOptions.find((option) => option.value === costBasis)?.label ?? "Billed Cost"}
+            >
+              <span className="cost-explorer-toolbar-trigger__label">Cost Basis</span>
+              <span className="cost-explorer-toolbar-trigger__row">
+                <span className="cost-explorer-toolbar-trigger__value">
+                  {costBasisOptions.find((option) => option.value === costBasis)?.label ?? "Billed Cost"}
+                </span>
+                <ChevronDown className="cost-explorer-toolbar-trigger__caret" size={14} aria-hidden="true" />
+              </span>
+            </button>
+            {costBasisMenuOpen ? (
+              <div className="cost-explorer-filter-popover" role="dialog" aria-label="Cost basis">
+                <p className="cost-explorer-filter-popover__title">Cost Basis</p>
+                <div className="cost-explorer-filter-popover__list" role="listbox">
+                  {costBasisOptions.map((option) => {
+                    const selected = option.value === costBasis;
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        className={`cost-explorer-filter-option${selected ? " is-active" : ""}`}
+                        onClick={() => {
+                          onApplyCostBasis(option.value);
+                          setCostBasisMenuOpen(false);
+                        }}
+                      >
+                        <span className="cost-explorer-filter-option__label">{option.label}</span>
+                        {selected ? <Check className="cost-explorer-filter-option__check" size={15} aria-hidden="true" /> : null}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
         <div className="cost-explorer-toolbar-item" style={{ position: "relative" }}>
           <button
             type="button"
@@ -325,21 +408,92 @@ export function DatabaseExplorerFilters({
             </div>
           ) : null}
         </div>
-        <div className="cost-explorer-toolbar-item">
-          <button
-            type="button"
-            className="cost-explorer-toolbar-trigger"
-            onClick={openGroupDrawer}
-            title={groupByLabel}
-            data-testid="database-explorer-groupby-control"
-          >
-            <span className="cost-explorer-toolbar-trigger__label">Group By</span>
-            <span className="cost-explorer-toolbar-trigger__row">
-              <span className="cost-explorer-toolbar-trigger__value">{groupByLabel}</span>
-              <ChevronDown className="cost-explorer-toolbar-trigger__caret" size={14} aria-hidden="true" />
-            </span>
-          </button>
-        </div>
+        {metric === "cost" ? (
+          <div className="cost-explorer-toolbar-item" style={{ position: "relative" }}>
+            <button
+              type="button"
+              className="cost-explorer-toolbar-trigger"
+              onClick={() => setResourceTypeMenuOpen((prev) => !prev)}
+              title="Resource Type"
+            >
+              <span className="cost-explorer-toolbar-trigger__label">Resource Type</span>
+              <span className="cost-explorer-toolbar-trigger__row">
+                <span className="cost-explorer-toolbar-trigger__value">
+                  {resourceTypeValues.length > 0 ? `${resourceTypeValues.length} selected` : "All Resource Types"}
+                </span>
+                <ChevronDown className="cost-explorer-toolbar-trigger__caret" size={14} aria-hidden="true" />
+              </span>
+            </button>
+            {resourceTypeMenuOpen ? (
+              <div className="cost-explorer-filter-popover" role="dialog" aria-label="Resource type filters">
+                <p className="cost-explorer-filter-popover__title">Resource Type</p>
+                <div className="cost-explorer-filter-popover__list" role="listbox">
+                  {resourceTypePreview.map((value) => {
+                    const selected = resourceTypeValues.includes(value);
+                    return (
+                      <button
+                        key={`resource-type-${value}`}
+                        type="button"
+                        className={`cost-explorer-filter-option${selected ? " is-active" : ""}`}
+                        onClick={() =>
+                          onApplyResourceTypeValues(
+                            selected ? resourceTypeValues.filter((entry) => entry !== value) : [...resourceTypeValues, value],
+                          )
+                        }
+                      >
+                        <span className="cost-explorer-filter-option__label">{value}</span>
+                        {selected ? <Check className="cost-explorer-filter-option__check" size={15} aria-hidden="true" /> : null}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+        {metric === "cost" ? (
+          <div className="cost-explorer-toolbar-item" style={{ position: "relative" }}>
+            <button
+              type="button"
+              className="cost-explorer-toolbar-trigger"
+              onClick={() => setCostCategoryMenuOpen((prev) => !prev)}
+              title="Cost Category"
+            >
+              <span className="cost-explorer-toolbar-trigger__label">Cost Category</span>
+              <span className="cost-explorer-toolbar-trigger__row">
+                <span className="cost-explorer-toolbar-trigger__value">
+                  {costCategoryValues.length > 0 ? `${costCategoryValues.length} selected` : "All Cost Categories"}
+                </span>
+                <ChevronDown className="cost-explorer-toolbar-trigger__caret" size={14} aria-hidden="true" />
+              </span>
+            </button>
+            {costCategoryMenuOpen ? (
+              <div className="cost-explorer-filter-popover" role="dialog" aria-label="Cost category filters">
+                <p className="cost-explorer-filter-popover__title">Cost Category</p>
+                <div className="cost-explorer-filter-popover__list" role="listbox">
+                  {costCategoryPreview.map((value) => {
+                    const selected = costCategoryValues.includes(value);
+                    return (
+                      <button
+                        key={`cost-category-${value}`}
+                        type="button"
+                        className={`cost-explorer-filter-option${selected ? " is-active" : ""}`}
+                        onClick={() =>
+                          onApplyCostCategoryValues(
+                            selected ? costCategoryValues.filter((entry) => entry !== value) : [...costCategoryValues, value],
+                          )
+                        }
+                      >
+                        <span className="cost-explorer-filter-option__label">{value}</span>
+                        {selected ? <Check className="cost-explorer-filter-option__check" size={15} aria-hidden="true" /> : null}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
       </div>
 
       <div className="cost-explorer-chip-bar" aria-label="Selected filter summary">

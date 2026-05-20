@@ -3,20 +3,36 @@ import type { ColDef, ValueFormatterParams } from "ag-grid-community";
 
 import { BaseDataTable } from "../../../common/tables/BaseDataTable";
 import { TableShell } from "../../../common/tables/TableShell";
-import type { DatabaseExplorerTableRow } from "../../../api/dashboardTypes";
+import type { DatabaseExplorerMetric, DatabaseExplorerTableRow } from "../../../api/dashboardTypes";
 import { formatCurrency, formatInteger, formatNumber } from "./databaseExplorer.formatters";
 
 type DatabaseExplorerGroupedTableProps = {
+  metric: DatabaseExplorerMetric;
   rows: DatabaseExplorerTableRow[];
   isLoading?: boolean;
   onRowClick?: (row: DatabaseExplorerTableRow) => void;
 };
 
 export function DatabaseExplorerGroupedTable({
+  metric,
   rows,
   isLoading = false,
   onRowClick,
 }: DatabaseExplorerGroupedTableProps) {
+  const usageColumns: ColDef<DatabaseExplorerTableRow>[] = [
+    {
+      headerName: "Avg Load",
+      field: "avgLoad",
+      type: "numericColumn",
+      valueFormatter: (params: ValueFormatterParams<DatabaseExplorerTableRow>) => formatNumber(params.value),
+    },
+    {
+      headerName: "Connections",
+      field: "connections",
+      type: "numericColumn",
+      valueFormatter: (params: ValueFormatterParams<DatabaseExplorerTableRow>) => formatNumber(params.value),
+    },
+  ];
   const columnDefs = useMemo<ColDef<DatabaseExplorerTableRow>[]>(
     () => [
       { headerName: "Group", field: "group", minWidth: 180, sort: undefined },
@@ -57,20 +73,9 @@ export function DatabaseExplorerGroupedTable({
         type: "numericColumn",
         valueFormatter: (params: ValueFormatterParams<DatabaseExplorerTableRow>) => formatInteger(params.value),
       },
-      {
-        headerName: "Avg Load",
-        field: "avgLoad",
-        type: "numericColumn",
-        valueFormatter: (params: ValueFormatterParams<DatabaseExplorerTableRow>) => formatNumber(params.value),
-      },
-      {
-        headerName: "Connections",
-        field: "connections",
-        type: "numericColumn",
-        valueFormatter: (params: ValueFormatterParams<DatabaseExplorerTableRow>) => formatNumber(params.value),
-      },
+      ...(metric === "usage" ? usageColumns : []),
     ],
-    [],
+    [metric, usageColumns],
   );
 
   return (

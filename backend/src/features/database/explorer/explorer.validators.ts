@@ -6,11 +6,13 @@ import { BadRequestError } from "../../../errors/http-errors.js";
 import { isExplorerDatabaseScope, legacyDatabaseTypeToScope } from "./explorer.database-scope.js";
 import {
   EXPLORER_ALLOWED_GROUP_BY_BY_METRIC,
+  EXPLORER_COST_BASIS,
   type ExplorerDatabaseScope,
   type ExplorerQueryParams,
 } from "./explorer.types.js";
 
 const metricSchema = z.enum(["cost", "usage"]).default("cost");
+const costBasisSchema = z.enum(EXPLORER_COST_BASIS).default("billed_cost");
 const groupBySchema = z
   .enum(["db_service", "db_engine", "region", "resource_type", "instance_class", "cluster", "cost_category"])
   .default("db_service");
@@ -127,9 +129,12 @@ const explorerQuerySchema = z
     regionKey: z.string().trim().min(1).optional(),
     dbService: z.string().trim().min(1).optional(),
     dbEngine: z.string().trim().min(1).optional(),
+    costBasis: costBasisSchema,
     metric: metricSchema,
     groupBy: z.preprocess((value) => normalizeGroupByInput(value), groupBySchema),
     groupValues: z.array(z.string().trim().min(1)).optional(),
+    resourceTypeValues: z.array(z.string().trim().min(1)).optional(),
+    costCategoryValues: z.array(z.string().trim().min(1)).optional(),
   })
   .refine((value) => Date.parse(value.startDate) <= Date.parse(value.endDate), {
     message: "start_date must be less than or equal to end_date",
@@ -175,9 +180,12 @@ export function parseExplorerQuery(req: Request): ExplorerQueryParams {
     regionKey: optionalString(req.query.region_key),
     dbService: normalizedDbFilters.dbService,
     dbEngine: normalizedDbFilters.dbEngine,
+    costBasis: firstValue(req.query.cost_basis) ?? firstValue(req.query.costBasis) ?? "billed_cost",
     metric: metricInput,
     groupBy: firstValue(req.query.group_by) ?? defaultGroupBy,
     groupValues: parseGroupValues(firstValue(req.query.group_values) ?? firstValue(req.query.groupValues)),
+    resourceTypeValues: parseGroupValues(firstValue(req.query.resource_type_values) ?? firstValue(req.query.resourceTypeValues)),
+    costCategoryValues: parseGroupValues(firstValue(req.query.cost_category_values) ?? firstValue(req.query.costCategoryValues)),
   });
 
   return {

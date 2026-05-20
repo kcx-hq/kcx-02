@@ -10,6 +10,7 @@ import {
 import type {
   ExplorerFilterOptions,
   ExplorerGroupBy,
+  ExplorerCostBasis,
   ExplorerKpiCard,
   ExplorerKpiState,
   ExplorerQueryParams,
@@ -544,6 +545,32 @@ END
 `;
 
 const OPERATIONAL_COST_CATEGORIES = ["compute", "storage", "io", "backup", "data_transfer"] as const;
+const normalizeFilterValues = (values?: string[]): string[] => {
+  if (!Array.isArray(values) || values.length === 0) return [];
+  return [...new Set(values.map((value) => value.trim().toLowerCase()).filter((value) => value.length > 0))];
+};
+
+const costHistoryBaseExpression = (tableAlias: string, costBasis: ExplorerCostBasis): string => {
+  const pref = tableAlias ? `${tableAlias}.` : "";
+  if (costBasis === "billed_cost") return `COALESCE(${pref}billed_cost, 0)`;
+  if (costBasis === "effective_cost") return `COALESCE(${pref}effective_cost, ${pref}billed_cost, 0)`;
+  if (costBasis === "amortized_cost") return `COALESCE(${pref}list_cost, ${pref}effective_cost, ${pref}billed_cost, 0)`;
+  if (costBasis === "net_amortized_cost") {
+    return `COALESCE(${pref}list_cost, ${pref}effective_cost, ${pref}billed_cost, 0)`;
+  }
+  return `COALESCE(${pref}effective_cost, ${pref}billed_cost, 0)`;
+};
+
+const factTotalCostExpression = (tableAlias: string, costBasis: ExplorerCostBasis): string => {
+  const pref = tableAlias ? `${tableAlias}.` : "";
+  if (costBasis === "billed_cost") return `COALESCE(${pref}total_billed_cost, 0)`;
+  if (costBasis === "effective_cost") return `COALESCE(${pref}total_effective_cost, ${pref}total_billed_cost, 0)`;
+  if (costBasis === "amortized_cost") return `COALESCE(${pref}total_list_cost, ${pref}total_effective_cost, ${pref}total_billed_cost, 0)`;
+  if (costBasis === "net_amortized_cost") {
+    return `COALESCE(${pref}total_list_cost, ${pref}total_effective_cost, ${pref}total_billed_cost, 0)`;
+  }
+  return `COALESCE(${pref}total_effective_cost, ${pref}total_billed_cost, 0)`;
+};
 
 const buildResourceDrilldownFilters = (params: ExplorerQueryParams, tableAlias = ""): string => {
   const pref = tableAlias ? `${tableAlias}.` : "";
@@ -551,9 +578,17 @@ const buildResourceDrilldownFilters = (params: ExplorerQueryParams, tableAlias =
     AND COALESCE(LOWER(BTRIM(${pref}resource_type)), '') <> 'scoped'
     AND ${pref}resource_id NOT LIKE 'db-scope:%'`;
   const groupedValuesFilter = buildGroupedValuesFilter(params, "fact", tableAlias || "fact_db_resource_daily");
-  if (!groupedValuesFilter) return base;
-  return `${base}
-    AND ${groupedValuesFilter}`;
+  const resourceTypeValues = normalizeFilterValues(params.resourceTypeValues);
+  const resourceTypeFilter = resourceTypeValues.length > 0
+    ? `LOWER(BTRIM(COALESCE(${pref}resource_type, ''))) IN (:resourceTypeValues)`
+    : null;
+  const parts = [base];
+  if (groupedValuesFilter) parts.push(groupedValuesFilter);
+  if (resourceTypeFilter) {
+    params.resourceTypeValues = resourceTypeValues;
+    parts.push(resourceTypeFilter);
+  }
+  return `${parts[0]}${parts.slice(1).map((part) => `\n    AND ${part}`).join("")}`;
 };
 
 const buildCostHistoryDrilldownFilters = (params: ExplorerQueryParams, tableAlias = ""): string => {
@@ -562,9 +597,17 @@ const buildCostHistoryDrilldownFilters = (params: ExplorerQueryParams, tableAlia
     AND ${pref}resource_id NOT LIKE 'db-scope:%'
     AND ${pref}resource_id NOT LIKE 'db-unattributed:%'`;
   const groupedValuesFilter = buildGroupedValuesFilter(params, "cost_history", tableAlias);
-  if (!groupedValuesFilter) return base;
-  return `${base}
-    AND ${groupedValuesFilter}`;
+  const costCategoryValues = normalizeFilterValues(params.costCategoryValues);
+  const costCategoryFilter = costCategoryValues.length > 0
+    ? `LOWER(BTRIM(COALESCE(${pref}cost_category, ''))) IN (:costCategoryValues)`
+    : null;
+  const parts = [base];
+  if (groupedValuesFilter) parts.push(groupedValuesFilter);
+  if (costCategoryFilter) {
+    params.costCategoryValues = costCategoryValues;
+    parts.push(costCategoryFilter);
+  }
+  return `${parts[0]}${parts.slice(1).map((part) => `\n    AND ${part}`).join("")}`;
 };
 
 export class DatabaseExplorerRepository {
@@ -729,7 +772,7 @@ ORDER BY value ASC;
       `
 WITH current_period AS (
   SELECT
-    COALESCE(SUM(total_billed_cost), 0) AS "totalCost",
+    COALESCE(SUM(${factTotalCostExpression("", queryParams.costBasis)}), 0) AS "totalCost",
     COUNT(DISTINCT resource_id) AS "activeResources",
     COALESCE(SUM(data_footprint_gb), 0) AS "dataFootprintGb",
     AVG(COALESCE(load_avg, cpu_avg)) AS "avgLoad",
@@ -743,7 +786,7 @@ WITH current_period AS (
 ),
 previous_period AS (
   SELECT
-    COALESCE(SUM(total_billed_cost), 0) AS "previousCost"
+    COALESCE(SUM(${factTotalCostExpression("", queryParams.costBasis)}), 0) AS "previousCost"
   FROM fact_db_resource_daily
   WHERE ${previousFilters}
 )
@@ -951,11 +994,11 @@ ORDER BY f.usage_date ASC;
       `
 SELECT
   ch.usage_date AS date,
-  COALESCE(SUM(CASE WHEN LOWER(BTRIM(COALESCE(ch.cost_category, ''))) = 'compute' THEN ch.billed_cost ELSE 0 END), 0) AS compute,
-  COALESCE(SUM(CASE WHEN LOWER(BTRIM(COALESCE(ch.cost_category, ''))) = 'storage' THEN ch.billed_cost ELSE 0 END), 0) AS storage,
-  COALESCE(SUM(CASE WHEN LOWER(BTRIM(COALESCE(ch.cost_category, ''))) = 'io' THEN ch.billed_cost ELSE 0 END), 0) AS io,
-  COALESCE(SUM(CASE WHEN LOWER(BTRIM(COALESCE(ch.cost_category, ''))) = 'backup' THEN ch.billed_cost ELSE 0 END), 0) AS backup,
-  COALESCE(SUM(ch.billed_cost), 0) AS total
+  COALESCE(SUM(CASE WHEN LOWER(BTRIM(COALESCE(ch.cost_category, ''))) = 'compute' THEN ${costHistoryBaseExpression("ch", queryParams.costBasis)} ELSE 0 END), 0) AS compute,
+  COALESCE(SUM(CASE WHEN LOWER(BTRIM(COALESCE(ch.cost_category, ''))) = 'storage' THEN ${costHistoryBaseExpression("ch", queryParams.costBasis)} ELSE 0 END), 0) AS storage,
+  COALESCE(SUM(CASE WHEN LOWER(BTRIM(COALESCE(ch.cost_category, ''))) = 'io' THEN ${costHistoryBaseExpression("ch", queryParams.costBasis)} ELSE 0 END), 0) AS io,
+  COALESCE(SUM(CASE WHEN LOWER(BTRIM(COALESCE(ch.cost_category, ''))) = 'backup' THEN ${costHistoryBaseExpression("ch", queryParams.costBasis)} ELSE 0 END), 0) AS backup,
+  COALESCE(SUM(${costHistoryBaseExpression("ch", queryParams.costBasis)}), 0) AS total
 FROM db_cost_history_daily ch
 WHERE ${buildCostHistoryDrilldownFilters(queryParams, "ch")}
 GROUP BY ch.usage_date
@@ -988,7 +1031,7 @@ ORDER BY ch.usage_date ASC;
         `
 SELECT
   ${COST_CATEGORY_LABEL_CASE} AS "group",
-  COALESCE(SUM(ch.billed_cost), 0) AS "totalCost",
+  COALESCE(SUM(${costHistoryBaseExpression("ch", queryParams.costBasis)}), 0) AS "totalCost",
   COUNT(DISTINCT ch.resource_id) AS "resourceCount"
 FROM db_cost_history_daily ch
 WHERE ${drilldownFilters}
@@ -1023,7 +1066,7 @@ ORDER BY "totalCost" DESC;
 ${withInventory ? `WITH ${latestInventoryCteSql}` : ""}
 SELECT
   ${groupBy.selectExpression} AS "group",
-  COALESCE(SUM(f.total_billed_cost), 0) AS "totalCost",
+  COALESCE(SUM(${factTotalCostExpression("f", queryParams.costBasis)}), 0) AS "totalCost",
   COALESCE(SUM(f.compute_cost), 0) AS "computeCost",
   COALESCE(SUM(f.storage_cost), 0) AS "storageCost",
   COALESCE(SUM(f.io_cost), 0) AS "ioCost",
@@ -1074,7 +1117,7 @@ SELECT
   ch.usage_date AS date,
   LOWER(BTRIM(COALESCE(ch.cost_category, ''))) AS "groupKey",
   ${COST_CATEGORY_LABEL_CASE} AS "groupLabel",
-  COALESCE(SUM(ch.billed_cost), 0) AS "totalCost"
+  COALESCE(SUM(${costHistoryBaseExpression("ch", queryParams.costBasis)}), 0) AS "totalCost"
 FROM db_cost_history_daily ch
 WHERE ${drilldownFilters}
   AND LOWER(BTRIM(COALESCE(ch.cost_category, ''))) IN (:operationalCostCategories)
@@ -1148,7 +1191,7 @@ ORDER BY ch.usage_date ASC;
 
     const valueExpression = isUsage
       ? "AVG(COALESCE(f.load_avg, f.cpu_avg))"
-      : "COALESCE(SUM(f.total_billed_cost), SUM(f.total_effective_cost), 0)";
+      : `COALESCE(SUM(${factTotalCostExpression("f", queryParams.costBasis)}), 0)`;
 
     const rows = await sequelize.query<GroupedTrendAggregateRow>(
       `

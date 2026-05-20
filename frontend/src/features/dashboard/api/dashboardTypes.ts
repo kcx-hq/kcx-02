@@ -76,6 +76,11 @@ export type Ec2OptimizationSummaryFiltersQuery = {
 };
 
 export type DatabaseExplorerMetric = "cost" | "usage";
+export type DatabaseExplorerCostBasis =
+  | "billed_cost"
+  | "effective_cost"
+  | "amortized_cost"
+  | "net_amortized_cost";
 
 /** Must stay aligned with backend `database_scope` query param. */
 export const DATABASE_EXPLORER_SCOPES = [
@@ -109,8 +114,11 @@ export type DatabaseExplorerAllowedGroupByByMetric = Record<DatabaseExplorerMetr
 
 export type DatabaseExplorerFilters = {
   metric: DatabaseExplorerMetric;
+  costBasis?: DatabaseExplorerCostBasis;
   groupBy: DatabaseExplorerGroupBy;
   groupValues?: string[];
+  resourceTypeValues?: string[];
+  costCategoryValues?: string[];
   /** Filters which db_service rows are included (independent from `groupBy`). */
   databaseScope?: DatabaseExplorerScopeValue;
   regionKey?: number | string;
@@ -128,9 +136,12 @@ export type DatabaseExplorerAppliedFilters = {
   databaseScope?: DatabaseExplorerScopeValue;
   dbService?: string;
   dbEngine?: string;
+  costBasis: DatabaseExplorerCostBasis;
   metric: DatabaseExplorerMetric;
   groupBy: DatabaseExplorerGroupBy;
   groupValues?: string[];
+  resourceTypeValues?: string[];
+  costCategoryValues?: string[];
 };
 
 export type DatabaseExplorerKpiState = "normal" | "empty" | "partial" | "unavailable" | "warning";

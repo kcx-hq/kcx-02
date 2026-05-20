@@ -32,6 +32,13 @@ export const EXPLORER_GROUP_BY = [
 export type ExplorerMetric = (typeof EXPLORER_METRICS)[number];
 export type ExplorerGroupBy = (typeof EXPLORER_GROUP_BY)[number];
 export type ExplorerAllowedGroupByByMetric = Record<ExplorerMetric, ExplorerGroupBy[]>;
+export const EXPLORER_COST_BASIS = [
+  "billed_cost",
+  "effective_cost",
+  "amortized_cost",
+  "net_amortized_cost",
+] as const;
+export type ExplorerCostBasis = (typeof EXPLORER_COST_BASIS)[number];
 
 export const EXPLORER_ALLOWED_GROUP_BY_BY_METRIC: ExplorerAllowedGroupByByMetric = {
   cost: ["db_service", "db_engine", "region", "cost_category", "resource_type"],
@@ -48,9 +55,12 @@ export type ExplorerQueryParams = {
   databaseScope?: ExplorerDatabaseScope;
   dbService?: string;
   dbEngine?: string;
+  costBasis: ExplorerCostBasis;
   metric: ExplorerMetric;
   groupBy: ExplorerGroupBy;
   groupValues?: string[];
+  resourceTypeValues?: string[];
+  costCategoryValues?: string[];
 };
 
 export type ExplorerKpiState = "normal" | "empty" | "partial" | "unavailable" | "warning";
