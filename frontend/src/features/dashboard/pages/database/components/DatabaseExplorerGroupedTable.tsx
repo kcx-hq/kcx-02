@@ -8,7 +8,7 @@ import type {
   DatabaseExplorerTableRow,
   DatabaseUsageCapabilityFamily,
 } from "../../../api/dashboardTypes";
-import { formatCurrency, formatInteger, formatNumber, NULL_MARKER } from "./databaseExplorer.formatters";
+import { formatCurrency, formatInteger, formatNumber } from "./databaseExplorer.formatters";
 
 type DatabaseExplorerGroupedTableProps = {
   metric: DatabaseExplorerMetric;
@@ -26,13 +26,8 @@ export function DatabaseExplorerGroupedTable({
   onRowClick,
 }: DatabaseExplorerGroupedTableProps) {
   const usageColumns: ColDef<DatabaseExplorerTableRow>[] = [
-    { headerName: "Rank", field: "rank", type: "numericColumn", valueFormatter: (params) => (params.value == null ? NULL_MARKER : String(params.value)) },
-    { headerName: "In-scope Resources", field: "inScopeResources", type: "numericColumn", valueFormatter: (params) => formatInteger(params.value) },
-    { headerName: "Telemetry Covered", field: "telemetryCoveredResources", type: "numericColumn", valueFormatter: (params) => formatInteger(params.value) },
-    { headerName: "Coverage %", field: "coverageRate", type: "numericColumn", valueFormatter: (params) => (params.value == null ? NULL_MARKER : `${(Number(params.value) * 100).toFixed(1)}%`) },
+    { headerName: "Resources", field: "inScopeResources", type: "numericColumn", valueFormatter: (params) => formatInteger(params.value) },
     { headerName: "Primary Metric", field: "primaryMetricValue", type: "numericColumn", valueFormatter: (params) => formatNumber(params.value) },
-    { headerName: "Confidence", field: "confidence", minWidth: 120 },
-    { headerName: "State", field: "state", minWidth: 120 },
   ];
   const capabilityColumns: Record<DatabaseUsageCapabilityFamily, ColDef<DatabaseExplorerTableRow>[]> = {
     compute_pressure: [

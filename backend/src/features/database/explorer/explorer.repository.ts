@@ -1500,7 +1500,20 @@ ORDER BY "totalCost" DESC;
     const selectedFamily = queryParams.capabilityFamily ?? "compute_pressure";
     const selectedUsageMetric: UsageMetric = queryParams.usageMetric ?? USAGE_CAPABILITY_REGISTRY[selectedFamily].defaultMetric;
     const familyDef = USAGE_CAPABILITY_REGISTRY[selectedFamily];
-    const selectedMetricExpr = usageMetricSql(selectedUsageMetric, "f");
+    const hasUtilizationFallback = await this.hasDbUtilizationDailyTable();
+    const selectedMetricExpr = hasUtilizationFallback
+      ? usageMetricSqlWithFallback(selectedUsageMetric, "f", "u")
+      : usageMetricSql(selectedUsageMetric, "f");
+    const avgCpuExpr = hasUtilizationFallback ? "COALESCE(f.cpu_avg, u.cpu_avg)" : "f.cpu_avg";
+    const peakCpuExpr = hasUtilizationFallback ? "COALESCE(f.cpu_max, u.cpu_max)" : "f.cpu_max";
+    const avgConnectionsExpr = hasUtilizationFallback ? "COALESCE(f.connections_avg, u.connections_avg)" : "f.connections_avg";
+    const peakConnectionsExpr = hasUtilizationFallback ? "COALESCE(f.connections_max, u.connections_max)" : "f.connections_max";
+    const readIopsExpr = hasUtilizationFallback ? "COALESCE(f.read_iops, u.read_iops)" : "f.read_iops";
+    const writeIopsExpr = hasUtilizationFallback ? "COALESCE(f.write_iops, u.write_iops)" : "f.write_iops";
+    const readThroughputExpr = hasUtilizationFallback ? "COALESCE(f.read_throughput_bytes, u.read_throughput_bytes)" : "f.read_throughput_bytes";
+    const writeThroughputExpr = hasUtilizationFallback ? "COALESCE(f.write_throughput_bytes, u.write_throughput_bytes)" : "f.write_throughput_bytes";
+    const storageUsedExpr = hasUtilizationFallback ? "COALESCE(f.storage_used_gb, u.storage_used_gb)" : "f.storage_used_gb";
+    const allocatedStorageExpr = hasUtilizationFallback ? "COALESCE(f.allocated_storage_gb, u.allocated_storage_gb)" : "f.allocated_storage_gb";
 
     const rows = await sequelize.query<TableAggregateRow>(
       `
@@ -1518,20 +1531,25 @@ SELECT
   COUNT(DISTINCT f.resource_id) FILTER (WHERE ${usageServicePredicateSql("f")} AND (${selectedMetricExpr}) IS NOT NULL) AS "telemetryCoveredResources",
   AVG(f.cpu_avg) AS "avgLoad",
   AVG(f.connections_avg) AS "connections",
-  AVG(CASE WHEN ${usageServicePredicateSql("f")} THEN f.cpu_avg ELSE NULL END) AS "avgCpu",
-  AVG(CASE WHEN ${usageServicePredicateSql("f")} THEN f.cpu_max ELSE NULL END) AS "peakCpu",
-  AVG(CASE WHEN ${usageServicePredicateSql("f")} THEN f.connections_avg ELSE NULL END) AS "avgConnections",
-  AVG(CASE WHEN ${usageServicePredicateSql("f")} THEN f.connections_max ELSE NULL END) AS "peakConnections",
-  AVG(CASE WHEN ${usageServicePredicateSql("f")} THEN f.read_iops ELSE NULL END) AS "readIops",
-  AVG(CASE WHEN ${usageServicePredicateSql("f")} THEN f.write_iops ELSE NULL END) AS "writeIops",
-  AVG(CASE WHEN ${usageServicePredicateSql("f")} AND NOT (f.read_iops IS NULL AND f.write_iops IS NULL) THEN COALESCE(f.read_iops, 0) + COALESCE(f.write_iops, 0) ELSE NULL END) AS "totalIops",
-  AVG(CASE WHEN ${usageServicePredicateSql("f")} THEN f.read_throughput_bytes ELSE NULL END) AS "readThroughputBytes",
-  AVG(CASE WHEN ${usageServicePredicateSql("f")} THEN f.write_throughput_bytes ELSE NULL END) AS "writeThroughputBytes",
-  AVG(CASE WHEN ${usageServicePredicateSql("f")} AND NOT (f.read_throughput_bytes IS NULL AND f.write_throughput_bytes IS NULL) THEN COALESCE(f.read_throughput_bytes, 0) + COALESCE(f.write_throughput_bytes, 0) ELSE NULL END) AS "totalThroughputBytes",
-  AVG(CASE WHEN ${usageServicePredicateSql("f")} THEN f.storage_used_gb ELSE NULL END) AS "storageUsedGb",
-  AVG(CASE WHEN ${usageServicePredicateSql("f")} THEN f.allocated_storage_gb ELSE NULL END) AS "allocatedStorageGb",
+  AVG(CASE WHEN ${usageServicePredicateSql("f")} THEN ${avgCpuExpr} ELSE NULL END) AS "avgCpu",
+  AVG(CASE WHEN ${usageServicePredicateSql("f")} THEN ${peakCpuExpr} ELSE NULL END) AS "peakCpu",
+  AVG(CASE WHEN ${usageServicePredicateSql("f")} THEN ${avgConnectionsExpr} ELSE NULL END) AS "avgConnections",
+  AVG(CASE WHEN ${usageServicePredicateSql("f")} THEN ${peakConnectionsExpr} ELSE NULL END) AS "peakConnections",
+  AVG(CASE WHEN ${usageServicePredicateSql("f")} THEN ${readIopsExpr} ELSE NULL END) AS "readIops",
+  AVG(CASE WHEN ${usageServicePredicateSql("f")} THEN ${writeIopsExpr} ELSE NULL END) AS "writeIops",
+  AVG(CASE WHEN ${usageServicePredicateSql("f")} AND NOT (${readIopsExpr} IS NULL AND ${writeIopsExpr} IS NULL) THEN COALESCE(${readIopsExpr}, 0) + COALESCE(${writeIopsExpr}, 0) ELSE NULL END) AS "totalIops",
+  AVG(CASE WHEN ${usageServicePredicateSql("f")} THEN ${readThroughputExpr} ELSE NULL END) AS "readThroughputBytes",
+  AVG(CASE WHEN ${usageServicePredicateSql("f")} THEN ${writeThroughputExpr} ELSE NULL END) AS "writeThroughputBytes",
+  AVG(CASE WHEN ${usageServicePredicateSql("f")} AND NOT (${readThroughputExpr} IS NULL AND ${writeThroughputExpr} IS NULL) THEN COALESCE(${readThroughputExpr}, 0) + COALESCE(${writeThroughputExpr}, 0) ELSE NULL END) AS "totalThroughputBytes",
+  AVG(CASE WHEN ${usageServicePredicateSql("f")} THEN ${storageUsedExpr} ELSE NULL END) AS "storageUsedGb",
+  AVG(CASE WHEN ${usageServicePredicateSql("f")} THEN ${allocatedStorageExpr} ELSE NULL END) AS "allocatedStorageGb",
   AVG(CASE WHEN ${usageServicePredicateSql("f")} THEN ${selectedMetricExpr} ELSE NULL END) AS "primaryMetricValue"
 ${fromFactBaseSql({ withInventory, withRegion })}
+${hasUtilizationFallback ? `LEFT JOIN db_utilization_daily u
+  ON u.tenant_id = f.tenant_id
+ AND u.usage_date = f.usage_date
+ AND u.resource_id = f.resource_id
+ AND u.cloud_connection_id IS NOT DISTINCT FROM f.cloud_connection_id` : ""}
 WHERE ${filters}
 GROUP BY ${groupBy.groupExpression}
 ORDER BY "primaryMetricValue" DESC NULLS LAST, "resourceCount" DESC;
