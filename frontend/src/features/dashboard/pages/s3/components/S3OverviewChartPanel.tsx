@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import type { MutableRefObject } from "react";
 import type { EChartsOption } from "echarts";
 import { AnimatePresence, motion } from "framer-motion";
 import { Check, ChevronDown } from "lucide-react";
@@ -88,8 +89,9 @@ const buildChartModel = (input: {
   costBy: S3OverviewFilterValue["costBy"];
   yAxisMetric: S3OverviewFilterValue["yAxisMetric"];
   chartType: S3OverviewFilterValue["chartType"];
+  hoveredPointRef?: MutableRefObject<{ seriesName: string; dataIndex: number } | null>;
 }): ChartModel => {
-  const { breakdown, seriesBy, costBy, yAxisMetric, chartType } = input;
+  const { breakdown, seriesBy, costBy, yAxisMetric, chartType, hoveredPointRef } = input;
   const chartReady = Boolean(breakdown && breakdown.labels.length > 0 && breakdown.series.length > 0);
   const seriesCount = breakdown?.series.length ?? 0;
   const chartHeight = seriesCount > 8 ? 500 : seriesCount > 5 ? 450 : 400;
@@ -163,18 +165,31 @@ const buildChartModel = (input: {
       easing: "cubicOut",
     },
     tooltip: {
-      trigger: isLineChart ? "axis" : "item",
-      axisPointer: { type: isLineChart ? "line" : "none" },
+      trigger: "axis",
+      axisPointer: { type: isLineChart ? "line" : "shadow" },
       confine: true,
       backgroundColor: "#102744",
       borderColor: "rgba(140, 182, 232, 0.36)",
       borderWidth: 1,
       textStyle: { color: "#e7eef8", fontSize: 12, fontWeight: 500 },
       extraCssText:
-        "border-radius:10px; box-shadow:0 12px 28px rgba(2,10,24,0.48); padding:12px 14px; max-width:360px; max-height:320px; overflow:auto;",
+        "border-radius:10px; box-shadow:0 12px 28px rgba(2,10,24,0.48); padding:12px 14px; max-width:460px; max-height:360px; overflow-y:auto; overflow-x:hidden; white-space:normal; word-break:break-word; overflow-wrap:anywhere;",
       formatter: (params: unknown) => {
-        if (costBy === "date" && seriesBy === "operation" && params && !Array.isArray(params)) {
-          const point = params as { name?: unknown; seriesName?: unknown; value?: unknown; marker?: unknown };
+        const points = Array.isArray(params) ? params : params ? [params] : [];
+        if (points.length === 0) return "";
+
+        const hovered = hoveredPointRef?.current ?? null;
+        const hoveredPoint = hovered
+          ? (points.find((entry) => {
+              const point = entry as { seriesName?: unknown; dataIndex?: unknown };
+              return String(point.seriesName ?? "") === hovered.seriesName && Number(point.dataIndex ?? -1) === hovered.dataIndex;
+            }) as { name?: unknown; seriesName?: unknown; value?: unknown; marker?: unknown } | undefined)
+          : undefined;
+
+        if (costBy === "date" && seriesBy === "operation" && hoveredPoint) {
+          const point = hoveredPoint;
+          const pointValue = Number(point.value ?? 0);
+          if (pointValue === 0) return "";
           const usageDateLabel = String(point.name ?? "");
           const rawDate = (breakdown?.labels ?? []).find((label) => {
             const parsed = new Date(`${label}T00:00:00.000Z`);
@@ -187,19 +202,19 @@ const buildChartModel = (input: {
             .filter((item) => Number(item.cost ?? 0) !== 0)
             .slice(0, 15);
           const lines = operations
-            .map(
-              (item) =>
-                `<div style="display:flex;justify-content:space-between;gap:16px;color:#c7d6ea;">
-                  <span>${item.operation}</span><span>${graphCurrencyFormatter.format(Number(item.cost ?? 0))}</span>
+              .map(
+                (item) =>
+                  `<div style="display:flex;justify-content:space-between;gap:16px;color:#c7d6ea;">
+                  <span style="flex:1;min-width:0;word-break:break-word;overflow-wrap:anywhere;">${item.operation}</span><span>${graphCurrencyFormatter.format(Number(item.cost ?? 0))}</span>
                 </div>`,
-            )
+              )
             .join("<br/>");
           return `
             <div style="display:flex;flex-direction:column;gap:8px;min-width:220px;">
               <div style="font-size:15px;font-weight:700;color:#f4f8ff;">${usageDateLabel}</div>
               <div style="display:flex;justify-content:space-between;align-items:center;gap:16px;color:#eaf2ff;font-size:14px;font-weight:650;">
-                <span>${String(point.marker ?? "")}${groupName}</span>
-                <span>${graphCurrencyFormatter.format(Number(point.value ?? 0))}</span>
+                <span style="flex:1;min-width:0;word-break:break-word;overflow-wrap:anywhere;">${String(point.marker ?? "")}${groupName}</span>
+                <span>${graphCurrencyFormatter.format(pointValue)}</span>
               </div>
               <div style="color:#9fb9d8;font-size:12px;font-weight:600;">Operations in ${groupName}</div>
               ${
@@ -212,19 +227,20 @@ const buildChartModel = (input: {
             </div>
           `;
         }
-        if (!Array.isArray(params) && params) {
-          const item = params as { name?: unknown; marker?: unknown; seriesName?: unknown; value?: unknown };
+        if (hoveredPoint) {
+          const item = hoveredPoint;
           const numericValue = Number(item.value ?? 0);
+          if (numericValue === 0) return "";
           const valueText = metricIsUsage
             ? graphUsageFormatter.format(numericValue)
             : graphCurrencyFormatter.format(numericValue);
           return `${String(item.name ?? "")}<br/>${String(item.marker ?? "")}${String(item.seriesName ?? "")}: ${valueText}`;
         }
-        const points = Array.isArray(params) ? params : [];
-        if (points.length === 0) return "";
+
         const first = points[0] as { axisValueLabel?: string; name?: string };
         const headerValue = String(first.axisValueLabel ?? first.name ?? "");
         const lines = points
+          .filter((point) => Number((point as { value?: unknown }).value ?? 0) !== 0)
           .map((point) => {
             const item = point as { marker?: string; seriesName?: string; value?: unknown };
             const numericValue = Number(item.value ?? 0);
@@ -234,6 +250,7 @@ const buildChartModel = (input: {
             return `${String(item.marker ?? "")}${String(item.seriesName ?? "")}: ${valueText}`;
           })
           .join("<br/>");
+        if (!lines) return "";
         return `${headerValue}<br/>${lines}`;
       },
       valueFormatter: (value: unknown) =>
@@ -249,7 +266,7 @@ const buildChartModel = (input: {
       itemWidth: 18,
       textStyle: { color: "#58706d", fontSize: 11 },
     },
-    grid: { left: 42, right: 12, top: 58, bottom: 30, containLabel: true },
+    grid: { left: 40, right: 12, top: 58, bottom: 36, containLabel: true },
     xAxis: {
       type: "category",
       name: xAxisName,
@@ -347,6 +364,7 @@ export function S3OverviewChartPanel({
   onBucketClick,
 }: Props) {
   const chartTypeMenuRef = useRef<HTMLDivElement | null>(null);
+  const hoveredPointRef = useRef<{ seriesName: string; dataIndex: number } | null>(null);
   const [isChartTypeMenuOpen, setIsChartTypeMenuOpen] = useState(false);
 
   useEffect(() => {
@@ -368,11 +386,11 @@ export function S3OverviewChartPanel({
   }, [isChartTypeMenuOpen]);
 
   const currentChart = useMemo(
-    () => buildChartModel({ breakdown, seriesBy, costBy, yAxisMetric, chartType }),
+    () => buildChartModel({ breakdown, seriesBy, costBy, yAxisMetric, chartType, hoveredPointRef }),
     [breakdown, seriesBy, costBy, yAxisMetric, chartType],
   );
   const previousChart = useMemo(
-    () => buildChartModel({ breakdown: previousPeriodBreakdown, seriesBy, costBy, yAxisMetric, chartType }),
+    () => buildChartModel({ breakdown: previousPeriodBreakdown, seriesBy, costBy, yAxisMetric, chartType, hoveredPointRef }),
     [previousPeriodBreakdown, seriesBy, costBy, yAxisMetric, chartType],
   );
   const compareOverlayOption = useMemo<EChartsOption | null>(() => {
@@ -457,6 +475,26 @@ export function S3OverviewChartPanel({
     if (normalized === "others" || normalized === "unattributed") return;
 
     onBucketClick(rawBucketName);
+  };
+
+  const handleChartPointHover = (params: unknown) => {
+    if (!params || typeof params !== "object") {
+      hoveredPointRef.current = null;
+      return;
+    }
+    const payload = params as { componentType?: unknown; seriesName?: unknown; dataIndex?: unknown };
+    if (payload.componentType !== "series") {
+      hoveredPointRef.current = null;
+      return;
+    }
+    hoveredPointRef.current = {
+      seriesName: String(payload.seriesName ?? ""),
+      dataIndex: Number(payload.dataIndex ?? -1),
+    };
+  };
+
+  const handleChartPointLeave = () => {
+    hoveredPointRef.current = null;
   };
 
   return (
@@ -578,6 +616,8 @@ export function S3OverviewChartPanel({
                       height={currentChart.chartHeight}
                       className="s3-overview-chart-panel__canvas"
                       onPointClick={handleChartPointClick}
+                      onPointHover={handleChartPointHover}
+                      onPointLeave={handleChartPointLeave}
                     />
                   </article>
                   <article>
@@ -595,6 +635,8 @@ export function S3OverviewChartPanel({
                         height={previousChart.chartHeight}
                         className="s3-overview-chart-panel__canvas"
                         onPointClick={handleChartPointClick}
+                        onPointHover={handleChartPointHover}
+                        onPointLeave={handleChartPointLeave}
                       />
                     ) : (
                       <div className="dashboard-empty-state-block">
@@ -610,6 +652,8 @@ export function S3OverviewChartPanel({
                   height={currentChart.chartHeight}
                   className="s3-overview-chart-panel__canvas"
                   onPointClick={handleChartPointClick}
+                  onPointHover={handleChartPointHover}
+                  onPointLeave={handleChartPointLeave}
                 />
               )}
             </motion.div>

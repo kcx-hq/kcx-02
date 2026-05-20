@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import type { S3CostInsightsFiltersQuery } from "../../api/dashboardApi";
@@ -13,6 +13,7 @@ import {
   type S3UsageInsightsRow,
 } from "./usage/components/S3UsageInsightsTable";
 import type { S3UsageFilterValue } from "./usage/components/s3Usage.types";
+import { CostExplorerSkeleton } from "./components/CostExplorerSkeleton";
 
 const DEFAULT_FILTERS: S3UsageFilterValue = {
   seriesBy: "bucket",
@@ -27,6 +28,13 @@ const DEFAULT_FILTERS: S3UsageFilterValue = {
 
 const X_AXIS_OPTIONS: Array<S3UsageFilterValue["xAxis"]> = ["date", "bucket", "region", "account"];
 const CHART_OPTIONS: Array<S3UsageFilterValue["chartType"]> = ["bar", "line"];
+
+const formatAsQueryDate = (date: Date): string => {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+};
 
 const normalizeUsageView = (next: S3UsageFilterValue): S3UsageFilterValue => {
   if (next.category === "object_count") {
@@ -84,6 +92,39 @@ export default function S3UsagePage() {
   const navigate = useNavigate();
   const filters = useMemo(() => normalizeUsageView(parseFiltersFromSearch(location.search)), [location.search]);
   const debouncedFilters = useDebouncedValue(filters, 220);
+  const isDebouncingFilters = debouncedFilters !== filters;
+  const billingRangeKey = useMemo(() => {
+    const params = new URLSearchParams(location.search);
+    const start = params.get("billingPeriodStart") || params.get("from") || "";
+    const end = params.get("billingPeriodEnd") || params.get("to") || "";
+    return `${start}|${end}`;
+  }, [location.search]);
+  const previousBillingRangeRef = useRef<string | null>(null);
+  const [isDateRangeRefreshing, setIsDateRangeRefreshing] = useState(false);
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const hasStart = Boolean(params.get("billingPeriodStart") || params.get("from"));
+    const hasEnd = Boolean(params.get("billingPeriodEnd") || params.get("to"));
+    if (hasStart && hasEnd) return;
+
+    const today = new Date();
+    const start = new Date(today);
+    start.setDate(start.getDate() - 29);
+    const from = formatAsQueryDate(start);
+    const to = formatAsQueryDate(today);
+
+    params.set("billingPeriodStart", from);
+    params.set("from", from);
+    params.set("billingPeriodEnd", to);
+    params.set("to", to);
+
+    const nextSearch = params.toString();
+    const currentSearch = location.search.startsWith("?") ? location.search.slice(1) : location.search;
+    if (nextSearch !== currentSearch) {
+      navigate({ pathname: location.pathname, search: nextSearch }, { replace: true });
+    }
+  }, [location.pathname, location.search, navigate]);
 
   const applyFilters = (next: S3UsageFilterValue) => {
     const normalizedNext = normalizeUsageView(next);
@@ -154,6 +195,24 @@ export default function S3UsagePage() {
   );
 
   const query = useS3CostInsightsQuery(queryFilters, { staleTime: 120_000 });
+
+  useEffect(() => {
+    if (previousBillingRangeRef.current === null) {
+      previousBillingRangeRef.current = billingRangeKey;
+      return;
+    }
+    if (previousBillingRangeRef.current !== billingRangeKey) {
+      previousBillingRangeRef.current = billingRangeKey;
+      setIsDateRangeRefreshing(true);
+    }
+  }, [billingRangeKey]);
+
+  useEffect(() => {
+    if (!query.isFetching) {
+      setIsDateRangeRefreshing(false);
+    }
+  }, [query.isFetching]);
+
   const [enableSecondaryBreakdowns, setEnableSecondaryBreakdowns] = useState(false);
   const shouldLoadUsageBreakdowns = !query.isLoading && !query.isError && (query.data?.bucketTable?.length ?? 0) > 0;
   const shouldLoadStorageBreakdown = shouldLoadUsageBreakdowns && (filters.category === "" || filters.category === "storage");
@@ -267,7 +326,20 @@ export default function S3UsagePage() {
   const showAllCategoryBreakdown = false;
   const bucketQuantityLabel = "Request Count";
   const isInitialLoading = query.isLoading && !query.data;
+  const showRefreshSkeleton = isDateRangeRefreshing && query.isFetching;
+  const isFilterUpdateLoading = Boolean(query.data) && query.isFetching && !isDateRangeRefreshing;
+  const isFullSkeletonLoading = isInitialLoading || showRefreshSkeleton;
+  const isBelowOnlyLoading = !isFullSkeletonLoading && (isDebouncingFilters || isFilterUpdateLoading);
+  const isSectionLoading = isFullSkeletonLoading || isBelowOnlyLoading;
   const hasBlockingError = query.isError && !query.data;
+
+  if (isFullSkeletonLoading) {
+    return (
+      <div className="dashboard-page s3-overview-page">
+        <CostExplorerSkeleton showFilter />
+      </div>
+    );
+  }
 
   return (
     <div className="dashboard-page s3-overview-page">
@@ -276,64 +348,55 @@ export default function S3UsagePage() {
         filterOptions={query.data?.filterOptions}
         onChange={applyFilters}
         onReset={() => applyFilters(DEFAULT_FILTERS)}
-        isLoading={isInitialLoading}
+        isLoading={false}
       />
 
-      <S3UsageKpiSection kpis={query.data?.kpis.usageSummaryKpis} isLoading={isInitialLoading} />
+      {isBelowOnlyLoading ? <CostExplorerSkeleton showFilter={false} /> : null}
 
-      <S3UsageChartPanel
-        breakdown={query.data?.chart.breakdown}
-        seriesBy={filters.seriesBy}
-        category={filters.category}
-        xAxis={filters.xAxis}
-        yAxisMetric={filters.yAxisMetric}
-        chartType={filters.chartType}
-        onChartTypeChange={(nextType) => applyFilters({ ...filters, chartType: nextType })}
-        onReset={() => applyFilters(DEFAULT_FILTERS)}
-        onRetry={() => void query.refetch()}
-        isLoading={isInitialLoading}
-        isError={hasBlockingError}
-        errorMessage={query.error?.message}
-        onBucketClick={(bucketName) => {
-          const searchParams = new URLSearchParams(location.search);
-          searchParams.set("s3Section", "usage");
-          navigate({
-            pathname: `/dashboard/s3/bucket/${encodeURIComponent(bucketName)}`,
-            search: searchParams.toString(),
-          });
-        }}
-      />
+      {!isBelowOnlyLoading ? <S3UsageKpiSection kpis={query.data?.kpis.usageSummaryKpis} isLoading={false} /> : null}
 
-      {!hasBlockingError ? (
+      {!isBelowOnlyLoading ? (
+        <S3UsageChartPanel
+          breakdown={query.data?.chart.breakdown}
+          seriesBy={filters.seriesBy}
+          category={filters.category}
+          xAxis={filters.xAxis}
+          yAxisMetric={filters.yAxisMetric}
+          chartType={filters.chartType}
+          onChartTypeChange={(nextType) => applyFilters({ ...filters, chartType: nextType })}
+          onReset={() => applyFilters(DEFAULT_FILTERS)}
+          onRetry={() => void query.refetch()}
+          isLoading={false}
+          isError={hasBlockingError}
+          errorMessage={query.error?.message}
+          onBucketClick={(bucketName) => {
+            const searchParams = new URLSearchParams(location.search);
+            searchParams.set("s3Section", "usage");
+            navigate({
+              pathname: `/dashboard/s3/bucket/${encodeURIComponent(bucketName)}`,
+              search: searchParams.toString(),
+            });
+          }}
+        />
+      ) : null}
+
+      {!isBelowOnlyLoading && !hasBlockingError ? (
         <section className="s3-overview-table-panel" aria-label="S3 usage table">
-          {isInitialLoading ? (
-            <div className="s3-usage-table-skeleton" aria-hidden="true">
-              <div className="s3-usage-table-skeleton__toolbar" />
-              <div className="s3-usage-table-skeleton__row" />
-              <div className="s3-usage-table-skeleton__row" />
-              <div className="s3-usage-table-skeleton__row" />
-              <div className="s3-usage-table-skeleton__row" />
-              <div className="s3-usage-table-skeleton__row" />
-              <div className="s3-usage-table-skeleton__row" />
-              <div className="s3-usage-table-skeleton__row" />
-            </div>
-          ) : (
-            <S3UsageInsightsTable
-              rows={usageRows}
-              bucketRows={bucketUsageRows}
-              bucketQuantityLabel={bucketQuantityLabel}
-              usageCategory={filters.category}
-              showAllCategoryBreakdown={showAllCategoryBreakdown}
-              onBucketClick={(bucketName) => {
-                const searchParams = new URLSearchParams(location.search);
-                searchParams.set("s3Section", "usage");
-                navigate({
-                  pathname: `/dashboard/s3/bucket/${encodeURIComponent(bucketName)}`,
-                  search: searchParams.toString(),
-                });
-              }}
-            />
-          )}
+          <S3UsageInsightsTable
+            rows={usageRows}
+            bucketRows={bucketUsageRows}
+            bucketQuantityLabel={bucketQuantityLabel}
+            usageCategory={filters.category}
+            showAllCategoryBreakdown={showAllCategoryBreakdown}
+            onBucketClick={(bucketName) => {
+              const searchParams = new URLSearchParams(location.search);
+              searchParams.set("s3Section", "usage");
+              navigate({
+                pathname: `/dashboard/s3/bucket/${encodeURIComponent(bucketName)}`,
+                search: searchParams.toString(),
+              });
+            }}
+          />
         </section>
       ) : null}
     </div>

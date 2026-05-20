@@ -83,6 +83,8 @@ export type S3CostBucketTableInsight = {
   versioningStatus: string | null;
   encryptionStatus: string | null;
   publicAccessStatus: "Public" | "Private" | "Unknown";
+  primaryUsagePattern?: string;
+  optimizationSignal?: string;
   trendPct: number;
   objectCount?: number | null;
   storageGb?: number | null;
