@@ -285,6 +285,104 @@ const extractBooleanFromMetadata = (metadata: Record<string, unknown> | null, ke
   return null;
 };
 
+const extractArnIdentifier = (value: string | null | undefined): string | null => {
+  const arn = toNullableString(value);
+  if (!arn || !arn.toLowerCase().startsWith("arn:")) return null;
+  const parts = arn.split(":");
+  if (parts.length < 6) return null;
+  const resourcePart = parts.slice(5).join(":").trim();
+  if (!resourcePart) return null;
+
+  const slashIdx = resourcePart.lastIndexOf("/");
+  const colonIdx = resourcePart.lastIndexOf(":");
+  const separatorIdx = Math.max(slashIdx, colonIdx);
+  const tail = separatorIdx >= 0 ? resourcePart.slice(separatorIdx + 1).trim() : resourcePart;
+  return tail.length > 0 ? tail : null;
+};
+
+const cleanIdentifierFromCandidates = (candidates: Array<string | null | undefined>): string | null => {
+  for (const candidate of candidates) {
+    const normalized = toNullableString(candidate);
+    if (!normalized) continue;
+    if (normalized.toLowerCase().startsWith("arn:")) continue;
+    return normalized;
+  }
+  return null;
+};
+
+const resolveDbIdentifier = (input: {
+  resourceName: string | null;
+  dbIdentifier: string | null;
+  resourceId: string;
+  resourceArn: string | null;
+  clusterId: string | null;
+  metadata: Record<string, unknown> | null;
+}): string => {
+  const metadata = input.metadata;
+  const metadataPreferred = cleanIdentifierFromCandidates([
+    extractStringFromMetadata(metadata, ["dbIdentifier", "db_identifier"]),
+    extractStringFromMetadata(metadata, ["dbName", "db_name"]),
+    extractStringFromMetadata(metadata, ["clusterIdentifier", "cluster_identifier"]),
+    extractStringFromMetadata(metadata, ["tableName", "table_name"]),
+    extractStringFromMetadata(metadata, ["cacheClusterId", "cache_cluster_id"]),
+  ]);
+
+  const directPreferred = cleanIdentifierFromCandidates([
+    input.resourceName,
+    input.dbIdentifier,
+    input.clusterId,
+  ]);
+
+  const arnDerived =
+    extractArnIdentifier(input.resourceArn)
+    ?? extractArnIdentifier(input.resourceId)
+    ?? extractArnIdentifier(input.dbIdentifier);
+
+  const shortFallback = cleanIdentifierFromCandidates([
+    input.resourceId.includes("/") ? input.resourceId.split("/").pop() ?? null : null,
+    input.resourceId.includes(":") ? input.resourceId.split(":").pop() ?? null : null,
+  ]);
+
+  return metadataPreferred ?? directPreferred ?? arnDerived ?? shortFallback ?? input.resourceId;
+};
+
+const normalizeDbEngine = (input: {
+  dbEngine: string | null;
+  dbService: string | null;
+  resourceType: string | null;
+  resourceArn: string | null;
+  metadata: Record<string, unknown> | null;
+}): string | null => {
+  const explicit = toNullableString(input.dbEngine);
+  if (explicit && explicit.toLowerCase() !== "unknown") return explicit;
+
+  const service = (input.dbService ?? "").toLowerCase();
+  const type = (input.resourceType ?? "").toLowerCase();
+  const arn = (input.resourceArn ?? "").toLowerCase();
+  const metaEngine = extractStringFromMetadata(input.metadata, ["engine", "dbEngine", "db_engine"])?.toLowerCase() ?? "";
+
+  if (service.includes("dynamodb") || arn.includes(":dynamodb:") || type.includes("dynamodb")) return "DynamoDB";
+  if (service.includes("aurora") || metaEngine.includes("aurora")) {
+    if (metaEngine.includes("postgres")) return "Aurora PostgreSQL";
+    if (metaEngine.includes("mysql")) return "Aurora MySQL";
+    if (type.includes("postgres")) return "Aurora PostgreSQL";
+    if (type.includes("mysql")) return "Aurora MySQL";
+    return "Aurora";
+  }
+  if (service.includes("elasticache") || arn.includes(":elasticache:")) {
+    if (metaEngine.includes("memcached") || type.includes("memcached")) return "Memcached";
+    if (metaEngine.includes("valkey") || type.includes("valkey")) return "Valkey";
+    if (metaEngine.includes("redis") || type.includes("redis")) return "Redis";
+    return "Redis";
+  }
+  if (service.includes("memorydb") || arn.includes(":memorydb:")) {
+    if (metaEngine.includes("valkey") || type.includes("valkey")) return "Valkey";
+    return "Redis";
+  }
+
+  return explicit;
+};
+
 const computeInventorySource = (hasLiveInventory: boolean, hasBillingSignals: boolean): "aws_sdk" | "billing_only" | "mixed" => {
   if (hasLiveInventory && hasBillingSignals) return "mixed";
   if (hasLiveInventory) return "aws_sdk";
@@ -709,18 +807,34 @@ LIMIT :pageSize OFFSET :offset;
     const total = toNumber(rows[0]?.totalCount);
 
     return {
-      assets: rows.map((row) => ({
-        hasLiveInventory: row.hasLiveInventory === true,
-        inventorySource: computeInventorySource(row.hasLiveInventory === true, true),
-        inventoryObservedAt: toIsoTimestamp(row.discoveredAt),
-        inventoryFreshnessMinutes: computeInventoryFreshnessMinutes(toIsoTimestamp(row.discoveredAt)),
+      assets: rows.map((row) => {
+        const inventoryObservedAt = toIsoTimestamp(row.discoveredAt);
+        const metadata = row.metadata;
+        return {
+          hasLiveInventory: row.hasLiveInventory === true,
+          inventorySource: computeInventorySource(row.hasLiveInventory === true, true),
+          inventoryObservedAt,
+          inventoryFreshnessMinutes: computeInventoryFreshnessMinutes(inventoryObservedAt),
         cloudConnectionId: row.cloudConnectionId,
         resourceId: row.resourceId,
         resourceArn: row.resourceArn,
         resourceName: row.resourceName,
-        dbIdentifier: row.dbIdentifier,
+        dbIdentifier: resolveDbIdentifier({
+          resourceName: row.resourceName,
+          dbIdentifier: row.dbIdentifier,
+          resourceId: row.resourceId,
+          resourceArn: row.resourceArn,
+          clusterId: row.clusterId,
+          metadata,
+        }),
         dbService: row.dbService,
-        dbEngine: row.dbEngine,
+        dbEngine: normalizeDbEngine({
+          dbEngine: row.dbEngine,
+          dbService: row.dbService,
+          resourceType: row.resourceType,
+          resourceArn: row.resourceArn,
+          metadata,
+        }),
         dbEngineVersion: row.dbEngineVersion,
         resourceType: row.resourceType,
         instanceClass: row.instanceClass,
@@ -764,7 +878,7 @@ LIMIT :pageSize OFFSET :offset;
           toNullableNumber(row.backupRetentionPeriod) ??
           extractNumberFromMetadata(row.metadata, ["backupRetentionPeriod"]),
         metadata: row.metadata,
-      })),
+      }}),
       total,
     };
   }
@@ -1342,15 +1456,30 @@ ORDER BY COALESCE(fd.date, ud.date) ASC;
     if (recommendationCount === 0) readinessNotes.push("No open database recommendations are currently available for this resource.");
     const inventoryObservedAt = toIsoTimestamp(identity.discoveredAt);
     const hasLiveInventory = identity.hasLiveInventory === true;
+    const normalizedIdentityIdentifier = resolveDbIdentifier({
+      resourceName: identity.resourceName,
+      dbIdentifier: identity.dbIdentifier,
+      resourceId: identity.resourceId,
+      resourceArn: identity.resourceArn,
+      clusterId: identity.clusterId,
+      metadata: identity.rawMetadata ?? null,
+    });
+    const normalizedIdentityEngine = normalizeDbEngine({
+      dbEngine: identity.dbEngine,
+      dbService: identity.dbService,
+      resourceType: identity.resourceType,
+      resourceArn: identity.resourceArn,
+      metadata: identity.rawMetadata ?? null,
+    });
 
     return {
       identity: {
         resourceId: identity.resourceId,
         resourceArn: identity.resourceArn,
         resourceName: identity.resourceName,
-        dbIdentifier: identity.dbIdentifier,
+        dbIdentifier: normalizedIdentityIdentifier,
         dbService: identity.dbService,
-        dbEngine: identity.dbEngine,
+        dbEngine: normalizedIdentityEngine,
         dbEngineVersion: identity.dbEngineVersion,
         resourceType: identity.resourceType,
         instanceClass: identity.instanceClass,

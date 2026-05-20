@@ -100,6 +100,11 @@ export default function DatabaseAssetsPage() {
               const next = new URLSearchParams(location.search);
               next.set("cloud_connection_id", row.cloudConnectionId);
               next.set("resourceId", row.resourceId);
+              if (row.dbIdentifier?.trim()) {
+                next.set("assetLabel", row.dbIdentifier.trim());
+              } else {
+                next.delete("assetLabel");
+              }
               const startDate = next.get("start_date") ?? scope?.from ?? null;
               const endDate = next.get("end_date") ?? scope?.to ?? null;
               if (startDate) next.set("start_date", startDate);
