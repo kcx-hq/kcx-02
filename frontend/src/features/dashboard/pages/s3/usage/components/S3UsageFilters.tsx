@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, ChevronDown, Search, X } from "lucide-react";
 
-import type { S3CostInsightsFiltersQuery } from "../../../../api/dashboardApi";
+import type { S3UsageInsightsFiltersQuery } from "../../../../api/dashboardApi";
 import type { S3UsageFilterOptions, S3UsageFilterValue } from "./s3Usage.types";
 
 type FilterChip = {
@@ -21,11 +21,10 @@ type Props = {
   isLoading?: boolean;
 };
 
-const getSeriesLabel = (seriesBy: NonNullable<S3CostInsightsFiltersQuery["seriesBy"]>) => {
+const getSeriesLabel = (seriesBy: S3UsageFilterValue["seriesBy"]) => {
   if (seriesBy === "bucket") return "Bucket";
-  if (seriesBy === "operation") return "Operation Group";
-  if (seriesBy === "storage_class") return "Storage Type";
-  return "Usage Type";
+  if (seriesBy === "operation_group") return "Operation Group";
+  return "Storage Class";
 };
 
 const getCategoryLabel = (category: S3UsageFilterValue["category"]) => {
@@ -34,7 +33,15 @@ const getCategoryLabel = (category: S3UsageFilterValue["category"]) => {
   if (category === "request") return "Request";
   if (category === "object_count") return "Object count";
   if (category === "api_operations") return "API Operations";
+  if (category === "storage_gb_mo") return "Storage GB-Mo";
+  if (category === "retrieval_gb") return "Retrieval GB";
   return "All";
+};
+
+const CATEGORY_BY_USAGE: Record<S3UsageFilterValue["seriesBy"], Array<Exclude<S3UsageFilterValue["category"], "">>> = {
+  bucket: ["storage", "request", "data_transfer", "object_count", "api_operations"],
+  operation_group: ["request", "data_transfer", "api_operations"],
+  storage_class: ["storage_gb_mo", "retrieval_gb"],
 };
 
 const getCompareLabel = (mode: S3UsageFilterValue["compareMode"]) =>
@@ -45,25 +52,17 @@ export function S3UsageFilters({ value, filterOptions, onChange, onReset, isLoad
   const [activePopover, setActivePopover] = useState<S3UsagePopoverKey | null>(null);
   const [seriesSearch, setSeriesSearch] = useState("");
   const [seriesValueSearch, setSeriesValueSearch] = useState("");
-  const [draftSeriesBy, setDraftSeriesBy] = useState<NonNullable<S3CostInsightsFiltersQuery["seriesBy"]>>(value.seriesBy);
+  const [draftSeriesBy, setDraftSeriesBy] = useState<S3UsageFilterValue["seriesBy"]>(value.seriesBy);
   const [draftSeriesValue, setDraftSeriesValue] = useState(value.seriesValue);
 
-  const seriesByOptions: Array<NonNullable<S3CostInsightsFiltersQuery["seriesBy"]>> = [
+  const seriesByOptions: Array<S3UsageFilterValue["seriesBy"]> = [
     "bucket",
-    "usage_type",
-    "operation",
+    "operation_group",
     "storage_class",
   ];
-  const xAxisOptions: Array<NonNullable<S3CostInsightsFiltersQuery["costBy"]>> = ["date", "bucket", "region", "account"];
-  const categoryOptions: Array<Exclude<S3UsageFilterValue["category"], "">> = [
-    "storage",
-    "request",
-    "data_transfer",
-    "object_count",
-    "api_operations",
-  ];
+  const xAxisOptions: Array<NonNullable<S3UsageInsightsFiltersQuery["xAxis"]>> = ["date", "bucket", "region", "account"];
+  const categoryOptions: Array<Exclude<S3UsageFilterValue["category"], "">> = CATEGORY_BY_USAGE[value.seriesBy] ?? CATEGORY_BY_USAGE.bucket;
   const compareOptions: Array<S3UsageFilterValue["compareMode"]> = ["none", "previous_period"];
-  const hasFilterOptions = Boolean(filterOptions);
 
   useEffect(() => {
     const handlePointerDown = (event: MouseEvent) => {
@@ -104,11 +103,10 @@ export function S3UsageFilters({ value, filterOptions, onChange, onReset, isLoad
   };
   const draftSeriesValueOptions = useMemo(() => {
     if (draftSeriesBy === "bucket") return filterOptions?.bucket ?? [];
-    if (draftSeriesBy === "usage_type") return filterOptions?.usageType ?? [];
-    if (draftSeriesBy === "operation") return filterOptions?.operation ?? [];
+    if (draftSeriesBy === "operation_group") return filterOptions?.operation ?? [];
     if (draftSeriesBy === "storage_class") return filterOptions?.storageClass ?? [];
     return [];
-  }, [draftSeriesBy, filterOptions?.bucket, filterOptions?.operation, filterOptions?.storageClass, filterOptions?.usageType]);
+  }, [draftSeriesBy, filterOptions?.bucket, filterOptions?.operation, filterOptions?.storageClass]);
 
   const chips = useMemo<FilterChip[]>(() => {
     const items: FilterChip[] = [
@@ -182,7 +180,7 @@ export function S3UsageFilters({ value, filterOptions, onChange, onReset, isLoad
             onClick={() => togglePopover("seriesBy")}
             aria-expanded={activePopover === "seriesBy"}
             aria-haspopup="dialog"
-            disabled={!hasFilterOptions || isLoading}
+            disabled={isLoading}
           >
             <span className="cost-explorer-toolbar-trigger__label">Usage By</span>
             <span className="cost-explorer-toolbar-trigger__row">
@@ -279,7 +277,16 @@ export function S3UsageFilters({ value, filterOptions, onChange, onReset, isLoad
                   type="button"
                   className="cost-explorer-filter-popover__apply"
                   onClick={() => {
-                    onChange({ ...value, seriesBy: draftSeriesBy, seriesValue: draftSeriesValue });
+                    const allowedCategories = CATEGORY_BY_USAGE[draftSeriesBy] ?? CATEGORY_BY_USAGE.bucket;
+                    const nextCategory = allowedCategories.includes(value.category as Exclude<S3UsageFilterValue["category"], "">)
+                      ? value.category
+                      : allowedCategories[0];
+                    onChange({
+                      ...value,
+                      seriesBy: draftSeriesBy,
+                      seriesValue: draftSeriesValue,
+                      category: nextCategory,
+                    });
                     setActivePopover(null);
                   }}
                 >

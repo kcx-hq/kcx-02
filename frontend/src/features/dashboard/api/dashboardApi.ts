@@ -52,6 +52,7 @@ import type {
   GenerateDatabaseRecommendationsResult,
 
   S3CostInsightsFiltersQuery,
+  S3UsageInsightsFiltersQuery,
   S3CostInsightsResponse,
   S3BucketDetailResponse,
   S3BucketLifecycleInsightResponse,
@@ -609,6 +610,9 @@ function withS3CostInsightsFilters(
   if (filters?.seriesBy) {
     params.set("seriesBy", filters.seriesBy);
   }
+  if (filters?.usageBy) {
+    params.set("usageBy", filters.usageBy);
+  }
   if (filters?.yAxisMetric) {
     params.set("yAxisMetric", filters.yAxisMetric);
   }
@@ -618,6 +622,32 @@ function withS3CostInsightsFilters(
   if (filters?.responseMode) {
     params.set("responseMode", filters.responseMode);
   }
+
+  const query = params.toString();
+  return query.length > 0 ? `${path}?${query}` : path;
+}
+
+function withS3UsageInsightsFilters(
+  path: string,
+  scope: DashboardResolvedScope,
+  filters?: S3UsageInsightsFiltersQuery,
+): string {
+  const params = new URLSearchParams(buildDashboardQueryParams(scope));
+  const appendArray = (key: string, values?: string[]) => {
+    if (!Array.isArray(values) || values.length === 0) return;
+    params.set(key, values.join(","));
+  };
+
+  appendArray("storageClass", filters?.storageClass);
+  appendArray("region", filters?.region);
+  appendArray("account", filters?.account);
+  if (typeof filters?.bucket === "string" && filters.bucket.trim().length > 0) {
+    params.set("bucket", filters.bucket.trim());
+  }
+  if (filters?.xAxis) params.set("xAxis", filters.xAxis);
+  if (filters?.usageBy) params.set("usageBy", filters.usageBy);
+  if (filters?.yAxis) params.set("yAxis", filters.yAxis);
+  if (filters?.compareBy) params.set("compareBy", filters.compareBy);
 
   const query = params.toString();
   return query.length > 0 ? `${path}?${query}` : path;
@@ -949,6 +979,9 @@ export const dashboardApi = {
   getS3CostInsights(scope: DashboardResolvedScope, filters?: S3CostInsightsFiltersQuery, init?: RequestInit) {
     return apiGet<S3CostInsightsResponse>(withS3CostInsightsFilters("/dashboard/s3/cost-insights", scope, filters), init);
   },
+  getS3UsageInsights(scope: DashboardResolvedScope, filters?: S3UsageInsightsFiltersQuery, init?: RequestInit) {
+    return apiGet<S3CostInsightsResponse>(withS3UsageInsightsFilters("/dashboard/s3/usage-insights", scope, filters), init);
+  },
   getS3BucketDetail(scope: DashboardResolvedScope, bucketName: string, init?: RequestInit) {
     return apiGet<S3BucketDetailResponse>(
       withDashboardQuery(`/dashboard/s3/buckets/${encodeURIComponent(bucketName)}/detail`, scope),
@@ -1092,6 +1125,7 @@ export type {
   LoadBalancerExplorerTrendResponse,
   LoadBalancerExplorerGroupByResponse,
   S3CostInsightsFiltersQuery,
+  S3UsageInsightsFiltersQuery,
   S3CostInsightsResponse,
   S3BucketDetailResponse,
   S3BucketLifecycleInsightResponse,

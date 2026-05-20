@@ -37,6 +37,7 @@ import {
   type GenerateDatabaseRecommendationsResult,
 
   type S3CostInsightsFiltersQuery,
+  type S3UsageInsightsFiltersQuery,
   type S3CostInsightsResponse,
   type S3BucketDetailResponse,
   type S3BucketLifecycleInsightResponse,
@@ -559,6 +560,26 @@ export function useS3CostInsightsQuery(
   return useQuery<S3CostInsightsResponse, Error>({
     queryKey: ["dashboard", "s3", "cost-insights", scope, filters],
     queryFn: ({ signal }) => dashboardApi.getS3CostInsights(assertScope(scope), filters, { signal }),
+    enabled: Boolean(scope) && (options?.enabled ?? true),
+    placeholderData: (previous) => previous,
+    staleTime: options?.staleTime ?? 90_000,
+    refetchOnWindowFocus: false,
+    refetchInterval: options?.refetchInterval ?? false,
+  });
+}
+
+export function useS3UsageInsightsQuery(
+  filters?: S3UsageInsightsFiltersQuery,
+  options?: {
+    enabled?: boolean;
+    staleTime?: number;
+    refetchInterval?: number | false;
+  },
+) {
+  const { scope } = useDashboardScope();
+  return useQuery<S3CostInsightsResponse, Error>({
+    queryKey: ["dashboard", "s3", "usage-insights", scope, filters],
+    queryFn: ({ signal }) => dashboardApi.getS3UsageInsights(assertScope(scope), filters, { signal }),
     enabled: Boolean(scope) && (options?.enabled ?? true),
     placeholderData: (previous) => previous,
     staleTime: options?.staleTime ?? 90_000,

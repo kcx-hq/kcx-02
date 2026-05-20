@@ -44,18 +44,14 @@ export type S3BucketUsageRow = {
 type Props = {
   rows: S3UsageInsightsRow[];
   bucketRows?: S3BucketUsageRow[];
-  bucketQuantityLabel?: string;
-  usageCategory?: "" | "storage" | "data_transfer" | "request" | "object_count";
-  showAllCategoryBreakdown?: boolean;
+  usageCategory?: "" | "storage" | "data_transfer" | "request" | "object_count" | "api_operations" | "storage_gb_mo" | "retrieval_gb";
   onBucketClick?: (bucketName: string) => void;
 };
 
 export function S3UsageInsightsTable({
   rows,
   bucketRows,
-  bucketQuantityLabel = "Usage Quantity",
   usageCategory = "",
-  showAllCategoryBreakdown = false,
   onBucketClick,
 }: Props) {
   const usageColumnDefs = useMemo<ColDef<any>[]>(

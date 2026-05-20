@@ -1,13 +1,21 @@
-import type { S3CostInsightsFiltersQuery, S3CostInsightsResponse } from "../../../../api/dashboardApi";
+import type { S3CostInsightsResponse, S3UsageInsightsFiltersQuery } from "../../../../api/dashboardApi";
 
 export type S3UsageFilterValue = {
-  seriesBy: NonNullable<S3CostInsightsFiltersQuery["seriesBy"]>;
+  seriesBy: "bucket" | "operation_group" | "storage_class";
   seriesValue: string;
-  category: "" | "storage" | "data_transfer" | "request" | "object_count" | "api_operations";
+  category:
+    | ""
+    | "storage"
+    | "data_transfer"
+    | "request"
+    | "object_count"
+    | "api_operations"
+    | "storage_gb_mo"
+    | "retrieval_gb";
   compareMode: "none" | "previous_period";
   storageClass: string;
-  xAxis: NonNullable<S3CostInsightsFiltersQuery["costBy"]>;
-  yAxisMetric: NonNullable<S3CostInsightsFiltersQuery["yAxisMetric"]>;
+  xAxis: NonNullable<S3UsageInsightsFiltersQuery["xAxis"]>;
+  yAxisMetric: "usage_quantity";
   chartType: "bar" | "line";
 };
 

@@ -2040,6 +2040,7 @@ export type S3CostInsightsResponse = {
   };
 
 export type S3CostInsightsFiltersQuery = {
+  usageBy?: "bucket" | "operation" | "storage_class";
   costCategory?: string[];
   seriesValues?: string[];
   bucket?: string | null;
@@ -2050,7 +2051,32 @@ export type S3CostInsightsFiltersQuery = {
   costBy?: "date" | "bucket" | "region" | "account";
   seriesBy?: "none" | "cost_category" | "usage_type" | "operation" | "bucket" | "storage_class";
   yAxisMetric?: "gross_cost" | "billed_cost" | "effective_cost" | "amortized_cost" | "usage_quantity";
-  usageYAxis?: "storage_gb" | "request_count" | "transfer_gb" | "object_count" | "api_operations";
+  usageYAxis?:
+    | "storage_gb"
+    | "request_count"
+    | "transfer_gb"
+    | "object_count"
+    | "api_operations"
+    | "storage_gb_mo"
+    | "retrieval_gb";
+};
+
+export type S3UsageInsightsFiltersQuery = {
+  xAxis?: "date" | "bucket" | "region" | "account";
+  usageBy?: "bucket" | "operation_group" | "storage_class";
+  yAxis?:
+    | "storage_gb"
+    | "request_count"
+    | "transfer_gb"
+    | "object_count"
+    | "api_operations"
+    | "storage_gb_month"
+    | "retrieval_gb";
+  compareBy?: "none" | "previous_period";
+  bucket?: string | null;
+  storageClass?: string[];
+  region?: string[];
+  account?: string[];
 };
 
 export type S3BucketDetailResponse = {
