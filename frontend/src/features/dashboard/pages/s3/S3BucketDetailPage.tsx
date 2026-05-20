@@ -21,15 +21,15 @@ export default function S3BucketDetailPage() {
     return {
       bucketName: detail.bucketName,
       account: detail.metadata.accountId ?? "Unspecified",
-      cost: 0,
-      storage: 0,
-      requests: 0,
-      transfer: 0,
+      cost: Number(detail.costBreakdown.totalCost ?? 0),
+      storage: Number(detail.costBreakdown.storageCost ?? 0),
+      requests: Number(detail.costBreakdown.requestCost ?? 0),
+      transfer: Number(detail.costBreakdown.transferCost ?? 0),
       region: detail.metadata.region ?? "Unknown",
       owner: detail.metadata.owner ?? "Unassigned",
       driver: "Storage",
-      retrieval: 0,
-      other: 0,
+      retrieval: Number(detail.costBreakdown.retrievalCost ?? 0),
+      other: Number(detail.costBreakdown.otherCost ?? 0),
       replicationStatus: detail.replicationInsight.status,
       versioningStatus: detail.metadata.versioning,
       encryptionStatus: detail.metadata.encryption,
@@ -39,7 +39,7 @@ export default function S3BucketDetailPage() {
           : String(detail.metadata.publicAccess ?? "").toLowerCase() === "private"
             ? "Private"
             : "Unknown",
-      trendPct: 0,
+      trendPct: Number(detail.costBreakdown.costTrendPct ?? 0),
       storageLens: {
         usageDate: detail.filtersApplied.to,
         objectCount: detail.objectInsights.objectCount,

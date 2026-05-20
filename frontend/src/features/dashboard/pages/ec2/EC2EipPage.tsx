@@ -83,9 +83,9 @@ export default function EC2EipPage() {
   const queryParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
 
   const defaults = getDefaultDateRange();
-  const [page, setPage] = useState(Number(queryParams.get("page") ?? "1") || 1);
+  const [page] = useState(Number(queryParams.get("page") ?? "1") || 1);
 
-  const [controls, setControls] = useState<EC2InstancesControlsState>({
+  const [controls] = useState<EC2InstancesControlsState>({
     ...EC2_INSTANCES_DEFAULT_CONTROLS,
     state: getControlsStateFromParam(queryParams.get("state")),
     search: queryParams.get("search") ?? "",

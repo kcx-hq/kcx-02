@@ -2116,10 +2116,105 @@ export type S3BucketDetailResponse = {
     transferGb: number | null;
     objectCount: number | null;
   };
+  costBreakdown: {
+    totalCost: number;
+    storageCost: number;
+    requestCost: number;
+    transferCost: number;
+    retrievalCost: number;
+    otherCost: number;
+    costTrendPct: number;
+  };
   charts: {
     storageUsage: Array<{ date: string; value: number | null }>;
     requestUsage: Array<{ date: string; value: number | null }>;
     transferUsage: Array<{ date: string; value: number | null }>;
+    costTrend: Array<{
+      date: string;
+      storageCost: number;
+      requestCost: number;
+      transferCost: number;
+      otherCost: number;
+    }>;
+  };
+  storageClassBreakdown: Array<{
+    storageClass: string;
+    bytes: number;
+    objectCount: number | null;
+  }>;
+  activityUsage: {
+    totalRequests: number;
+    transferBytes: number | null;
+    objectCount: number | null;
+    averageObjectSizeBytes: number | null;
+    requestBreakdown: Array<{
+      operation: "GET" | "PUT" | "LIST" | "DELETE" | "HEAD" | "COPY" | "Other";
+      count: number;
+      percentage: number;
+    }>;
+    requestBreakdownAvailable: boolean;
+    transferBreakdown: Array<{
+      type: "Upload" | "Download" | "Internal" | "Other";
+      bytes: number;
+      percentage: number;
+    }>;
+    transferBreakdownAvailable: boolean;
+    trends: {
+      requests: "up" | "down" | "flat" | "unknown";
+      transfer: "up" | "down" | "flat" | "unknown";
+      storage: "up" | "down" | "flat" | "unknown";
+    };
+    insight: string | null;
+    hasUsageData: boolean;
+  };
+  optimization: {
+    opportunities: Array<{
+      id: string;
+      title: string;
+      severity: "high" | "medium" | "low" | "info";
+      category: "lifecycle" | "storage" | "activity" | "governance" | "replication" | "configuration";
+      description: string;
+      recommendation: string;
+      estimatedSavings: number | null;
+      source: string;
+      evidence: Record<string, unknown>;
+      action?: {
+        type: "navigate";
+        route: string;
+        query: Record<string, string>;
+        label: string;
+      };
+    }>;
+    totalCount: number;
+  };
+  configuration: {
+    versioning: {
+      status: "enabled" | "suspended" | "disabled" | "unknown";
+    };
+    encryption: {
+      status: "enabled" | "disabled" | "unknown";
+      type: "SSE-S3" | "SSE-KMS" | "Unknown" | null;
+    };
+    lifecycle: {
+      enabled: boolean;
+      ruleCount: number;
+    };
+    replication: {
+      enabled: boolean;
+      destinationRegion: string | null;
+    };
+    publicAccess: {
+      status: "blocked" | "partial" | "public" | "unknown";
+    };
+    ownershipMetadata: {
+      ownerAssigned: boolean;
+      environmentAssigned: boolean;
+    };
+    bestPractices: {
+      passed: number;
+      total: number;
+    };
+    notes: string[];
   };
   filtersApplied: {
     from: string;

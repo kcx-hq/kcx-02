@@ -901,12 +901,64 @@ export async function processAwsExportParquetRun({ run }) {
         });
       }
 
-      await syncEc2CostHistoryForIngestionRun({
+      const ec2CostHistoryStartedAt = Date.now();
+      logAwsParquetStage({
+        stage: "ec2_cost_history_sync_started",
+        status: "started",
         ingestionRunId: runId,
-        tenantId: source.tenantId,
-        providerId: source.cloudProviderId,
         billingSourceId: source.id,
+        cloudConnectionId: source.cloudConnectionId ?? null,
+        dateFrom,
+        dateTo,
       });
+      try {
+        await syncEc2CostHistoryForIngestionRun({
+          ingestionRunId: runId,
+          tenantId: source.tenantId,
+          providerId: source.cloudProviderId,
+          billingSourceId: source.id,
+        });
+        logAwsParquetStage({
+          stage: "ec2_cost_history_sync_completed",
+          status: "completed",
+          ingestionRunId: runId,
+          billingSourceId: source.id,
+          cloudConnectionId: source.cloudConnectionId ?? null,
+          dateFrom,
+          dateTo,
+          durationMs: Date.now() - ec2CostHistoryStartedAt,
+        });
+      } catch (ec2CostHistoryError) {
+        logger.warn("EC2 cost history sync failed after AWS parquet ingestion", {
+          ingestionRunId: runId,
+          tenantId: source.tenantId ?? null,
+          billingSourceId: source.id ?? null,
+          cloudConnectionId: source.cloudConnectionId ?? null,
+          reason: toErrorMessage(ec2CostHistoryError),
+          ...buildNestedErrorDetails(ec2CostHistoryError),
+        });
+        logAwsParquetStage({
+          stage: "ec2_cost_history_sync_failed",
+          status: "failed",
+          ingestionRunId: runId,
+          billingSourceId: source.id,
+          cloudConnectionId: source.cloudConnectionId ?? null,
+          dateFrom,
+          dateTo,
+          durationMs: Date.now() - ec2CostHistoryStartedAt,
+          error: {
+            message: toErrorMessage(ec2CostHistoryError),
+            stack: ec2CostHistoryError instanceof Error ? ec2CostHistoryError.stack : null,
+          },
+        });
+        await setRunState(runId, {
+          status: "completed_with_warnings",
+          current_step: "completed_with_warnings",
+          status_message: "Billing data is ready with warnings (EC2 post-processor sync failed)",
+          error_message: `EC2 cost history sync failed: ${toErrorMessage(ec2CostHistoryError)}`,
+          last_heartbeat_at: now(),
+        });
+      }
 
       const dbProcessorStartedAt = Date.now();
       logAwsParquetStage({

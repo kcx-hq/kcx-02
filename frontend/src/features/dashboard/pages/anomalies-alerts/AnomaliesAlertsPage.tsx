@@ -29,12 +29,6 @@ const dateFormatter = new Intl.DateTimeFormat("en-US", {
 });
 
 
-const shortDateTimeFormatter = new Intl.DateTimeFormat("en-US", {
-  month: "2-digit",
-  day: "2-digit",
-  hour: "2-digit",
-  minute: "2-digit",
-});
 
 const toNumber = (value: number | string | null | undefined): number => {
   const parsed = Number(value ?? 0);
@@ -52,8 +46,6 @@ const formatPercent = (value: number | string | null | undefined): string => {
   const normalized = Math.abs(numeric) <= 1 ? numeric * 100 : numeric;
   return `${normalized.toFixed(2)}%`;
 };
-
-const formatShortDateTime = (value: Date): string => shortDateTimeFormatter.format(value);
 
 const formatDurationFromMs = (diffMs: number): string => {
   if (diffMs <= 0) return "0m";
