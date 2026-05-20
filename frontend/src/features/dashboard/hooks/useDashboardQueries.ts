@@ -160,7 +160,6 @@ export function useDatabaseExplorerQuery(filters: DatabaseExplorerFilters) {
     queryKey: ["dashboard", "services", "database", "explorer", scope, filters],
     queryFn: () => dashboardApi.getDatabaseExplorer(assertScope(scope), filters),
     enabled: Boolean(scope?.from && scope?.to),
-    placeholderData: (previousData) => previousData,
     staleTime: 30_000,
   });
 }

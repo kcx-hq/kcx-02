@@ -210,6 +210,12 @@ function withDatabaseExplorerFilters(
   if (scope.from) params.set("start_date", scope.from);
   if (scope.to) params.set("end_date", scope.to);
   if (filters.metric) params.set("metric", filters.metric);
+  if (filters.metric === "usage" && filters.capabilityFamily) {
+    params.set("capability_family", filters.capabilityFamily);
+  }
+  if (filters.metric === "usage" && filters.usageMetric) {
+    params.set("usage_metric", filters.usageMetric);
+  }
   if (filters.costBasis) params.set("cost_basis", filters.costBasis);
   if (filters.groupBy) params.set("group_by", filters.groupBy);
   if (Array.isArray(filters.groupValues) && filters.groupValues.length > 0) {
@@ -217,9 +223,11 @@ function withDatabaseExplorerFilters(
   }
   if (Array.isArray(filters.resourceTypeValues) && filters.resourceTypeValues.length > 0) {
     params.set("resource_type_values", filters.resourceTypeValues.join(","));
+    params.set("resource_type", filters.resourceTypeValues[0]);
   }
   if (Array.isArray(filters.costCategoryValues) && filters.costCategoryValues.length > 0) {
     params.set("cost_category_values", filters.costCategoryValues.join(","));
+    params.set("cost_category", filters.costCategoryValues[0]);
   }
   if (typeof filters.databaseScope === "string" && filters.databaseScope.trim().length > 0 && filters.databaseScope !== "all") {
     params.set("database_scope", filters.databaseScope.trim());

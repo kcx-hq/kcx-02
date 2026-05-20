@@ -1,5 +1,7 @@
 import { KpiCard, KpiGrid } from "../../../common/components";
-import type { DatabaseExplorerCards as DatabaseExplorerCardsData } from "../../../api/dashboardTypes";
+import type {
+  DatabaseExplorerCards as DatabaseExplorerCardsData,
+} from "../../../api/dashboardTypes";
 import {
   NULL_MARKER,
 } from "./databaseExplorer.formatters";

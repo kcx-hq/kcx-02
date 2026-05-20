@@ -8,6 +8,9 @@ import {
   servicesToAvailableDatabaseScopes,
 } from "./explorer.database-scope.js";
 import type {
+  ExplorerCapabilityAvailability,
+  ExplorerCoverageSummary,
+  ExplorerWarning,
   ExplorerFilterOptions,
   ExplorerGroupBy,
   ExplorerCostBasis,
@@ -18,8 +21,14 @@ import type {
   ExplorerTrendGrouped,
   ExplorerTrendGroupedSeries,
   ExplorerTrendItem,
+  ExplorerUsageKpi,
   ExplorerUsageTrendItem,
 } from "./explorer.types.js";
+import {
+  USAGE_CAPABILITY_REGISTRY,
+  type UsageCapabilityFamily,
+  type UsageMetric,
+} from "./usage-capabilities.js";
 
 type CardsAggregateRow = {
   totalCost: string | number | null;
@@ -45,12 +54,19 @@ type CostTrendRow = {
 
 type UsageTrendRow = {
   date: Date | string;
-  load: string | number | null;
+  value: string | number | null;
   connections: string | number | null;
+};
+
+type CoverageAggregateRow = {
+  eligibleResources: string | number | null;
+  coveredResources: string | number | null;
 };
 
 type TableAggregateRow = {
   group: string | number | null;
+  groupKey?: string | number | null;
+  groupLabel?: string | null;
   totalCost: string | number | null;
   computeCost: string | number | null;
   storageCost: string | number | null;
@@ -59,6 +75,21 @@ type TableAggregateRow = {
   resourceCount: string | number | null;
   avgLoad: string | number | null;
   connections: string | number | null;
+  inScopeResources?: string | number | null;
+  telemetryCoveredResources?: string | number | null;
+  avgCpu?: string | number | null;
+  peakCpu?: string | number | null;
+  avgConnections?: string | number | null;
+  peakConnections?: string | number | null;
+  readIops?: string | number | null;
+  writeIops?: string | number | null;
+  totalIops?: string | number | null;
+  readThroughputBytes?: string | number | null;
+  writeThroughputBytes?: string | number | null;
+  totalThroughputBytes?: string | number | null;
+  storageUsedGb?: string | number | null;
+  allocatedStorageGb?: string | number | null;
+  primaryMetricValue?: string | number | null;
 };
 
 type GroupedTrendAggregateRow = {
@@ -74,6 +105,10 @@ type CostCategoryGroupedRow = {
   groupKey: string | null;
   groupLabel: string | null;
   totalCost: string | number | null;
+  computeCost?: string | number | null;
+  storageCost?: string | number | null;
+  ioCost?: string | number | null;
+  backupCost?: string | number | null;
   resourceCount?: string | number | null;
 };
 
@@ -137,6 +172,66 @@ const resolveCoverageState = (
     return { state: "partial", note: `Signal coverage is partial (${formatInteger(rowsWithSignal)}/${formatInteger(totalRows)} rows).` };
   }
   return { state: "normal", note: null };
+};
+
+const confidenceFromCoverage = (
+  coverage: ExplorerCoverageSummary,
+): ExplorerCoverageSummary["confidence"] => {
+  if (coverage.unsupported) return "unsupported";
+  if (coverage.unavailable) return "unavailable";
+  if (coverage.coverageRate === null) return "degraded";
+  if (coverage.coverageRate >= 0.9) return "high";
+  if (coverage.coverageRate >= 0.6) return "medium";
+  if (coverage.coverageRate > 0) return "low";
+  return "degraded";
+};
+
+const usageMetricSql = (metric: UsageMetric, alias = "f"): string => {
+  const a = `${alias}.`;
+  switch (metric) {
+    case "avg_cpu": return `${a}cpu_avg`;
+    case "peak_cpu": return `${a}cpu_max`;
+    case "avg_connections": return `${a}connections_avg`;
+    case "peak_connections": return `${a}connections_max`;
+    case "read_iops": return `${a}read_iops`;
+    case "write_iops": return `${a}write_iops`;
+    case "total_iops": return `CASE WHEN ${a}read_iops IS NULL AND ${a}write_iops IS NULL THEN NULL ELSE COALESCE(${a}read_iops, 0) + COALESCE(${a}write_iops, 0) END`;
+    case "read_throughput": return `${a}read_throughput_bytes`;
+    case "write_throughput": return `${a}write_throughput_bytes`;
+    case "total_throughput": return `CASE WHEN ${a}read_throughput_bytes IS NULL AND ${a}write_throughput_bytes IS NULL THEN NULL ELSE COALESCE(${a}read_throughput_bytes, 0) + COALESCE(${a}write_throughput_bytes, 0) END`;
+    case "storage_used_gb": return `${a}storage_used_gb`;
+    case "allocated_storage_gb": return `${a}allocated_storage_gb`;
+  }
+};
+
+const usageMetricSqlWithFallback = (metric: UsageMetric, factAlias = "f", utilAlias = "u"): string =>
+  `COALESCE(${usageMetricSql(metric, factAlias)}, ${usageMetricSql(metric, utilAlias)})`;
+
+const usageServicePredicateSql = (alias: string): string =>
+  `${buildDbServiceDisplaySql(alias)} IN (:usageSupportedServices)`;
+
+const usageMetricSourceFields = (metric: UsageMetric): string[] => {
+  switch (metric) {
+    case "avg_cpu": return ["cpu_avg"];
+    case "peak_cpu": return ["cpu_max"];
+    case "avg_connections": return ["connections_avg"];
+    case "peak_connections": return ["connections_max"];
+    case "read_iops": return ["read_iops"];
+    case "write_iops": return ["write_iops"];
+    case "total_iops": return ["read_iops", "write_iops"];
+    case "read_throughput": return ["read_throughput_bytes"];
+    case "write_throughput": return ["write_throughput_bytes"];
+    case "total_throughput": return ["read_throughput_bytes", "write_throughput_bytes"];
+    case "storage_used_gb": return ["storage_used_gb"];
+    case "allocated_storage_gb": return ["allocated_storage_gb"];
+  }
+};
+
+const usageStateFromCoverage = (coverage: ExplorerCoverageSummary): "normal" | "degraded" | "informational" | "unavailable" | "unsupported" => {
+  if (coverage.unsupported) return "unsupported";
+  if (coverage.unavailable) return "unavailable";
+  if (coverage.degraded) return "degraded";
+  return "normal";
 };
 
 const isUsageTrendItem = (item: ExplorerTrendItem): item is ExplorerUsageTrendItem =>
@@ -530,16 +625,18 @@ const GROUPED_UNKNOWN_LABELS: Record<ExplorerGroupBy, string> = {
   cost_category: "Other",
 };
 
+const COST_CATEGORY_CANONICAL_KEY_SQL = "REGEXP_REPLACE(LOWER(BTRIM(COALESCE(ch.cost_category, ''))), '[^a-z0-9]+', '_', 'g')";
+
 const COST_CATEGORY_LABEL_CASE = `
 CASE
-  WHEN LOWER(BTRIM(COALESCE(ch.cost_category, ''))) = 'compute' THEN 'Compute'
-  WHEN LOWER(BTRIM(COALESCE(ch.cost_category, ''))) = 'storage' THEN 'Storage'
-  WHEN LOWER(BTRIM(COALESCE(ch.cost_category, ''))) = 'io' THEN 'I/O'
-  WHEN LOWER(BTRIM(COALESCE(ch.cost_category, ''))) = 'backup' THEN 'Backup'
-  WHEN LOWER(BTRIM(COALESCE(ch.cost_category, ''))) = 'data_transfer' THEN 'Data Transfer'
-  WHEN LOWER(BTRIM(COALESCE(ch.cost_category, ''))) = 'tax' THEN 'Tax'
-  WHEN LOWER(BTRIM(COALESCE(ch.cost_category, ''))) = 'credit' THEN 'Credit'
-  WHEN LOWER(BTRIM(COALESCE(ch.cost_category, ''))) = 'refund' THEN 'Refund'
+  WHEN ${COST_CATEGORY_CANONICAL_KEY_SQL} = 'compute' OR ${COST_CATEGORY_CANONICAL_KEY_SQL} LIKE 'compute_%' THEN 'Compute'
+  WHEN ${COST_CATEGORY_CANONICAL_KEY_SQL} = 'storage' OR ${COST_CATEGORY_CANONICAL_KEY_SQL} LIKE 'storage_%' THEN 'Storage'
+  WHEN ${COST_CATEGORY_CANONICAL_KEY_SQL} IN ('io', 'i_o') OR ${COST_CATEGORY_CANONICAL_KEY_SQL} LIKE 'io_%' OR ${COST_CATEGORY_CANONICAL_KEY_SQL} LIKE 'i_o_%' THEN 'I/O'
+  WHEN ${COST_CATEGORY_CANONICAL_KEY_SQL} = 'backup' OR ${COST_CATEGORY_CANONICAL_KEY_SQL} LIKE 'backup_%' THEN 'Backup'
+  WHEN ${COST_CATEGORY_CANONICAL_KEY_SQL} = 'data_transfer' OR ${COST_CATEGORY_CANONICAL_KEY_SQL} LIKE 'data_transfer_%' THEN 'Data Transfer'
+  WHEN ${COST_CATEGORY_CANONICAL_KEY_SQL} = 'tax' OR ${COST_CATEGORY_CANONICAL_KEY_SQL} LIKE 'tax_%' THEN 'Tax'
+  WHEN ${COST_CATEGORY_CANONICAL_KEY_SQL} = 'credit' OR ${COST_CATEGORY_CANONICAL_KEY_SQL} LIKE 'credit_%' THEN 'Credit'
+  WHEN ${COST_CATEGORY_CANONICAL_KEY_SQL} = 'refund' OR ${COST_CATEGORY_CANONICAL_KEY_SQL} LIKE 'refund_%' THEN 'Refund'
   ELSE 'Other'
 END
 `;
@@ -574,11 +671,12 @@ const factTotalCostExpression = (tableAlias: string, costBasis: ExplorerCostBasi
 
 const buildResourceDrilldownFilters = (params: ExplorerQueryParams, tableAlias = ""): string => {
   const pref = tableAlias ? `${tableAlias}.` : "";
+  const resourceTypeValues = normalizeFilterValues(params.resourceTypeValues);
+  const shouldExcludeScopedByDefault = !resourceTypeValues.includes("scoped");
   const base = `${buildTrendFilters(params, tableAlias)}
-    AND COALESCE(LOWER(BTRIM(${pref}resource_type)), '') <> 'scoped'
+    ${shouldExcludeScopedByDefault ? `AND COALESCE(LOWER(BTRIM(${pref}resource_type)), '') <> 'scoped'` : ""}
     AND ${pref}resource_id NOT LIKE 'db-scope:%'`;
   const groupedValuesFilter = buildGroupedValuesFilter(params, "fact", tableAlias || "fact_db_resource_daily");
-  const resourceTypeValues = normalizeFilterValues(params.resourceTypeValues);
   const resourceTypeFilter = resourceTypeValues.length > 0
     ? `LOWER(BTRIM(COALESCE(${pref}resource_type, ''))) IN (:resourceTypeValues)`
     : null;
@@ -597,12 +695,28 @@ const buildCostHistoryDrilldownFilters = (params: ExplorerQueryParams, tableAlia
     AND ${pref}resource_id NOT LIKE 'db-scope:%'
     AND ${pref}resource_id NOT LIKE 'db-unattributed:%'`;
   const groupedValuesFilter = buildGroupedValuesFilter(params, "cost_history", tableAlias);
+  const resourceTypeValues = normalizeFilterValues(params.resourceTypeValues);
+  const resourceTypeFilter = resourceTypeValues.length > 0
+    ? `EXISTS (
+      SELECT 1
+      FROM fact_db_resource_daily f_rt
+      WHERE f_rt.tenant_id = ${pref}tenant_id
+        AND f_rt.usage_date = ${pref}usage_date
+        AND f_rt.resource_id = ${pref}resource_id
+        AND f_rt.cloud_connection_id IS NOT DISTINCT FROM ${pref}cloud_connection_id
+        AND LOWER(BTRIM(COALESCE(f_rt.resource_type, ''))) IN (:resourceTypeValues)
+    )`
+    : null;
   const costCategoryValues = normalizeFilterValues(params.costCategoryValues);
   const costCategoryFilter = costCategoryValues.length > 0
     ? `LOWER(BTRIM(COALESCE(${pref}cost_category, ''))) IN (:costCategoryValues)`
     : null;
   const parts = [base];
   if (groupedValuesFilter) parts.push(groupedValuesFilter);
+  if (resourceTypeFilter) {
+    params.resourceTypeValues = resourceTypeValues;
+    parts.push(resourceTypeFilter);
+  }
   if (costCategoryFilter) {
     params.costCategoryValues = costCategoryValues;
     parts.push(costCategoryFilter);
@@ -611,6 +725,29 @@ const buildCostHistoryDrilldownFilters = (params: ExplorerQueryParams, tableAlia
 };
 
 export class DatabaseExplorerRepository {
+  private utilizationTableExistsPromise: Promise<boolean> | null = null;
+
+  private async hasDbUtilizationDailyTable(): Promise<boolean> {
+    if (!this.utilizationTableExistsPromise) {
+      this.utilizationTableExistsPromise = sequelize
+        .query<{ exists: boolean }>(
+          `
+SELECT EXISTS (
+  SELECT 1
+  FROM information_schema.tables
+  WHERE table_schema = 'public'
+    AND table_name = 'db_utilization_daily'
+) AS "exists";
+`,
+          { type: QueryTypes.SELECT },
+        )
+        .then((rows) => Boolean(rows[0]?.exists))
+        .catch(() => false);
+    }
+
+    return this.utilizationTableExistsPromise;
+  }
+
   async getFilterOptions(params: ExplorerQueryParams): Promise<ExplorerFilterOptions> {
     const queryParams = buildExplorerReplacements(buildTrendQueryParams(params));
     const filters = buildFilterOptionsFilters(queryParams);
@@ -757,6 +894,70 @@ ORDER BY value ASC;
     };
   }
 
+  private async computeUsageCoverageSummary(
+    params: ExplorerQueryParams,
+    capabilityFamily: UsageCapabilityFamily,
+    usageMetric: UsageMetric,
+  ): Promise<ExplorerCoverageSummary> {
+    const queryParams = buildExplorerReplacements(buildTrendQueryParams(params));
+    const definition = USAGE_CAPABILITY_REGISTRY[capabilityFamily];
+    const metricExpr = usageMetricSql(usageMetric, "f");
+    const baseFilters = buildResourceDrilldownFilters(queryParams, "f");
+    const rows = await sequelize.query<CoverageAggregateRow>(
+      `
+SELECT
+  COUNT(DISTINCT f.resource_id) FILTER (WHERE f.db_service IN (:supportedServices)) AS "eligibleResources",
+  COUNT(DISTINCT f.resource_id) FILTER (WHERE f.db_service IN (:supportedServices) AND (${metricExpr}) IS NOT NULL) AS "coveredResources"
+FROM fact_db_resource_daily f
+WHERE ${baseFilters};
+`,
+      {
+        replacements: { ...queryParams, supportedServices: definition.supportedServices },
+        type: QueryTypes.SELECT,
+      },
+    );
+    const row = rows[0];
+    const eligibleResources = toNumber(row?.eligibleResources);
+    const coveredResources = toNumber(row?.coveredResources);
+    const coverageRate = eligibleResources > 0 ? coveredResources / eligibleResources : null;
+    const unsupported = eligibleResources <= 0;
+    const unavailable = eligibleResources > 0 && coveredResources <= 0;
+    const degraded = coverageRate !== null && coverageRate > 0 && coverageRate < 0.9;
+    const summary: ExplorerCoverageSummary = {
+      eligibleResources,
+      coveredResources,
+      coverageRate,
+      confidence: "degraded",
+      degraded,
+      unavailable,
+      unsupported,
+    };
+    summary.confidence = confidenceFromCoverage(summary);
+    return summary;
+  }
+
+  async getCapabilityAvailability(params: ExplorerQueryParams): Promise<ExplorerCapabilityAvailability[]> {
+    if (params.metric !== "usage") return [];
+    const families = Object.values(USAGE_CAPABILITY_REGISTRY);
+    const output: ExplorerCapabilityAvailability[] = [];
+    for (const family of families) {
+      const coverageSummary = await this.computeUsageCoverageSummary(params, family.id, family.defaultMetric);
+      const selectable = !coverageSummary.unsupported;
+      output.push({
+        capabilityFamily: family.id,
+        label: family.label,
+        maturity: family.maturity,
+        supportedServices: [...family.supportedServices],
+        supportedMetrics: [...family.supportedMetrics],
+        selectable,
+        disabled: !selectable,
+        warnings: coverageSummary.unsupported ? ["No supported services in scope for this capability family."] : [],
+        coverageSummary,
+      });
+    }
+    return output;
+  }
+
   async getCards(params: ExplorerQueryParams): Promise<ExplorerKpiCard[]> {
     const previousPeriod = getPreviousPeriod(params);
     const queryParams = buildExplorerReplacements({
@@ -765,8 +966,10 @@ ORDER BY value ASC;
       endDate: toUtcDateOnly(params.endDate, "end_date"),
       ...previousPeriod,
     });
-    const currentFilters = buildFactFilters(queryParams, "current");
-    const previousFilters = buildFactFilters(queryParams, "previous");
+    const currentFilters = buildFactFilters(queryParams, "current", "f");
+    const previousFilters = buildFactFilters(queryParams, "previous", "f");
+    const selectedUsageMetric: UsageMetric = params.usageMetric ?? "avg_cpu";
+    const selectedUsageExpr = usageMetricSql(selectedUsageMetric);
 
     const rows = await sequelize.query<CardsAggregateRow>(
       `
@@ -775,19 +978,19 @@ WITH current_period AS (
     COALESCE(SUM(${factTotalCostExpression("", queryParams.costBasis)}), 0) AS "totalCost",
     COUNT(DISTINCT resource_id) AS "activeResources",
     COALESCE(SUM(data_footprint_gb), 0) AS "dataFootprintGb",
-    AVG(COALESCE(load_avg, cpu_avg)) AS "avgLoad",
+    AVG(${selectedUsageExpr}) AS "avgLoad",
     AVG(connections_avg) AS "connections",
     COUNT(*) AS "totalRows",
-    COUNT(*) FILTER (WHERE COALESCE(load_avg, cpu_avg) IS NOT NULL) AS "usageRowsWithLoad",
+    COUNT(*) FILTER (WHERE ${selectedUsageExpr} IS NOT NULL) AS "usageRowsWithLoad",
     COUNT(*) FILTER (WHERE connections_avg IS NOT NULL) AS "usageRowsWithConnections",
     COUNT(*) FILTER (WHERE data_footprint_gb IS NOT NULL) AS "usageRowsWithStorage"
-  FROM fact_db_resource_daily
+  FROM fact_db_resource_daily f
   WHERE ${currentFilters}
 ),
 previous_period AS (
   SELECT
     COALESCE(SUM(${factTotalCostExpression("", queryParams.costBasis)}), 0) AS "previousCost"
-  FROM fact_db_resource_daily
+  FROM fact_db_resource_daily f
   WHERE ${previousFilters}
 )
 SELECT
@@ -815,9 +1018,6 @@ CROSS JOIN previous_period;
       return [];
     }
 
-    const totalCost = toNumber(row.totalCost);
-    const previousCost = toNumber(row.previousCost);
-    const costTrend = previousCost === 0 ? null : (totalCost - previousCost) / previousCost;
     const activeResources = toNumber(row.activeResources);
     const dataFootprintGb = toNumber(row.dataFootprintGb);
     const connections = toNullableNumber(row.connections);
@@ -827,33 +1027,91 @@ CROSS JOIN previous_period;
     const storageRows = toNumber(row.usageRowsWithStorage);
 
     if (params.metric === "cost") {
+      const costCurrentParams = buildExplorerReplacements(buildTrendQueryParams({
+        ...params,
+        startDate: queryParams.startDate,
+        endDate: queryParams.endDate,
+      }));
+      const costPreviousParams = buildExplorerReplacements(buildTrendQueryParams({
+        ...params,
+        startDate: queryParams.previousStartDate,
+        endDate: queryParams.previousEndDate,
+      }));
+      const factGroupedValuesFilterCurrent = buildGroupedValuesFilter(costCurrentParams, "fact", "f");
+      const factGroupedValuesFilterPrevious = buildGroupedValuesFilter(costPreviousParams, "fact", "f");
+      const currentCostRows = await sequelize.query<{ totalCost: string | number | null; activeResources: string | number | null }>(
+        `
+SELECT
+  COALESCE(SUM(${costHistoryBaseExpression("ch", queryParams.costBasis)}), 0) AS "totalCost",
+  COUNT(DISTINCT ch.resource_id) AS "activeResources"
+FROM db_cost_history_daily ch
+JOIN fact_db_resource_daily f
+  ON f.tenant_id = ch.tenant_id
+ AND f.usage_date = ch.usage_date
+ AND f.resource_id = ch.resource_id
+ AND f.cloud_connection_id IS NOT DISTINCT FROM ch.cloud_connection_id
+WHERE ${buildCostHistoryDrilldownFilters(costCurrentParams, "ch")}
+${factGroupedValuesFilterCurrent ? `  AND ${factGroupedValuesFilterCurrent}` : ""};
+`,
+        {
+          replacements: costCurrentParams,
+          type: QueryTypes.SELECT,
+        },
+      );
+      const previousCostRows = await sequelize.query<{ totalCost: string | number | null }>(
+        `
+SELECT
+  COALESCE(SUM(${costHistoryBaseExpression("ch", queryParams.costBasis)}), 0) AS "totalCost"
+FROM db_cost_history_daily ch
+JOIN fact_db_resource_daily f
+  ON f.tenant_id = ch.tenant_id
+ AND f.usage_date = ch.usage_date
+ AND f.resource_id = ch.resource_id
+ AND f.cloud_connection_id IS NOT DISTINCT FROM ch.cloud_connection_id
+WHERE ${buildCostHistoryDrilldownFilters(costPreviousParams, "ch")}
+${factGroupedValuesFilterPrevious ? `  AND ${factGroupedValuesFilterPrevious}` : ""};
+`,
+        {
+          replacements: costPreviousParams,
+          type: QueryTypes.SELECT,
+        },
+      );
+      const currentCostRow = currentCostRows[0];
+      const previousCostRow = previousCostRows[0];
+      const filteredTotalCost = toNumber(currentCostRow?.totalCost);
+      const filteredPreviousCost = toNumber(previousCostRow?.totalCost);
+      const filteredActiveResources = toNumber(currentCostRow?.activeResources);
+      const filteredCostTrend = filteredPreviousCost === 0 ? null : (filteredTotalCost - filteredPreviousCost) / filteredPreviousCost;
       const topTableRows = await this.getTable({ ...params, metric: "cost", groupBy: "db_service" });
       const topRegionRows = await this.getTable({ ...params, metric: "cost", groupBy: "region" });
       const topCostCategoryRows = await this.getTable({ ...params, metric: "cost", groupBy: "cost_category" });
-      const topCostDriver = topCostCategoryRows[0];
+      const meaningfulCostRows = topCostCategoryRows.filter((row) => row.group !== "Other");
+      const topCostDriver = (meaningfulCostRows.length > 0 ? meaningfulCostRows : topCostCategoryRows)
+        .slice()
+        .sort((a, b) => b.totalCost - a.totalCost)[0];
       const topService = topTableRows[0];
       const topRegion = topRegionRows[0];
-      const isEmpty = activeResources <= 0 && totalCost <= 0;
+      const isEmpty = filteredActiveResources <= 0 && filteredTotalCost <= 0;
 
       return [
         {
           id: "total_database_spend",
           title: "Total Database Spend",
-          value: formatCurrency(totalCost),
-          subValue: `Active resources: ${formatInteger(activeResources)}`,
+          value: formatCurrency(filteredTotalCost),
+          subValue: `Active resources: ${formatInteger(filteredActiveResources)}`,
           state: isEmpty ? "empty" : "normal",
           note: "Source: db_cost_history_daily / fact_db_resource_daily",
         },
         {
           id: "cost_trend_pct",
           title: "Cost Trend %",
-          value: costTrend === null ? "N/A" : formatPercent(costTrend),
-          subValue: previousCost === 0 ? "No previous-period baseline" : `Previous period: ${formatCurrency(previousCost)}`,
+          value: filteredCostTrend === null ? "N/A" : formatPercent(filteredCostTrend),
+          subValue: filteredPreviousCost === 0 ? "No previous-period baseline" : `Previous period: ${formatCurrency(filteredPreviousCost)}`,
           trend: {
-            value: costTrend,
-            direction: costTrend === null ? "unknown" : costTrend > 0 ? "up" : costTrend < 0 ? "down" : "flat",
+            value: filteredCostTrend,
+            direction: filteredCostTrend === null ? "unknown" : filteredCostTrend > 0 ? "up" : filteredCostTrend < 0 ? "down" : "flat",
           },
-          state: previousCost === 0 ? (isEmpty ? "empty" : "partial") : "normal",
+          state: filteredPreviousCost === 0 ? (isEmpty ? "empty" : "partial") : "normal",
           note: "Compares current window vs previous aligned window.",
         },
         {
@@ -894,7 +1152,7 @@ CROSS JOIN previous_period;
     const topUsageRegion = usageRegionTrendGrouped.series
       .slice()
       .sort((a, b) => (b.total ?? 0) - (a.total ?? 0))[0];
-    const trendRows = (await this.getTrend({ ...params, metric: "usage" })).filter(isUsageTrendItem);
+      const trendRows = (await this.getTrend({ ...params, metric: "usage" })).filter(isUsageTrendItem);
     const peakLoad = trendRows.reduce<number | null>((peak, item) => {
       if (item.load === null) return peak;
       if (peak === null || item.load > peak) return item.load;
@@ -919,7 +1177,7 @@ CROSS JOIN previous_period;
         id: "peak_usage_driver",
         title: "Peak Usage Driver",
         value: topUsageService?.label ?? "N/A",
-        subValue: peakLoad === null ? "No load telemetry" : `Peak avg load: ${formatCompact(peakLoad)}`,
+        subValue: peakLoad === null ? "No selected metric telemetry" : `Peak value: ${formatCompact(peakLoad)}`,
         trend: {
           value: activityTrend,
           direction: activityTrend === null ? "unknown" : activityTrend > 0 ? "up" : activityTrend < 0 ? "down" : "flat",
@@ -958,34 +1216,154 @@ CROSS JOIN previous_period;
     ];
   }
 
+  async getUsageCoverageSummary(params: ExplorerQueryParams): Promise<ExplorerCoverageSummary | undefined> {
+    if (params.metric !== "usage") return undefined;
+    const family = params.capabilityFamily ?? "compute_pressure";
+    const metric = params.usageMetric ?? USAGE_CAPABILITY_REGISTRY[family].defaultMetric;
+    return this.computeUsageCoverageSummary(params, family, metric);
+  }
+
+  async getUsageWarnings(params: ExplorerQueryParams): Promise<ExplorerWarning[]> {
+    if (params.metric !== "usage") return [];
+    const family = params.capabilityFamily ?? "compute_pressure";
+    const metric = params.usageMetric ?? USAGE_CAPABILITY_REGISTRY[family].defaultMetric;
+    const coverage = await this.computeUsageCoverageSummary(params, family, metric);
+    const warnings: ExplorerWarning[] = [];
+    if (coverage.unsupported) {
+      warnings.push({
+        code: "USAGE_UNSUPPORTED_SCOPE",
+        message: "Selected scope does not include services with supported telemetry for this capability.",
+        state: "unsupported",
+      });
+    } else if (coverage.unavailable) {
+      warnings.push({
+        code: "USAGE_TELEMETRY_UNAVAILABLE",
+        message: "No telemetry samples were found for the selected usage metric.",
+        state: "unavailable",
+      });
+    } else if (coverage.degraded) {
+      warnings.push({
+        code: "USAGE_TELEMETRY_DEGRADED",
+        message: "Telemetry coverage is partial; KPI confidence is reduced.",
+        state: "degraded",
+      });
+    }
+    return warnings;
+  }
+
+  async getUsageKpis(params: ExplorerQueryParams): Promise<ExplorerUsageKpi[]> {
+    if (params.metric !== "usage") return [];
+    const family = params.capabilityFamily ?? "compute_pressure";
+    const metric = params.usageMetric ?? USAGE_CAPABILITY_REGISTRY[family].defaultMetric;
+    const familyDef = USAGE_CAPABILITY_REGISTRY[family];
+    const queryParams = buildExplorerReplacements(buildTrendQueryParams(params));
+    const filters = buildResourceDrilldownFilters(queryParams, "f");
+    const metricExpr = usageMetricSql(metric, "f");
+    const rows = await sequelize.query<{ metricValue: string | number | null }>(
+      `
+SELECT AVG(${metricExpr}) AS "metricValue"
+FROM fact_db_resource_daily f
+WHERE ${filters}
+  AND ${usageServicePredicateSql("f")};
+`,
+      {
+        replacements: { ...queryParams, usageSupportedServices: familyDef.supportedServices },
+        type: QueryTypes.SELECT,
+      },
+    );
+    const coverage = await this.computeUsageCoverageSummary(params, family, metric);
+    const warnings = await this.getUsageWarnings(params);
+    const confidence = coverage.confidence;
+    const reasons: string[] = [];
+    if (coverage.unsupported) reasons.push("No supported service telemetry in selected scope.");
+    if (coverage.unavailable) reasons.push("Telemetry fields are present but currently missing in the selected window.");
+    if (coverage.degraded) reasons.push("Coverage is partial, aggregate is computed on covered subset only.");
+    const state: ExplorerUsageKpi["state"] =
+      coverage.unsupported ? "unsupported" : coverage.unavailable ? "unavailable" : coverage.degraded ? "degraded" : "normal";
+    return [
+      {
+        id: `usage_metric_${metric}`,
+        title: "Selected Usage Metric",
+        capabilityFamily: family,
+        metricId: metric,
+        value: toNullableNumber(rows[0]?.metricValue),
+        unit: familyDef.unitDefaults[metric] ?? null,
+        coverage,
+        confidence,
+        maturity: familyDef.maturity,
+        state,
+        reasons,
+        warnings: warnings.map((w) => w.message),
+        sourceFields: usageMetricSourceFields(metric),
+      },
+      {
+        id: "telemetry_coverage_rate",
+        title: "Telemetry Coverage Rate",
+        capabilityFamily: family,
+        metricId: metric,
+        value: coverage.coverageRate,
+        unit: "ratio",
+        coverage,
+        confidence,
+        maturity: familyDef.maturity,
+        state,
+        reasons,
+        warnings: warnings.map((w) => w.message),
+        sourceFields: usageMetricSourceFields(metric),
+      },
+    ];
+  }
+
   async getTrend(params: ExplorerQueryParams): Promise<ExplorerTrendItem[]> {
     const queryParams = buildExplorerReplacements(buildTrendQueryParams(params));
-    const filters = buildTrendFilters(queryParams);
+    const filters = buildTrendFilters(queryParams, "f");
 
     if (queryParams.metric === "usage") {
+      const hasUtilizationFallback = await this.hasDbUtilizationDailyTable();
+      const selectedUsageMetric: UsageMetric = queryParams.usageMetric ?? "avg_cpu";
+      const selectedFamily = queryParams.capabilityFamily ?? "compute_pressure";
+      const familyDef = USAGE_CAPABILITY_REGISTRY[selectedFamily];
+      const coverageSummary = await this.computeUsageCoverageSummary(queryParams, selectedFamily, selectedUsageMetric);
+      const metricExpr = hasUtilizationFallback
+        ? usageMetricSqlWithFallback(selectedUsageMetric, "f", "u")
+        : usageMetricSql(selectedUsageMetric, "f");
+      const connectionsExpr = hasUtilizationFallback ? "COALESCE(f.connections_avg, u.connections_avg)" : "f.connections_avg";
       const groupedValuesFilter = buildGroupedValuesFilter(queryParams, "fact", "f");
       const usageFilters = groupedValuesFilter ? `${filters}\n  AND ${groupedValuesFilter}` : filters;
       const rows = await sequelize.query<UsageTrendRow>(
         `
 SELECT
   f.usage_date AS date,
-  AVG(COALESCE(f.load_avg, f.cpu_avg)) AS load,
-  AVG(f.connections_avg) AS connections
+  AVG(${metricExpr}) AS value,
+  AVG(${connectionsExpr}) AS connections
 FROM fact_db_resource_daily f
+${hasUtilizationFallback ? `LEFT JOIN db_utilization_daily u
+  ON u.tenant_id = f.tenant_id
+ AND u.usage_date = f.usage_date
+ AND u.resource_id = f.resource_id
+ AND u.cloud_connection_id IS NOT DISTINCT FROM f.cloud_connection_id` : ""}
 WHERE ${usageFilters}
-  AND (f.load_avg IS NOT NULL OR f.cpu_avg IS NOT NULL OR f.connections_avg IS NOT NULL)
+  AND ${usageServicePredicateSql("f")}
+  AND (${metricExpr} IS NOT NULL OR ${connectionsExpr} IS NOT NULL)
 GROUP BY f.usage_date
 ORDER BY f.usage_date ASC;
 `,
         {
-          replacements: queryParams,
+          replacements: { ...queryParams, usageSupportedServices: familyDef.supportedServices },
           type: QueryTypes.SELECT,
         },
       );
 
       return rows.map((row) => ({
         date: toDateOnly(row.date),
-        load: toNullableNumber(row.load),
+        capabilityFamily: selectedFamily,
+        usageMetric: selectedUsageMetric,
+        unit: familyDef.unitDefaults[selectedUsageMetric] ?? null,
+        value: toNullableNumber(row.value),
+        coverageRate: coverageSummary.coverageRate,
+        confidence: coverageSummary.confidence,
+        deprecatedLoadAlias: true,
+        load: toNullableNumber(row.value),
         connections: toNullableNumber(row.connections),
       }));
     }
@@ -1030,12 +1408,17 @@ ORDER BY ch.usage_date ASC;
       const rows = await sequelize.query<CostCategoryGroupedRow>(
         `
 SELECT
+  LOWER(BTRIM(COALESCE(ch.cost_category, ''))) AS "groupKey",
   ${COST_CATEGORY_LABEL_CASE} AS "group",
   COALESCE(SUM(${costHistoryBaseExpression("ch", queryParams.costBasis)}), 0) AS "totalCost",
+  COALESCE(SUM(CASE WHEN LOWER(BTRIM(COALESCE(ch.cost_category, ''))) = 'compute' THEN ${costHistoryBaseExpression("ch", queryParams.costBasis)} ELSE 0 END), 0) AS "computeCost",
+  COALESCE(SUM(CASE WHEN LOWER(BTRIM(COALESCE(ch.cost_category, ''))) = 'storage' THEN ${costHistoryBaseExpression("ch", queryParams.costBasis)} ELSE 0 END), 0) AS "storageCost",
+  COALESCE(SUM(CASE WHEN LOWER(BTRIM(COALESCE(ch.cost_category, ''))) = 'io' THEN ${costHistoryBaseExpression("ch", queryParams.costBasis)} ELSE 0 END), 0) AS "ioCost",
+  COALESCE(SUM(CASE WHEN LOWER(BTRIM(COALESCE(ch.cost_category, ''))) = 'backup' THEN ${costHistoryBaseExpression("ch", queryParams.costBasis)} ELSE 0 END), 0) AS "backupCost",
   COUNT(DISTINCT ch.resource_id) AS "resourceCount"
 FROM db_cost_history_daily ch
 WHERE ${drilldownFilters}
-GROUP BY ${COST_CATEGORY_LABEL_CASE}
+GROUP BY LOWER(BTRIM(COALESCE(ch.cost_category, ''))), ${COST_CATEGORY_LABEL_CASE}
 ORDER BY "totalCost" DESC;
 `,
         {
@@ -1046,13 +1429,67 @@ ORDER BY "totalCost" DESC;
       return rows.map((row) => ({
         group: String(row.group ?? row.groupLabel ?? row.groupKey ?? "Other"),
         totalCost: toNumber(row.totalCost),
-        computeCost: 0,
-        storageCost: 0,
-        ioCost: 0,
-        backupCost: 0,
+        computeCost: toNumber(row.computeCost),
+        storageCost: toNumber(row.storageCost),
+        ioCost: toNumber(row.ioCost),
+        backupCost: toNumber(row.backupCost),
         resourceCount: toNumber(row.resourceCount),
         avgLoad: null,
         connections: null,
+      }));
+    }
+
+    if (queryParams.metric === "cost") {
+      const groupBy = GROUP_BY_COLUMNS[queryParams.groupBy];
+      const withInventory = groupBy.requiresInventory;
+      const withRegion = groupBy.requiresRegion;
+      const factGroupedValuesFilter = buildGroupedValuesFilter(queryParams, "fact", "f");
+
+      const rows = await sequelize.query<TableAggregateRow>(
+        `
+${withInventory ? `WITH ${latestInventoryCteSql}` : ""}
+SELECT
+  ${groupBy.selectExpression} AS "group",
+  COALESCE(SUM(${costHistoryBaseExpression("ch", queryParams.costBasis)}), 0) AS "totalCost",
+  COALESCE(SUM(CASE WHEN LOWER(BTRIM(COALESCE(ch.cost_category, ''))) = 'compute' THEN ${costHistoryBaseExpression("ch", queryParams.costBasis)} ELSE 0 END), 0) AS "computeCost",
+  COALESCE(SUM(CASE WHEN LOWER(BTRIM(COALESCE(ch.cost_category, ''))) = 'storage' THEN ${costHistoryBaseExpression("ch", queryParams.costBasis)} ELSE 0 END), 0) AS "storageCost",
+  COALESCE(SUM(CASE WHEN LOWER(BTRIM(COALESCE(ch.cost_category, ''))) = 'io' THEN ${costHistoryBaseExpression("ch", queryParams.costBasis)} ELSE 0 END), 0) AS "ioCost",
+  COALESCE(SUM(CASE WHEN LOWER(BTRIM(COALESCE(ch.cost_category, ''))) = 'backup' THEN ${costHistoryBaseExpression("ch", queryParams.costBasis)} ELSE 0 END), 0) AS "backupCost",
+  COUNT(DISTINCT ch.resource_id) AS "resourceCount",
+  AVG(f.cpu_avg) AS "avgLoad",
+  AVG(f.connections_avg) AS "connections"
+FROM db_cost_history_daily ch
+JOIN fact_db_resource_daily f
+  ON f.tenant_id = ch.tenant_id
+ AND f.usage_date = ch.usage_date
+ AND f.resource_id = ch.resource_id
+ AND f.cloud_connection_id IS NOT DISTINCT FROM ch.cloud_connection_id
+${withRegion ? "LEFT JOIN dim_region dr ON dr.id = f.region_key" : ""}
+${withInventory ? `LEFT JOIN latest_inventory li
+  ON li.tenant_id = f.tenant_id
+ AND li.resource_id = f.resource_id
+ AND li.cloud_connection_id IS NOT DISTINCT FROM f.cloud_connection_id` : ""}
+WHERE ${buildCostHistoryDrilldownFilters(queryParams, "ch")}
+${factGroupedValuesFilter ? `  AND ${factGroupedValuesFilter}` : ""}
+GROUP BY ${groupBy.groupExpression}
+ORDER BY "totalCost" DESC;
+`,
+        {
+          replacements: queryParams,
+          type: QueryTypes.SELECT,
+        },
+      );
+
+      return rows.map((row) => ({
+        group: String(row.group),
+        totalCost: toNumber(row.totalCost),
+        computeCost: toNumber(row.computeCost),
+        storageCost: toNumber(row.storageCost),
+        ioCost: toNumber(row.ioCost),
+        backupCost: toNumber(row.backupCost),
+        resourceCount: toNumber(row.resourceCount),
+        avgLoad: toNullableNumber(row.avgLoad),
+        connections: toNullableNumber(row.connections),
       }));
     }
 
@@ -1060,42 +1497,127 @@ ORDER BY "totalCost" DESC;
     const filters = buildResourceDrilldownFilters(queryParams, "f");
     const withInventory = groupBy.requiresInventory;
     const withRegion = groupBy.requiresRegion;
+    const selectedFamily = queryParams.capabilityFamily ?? "compute_pressure";
+    const selectedUsageMetric: UsageMetric = queryParams.usageMetric ?? USAGE_CAPABILITY_REGISTRY[selectedFamily].defaultMetric;
+    const familyDef = USAGE_CAPABILITY_REGISTRY[selectedFamily];
+    const selectedMetricExpr = usageMetricSql(selectedUsageMetric, "f");
 
     const rows = await sequelize.query<TableAggregateRow>(
       `
 ${withInventory ? `WITH ${latestInventoryCteSql}` : ""}
 SELECT
-  ${groupBy.selectExpression} AS "group",
+  ${groupBy.keyExpression}::text AS "groupKey",
+  ${groupBy.selectExpression} AS "groupLabel",
   COALESCE(SUM(${factTotalCostExpression("f", queryParams.costBasis)}), 0) AS "totalCost",
   COALESCE(SUM(f.compute_cost), 0) AS "computeCost",
   COALESCE(SUM(f.storage_cost), 0) AS "storageCost",
   COALESCE(SUM(f.io_cost), 0) AS "ioCost",
   COALESCE(SUM(f.backup_cost), 0) AS "backupCost",
   COUNT(DISTINCT f.resource_id) AS "resourceCount",
-  AVG(COALESCE(f.load_avg, f.cpu_avg)) AS "avgLoad",
-  AVG(f.connections_avg) AS "connections"
+  COUNT(DISTINCT f.resource_id) FILTER (WHERE ${usageServicePredicateSql("f")}) AS "inScopeResources",
+  COUNT(DISTINCT f.resource_id) FILTER (WHERE ${usageServicePredicateSql("f")} AND (${selectedMetricExpr}) IS NOT NULL) AS "telemetryCoveredResources",
+  AVG(f.cpu_avg) AS "avgLoad",
+  AVG(f.connections_avg) AS "connections",
+  AVG(CASE WHEN ${usageServicePredicateSql("f")} THEN f.cpu_avg ELSE NULL END) AS "avgCpu",
+  AVG(CASE WHEN ${usageServicePredicateSql("f")} THEN f.cpu_max ELSE NULL END) AS "peakCpu",
+  AVG(CASE WHEN ${usageServicePredicateSql("f")} THEN f.connections_avg ELSE NULL END) AS "avgConnections",
+  AVG(CASE WHEN ${usageServicePredicateSql("f")} THEN f.connections_max ELSE NULL END) AS "peakConnections",
+  AVG(CASE WHEN ${usageServicePredicateSql("f")} THEN f.read_iops ELSE NULL END) AS "readIops",
+  AVG(CASE WHEN ${usageServicePredicateSql("f")} THEN f.write_iops ELSE NULL END) AS "writeIops",
+  AVG(CASE WHEN ${usageServicePredicateSql("f")} AND NOT (f.read_iops IS NULL AND f.write_iops IS NULL) THEN COALESCE(f.read_iops, 0) + COALESCE(f.write_iops, 0) ELSE NULL END) AS "totalIops",
+  AVG(CASE WHEN ${usageServicePredicateSql("f")} THEN f.read_throughput_bytes ELSE NULL END) AS "readThroughputBytes",
+  AVG(CASE WHEN ${usageServicePredicateSql("f")} THEN f.write_throughput_bytes ELSE NULL END) AS "writeThroughputBytes",
+  AVG(CASE WHEN ${usageServicePredicateSql("f")} AND NOT (f.read_throughput_bytes IS NULL AND f.write_throughput_bytes IS NULL) THEN COALESCE(f.read_throughput_bytes, 0) + COALESCE(f.write_throughput_bytes, 0) ELSE NULL END) AS "totalThroughputBytes",
+  AVG(CASE WHEN ${usageServicePredicateSql("f")} THEN f.storage_used_gb ELSE NULL END) AS "storageUsedGb",
+  AVG(CASE WHEN ${usageServicePredicateSql("f")} THEN f.allocated_storage_gb ELSE NULL END) AS "allocatedStorageGb",
+  AVG(CASE WHEN ${usageServicePredicateSql("f")} THEN ${selectedMetricExpr} ELSE NULL END) AS "primaryMetricValue"
 ${fromFactBaseSql({ withInventory, withRegion })}
 WHERE ${filters}
 GROUP BY ${groupBy.groupExpression}
-ORDER BY "totalCost" DESC;
+ORDER BY "primaryMetricValue" DESC NULLS LAST, "resourceCount" DESC;
 `,
       {
-        replacements: queryParams,
+        replacements: { ...queryParams, usageSupportedServices: familyDef.supportedServices },
         type: QueryTypes.SELECT,
       },
     );
 
-    return rows.map((row) => ({
-      group: String(row.group),
-      totalCost: toNumber(row.totalCost),
-      computeCost: toNumber(row.computeCost),
-      storageCost: toNumber(row.storageCost),
-      ioCost: toNumber(row.ioCost),
-      backupCost: toNumber(row.backupCost),
-      resourceCount: toNumber(row.resourceCount),
-      avgLoad: toNullableNumber(row.avgLoad),
-      connections: toNullableNumber(row.connections),
-    }));
+    const withRanking = rows
+      .map((row) => {
+        const inScopeResources = toNumber(row.inScopeResources);
+        const telemetryCoveredResources = toNumber(row.telemetryCoveredResources);
+        const coverageRate = inScopeResources > 0 ? telemetryCoveredResources / inScopeResources : null;
+        const coverage: ExplorerCoverageSummary = {
+          eligibleResources: inScopeResources,
+          coveredResources: telemetryCoveredResources,
+          coverageRate,
+          confidence: "degraded",
+          degraded: coverageRate !== null && coverageRate > 0 && coverageRate < 0.9,
+          unavailable: inScopeResources > 0 && telemetryCoveredResources <= 0,
+          unsupported: inScopeResources <= 0,
+        };
+        coverage.confidence = confidenceFromCoverage(coverage);
+        return { row, coverage };
+      })
+      .sort((a, b) => {
+        const aRank = toNullableNumber(a.row.primaryMetricValue);
+        const bRank = toNullableNumber(b.row.primaryMetricValue);
+        if (aRank === null && bRank === null) return 0;
+        if (aRank === null) return 1;
+        if (bRank === null) return -1;
+        return bRank - aRank;
+      });
+
+    return withRanking.map(({ row, coverage }, idx) => {
+      const primaryMetricValue = toNullableNumber(row.primaryMetricValue);
+      const state = usageStateFromCoverage(coverage);
+      const reasons: string[] = [];
+      if (coverage.eligibleResources < toNumber(row.resourceCount)) {
+        reasons.push("Mixed-service scope detected; metrics are aggregated from supported telemetry subset only.");
+      }
+      if (coverage.unsupported) reasons.push("Unsupported service telemetry for selected capability in this group.");
+      if (coverage.unavailable) reasons.push("No telemetry available for selected metric in this group.");
+      if (coverage.degraded) reasons.push("Partial telemetry coverage in this group.");
+      const rank = primaryMetricValue === null || coverage.confidence === "unsupported" || coverage.confidence === "unavailable"
+        ? null
+        : idx + 1;
+      return {
+        group: String(row.groupLabel ?? row.groupKey ?? "Unknown"),
+        groupKey: String(row.groupKey ?? ""),
+        groupLabel: String(row.groupLabel ?? row.groupKey ?? "Unknown"),
+        totalCost: toNumber(row.totalCost),
+        computeCost: toNumber(row.computeCost),
+        storageCost: toNumber(row.storageCost),
+        ioCost: toNumber(row.ioCost),
+        backupCost: toNumber(row.backupCost),
+        resourceCount: toNumber(row.resourceCount),
+        inScopeResources: coverage.eligibleResources,
+        telemetryCoveredResources: coverage.coveredResources,
+        coverageRate: coverage.coverageRate,
+        confidence: coverage.confidence,
+        state,
+        reasons,
+        warnings: reasons,
+        primaryMetricValue,
+        primaryMetricUnit: familyDef.unitDefaults[selectedUsageMetric] ?? null,
+        rankingValue: primaryMetricValue,
+        rank,
+        avgCpu: toNullableNumber(row.avgCpu),
+        peakCpu: toNullableNumber(row.peakCpu),
+        avgConnections: toNullableNumber(row.avgConnections),
+        peakConnections: toNullableNumber(row.peakConnections),
+        readIops: toNullableNumber(row.readIops),
+        writeIops: toNullableNumber(row.writeIops),
+        totalIops: toNullableNumber(row.totalIops),
+        readThroughputBytes: toNullableNumber(row.readThroughputBytes),
+        writeThroughputBytes: toNullableNumber(row.writeThroughputBytes),
+        totalThroughputBytes: toNullableNumber(row.totalThroughputBytes),
+        storageUsedGb: toNullableNumber(row.storageUsedGb),
+        allocatedStorageGb: toNullableNumber(row.allocatedStorageGb),
+        avgLoad: toNullableNumber(row.avgLoad),
+        connections: toNullableNumber(row.connections),
+      };
+    });
   }
 
   async getTrendGrouped(params: ExplorerQueryParams): Promise<ExplorerTrendGrouped> {
@@ -1182,6 +1704,100 @@ ORDER BY ch.usage_date ASC;
       };
     }
 
+    if (queryParams.metric === "cost") {
+      const groupBy = GROUP_BY_COLUMNS[queryParams.groupBy];
+      const unknownLabel = GROUPED_UNKNOWN_LABELS[queryParams.groupBy];
+      const withInventory = groupBy.requiresInventory;
+      const withRegion = groupBy.requiresRegion;
+      const factGroupedValuesFilter = buildGroupedValuesFilter(queryParams, "fact", "f");
+
+      const rows = await sequelize.query<GroupedTrendAggregateRow>(
+        `
+${withInventory ? `WITH ${latestInventoryCteSql}` : ""}
+SELECT
+  ch.usage_date AS date,
+  ${groupBy.keyExpression}::text AS "groupKey",
+  ${groupBy.selectExpression} AS "groupLabel",
+  COALESCE(SUM(${costHistoryBaseExpression("ch", queryParams.costBasis)}), 0) AS value
+FROM db_cost_history_daily ch
+JOIN fact_db_resource_daily f
+  ON f.tenant_id = ch.tenant_id
+ AND f.usage_date = ch.usage_date
+ AND f.resource_id = ch.resource_id
+ AND f.cloud_connection_id IS NOT DISTINCT FROM ch.cloud_connection_id
+${withRegion ? "LEFT JOIN dim_region dr ON dr.id = f.region_key" : ""}
+${withInventory ? `LEFT JOIN latest_inventory li
+  ON li.tenant_id = f.tenant_id
+ AND li.resource_id = f.resource_id
+ AND li.cloud_connection_id IS NOT DISTINCT FROM f.cloud_connection_id` : ""}
+WHERE ${buildCostHistoryDrilldownFilters(queryParams, "ch")}
+${factGroupedValuesFilter ? `  AND ${factGroupedValuesFilter}` : ""}
+GROUP BY ch.usage_date, ${groupBy.groupExpression}, ${groupBy.keyExpression}
+ORDER BY ch.usage_date ASC;
+`,
+        {
+          replacements: queryParams,
+          type: QueryTypes.SELECT,
+        },
+      );
+
+      const bySeries = new Map<string, { key: string; label: string; total: number; points: Array<{ date: string; value: number }> }>();
+      for (const row of rows) {
+        const date = toDateOnly(row.date);
+        const rawKey = String(row.groupKey ?? "").trim();
+        const rawLabel = String(row.groupLabel ?? "").trim();
+        const label = rawLabel.length > 0 ? rawLabel : unknownLabel;
+        const key = rawKey.length > 0 ? rawKey : `unknown-${queryParams.groupBy}`;
+        const value = toNumber(row.value);
+        const current = bySeries.get(key) ?? { key, label, total: 0, points: [] };
+        current.points.push({ date, value });
+        current.total += value;
+        bySeries.set(key, current);
+      }
+
+      const sorted = [...bySeries.values()].sort((a, b) => b.total - a.total);
+      const top = sorted.slice(0, 8);
+      const rest = sorted.slice(8);
+      const dateSet = new Set<string>();
+      for (const series of sorted) {
+        for (const point of series.points) dateSet.add(point.date);
+      }
+      const dates = [...dateSet].sort((a, b) => a.localeCompare(b));
+      const outputSeries: ExplorerTrendGroupedSeries[] = top.map((series) => {
+        const pointByDate = new Map(series.points.map((point) => [point.date, point.value]));
+        return {
+          key: series.key,
+          label: series.label,
+          total: series.total,
+          data: dates.map((date) => ({ date, value: pointByDate.get(date) ?? 0 })),
+        };
+      });
+      if (rest.length > 0) {
+        const otherByDate = new Map<string, number>();
+        let otherTotal = 0;
+        for (const series of rest) {
+          otherTotal += series.total;
+          for (const point of series.points) {
+            otherByDate.set(point.date, (otherByDate.get(point.date) ?? 0) + point.value);
+          }
+        }
+        outputSeries.push({
+          key: "other",
+          label: "Other",
+          total: otherTotal,
+          data: dates.map((date) => ({ date, value: otherByDate.get(date) ?? 0 })),
+        });
+      }
+
+      return {
+        metric: queryParams.metric,
+        groupBy: queryParams.groupBy,
+        chartType: "stacked_bar",
+        xKey: "date",
+        series: outputSeries,
+      };
+    }
+
     const groupBy = GROUP_BY_COLUMNS[queryParams.groupBy];
     const filters = buildResourceDrilldownFilters(queryParams, "f");
     const unknownLabel = GROUPED_UNKNOWN_LABELS[queryParams.groupBy];
@@ -1189,8 +1805,12 @@ ORDER BY ch.usage_date ASC;
     const withInventory = groupBy.requiresInventory;
     const withRegion = groupBy.requiresRegion;
 
+    const selectedUsageMetric: UsageMetric = queryParams.usageMetric ?? "avg_cpu";
+    const selectedFamily = queryParams.capabilityFamily ?? "compute_pressure";
+    const familyDef = USAGE_CAPABILITY_REGISTRY[selectedFamily];
+    const hasUtilizationFallback = isUsage ? await this.hasDbUtilizationDailyTable() : false;
     const valueExpression = isUsage
-      ? "AVG(COALESCE(f.load_avg, f.cpu_avg))"
+      ? `AVG(${hasUtilizationFallback ? usageMetricSqlWithFallback(selectedUsageMetric, "f", "u") : usageMetricSql(selectedUsageMetric, "f")})`
       : `COALESCE(SUM(${factTotalCostExpression("f", queryParams.costBasis)}), 0)`;
 
     const rows = await sequelize.query<GroupedTrendAggregateRow>(
@@ -1202,27 +1822,35 @@ SELECT
   ${groupBy.selectExpression} AS "groupLabel",
   ${valueExpression} AS value
 ${fromFactBaseSql({ withInventory, withRegion })}
+${isUsage && hasUtilizationFallback ? `LEFT JOIN db_utilization_daily u
+  ON u.tenant_id = f.tenant_id
+ AND u.usage_date = f.usage_date
+ AND u.resource_id = f.resource_id
+ AND u.cloud_connection_id IS NOT DISTINCT FROM f.cloud_connection_id` : ""}
 WHERE ${filters}
+${isUsage ? `  AND ${usageServicePredicateSql("f")}` : ""}
 GROUP BY f.usage_date, ${groupBy.groupExpression}, ${groupBy.keyExpression}
 ORDER BY f.usage_date ASC;
 `,
       {
-        replacements: queryParams,
+        replacements: isUsage
+          ? { ...queryParams, usageSupportedServices: familyDef.supportedServices }
+          : queryParams,
         type: QueryTypes.SELECT,
       },
     );
 
-    const bySeries = new Map<string, { key: string; label: string; total: number; points: Array<{ date: string; value: number }> }>();
+    const bySeries = new Map<string, { key: string; label: string; total: number; points: Array<{ date: string; value: number | null }> }>();
     for (const row of rows) {
       const date = toDateOnly(row.date);
       const rawKey = String(row.groupKey ?? "").trim();
       const rawLabel = String(row.groupLabel ?? "").trim();
       const label = rawLabel.length > 0 ? rawLabel : unknownLabel;
       const key = rawKey.length > 0 ? rawKey : `unknown-${queryParams.groupBy}`;
-      const value = toNumber(row.value);
+      const value = isUsage ? toNullableNumber(row.value) : toNumber(row.value);
       const current = bySeries.get(key) ?? { key, label, total: 0, points: [] };
       current.points.push({ date, value });
-      current.total += value;
+      if (value !== null) current.total += value;
       bySeries.set(key, current);
     }
 
@@ -1236,7 +1864,7 @@ ORDER BY f.usage_date ASC;
     }
     const dates = [...dateSet].sort((a, b) => a.localeCompare(b));
 
-    const fillSeries = (series: { key: string; label: string; total: number; points: Array<{ date: string; value: number }> }): ExplorerTrendGroupedSeries => {
+    const fillSeries = (series: { key: string; label: string; total: number; points: Array<{ date: string; value: number | null }> }): ExplorerTrendGroupedSeries => {
       const pointByDate = new Map(series.points.map((point) => [point.date, point.value]));
       return {
         key: series.key,
@@ -1244,7 +1872,7 @@ ORDER BY f.usage_date ASC;
         total: series.total,
         data: dates.map((date) => ({
           date,
-          value: pointByDate.get(date) ?? 0,
+          value: pointByDate.has(date) ? (pointByDate.get(date) ?? null) : (isUsage ? null : 0),
         })),
       };
     };
@@ -1257,23 +1885,37 @@ ORDER BY f.usage_date ASC;
       for (const series of rest) {
         otherTotal += series.total;
         for (const point of series.points) {
-          otherByDate.set(point.date, (otherByDate.get(point.date) ?? 0) + point.value);
+          if (point.value !== null) {
+            otherByDate.set(point.date, (otherByDate.get(point.date) ?? 0) + point.value);
+          }
         }
       }
       outputSeries.push({
         key: "other",
         label: "Other",
         total: otherTotal,
-        data: dates.map((date) => ({ date, value: otherByDate.get(date) ?? 0 })),
+        data: dates.map((date) => ({
+          date,
+          value: otherByDate.has(date) ? (otherByDate.get(date) ?? null) : (isUsage ? null : 0),
+        })),
       });
     }
+
+    const coverageSummary = isUsage
+      ? await this.computeUsageCoverageSummary(queryParams, selectedFamily, selectedUsageMetric)
+      : undefined;
+    const warningMessages = isUsage ? (await this.getUsageWarnings(queryParams)).map((warning) => warning.message) : undefined;
 
     return {
       metric: queryParams.metric,
       groupBy: queryParams.groupBy,
       chartType: isUsage ? "line" : "stacked_bar",
       xKey: "date",
-      usageMetric: isUsage ? "load_avg" : undefined,
+      capabilityFamily: isUsage ? selectedFamily : undefined,
+      usageMetric: isUsage ? selectedUsageMetric : undefined,
+      unit: isUsage ? (familyDef.unitDefaults[selectedUsageMetric] ?? null) : undefined,
+      coverageSummary,
+      warnings: warningMessages,
       series: outputSeries,
     };
   }

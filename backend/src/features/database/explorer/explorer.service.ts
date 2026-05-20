@@ -11,12 +11,13 @@ export class DatabaseExplorerService {
   ) {}
 
   async getExplorerData(params: ExplorerQueryParams): Promise<ExplorerResponse> {
-    const [filterOptions, cards, trend, trendGrouped, table] = await Promise.all([
+    const [filterOptions, cards, trend, trendGrouped, table, capabilityAvailability] = await Promise.all([
       this.explorerRepository.getFilterOptions(params),
       this.explorerRepository.getCards(params),
       this.explorerRepository.getTrend(params),
       this.explorerRepository.getTrendGrouped(params),
       this.explorerRepository.getTable(params),
+      this.explorerRepository.getCapabilityAvailability(params),
     ]);
 
     return {
@@ -28,6 +29,7 @@ export class DatabaseExplorerService {
       },
       filterOptions,
       cards,
+      capabilityAvailability: capabilityAvailability.length > 0 ? capabilityAvailability : undefined,
       trend,
       trendGrouped,
       table,

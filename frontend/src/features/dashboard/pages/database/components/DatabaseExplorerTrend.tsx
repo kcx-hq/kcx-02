@@ -64,9 +64,10 @@ export function DatabaseExplorerTrend({
   const activeGrouped = useMemo(() => {
     if (!trendGrouped) return null;
     if (trendGrouped.metric !== metric) return null;
+    if (trendGrouped.groupBy !== groupBy) return null;
     if (!Array.isArray(trendGrouped.series) || trendGrouped.series.length === 0) return null;
     return trendGrouped;
-  }, [metric, trendGrouped]);
+  }, [groupBy, metric, trendGrouped]);
   const labels = useMemo(() => activeTrend.map((item) => item.date), [activeTrend]);
   const groupedLabels = useMemo(() => {
     if (!activeGrouped) return [];
@@ -91,6 +92,7 @@ export function DatabaseExplorerTrend({
         tooltip: {
           trigger: "axis",
           valueFormatter: (value: unknown) => {
+            if (value === null || typeof value === "undefined") return "N/A";
             const numeric = asFiniteOrZero(value);
             if (metric === "cost") return currencyFormatter.format(numeric);
             return numberFormatter.format(numeric);
@@ -133,7 +135,7 @@ export function DatabaseExplorerTrend({
         dataZoom: groupedLabels.length > 45 ? [{ type: "inside", start: 0, end: 100 }] : undefined,
         series: activeGrouped.series.map((series) => {
           const valueByDate = new Map(
-            (Array.isArray(series.data) ? series.data : []).map((point) => [point.date, asFiniteOrZero(point.value)]),
+            (Array.isArray(series.data) ? series.data : []).map((point) => [point.date, point.value ?? null]),
           );
           return {
             name: series.label || series.key,
@@ -143,7 +145,7 @@ export function DatabaseExplorerTrend({
             showSymbol: metric === "usage" ? groupedLabels.length <= 35 : false,
             symbolSize: metric === "usage" ? 5 : undefined,
             barMaxWidth: metric === "cost" ? 28 : undefined,
-            data: groupedLabels.map((date) => valueByDate.get(date) ?? 0),
+            data: groupedLabels.map((date) => (valueByDate.has(date) ? (valueByDate.get(date) ?? null) : (metric === "usage" ? null : 0))),
           };
         }),
       };
@@ -189,7 +191,7 @@ export function DatabaseExplorerTrend({
         dataZoom: labels.length > 45 ? [{ type: "inside", start: 0, end: 100 }] : undefined,
         series: [
           {
-            name: "Load",
+            name: usageTrend[0]?.usageMetric ? `${usageTrend[0].usageMetric}` : "Selected Metric",
             type: "line",
             smooth: true,
             showSymbol: labels.length <= 35,
@@ -294,8 +296,12 @@ export function DatabaseExplorerTrend({
     };
   }, [activeGrouped, activeTrend, groupedLabels, labels, metric]);
 
+  const usageLabel = activeGrouped?.usageMetric ?? (activeTrend.filter(isUsageTrendItem)[0]?.usageMetric ?? "usage metric");
+  const usageUnit = activeGrouped?.unit ?? (activeTrend.filter(isUsageTrendItem)[0]?.unit ?? "");
   const title = metric === "usage" ? "Database Usage Trend" : "Database Cost Trend";
-  const subtitle = `Daily ${metric === "usage" ? "load" : "cost"} segmented by ${toGroupByLabel(groupBy)}`;
+  const subtitle = metric === "usage"
+    ? `Daily ${usageLabel}${usageUnit ? ` (${usageUnit})` : ""} segmented by ${toGroupByLabel(groupBy)}`
+    : `Daily cost segmented by ${toGroupByLabel(groupBy)}`;
   const chartReady = activeGrouped ? groupedLabels.length > 0 && activeGrouped.series.length > 0 : activeTrend.length > 0;
   const chartRenderKey = useMemo(() => {
     const groupedSignature = activeGrouped

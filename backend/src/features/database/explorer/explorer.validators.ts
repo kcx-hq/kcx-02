@@ -10,6 +10,14 @@ import {
   type ExplorerDatabaseScope,
   type ExplorerQueryParams,
 } from "./explorer.types.js";
+import {
+  USAGE_CAPABILITY_REGISTRY,
+  isUsageCapabilityFamily,
+  isUsageMetric,
+  metricBelongsToFamily,
+  type UsageCapabilityFamily,
+  type UsageMetric,
+} from "./usage-capabilities.js";
 
 const metricSchema = z.enum(["cost", "usage"]).default("cost");
 const costBasisSchema = z.enum(EXPLORER_COST_BASIS).default("billed_cost");
@@ -131,6 +139,8 @@ const explorerQuerySchema = z
     dbEngine: z.string().trim().min(1).optional(),
     costBasis: costBasisSchema,
     metric: metricSchema,
+    capabilityFamily: z.string().trim().optional(),
+    usageMetric: z.string().trim().optional(),
     groupBy: z.preprocess((value) => normalizeGroupByInput(value), groupBySchema),
     groupValues: z.array(z.string().trim().min(1)).optional(),
     resourceTypeValues: z.array(z.string().trim().min(1)).optional(),
@@ -148,6 +158,31 @@ const explorerQuerySchema = z
         path: ["groupBy"],
         message: `group_by "${value.groupBy}" is invalid for metric "${value.metric}"`,
       });
+    }
+    if (value.metric === "usage") {
+      const family = value.capabilityFamily;
+      const metric = value.usageMetric;
+      if (family && !isUsageCapabilityFamily(family)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["capabilityFamily"],
+          message: `capability_family \"${family}\" is invalid`,
+        });
+      }
+      if (metric && !isUsageMetric(metric)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["usageMetric"],
+          message: `usage_metric \"${metric}\" is invalid`,
+        });
+      }
+      if (family && metric && isUsageCapabilityFamily(family) && isUsageMetric(metric) && !metricBelongsToFamily(family, metric)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["usageMetric"],
+          message: `usage_metric \"${metric}\" is invalid for capability_family \"${family}\"`,
+        });
+      }
     }
   });
 
@@ -170,6 +205,16 @@ export function parseExplorerQuery(req: Request): ExplorerQueryParams {
 
   const metricInput = firstValue(req.query.metric) ?? "cost";
   const metricString = typeof metricInput === "string" ? metricInput.toLowerCase() : "cost";
+  const capabilityFamilyInput = optionalString(req.query.capability_family);
+  const usageMetricInput = optionalString(req.query.usage_metric);
+  const defaultFamily: UsageCapabilityFamily = "compute_pressure";
+  const resolvedFamily: UsageCapabilityFamily =
+    metricString === "usage" && capabilityFamilyInput && isUsageCapabilityFamily(capabilityFamilyInput)
+      ? capabilityFamilyInput
+      : defaultFamily;
+  const defaultUsageMetric: UsageMetric = USAGE_CAPABILITY_REGISTRY[resolvedFamily].defaultMetric;
+  const resolvedUsageMetric: UsageMetric =
+    metricString === "usage" && usageMetricInput && isUsageMetric(usageMetricInput) ? usageMetricInput : defaultUsageMetric;
   const defaultGroupBy = metricString === "usage" ? "db_engine" : "db_service";
 
   const parsed = parseWithSchema(explorerQuerySchema, {
@@ -182,14 +227,26 @@ export function parseExplorerQuery(req: Request): ExplorerQueryParams {
     dbEngine: normalizedDbFilters.dbEngine,
     costBasis: firstValue(req.query.cost_basis) ?? firstValue(req.query.costBasis) ?? "billed_cost",
     metric: metricInput,
+    capabilityFamily: metricString === "usage" ? resolvedFamily : undefined,
+    usageMetric: metricString === "usage" ? resolvedUsageMetric : undefined,
     groupBy: firstValue(req.query.group_by) ?? defaultGroupBy,
     groupValues: parseGroupValues(firstValue(req.query.group_values) ?? firstValue(req.query.groupValues)),
-    resourceTypeValues: parseGroupValues(firstValue(req.query.resource_type_values) ?? firstValue(req.query.resourceTypeValues)),
-    costCategoryValues: parseGroupValues(firstValue(req.query.cost_category_values) ?? firstValue(req.query.costCategoryValues)),
+    resourceTypeValues: parseGroupValues(
+      firstValue(req.query.resource_type_values) ??
+      firstValue(req.query.resourceTypeValues) ??
+      firstValue(req.query.resource_type),
+    ),
+    costCategoryValues: parseGroupValues(
+      firstValue(req.query.cost_category_values) ??
+      firstValue(req.query.costCategoryValues) ??
+      firstValue(req.query.cost_category),
+    ),
   });
 
   return {
     ...parsed,
+    capabilityFamily: parsed.metric === "usage" ? (parsed.capabilityFamily as UsageCapabilityFamily) : undefined,
+    usageMetric: parsed.metric === "usage" ? (parsed.usageMetric as UsageMetric) : undefined,
     databaseScope,
   };
 }

@@ -76,6 +76,25 @@ export type Ec2OptimizationSummaryFiltersQuery = {
 };
 
 export type DatabaseExplorerMetric = "cost" | "usage";
+export type DatabaseUsageCapabilityFamily =
+  | "compute_pressure"
+  | "connection_pressure"
+  | "io_activity"
+  | "throughput_activity"
+  | "storage_pressure";
+export type DatabaseUsageMetric =
+  | "avg_cpu"
+  | "peak_cpu"
+  | "avg_connections"
+  | "peak_connections"
+  | "read_iops"
+  | "write_iops"
+  | "total_iops"
+  | "read_throughput"
+  | "write_throughput"
+  | "total_throughput"
+  | "storage_used_gb"
+  | "allocated_storage_gb";
 export type DatabaseExplorerCostBasis =
   | "billed_cost"
   | "effective_cost"
@@ -114,6 +133,8 @@ export type DatabaseExplorerAllowedGroupByByMetric = Record<DatabaseExplorerMetr
 
 export type DatabaseExplorerFilters = {
   metric: DatabaseExplorerMetric;
+  capabilityFamily?: DatabaseUsageCapabilityFamily;
+  usageMetric?: DatabaseUsageMetric;
   costBasis?: DatabaseExplorerCostBasis;
   groupBy: DatabaseExplorerGroupBy;
   groupValues?: string[];
@@ -138,6 +159,8 @@ export type DatabaseExplorerAppliedFilters = {
   dbEngine?: string;
   costBasis: DatabaseExplorerCostBasis;
   metric: DatabaseExplorerMetric;
+  capabilityFamily?: DatabaseUsageCapabilityFamily;
+  usageMetric?: DatabaseUsageMetric;
   groupBy: DatabaseExplorerGroupBy;
   groupValues?: string[];
   resourceTypeValues?: string[];
@@ -172,18 +195,50 @@ export type DatabaseExplorerCostTrendItem = {
 
 export type DatabaseExplorerUsageTrendItem = {
   date: string;
+  capabilityFamily?: DatabaseUsageCapabilityFamily;
+  usageMetric?: DatabaseUsageMetric;
+  unit?: string | null;
+  value?: number | null;
+  coverageRate?: number | null;
+  confidence?: DatabaseUsageConfidence;
+  deprecatedLoadAlias?: boolean;
   load: number | null;
   connections: number | null;
 };
 
 export type DatabaseExplorerTableRow = {
   group: string;
+  groupKey?: string;
+  groupLabel?: string;
   totalCost: number;
   computeCost: number;
   storageCost: number;
   ioCost: number;
   backupCost: number;
   resourceCount: number;
+  inScopeResources?: number;
+  telemetryCoveredResources?: number;
+  coverageRate?: number | null;
+  confidence?: DatabaseUsageConfidence;
+  state?: DatabaseUsageState;
+  reasons?: string[];
+  warnings?: string[];
+  primaryMetricValue?: number | null;
+  primaryMetricUnit?: string | null;
+  rankingValue?: number | null;
+  rank?: number | null;
+  avgCpu?: number | null;
+  peakCpu?: number | null;
+  avgConnections?: number | null;
+  peakConnections?: number | null;
+  readIops?: number | null;
+  writeIops?: number | null;
+  totalIops?: number | null;
+  readThroughputBytes?: number | null;
+  writeThroughputBytes?: number | null;
+  totalThroughputBytes?: number | null;
+  storageUsedGb?: number | null;
+  allocatedStorageGb?: number | null;
   avgLoad: number | null;
   connections: number | null;
 };
@@ -198,7 +253,7 @@ export type DatabaseExplorerFilterOptions = {
 
 export type DatabaseExplorerTrendGroupedPoint = {
   date: string;
-  value: number;
+  value: number | null;
 };
 
 export type DatabaseExplorerTrendGroupedSeries = {
@@ -213,8 +268,60 @@ export type DatabaseExplorerTrendGrouped = {
   groupBy: DatabaseExplorerGroupBy;
   chartType: "stacked_bar" | "line";
   xKey: "date";
-  usageMetric?: "load_avg";
+  capabilityFamily?: DatabaseUsageCapabilityFamily;
+  usageMetric?: DatabaseUsageMetric;
+  unit?: string | null;
+  coverageSummary?: DatabaseUsageCoverageSummary;
+  warnings?: string[];
   series: DatabaseExplorerTrendGroupedSeries[];
+};
+
+export type DatabaseUsageConfidence = "high" | "medium" | "low" | "degraded" | "unsupported" | "unavailable";
+export type DatabaseUsageState = "normal" | "degraded" | "informational" | "unavailable" | "unsupported";
+export type DatabaseExplorerWarningState = "informational" | "degraded" | "unsupported" | "unavailable";
+
+export type DatabaseUsageCoverageSummary = {
+  eligibleResources: number;
+  coveredResources: number;
+  coverageRate: number | null;
+  confidence: DatabaseUsageConfidence;
+  degraded: boolean;
+  unavailable: boolean;
+  unsupported: boolean;
+};
+
+export type DatabaseUsageKpi = {
+  id: string;
+  title: string;
+  capabilityFamily: DatabaseUsageCapabilityFamily;
+  metricId: DatabaseUsageMetric;
+  value: number | null;
+  unit: string | null;
+  coverage: DatabaseUsageCoverageSummary;
+  confidence: DatabaseUsageConfidence;
+  maturity: "high" | "medium" | "low";
+  state: DatabaseUsageState;
+  reasons: string[];
+  warnings: string[];
+  sourceFields: string[];
+};
+
+export type DatabaseCapabilityAvailability = {
+  capabilityFamily: DatabaseUsageCapabilityFamily;
+  label: string;
+  maturity: "high" | "medium" | "low";
+  supportedServices: string[];
+  supportedMetrics: DatabaseUsageMetric[];
+  selectable: boolean;
+  disabled: boolean;
+  warnings: string[];
+  coverageSummary: DatabaseUsageCoverageSummary;
+};
+
+export type DatabaseExplorerWarning = {
+  code: string;
+  message: string;
+  state: DatabaseExplorerWarningState;
 };
 
 export type DatabaseExplorerResponse = {
@@ -223,6 +330,7 @@ export type DatabaseExplorerResponse = {
   allowedGroupByByMetric: DatabaseExplorerAllowedGroupByByMetric;
   filterOptions: DatabaseExplorerFilterOptions;
   cards: DatabaseExplorerCards;
+  capabilityAvailability?: DatabaseCapabilityAvailability[];
   trend: Array<DatabaseExplorerCostTrendItem | DatabaseExplorerUsageTrendItem>;
   trendGrouped?: DatabaseExplorerTrendGrouped;
   table: DatabaseExplorerTableRow[];

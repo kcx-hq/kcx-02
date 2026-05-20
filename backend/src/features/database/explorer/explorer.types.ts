@@ -1,3 +1,4 @@
+import type { UsageCapabilityFamily, UsageMetric } from "./usage-capabilities.js";
 export const EXPLORER_METRICS = ["cost", "usage"] as const;
 
 /** Canonical scope slugs accepted on `database_scope` query param. */
@@ -57,6 +58,8 @@ export type ExplorerQueryParams = {
   dbEngine?: string;
   costBasis: ExplorerCostBasis;
   metric: ExplorerMetric;
+  capabilityFamily?: UsageCapabilityFamily;
+  usageMetric?: UsageMetric;
   groupBy: ExplorerGroupBy;
   groupValues?: string[];
   resourceTypeValues?: string[];
@@ -91,6 +94,13 @@ export type ExplorerCostTrendItem = {
 
 export type ExplorerUsageTrendItem = {
   date: string;
+  capabilityFamily?: UsageCapabilityFamily;
+  usageMetric?: UsageMetric;
+  unit?: string | null;
+  value?: number | null;
+  coverageRate?: number | null;
+  confidence?: ExplorerCoverageConfidence;
+  deprecatedLoadAlias?: boolean;
   load: number | null;
   connections: number | null;
 };
@@ -99,7 +109,7 @@ export type ExplorerTrendItem = ExplorerCostTrendItem | ExplorerUsageTrendItem;
 
 export type ExplorerTrendGroupedPoint = {
   date: string;
-  value: number;
+  value: number | null;
 };
 
 export type ExplorerTrendGroupedSeries = {
@@ -114,18 +124,47 @@ export type ExplorerTrendGrouped = {
   groupBy: ExplorerGroupBy;
   chartType: "stacked_bar" | "line";
   xKey: "date";
-  usageMetric?: "load_avg";
+  capabilityFamily?: UsageCapabilityFamily;
+  usageMetric?: UsageMetric;
+  unit?: string | null;
+  coverageSummary?: ExplorerCoverageSummary;
+  warnings?: string[];
   series: ExplorerTrendGroupedSeries[];
 };
 
 export type ExplorerTableRow = {
   group: string;
+  groupKey?: string;
+  groupLabel?: string;
   totalCost: number;
   computeCost: number;
   storageCost: number;
   ioCost: number;
   backupCost: number;
   resourceCount: number;
+  inScopeResources?: number;
+  telemetryCoveredResources?: number;
+  coverageRate?: number | null;
+  confidence?: ExplorerCoverageConfidence;
+  state?: ExplorerUsageState;
+  reasons?: string[];
+  warnings?: string[];
+  primaryMetricValue?: number | null;
+  primaryMetricUnit?: string | null;
+  rankingValue?: number | null;
+  rank?: number | null;
+  avgCpu?: number | null;
+  peakCpu?: number | null;
+  avgConnections?: number | null;
+  peakConnections?: number | null;
+  readIops?: number | null;
+  writeIops?: number | null;
+  totalIops?: number | null;
+  readThroughputBytes?: number | null;
+  writeThroughputBytes?: number | null;
+  totalThroughputBytes?: number | null;
+  storageUsedGb?: number | null;
+  allocatedStorageGb?: number | null;
   avgLoad: number | null;
   connections: number | null;
 };
@@ -144,9 +183,57 @@ export type ExplorerResponse = {
   allowedGroupByByMetric: ExplorerAllowedGroupByByMetric;
   filterOptions: ExplorerFilterOptions;
   cards: ExplorerKpiCard[];
+  capabilityAvailability?: ExplorerCapabilityAvailability[];
   trend: ExplorerTrendItem[];
   trendGrouped?: ExplorerTrendGrouped;
   table: ExplorerTableRow[];
+};
+
+export type ExplorerWarning = {
+  code: string;
+  message: string;
+  state: "informational" | "degraded" | "unsupported" | "unavailable";
+};
+
+export type ExplorerCoverageConfidence = "high" | "medium" | "low" | "degraded" | "unsupported" | "unavailable";
+export type ExplorerUsageState = "normal" | "degraded" | "informational" | "unavailable" | "unsupported";
+
+export type ExplorerCoverageSummary = {
+  eligibleResources: number;
+  coveredResources: number;
+  coverageRate: number | null;
+  confidence: ExplorerCoverageConfidence;
+  degraded: boolean;
+  unavailable: boolean;
+  unsupported: boolean;
+};
+
+export type ExplorerCapabilityAvailability = {
+  capabilityFamily: UsageCapabilityFamily;
+  label: string;
+  maturity: "high" | "medium" | "low";
+  supportedServices: string[];
+  supportedMetrics: UsageMetric[];
+  selectable: boolean;
+  disabled: boolean;
+  warnings: string[];
+  coverageSummary: ExplorerCoverageSummary;
+};
+
+export type ExplorerUsageKpi = {
+  id: string;
+  title: string;
+  capabilityFamily: UsageCapabilityFamily;
+  metricId: UsageMetric;
+  value: number | null;
+  unit: string | null;
+  coverage: ExplorerCoverageSummary;
+  confidence: ExplorerCoverageConfidence;
+  maturity: "high" | "medium" | "low";
+  state: ExplorerUsageState;
+  reasons: string[];
+  warnings: string[];
+  sourceFields: string[];
 };
 
 

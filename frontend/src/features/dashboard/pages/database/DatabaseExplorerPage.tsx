@@ -5,12 +5,15 @@ import { DashboardPageHeader } from "../../components/DashboardPageHeader";
 import { useDashboardScope } from "../../hooks/useDashboardScope";
 import { useDatabaseExplorerQuery } from "../../hooks/useDashboardQueries";
 import type {
+  DatabaseCapabilityAvailability,
   DatabaseExplorerAllowedGroupByByMetric,
   DatabaseExplorerCostBasis,
   DatabaseExplorerFilters as DatabaseExplorerFiltersQuery,
   DatabaseExplorerGroupBy,
   DatabaseExplorerMetric,
   DatabaseExplorerScopeValue,
+  DatabaseUsageCapabilityFamily,
+  DatabaseUsageMetric,
 } from "../../api/dashboardTypes";
 import {
   DatabaseExplorerCards,
@@ -23,6 +26,28 @@ const DEFAULT_GROUP_BY: Record<DatabaseExplorerMetric, DatabaseExplorerGroupBy> 
   cost: "db_service",
   usage: "db_engine",
 };
+const DEFAULT_USAGE_CAPABILITY: DatabaseUsageCapabilityFamily = "compute_pressure";
+const DEFAULT_USAGE_METRIC_BY_CAPABILITY: Record<DatabaseUsageCapabilityFamily, DatabaseUsageMetric> = {
+  compute_pressure: "avg_cpu",
+  connection_pressure: "avg_connections",
+  io_activity: "total_iops",
+  throughput_activity: "total_throughput",
+  storage_pressure: "storage_used_gb",
+};
+const USAGE_METRIC_LABELS: Record<DatabaseUsageMetric, string> = {
+  avg_cpu: "Avg CPU",
+  peak_cpu: "Peak CPU",
+  avg_connections: "Avg Connections",
+  peak_connections: "Peak Connections",
+  read_iops: "Read IOPS",
+  write_iops: "Write IOPS",
+  total_iops: "Total IOPS",
+  read_throughput: "Read Throughput",
+  write_throughput: "Write Throughput",
+  total_throughput: "Total Throughput",
+  storage_used_gb: "Storage Used",
+  allocated_storage_gb: "Allocated Storage",
+};
 
 const FALLBACK_ALLOWED_GROUP_BY: Record<DatabaseExplorerMetric, DatabaseExplorerGroupBy[]> = {
   cost: ["db_service", "db_engine", "region", "cost_category", "resource_type"],
@@ -34,6 +59,7 @@ const metricOptions: Array<{ value: DatabaseExplorerMetric; label: string }> = [
   { value: "usage", label: "Usage" },
 ];
 const DEFAULT_COST_BASIS: DatabaseExplorerCostBasis = "billed_cost";
+const ENABLED_DB_EXPLORER_COST_BASES: ReadonlySet<DatabaseExplorerCostBasis> = new Set(["billed_cost"]);
 
 const DATABASE_ASSETS_PATH = "/dashboard/services/database/assets";
 
@@ -54,6 +80,8 @@ export default function DatabaseExplorerPage() {
   const [resourceTypeValues, setResourceTypeValues] = useState<string[]>([]);
   const [costCategoryValues, setCostCategoryValues] = useState<string[]>([]);
   const [costBasis, setCostBasis] = useState<DatabaseExplorerCostBasis>(DEFAULT_COST_BASIS);
+  const [capabilityFamily, setCapabilityFamily] = useState<DatabaseUsageCapabilityFamily>(DEFAULT_USAGE_CAPABILITY);
+  const [usageMetric, setUsageMetric] = useState<DatabaseUsageMetric>(DEFAULT_USAGE_METRIC_BY_CAPABILITY[DEFAULT_USAGE_CAPABILITY]);
   const [databaseScope, setDatabaseScope] = useState<DatabaseExplorerScopeValue>("all");
   const [dbService, setDbService] = useState("");
   const [dbEngine, setDbEngine] = useState("");
@@ -62,6 +90,7 @@ export default function DatabaseExplorerPage() {
   const filters = useMemo<DatabaseExplorerFiltersQuery>(
     () => ({
       metric,
+      ...(metric === "usage" ? { capabilityFamily, usageMetric } : {}),
       ...(metric === "cost" ? { costBasis } : {}),
       groupBy: effectiveGroupBy,
       ...(groupValues.length > 0 ? { groupValues } : {}),
@@ -71,7 +100,7 @@ export default function DatabaseExplorerPage() {
       ...(dbService.trim() ? { dbService: dbService.trim() } : {}),
       ...(dbEngine.trim() ? { dbEngine: dbEngine.trim() } : {}),
     }),
-    [costBasis, costCategoryValues, databaseScope, dbEngine, dbService, effectiveGroupBy, groupValues, metric, resourceTypeValues],
+    [capabilityFamily, costBasis, costCategoryValues, databaseScope, dbEngine, dbService, effectiveGroupBy, groupValues, metric, resourceTypeValues, usageMetric],
   );
 
   const query = useDatabaseExplorerQuery(filters);
@@ -110,7 +139,47 @@ export default function DatabaseExplorerPage() {
     if (!allowed.has(groupBy)) {
       setGroupBy(resolveDefaultGroupBy(nextMetric, allowedGroupByByMetric, allowedGroupBy));
     }
+    if (nextMetric === "usage") {
+      setCapabilityFamily(DEFAULT_USAGE_CAPABILITY);
+      setUsageMetric(DEFAULT_USAGE_METRIC_BY_CAPABILITY[DEFAULT_USAGE_CAPABILITY]);
+    }
   };
+
+  const capabilityOptions = useMemo(() => {
+    const backend = data?.capabilityAvailability ?? [];
+    if (backend.length === 0) {
+      const fallback: Array<DatabaseCapabilityAvailability> = [
+        { capabilityFamily: "compute_pressure", label: "Compute Pressure", maturity: "high", supportedServices: [], supportedMetrics: ["avg_cpu", "peak_cpu"], selectable: true, disabled: false, warnings: [], coverageSummary: { eligibleResources: 0, coveredResources: 0, coverageRate: null, confidence: "degraded", degraded: false, unavailable: false, unsupported: false } },
+        { capabilityFamily: "connection_pressure", label: "Connection Pressure", maturity: "high", supportedServices: [], supportedMetrics: ["avg_connections", "peak_connections"], selectable: true, disabled: false, warnings: [], coverageSummary: { eligibleResources: 0, coveredResources: 0, coverageRate: null, confidence: "degraded", degraded: false, unavailable: false, unsupported: false } },
+        { capabilityFamily: "io_activity", label: "IO Activity", maturity: "medium", supportedServices: [], supportedMetrics: ["read_iops", "write_iops", "total_iops"], selectable: true, disabled: false, warnings: [], coverageSummary: { eligibleResources: 0, coveredResources: 0, coverageRate: null, confidence: "degraded", degraded: false, unavailable: false, unsupported: false } },
+        { capabilityFamily: "throughput_activity", label: "Throughput Activity", maturity: "medium", supportedServices: [], supportedMetrics: ["read_throughput", "write_throughput", "total_throughput"], selectable: true, disabled: false, warnings: [], coverageSummary: { eligibleResources: 0, coveredResources: 0, coverageRate: null, confidence: "degraded", degraded: false, unavailable: false, unsupported: false } },
+        { capabilityFamily: "storage_pressure", label: "Storage Pressure", maturity: "high", supportedServices: [], supportedMetrics: ["storage_used_gb", "allocated_storage_gb"], selectable: true, disabled: false, warnings: [], coverageSummary: { eligibleResources: 0, coveredResources: 0, coverageRate: null, confidence: "degraded", degraded: false, unavailable: false, unsupported: false } },
+      ];
+      return fallback;
+    }
+    return backend;
+  }, [data?.capabilityAvailability]);
+
+  const usageMetricOptions = useMemo(() => {
+    const selected = capabilityOptions.find((option) => option.capabilityFamily === capabilityFamily);
+    const metrics = selected?.supportedMetrics ?? [];
+    return metrics.map((value) => ({ value, label: USAGE_METRIC_LABELS[value] ?? value }));
+  }, [capabilityFamily, capabilityOptions]);
+
+  useEffect(() => {
+    if (metric !== "usage") return;
+    const selectedCapability = capabilityOptions.find((option) => option.capabilityFamily === capabilityFamily);
+    if (!selectedCapability || selectedCapability.disabled) {
+      const firstEnabled = capabilityOptions.find((option) => !option.disabled);
+      if (firstEnabled) {
+        setCapabilityFamily(firstEnabled.capabilityFamily);
+      }
+      return;
+    }
+    if (!selectedCapability.supportedMetrics.includes(usageMetric)) {
+      setUsageMetric(selectedCapability.supportedMetrics[0] ?? DEFAULT_USAGE_METRIC_BY_CAPABILITY[selectedCapability.capabilityFamily]);
+    }
+  }, [capabilityFamily, capabilityOptions, metric, usageMetric]);
 
   useEffect(() => {
     if (metric !== "usage" || groupBy !== "db_engine") return;
@@ -138,6 +207,11 @@ export default function DatabaseExplorerPage() {
     setGroupValues([]);
   }, [allowedGroupBy, allowedGroupByByMetric, groupBy, metric]);
 
+  useEffect(() => {
+    if (ENABLED_DB_EXPLORER_COST_BASES.has(costBasis)) return;
+    setCostBasis(DEFAULT_COST_BASIS);
+  }, [costBasis]);
+
   const handleClearAll = () => {
     setGroupBy(DEFAULT_GROUP_BY[metric]);
     setGroupValues([]);
@@ -147,6 +221,10 @@ export default function DatabaseExplorerPage() {
     setDatabaseScope("all");
     setDbService("");
     setDbEngine("");
+    if (metric === "usage") {
+      setCapabilityFamily(DEFAULT_USAGE_CAPABILITY);
+      setUsageMetric(DEFAULT_USAGE_METRIC_BY_CAPABILITY[DEFAULT_USAGE_CAPABILITY]);
+    }
   };
 
   const handleApplyScope = (next: { databaseScope: DatabaseExplorerScopeValue; dbService: string; dbEngine: string }) => {
@@ -270,9 +348,26 @@ export default function DatabaseExplorerPage() {
         backendServiceOptions={backendServiceOptions}
         backendEngineOptions={backendEngineOptions}
         groupedValuePreview={data?.filterOptions?.groupedValuePreview}
+        capabilityFamily={capabilityFamily}
+        usageMetric={usageMetric}
+        capabilityOptions={capabilityOptions.map((option) => ({
+          capabilityFamily: option.capabilityFamily,
+          label: option.label,
+          disabled: option.disabled,
+          warnings: option.warnings,
+          supportedMetrics: option.supportedMetrics,
+        }))}
+        usageMetricOptions={usageMetricOptions}
         onApplyScope={handleApplyScope}
         onApplyGroupBy={handleApplyGroupBy}
         onApplyCostBasis={setCostBasis}
+        onApplyCapabilityFamily={(next) => {
+          setCapabilityFamily(next);
+          const target = capabilityOptions.find((option) => option.capabilityFamily === next);
+          const nextMetric = target?.supportedMetrics?.[0] ?? DEFAULT_USAGE_METRIC_BY_CAPABILITY[next];
+          setUsageMetric(nextMetric);
+        }}
+        onApplyUsageMetric={setUsageMetric}
         onApplyResourceTypeValues={setResourceTypeValues}
         onApplyCostCategoryValues={setCostCategoryValues}
         onClearAll={handleClearAll}
@@ -299,6 +394,7 @@ export default function DatabaseExplorerPage() {
           />
           <DatabaseExplorerGroupedTable
             metric={metric}
+            capabilityFamily={capabilityFamily}
             rows={data?.table ?? []}
             isLoading={pageLoading}
             onRowClick={(row) => {

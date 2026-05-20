@@ -31,6 +31,33 @@ const buildS3ExplorerDefaultSearch = (search: string): string => {
   return params.toString();
 };
 
+const DASHBOARD_SCOPE_QUERY_KEYS = new Set([
+  "tenantId",
+  "rawBillingFileId",
+  "rawBillingFileIds",
+  "from",
+  "to",
+  "billingPeriodStart",
+  "billingPeriodEnd",
+  "providerId",
+  "billingAccountKey",
+  "subAccountKey",
+  "serviceKey",
+  "regionKey",
+  "granularity",
+]);
+
+const buildScopeOnlySearch = (search: string): string => {
+  const current = new URLSearchParams(search);
+  const scoped = new URLSearchParams();
+  current.forEach((value, key) => {
+    if (DASHBOARD_SCOPE_QUERY_KEYS.has(key)) {
+      scoped.append(key, value);
+    }
+  });
+  return scoped.toString();
+};
+
 function getGroupKey(label: string, parentPath?: string): string {
   return parentPath ? `${parentPath}::${label}` : label;
 }
@@ -154,6 +181,9 @@ export function DashboardSidebar() {
       !location.pathname.startsWith("/dashboard/s3")
     ) {
       return buildS3ExplorerDefaultSearch(location.search);
+    }
+    if (targetPath.startsWith("/dashboard/services/database")) {
+      return buildScopeOnlySearch(location.search);
     }
     return location.search;
   };
