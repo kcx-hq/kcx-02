@@ -15,6 +15,7 @@ import type { S3OverviewFilterOptions, S3OverviewFilterValue } from "./component
 import { S3OverviewFilters } from "./components/S3OverviewFilters";
 import { S3BucketKpiSection } from "./components/S3BucketKpiSection";
 import { S3UsageTypeCostTable } from "./components/S3UsageTypeCostTable";
+import { CostExplorerSkeleton } from "./components/CostExplorerSkeleton";
 
 const S3OverviewChartPanel = lazy(async () => {
   const module = await import("./components/S3OverviewChartPanel");
@@ -159,22 +160,6 @@ const uniqueNonEmpty = (values: Array<string | null | undefined>): string[] =>
   [...new Set(values.map((item) => String(item ?? "").trim()).filter((item) => item.length > 0))].sort((a, b) =>
     a.localeCompare(b),
   );
-
-function S3OverviewTableSkeleton() {
-  return (
-    <div className="s3-usage-table-skeleton" aria-hidden="true">
-      <div className="s3-usage-table-skeleton__toolbar" />
-      <div className="s3-usage-table-skeleton__header" />
-      <div className="s3-usage-table-skeleton__row" />
-      <div className="s3-usage-table-skeleton__row" />
-      <div className="s3-usage-table-skeleton__row" />
-      <div className="s3-usage-table-skeleton__row" />
-      <div className="s3-usage-table-skeleton__row" />
-      <div className="s3-usage-table-skeleton__row" />
-      <div className="s3-usage-table-skeleton__row" />
-    </div>
-  );
-}
 
 export default function S3OverviewPage() {
   const location = useLocation();
@@ -365,11 +350,10 @@ export default function S3OverviewPage() {
   const showStorageTypeCostTable = filters.seriesBy === "storage_class";
 
   const hasAnyData = Boolean(graphSource || tableSource);
-  const isInitialLoading = !hasAnyData && overviewQuery.isLoading;
-  const isRefreshing = hasAnyData && overviewQuery.isFetching;
-  const isGraphLoading = !graphSource && (overviewQuery.isLoading || isDebouncingFilters);
-  const isTableLoading = !tableSource && (overviewQuery.isLoading || overviewQuery.isFetching || isDebouncingFilters);
   const hasBlockingError = overviewQuery.isError && !graphSource && !tableSource;
+  const isFilterMetadataLoading = !filterOptions && !hasAnyData && overviewQuery.isLoading;
+  const isCostDataLoading =
+    !hasBlockingError && (isDebouncingFilters || overviewQuery.isFetching || (!hasAnyData && overviewQuery.isLoading));
 
   const previousRange = useMemo(() => {
     if (!scope?.from || !scope?.to) return null;
@@ -414,125 +398,119 @@ export default function S3OverviewPage() {
         value={filters}
         onChange={applyFiltersToUrl}
         filterOptions={resolvedFilterOptions}
-        isLoading={isInitialLoading}
+        isLoading={isFilterMetadataLoading}
         isError={hasBlockingError}
         errorMessage={overviewQuery.error?.message}
         onRetry={() => {
           void overviewQuery.refetch();
         }}
       />
-      <S3BucketKpiSection
-        mode={
-          filters.seriesBy === "usage_type"
-            ? "usage_type"
-            : filters.seriesBy === "operation"
-              ? "operation"
-              : filters.seriesBy === "storage_class"
-                ? "storage_class"
-                : "default"
-        }
-        grossBucketCost={overviewQuery.data?.kpis.bucketCostKpis.grossBucketCost ?? 0}
-        creditAdjustedCost={overviewQuery.data?.kpis.bucketCostKpis.creditAdjustedCost ?? 0}
-        netBucketCost={overviewQuery.data?.kpis.bucketCostKpis.netBucketCost ?? 0}
-        totalBuckets={overviewQuery.data?.kpis.bucketCostKpis.totalBuckets ?? 0}
-        usageTypeCostKpis={overviewQuery.data?.kpis.usageTypeCostKpis}
-        topOperation={topOperationKpi}
-        topStorageClassLabel={topStorageClassLabel}
-      />
+      {isCostDataLoading ? (
+        <CostExplorerSkeleton />
+      ) : (
+        <div className="s3-cost-explorer-content s3-cost-explorer-content--ready">
+          <S3BucketKpiSection
+            mode={
+              filters.seriesBy === "usage_type"
+                ? "usage_type"
+                : filters.seriesBy === "operation"
+                  ? "operation"
+                  : filters.seriesBy === "storage_class"
+                    ? "storage_class"
+                    : "default"
+            }
+            grossBucketCost={overviewQuery.data?.kpis.bucketCostKpis.grossBucketCost ?? 0}
+            creditAdjustedCost={overviewQuery.data?.kpis.bucketCostKpis.creditAdjustedCost ?? 0}
+            netBucketCost={overviewQuery.data?.kpis.bucketCostKpis.netBucketCost ?? 0}
+            totalBuckets={overviewQuery.data?.kpis.bucketCostKpis.totalBuckets ?? 0}
+            usageTypeCostKpis={overviewQuery.data?.kpis.usageTypeCostKpis}
+            topOperation={topOperationKpi}
+            topStorageClassLabel={topStorageClassLabel}
+          />
 
-      <Suspense
-        fallback={
-            <section className="cost-explorer-chart-panel s3-overview-chart-panel" aria-label="S3 date vs cost chart">
-              <div className="cost-explorer-chart-panel__body">
-              <div className="cost-explorer-chart-skeleton" style={{ minHeight: "420px" }} />
+          <Suspense fallback={null}>
+            <S3OverviewChartPanel
+              breakdown={breakdown}
+              seriesBy={filters.seriesBy}
+              costBy={filters.costBy}
+              yAxisMetric={filters.yAxisMetric}
+              chartType={filters.chartType}
+              compareMode={filters.compareMode}
+              currentPeriodTotal={graphSource?.kpis.totalS3Cost ?? null}
+              previousPeriodTotal={comparisonTotal}
+              previousPeriodBreakdown={comparisonQuery.data?.chart.breakdown}
+              comparisonLoading={filters.compareMode === "previous_period" && comparisonQuery.isLoading}
+              comparisonError={filters.compareMode === "previous_period" && comparisonQuery.isError}
+              comparisonErrorMessage={comparisonQuery.error?.message}
+              isLoading={false}
+              isRefreshing={false}
+              isError={hasBlockingError}
+              errorMessage={overviewQuery.error?.message}
+              onRetry={() => {
+                void overviewQuery.refetch();
+                if (filters.compareMode === "previous_period") {
+                  void comparisonQuery.refetch();
+                }
+              }}
+              onReset={() => applyFiltersToUrl(DEFAULT_FILTERS)}
+              onChartTypeChange={(nextType) => applyFiltersToUrl({ ...filters, chartType: nextType })}
+              onBucketClick={(bucketName) => {
+                const searchParams = new URLSearchParams(location.search);
+                searchParams.set("s3Section", "cost");
+                navigate({
+                  pathname: `/dashboard/s3/bucket/${encodeURIComponent(bucketName)}`,
+                  search: searchParams.toString(),
+                });
+              }}
+            />
+          </Suspense>
+
+          {!hasBlockingError ? (
+            <section
+              className="s3-overview-table-panel s3-overview-table-panel--cost"
+              aria-label={
+                showCostCategoryUsageInsightTable || showUsageOperationTable
+                  ? "S3 usage operation insights table"
+                  : showCostCategoryTable
+                    ? "S3 cost category insights table"
+                    : "S3 bucket insights table"
+              }
+            >
+              <div className="s3-overview-table-panel__content">
+                <Suspense fallback={null}>
+                  {showCostCategoryUsageInsightTable ? (
+                    <S3UsageOperationTable rows={usageOperationRows} />
+                  ) : showCostCategoryTable ? (
+                    <S3CostCategoryTable rows={costCategoryRows} />
+                  ) : showUsageTypeCostTable ? (
+                    <S3UsageTypeCostTable
+                      rows={usageTypeCostRows}
+                      totalGrossS3Cost={overviewQuery.data?.kpis.usageTypeCostKpis.grossS3Cost ?? 0}
+                    />
+                  ) : showUsageOperationTable ? (
+                    <S3UsageOperationTable rows={usageOperationRows} />
+                  ) : showStorageTypeCostTable ? (
+                    <S3StorageTypeCostTable rows={storageTypeCostRows} />
+                  ) : (
+                    <S3BucketInsightsTable
+                      rows={filteredBucketRows}
+                      totalGrossCost={graphSource?.kpis.bucketCostKpis.grossBucketCost ?? 0}
+                      onBucketClick={(bucketName) => {
+                        const searchParams = new URLSearchParams(location.search);
+                        searchParams.set("s3Section", "cost");
+                        navigate({
+                          pathname: `/dashboard/s3/bucket/${encodeURIComponent(bucketName)}`,
+                          search: searchParams.toString(),
+                        });
+                      }}
+                    />
+                  )}
+                </Suspense>
               </div>
             </section>
-        }
-      >
-        <S3OverviewChartPanel
-          breakdown={breakdown}
-          seriesBy={filters.seriesBy}
-          costBy={filters.costBy}
-          yAxisMetric={filters.yAxisMetric}
-          chartType={filters.chartType}
-          compareMode={filters.compareMode}
-          currentPeriodTotal={graphSource?.kpis.totalS3Cost ?? null}
-          previousPeriodTotal={comparisonTotal}
-          previousPeriodBreakdown={comparisonQuery.data?.chart.breakdown}
-          comparisonLoading={filters.compareMode === "previous_period" && comparisonQuery.isLoading}
-          comparisonError={filters.compareMode === "previous_period" && comparisonQuery.isError}
-          comparisonErrorMessage={comparisonQuery.error?.message}
-          isLoading={isGraphLoading}
-          isRefreshing={isRefreshing}
-          isError={hasBlockingError}
-          errorMessage={overviewQuery.error?.message}
-          onRetry={() => {
-            void overviewQuery.refetch();
-            if (filters.compareMode === "previous_period") {
-              void comparisonQuery.refetch();
-            }
-          }}
-          onReset={() => applyFiltersToUrl(DEFAULT_FILTERS)}
-          onChartTypeChange={(nextType) => applyFiltersToUrl({ ...filters, chartType: nextType })}
-          onBucketClick={(bucketName) => {
-            const searchParams = new URLSearchParams(location.search);
-            searchParams.set("s3Section", "cost");
-            navigate({
-              pathname: `/dashboard/s3/bucket/${encodeURIComponent(bucketName)}`,
-              search: searchParams.toString(),
-            });
-          }}
-        />
-      </Suspense>
-
-      {!hasBlockingError ? (
-        <section
-          className="s3-overview-table-panel s3-overview-table-panel--cost"
-          aria-label={
-            showCostCategoryUsageInsightTable || showUsageOperationTable
-              ? "S3 usage operation insights table"
-              : showCostCategoryTable
-                ? "S3 cost category insights table"
-                : "S3 bucket insights table"
-          }
-        >
-          {isTableLoading ? (
-            <S3OverviewTableSkeleton />
-          ) : (
-            <div className={`s3-overview-table-panel__content${isRefreshing ? " is-refreshing" : ""}`}>
-              <Suspense fallback={<S3OverviewTableSkeleton />}>
-                {showCostCategoryUsageInsightTable ? (
-                  <S3UsageOperationTable rows={usageOperationRows} />
-                ) : showCostCategoryTable ? (
-                  <S3CostCategoryTable rows={costCategoryRows} />
-                ) : showUsageTypeCostTable ? (
-                  <S3UsageTypeCostTable
-                    rows={usageTypeCostRows}
-                    totalGrossS3Cost={overviewQuery.data?.kpis.usageTypeCostKpis.grossS3Cost ?? 0}
-                  />
-                ) : showUsageOperationTable ? (
-                  <S3UsageOperationTable rows={usageOperationRows} />
-                ) : showStorageTypeCostTable ? (
-                  <S3StorageTypeCostTable rows={storageTypeCostRows} />
-                ) : (
-                  <S3BucketInsightsTable
-                    rows={filteredBucketRows}
-                    totalGrossCost={graphSource?.kpis.bucketCostKpis.grossBucketCost ?? 0}
-                    onBucketClick={(bucketName) => {
-                      const searchParams = new URLSearchParams(location.search);
-                      searchParams.set("s3Section", "cost");
-                      navigate({
-                        pathname: `/dashboard/s3/bucket/${encodeURIComponent(bucketName)}`,
-                        search: searchParams.toString(),
-                      });
-                    }}
-                  />
-                )}
-              </Suspense>
-            </div>
-          )}
-        </section>
-      ) : null}
+          ) : null}
+        </div>
+      )}
     </div>
   );
 }

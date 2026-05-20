@@ -181,6 +181,28 @@ export function S3OverviewFilters({
     </label>
   );
 
+  if (isLoading) {
+    return (
+      <section
+        className="cost-explorer-control-surface s3-overview-filter-panel s3-overview-filter-panel--loading"
+        aria-label="Loading S3 overview filters"
+        aria-hidden="true"
+      >
+        <div className="s3-overview-filter-skeleton__row">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <span key={`s3-filter-loading-control-${index}`} className="s3-overview-filter-skeleton__control" />
+          ))}
+        </div>
+        <div className="s3-overview-filter-skeleton__chips">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <span key={`s3-filter-loading-chip-${index}`} className="s3-overview-filter-skeleton__chip" />
+          ))}
+          <span className="s3-overview-filter-skeleton__chip s3-overview-filter-skeleton__chip--clear" />
+        </div>
+      </section>
+    );
+  }
+
   return (
     <section className="cost-explorer-control-surface s3-overview-filter-panel" aria-label="S3 overview filters" ref={rootRef}>
       {isError ? (

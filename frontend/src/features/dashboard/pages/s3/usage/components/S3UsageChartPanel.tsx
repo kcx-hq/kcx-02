@@ -78,6 +78,7 @@ export function S3UsageChartPanel({
   onBucketClick,
 }: Props) {
   const chartTypeMenuRef = useRef<HTMLDivElement | null>(null);
+  const hoveredPointRef = useRef<{ seriesName: string; dataIndex: number } | null>(null);
   const [isChartTypeMenuOpen, setIsChartTypeMenuOpen] = useState(false);
 
   useEffect(() => {
@@ -147,12 +148,53 @@ export function S3UsageChartPanel({
       tooltip: {
         trigger: "axis",
         axisPointer: { type: isLine ? "line" : "shadow" },
-        valueFormatter: (value: unknown) =>
-          isQuantity
-            ? isRequestCountView || isObjectCountView
-              ? numberFormatterCount.format(Number(value ?? 0))
-              : numberFormatterPrecise.format(Number(value ?? 0))
-            : currencyFormatter.format(Number(value ?? 0)),
+        confine: true,
+        backgroundColor: "#102744",
+        borderColor: "rgba(140, 182, 232, 0.36)",
+        borderWidth: 1,
+        textStyle: { color: "#e7eef8", fontSize: 12, fontWeight: 500 },
+        extraCssText:
+          "border-radius:10px; box-shadow:0 12px 28px rgba(2,10,24,0.48); padding:12px 14px; max-width:460px; max-height:360px; overflow-y:auto; overflow-x:hidden; white-space:normal; word-break:break-word; overflow-wrap:anywhere;",
+        formatter: (params: unknown) => {
+          const axisParams = Array.isArray(params) ? params : [params];
+          if (axisParams.length === 0) return "";
+
+          const formatValue = (value: unknown) =>
+            isQuantity
+              ? isRequestCountView || isObjectCountView
+                ? numberFormatterCount.format(Number(value ?? 0))
+                : numberFormatterPrecise.format(Number(value ?? 0))
+              : currencyFormatter.format(Number(value ?? 0));
+
+          const first = axisParams[0] as { axisValueLabel?: unknown };
+          const title = String(first?.axisValueLabel ?? "");
+
+          const hovered = hoveredPointRef.current;
+          if (hovered) {
+            const match = axisParams.find((entry) => {
+              const point = entry as { seriesName?: unknown; dataIndex?: unknown };
+              return String(point?.seriesName ?? "") === hovered.seriesName && Number(point?.dataIndex ?? -1) === hovered.dataIndex;
+            }) as { marker?: unknown; seriesName?: unknown; value?: unknown } | undefined;
+
+            if (match) {
+              const matchValue = Number(match.value ?? 0);
+              if (matchValue === 0) return "";
+              return [
+                title,
+                `${String(match.marker ?? "")} ${String(match.seriesName ?? "")}: ${formatValue(matchValue)}`,
+              ].join("<br/>");
+            }
+          }
+
+          const lines = axisParams
+            .filter((entry) => Number((entry as { value?: unknown }).value ?? 0) !== 0)
+            .map((entry) => {
+            const point = entry as { marker?: unknown; seriesName?: unknown; value?: unknown };
+            return `${String(point.marker ?? "")} ${String(point.seriesName ?? "")}: ${formatValue(point.value)}`;
+          });
+          if (lines.length === 0) return "";
+          return [title, ...lines].join("<br/>");
+        },
       },
       legend: {
         type: "scroll",
@@ -162,7 +204,7 @@ export function S3UsageChartPanel({
         itemWidth: 18,
         textStyle: { color: "#58706d", fontSize: 11 },
       },
-      grid: { left: isRequestCountView ? 34 : 56, right: 12, top: 54, bottom: 30, containLabel: true },
+      grid: { left: isRequestCountView ? 36 : 52, right: 12, top: 54, bottom: 36, containLabel: true },
       xAxis: {
         type: "category",
         name: xAxisName,
@@ -199,7 +241,7 @@ export function S3UsageChartPanel({
             : getYAxisLabel(yAxisMetric),
         nameLocation: "middle",
         nameRotate: 90,
-        nameGap: isRequestCountView ? 54 : 74,
+        nameGap: isRequestCountView ? 52 : 66,
         nameTextStyle: { color: "#6d837e", fontSize: isRequestCountView ? 10 : 11 },
         axisLine: { show: false },
         splitLine: { show: true, lineStyle: { color: "#e1eae7", type: "solid", width: 1 } },
@@ -265,6 +307,26 @@ export function S3UsageChartPanel({
     onBucketClick(rawBucketName);
   };
 
+  const handleChartPointHover = (params: unknown) => {
+    if (!params || typeof params !== "object") {
+      hoveredPointRef.current = null;
+      return;
+    }
+    const payload = params as { componentType?: unknown; seriesName?: unknown; dataIndex?: unknown };
+    if (payload.componentType !== "series") {
+      hoveredPointRef.current = null;
+      return;
+    }
+    hoveredPointRef.current = {
+      seriesName: String(payload.seriesName ?? ""),
+      dataIndex: Number(payload.dataIndex ?? -1),
+    };
+  };
+
+  const handleChartPointLeave = () => {
+    hoveredPointRef.current = null;
+  };
+
   return (
     <section className="cost-explorer-chart-panel s3-overview-chart-panel s3-usage-chart-panel" aria-label="S3 usage chart">
       <div className="cost-explorer-chart-panel__header">
@@ -324,7 +386,13 @@ export function S3UsageChartPanel({
             ) : null}
           </div>
         ) : chartReady ? (
-          <BaseEChart option={option} height={chartHeight} onPointClick={handleChartPointClick} />
+          <BaseEChart
+            option={option}
+            height={chartHeight}
+            onPointClick={handleChartPointClick}
+            onPointHover={handleChartPointHover}
+            onPointLeave={handleChartPointLeave}
+          />
         ) : (
           <div className="dashboard-empty-state-block">
             <p className="dashboard-empty-state-block__title">

@@ -8,6 +8,7 @@ import { OverviewDashboardSkeleton } from "../pages/overview/components";
 import { CostExplorerSkeleton } from "../pages/cost-explorer/components";
 import { HistorySectionSkeleton } from "../pages/cost/history/components/HistorySectionSkeleton";
 import { EC2ExplorerUnifiedSkeleton } from "../pages/ec2/components";
+import { CostExplorerSkeleton as S3CostExplorerSkeleton } from "../pages/s3/components/CostExplorerSkeleton";
 
 function S3BucketLoadingSkeleton() {
   return (
@@ -66,69 +67,7 @@ function S3ExplorerLoadingSkeleton() {
       </div>
 
       <div className="dashboard-page s3-overview-page" aria-hidden="true">
-        <section className="cost-explorer-control-surface s3-overview-filter-panel s3-overview-filter-panel--loading">
-          <div className="cost-explorer-toolbar-row">
-            <div className="cost-explorer-toolbar-item s3-overview-filter-panel__item--cost-by">
-              <button type="button" className="cost-explorer-toolbar-trigger" disabled>
-                <span className="cost-explorer-toolbar-trigger__label">Cost by</span>
-                <span className="cost-explorer-toolbar-trigger__row">
-                  <span className="cost-explorer-toolbar-trigger__value">Bucket</span>
-                </span>
-              </button>
-            </div>
-            <div className="cost-explorer-toolbar-item s3-overview-filter-panel__item--y-axis">
-              <button type="button" className="cost-explorer-toolbar-trigger" disabled>
-                <span className="cost-explorer-toolbar-trigger__label">Y-Axis</span>
-                <span className="cost-explorer-toolbar-trigger__row">
-                  <span className="cost-explorer-toolbar-trigger__value">Billed Cost ($)</span>
-                </span>
-              </button>
-            </div>
-            <div className="cost-explorer-toolbar-item s3-overview-filter-panel__item--x-axis">
-              <button type="button" className="cost-explorer-toolbar-trigger" disabled>
-                <span className="cost-explorer-toolbar-trigger__label">X-Axis</span>
-                <span className="cost-explorer-toolbar-trigger__row">
-                  <span className="cost-explorer-toolbar-trigger__value">date</span>
-                </span>
-              </button>
-            </div>
-            <div className="cost-explorer-toolbar-item s3-overview-filter-panel__item--region">
-              <button type="button" className="cost-explorer-toolbar-trigger" disabled>
-                <span className="cost-explorer-toolbar-trigger__label">Region</span>
-                <span className="cost-explorer-toolbar-trigger__row">
-                  <span className="cost-explorer-toolbar-trigger__value">All</span>
-                </span>
-              </button>
-            </div>
-          </div>
-          <div className="cost-explorer-chip-bar">
-            <div className="cost-explorer-chip-row">
-              <span className="cost-explorer-chip">
-                <span className="cost-explorer-chip__edit">Cost By: Bucket</span>
-              </span>
-              <span className="cost-explorer-chip">
-                <span className="cost-explorer-chip__edit">X-Axis: date</span>
-              </span>
-            </div>
-          </div>
-        </section>
-        <section className="cost-explorer-chart-panel s3-overview-chart-panel">
-          <div className="cost-explorer-chart-panel__body">
-            <div className="cost-explorer-chart-skeleton cost-explorer-chart-skeleton--bars" style={{ minHeight: "420px" }} />
-          </div>
-        </section>
-        <section className="s3-overview-table-panel">
-          <div className="s3-usage-table-skeleton">
-            <div className="s3-usage-table-skeleton__toolbar" />
-            <div className="s3-usage-table-skeleton__header" />
-            <div className="s3-usage-table-skeleton__row" />
-            <div className="s3-usage-table-skeleton__row" />
-            <div className="s3-usage-table-skeleton__row" />
-            <div className="s3-usage-table-skeleton__row" />
-            <div className="s3-usage-table-skeleton__row" />
-            <div className="s3-usage-table-skeleton__row" />
-          </div>
-        </section>
+        <S3CostExplorerSkeleton />
       </div>
     </div>
   );
