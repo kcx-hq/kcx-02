@@ -1,9 +1,9 @@
 import { QueryTypes } from "sequelize";
 
-import { sequelize } from "../../../models/index.js";
-import { logger } from "../../../utils/logger.js";
-import type { DashboardScope } from "../dashboard.types.js";
-import type { S3RecommendationConfidence, S3StorageAnomalyInsight } from "./s3-cost-insights.types.js";
+import { sequelize } from "../../../../models/index.js";
+import { logger } from "../../../../utils/logger.js";
+import type { DashboardScope } from "../../dashboard.types.js";
+import type { S3RecommendationConfidence, S3StorageAnomalyInsight } from "../cost-insights/s3-cost-insights.types.js";
 
 type GrowthRow = {
   bucket_name: string | null;
@@ -287,3 +287,4 @@ export class S3StorageAnomalyService {
     };
   }
 }
+

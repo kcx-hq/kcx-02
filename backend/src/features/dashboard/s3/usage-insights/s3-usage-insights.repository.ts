@@ -1,15 +1,22 @@
 import { QueryTypes } from "sequelize";
 
-import { sequelize } from "../../../models/index.js";
-import type { DashboardScope } from "../dashboard.types.js";
-import { S3CostInsightsRepository } from "./s3-cost-insights.repository.js";
-import type { S3CostInsightsFilters } from "./s3-cost-insights.types.js";
+import { sequelize } from "../../../../models/index.js";
+import type { DashboardScope } from "../../dashboard.types.js";
+import { S3CostInsightsRepository } from "../cost-insights/s3-cost-insights.repository.js";
+import type { S3CostInsightsFilters } from "../cost-insights/s3-cost-insights.types.js";
 import type { S3UsageInsightsFilters, S3UsageInsightsRepositoryInput, S3UsageInsightsResponse } from "./s3-usage-insights.types.js";
 
 type UsageDailySeriesRow = {
   usage_date: string | null;
   series_value: string | null;
   value: number | string | null;
+};
+
+type OperationGroupTooltipRow = {
+  usage_date: string | null;
+  operation_group: string | null;
+  operation_name: string | null;
+  usage_value: number | string | null;
 };
 
 type BucketUsageRow = {
@@ -33,9 +40,9 @@ const toNumber = (value: number | string | null | undefined): number => {
 
 const toCostInsightsFilters = (input: S3UsageInsightsRepositoryInput): S3CostInsightsFilters => ({
   costCategory: [],
-  seriesValues: [],
+  seriesValues: input.filters.seriesValues ?? [],
   bucket: input.filters.bucket ?? null,
-  storageClass: input.filters.storageClass ?? [],
+  storageClass: [],
   region: input.filters.region ?? [],
   account: input.filters.account ?? [],
   costBy: "date",
@@ -46,10 +53,18 @@ const toCostInsightsFilters = (input: S3UsageInsightsRepositoryInput): S3CostIns
     || input.filters.usageYAxis === "request_count"
     || input.filters.usageYAxis === "transfer_gb"
     || input.filters.usageYAxis === "object_count"
-    || input.filters.usageYAxis === "api_operations"
       ? input.filters.usageYAxis
       : null,
 });
+
+const normalizeSeriesValues = (filters: S3UsageInsightsFilters): string[] =>
+  Array.from(
+    new Set(
+      (filters.seriesValues ?? [])
+        .map((value) => String(value ?? "").trim())
+        .filter((value) => value.length > 0),
+    ),
+  );
 
 const generateDateRange = (from: string, to: string): string[] => {
   const start = new Date(`${from}T00:00:00.000Z`);
@@ -101,9 +116,8 @@ END
 `;
 
 const ALLOWED_USAGE_BY_TO_Y_AXIS: Record<string, Set<NonNullable<S3UsageInsightsFilters["usageYAxis"]>>> = {
-  bucket: new Set(["storage_gb", "request_count", "transfer_gb", "object_count", "api_operations"]),
-  operation: new Set(["request_count", "transfer_gb", "api_operations"]),
-  storage_class: new Set(["storage_gb_mo", "retrieval_gb"]),
+  bucket: new Set(["storage_gb", "request_count", "transfer_gb", "object_count"]),
+  operation: new Set(["request_count", "transfer_gb"]),
 };
 
 export class S3UsageInsightsRepository {
@@ -118,6 +132,7 @@ export class S3UsageInsightsRepository {
     );
     const bucketTable = await this.getBucketUsageTable(input.scope, input.filters);
     const breakdown = await this.getBreakdown(input.scope, input.filters);
+    const filterOptions = await this.getFilterOptions(input.scope, input.filters, bucketTable);
 
     return {
       section: "s3-usage-insights",
@@ -128,6 +143,7 @@ export class S3UsageInsightsRepository {
       chart: {
         breakdown,
       },
+      filterOptions,
     };
   }
 
@@ -179,9 +195,6 @@ export class S3UsageInsightsRepository {
     if (filters.bucket && filters.bucket.trim().length > 0) {
       push("LOWER(bucket_name) LIKE LOWER(?)", `%${filters.bucket.trim()}%`);
     }
-    if (Array.isArray(filters.storageClass) && filters.storageClass.length > 0) {
-      push("storage_class = ANY(?::text[])", filters.storageClass);
-    }
     if (Array.isArray(filters.region) && filters.region.length > 0) {
       push("COALESCE(NULLIF(region, ''), 'global') = ANY(?::text[])", filters.region);
     }
@@ -195,6 +208,7 @@ export class S3UsageInsightsRepository {
   private buildStorageLensFilterPredicates(
     filters: S3UsageInsightsFilters,
     startIndex: number,
+    alias = "sld",
   ): { clause: string; params: unknown[] } {
     const conditions: string[] = [];
     const params: unknown[] = [];
@@ -204,13 +218,13 @@ export class S3UsageInsightsRepository {
     };
 
     if (filters.bucket && filters.bucket.trim().length > 0) {
-      push("LOWER(sld.bucket_name) LIKE LOWER(?)", `%${filters.bucket.trim()}%`);
+      push(`LOWER(${alias}.bucket_name) LIKE LOWER(?)`, `%${filters.bucket.trim()}%`);
     }
     if (Array.isArray(filters.region) && filters.region.length > 0) {
       push(
         `
         COALESCE(
-          (SELECT COALESCE(dr.region_name, dr.region_id, 'global') FROM dim_region dr WHERE dr.id = sld.region_key),
+          (SELECT COALESCE(dr.region_name, dr.region_id, 'global') FROM dim_region dr WHERE dr.id = ${alias}.region_key),
           'global'
         ) = ANY(?::text[])
         `,
@@ -221,7 +235,7 @@ export class S3UsageInsightsRepository {
       push(
         `
         COALESCE(
-          (SELECT COALESCE(dsa.sub_account_name, dsa.sub_account_id, 'Unspecified') FROM dim_sub_account dsa WHERE dsa.id = sld.sub_account_key),
+          (SELECT COALESCE(dsa.sub_account_name, dsa.sub_account_id, 'Unspecified') FROM dim_sub_account dsa WHERE dsa.id = ${alias}.sub_account_key),
           'Unspecified'
         ) = ANY(?::text[])
         `,
@@ -235,42 +249,118 @@ export class S3UsageInsightsRepository {
   private async getBreakdown(
     scope: DashboardScope,
     filters: S3UsageInsightsFilters,
-  ): Promise<{ labels: string[]; series: Array<{ name: string; values: number[] }> }> {
+  ): Promise<{
+    labels: string[];
+    series: Array<{ name: string; values: number[] }>;
+    operationGroupTooltip?: Array<{
+      usageDate: string;
+      operationGroup: "Read" | "Write" | "List & Metadata" | "Other";
+      operation: string;
+      cost: number;
+    }>;
+  }> {
     const usageByRaw = String(filters.usageBy ?? filters.seriesBy ?? "bucket").trim().toLowerCase();
     const usageBy = usageByRaw === "operation_group" ? "operation" : usageByRaw;
-    const rawYAxis = filters.yAxis ?? filters.usageYAxis ?? "storage_gb";
-    const usageYAxis = (rawYAxis === "storage_gb_month" ? "storage_gb_mo" : rawYAxis) as NonNullable<S3UsageInsightsFilters["usageYAxis"]>;
+    const selectedSeriesValues = normalizeSeriesValues(filters);
+    const usageYAxis = (filters.yAxis ?? filters.usageYAxis ?? "storage_gb") as NonNullable<S3UsageInsightsFilters["usageYAxis"]>;
     const labels = generateDateRange(scope.from, scope.to);
     const allowed = ALLOWED_USAGE_BY_TO_Y_AXIS[usageBy];
     if (!allowed || !allowed.has(usageYAxis)) {
-      return { labels, series: [] };
+      return { labels, series: [], operationGroupTooltip: [] };
     }
 
     if (usageBy === "bucket") {
       if (usageYAxis === "storage_gb" || usageYAxis === "object_count") {
-        const rows = await this.getBucketLensSeries(scope, filters, usageYAxis);
-        return this.buildSeriesResponse(labels, rows);
+        const rows = await this.getBucketLensSeries(scope, filters, usageYAxis, selectedSeriesValues);
+        return { ...this.buildSeriesResponse(labels, rows), operationGroupTooltip: [] };
       }
-      if (usageYAxis === "request_count" || usageYAxis === "transfer_gb" || usageYAxis === "api_operations") {
-        const rows = await this.getBucketCostDailySeries(scope, filters, usageYAxis);
-        return this.buildSeriesResponse(labels, rows);
+      if (usageYAxis === "request_count" || usageYAxis === "transfer_gb") {
+        const rows = await this.getBucketCostDailySeries(scope, filters, usageYAxis, selectedSeriesValues);
+        return { ...this.buildSeriesResponse(labels, rows), operationGroupTooltip: [] };
       }
-      return { labels, series: [] };
+      return { labels, series: [], operationGroupTooltip: [] };
     }
 
     if (usageBy === "operation") {
-      if (usageYAxis === "request_count" || usageYAxis === "transfer_gb" || usageYAxis === "api_operations") {
-        const rows = await this.getOperationGroupSeries(scope, filters, usageYAxis);
-        return this.buildSeriesResponse(labels, rows);
+      if (usageYAxis === "request_count" || usageYAxis === "transfer_gb") {
+        const rows = await this.getOperationGroupSeries(scope, filters, usageYAxis, selectedSeriesValues);
+        const operationGroupTooltip =
+          usageYAxis === "request_count" || usageYAxis === "transfer_gb"
+            ? await this.getOperationGroupUsageTooltip(scope, filters, usageYAxis)
+            : [];
+        return { ...this.buildSeriesResponse(labels, rows), operationGroupTooltip };
       }
-      return { labels, series: [] };
+      return { labels, series: [], operationGroupTooltip: [] };
     }
 
-    if (usageYAxis === "storage_gb_mo" || usageYAxis === "retrieval_gb") {
-      const rows = await this.getStorageClassSeries(scope, filters, usageYAxis);
-      return this.buildSeriesResponse(labels, rows);
-    }
-    return { labels, series: [] };
+    return { labels, series: [], operationGroupTooltip: [] };
+  }
+
+  private async getOperationGroupUsageTooltip(
+    scope: DashboardScope,
+    filters: S3UsageInsightsFilters,
+    usageYAxis: "request_count" | "transfer_gb",
+  ): Promise<
+    Array<{
+      usageDate: string;
+      operationGroup: "Read" | "Write" | "List & Metadata" | "Other";
+      operation: string;
+      cost: number;
+    }>
+  > {
+    const scoped = this.buildS3DailyScopedWhere(scope);
+    const filterPredicates = this.buildCostDailyFilterPredicates(filters, scoped.nextIndex);
+    const usageCondition =
+      usageYAxis === "request_count"
+        ? `
+          LOWER(TRIM(COALESCE(NULLIF(pricing_unit, ''), ''))) = 'requests'
+          AND operation IS NOT NULL
+          AND NULLIF(BTRIM(operation), '') IS NOT NULL
+          AND LOWER(TRIM(COALESCE(operation, ''))) NOT IN ('unspecified', 'none')
+        `
+        : `
+          LOWER(TRIM(COALESCE(NULLIF(cost_category, ''), ''))) = 'transfer'
+          AND LOWER(TRIM(COALESCE(NULLIF(pricing_unit, ''), ''))) = 'gb'
+          AND COALESCE(NULLIF(operation, ''), '') NOT IN ('Unspecified', 'None', '')
+          AND NOT (COALESCE(total_cost, 0) = 0 AND COALESCE(usage_quantity, 0) >= 1)
+        `;
+    const rows = await sequelize.query<OperationGroupTooltipRow>(
+      `
+      SELECT
+        usage_date::text AS usage_date,
+        ${OPERATION_GROUP_SQL} AS operation_group,
+        COALESCE(NULLIF(operation, ''), 'Unspecified') AS operation_name,
+        COALESCE(SUM(COALESCE(usage_quantity, 0)), 0)::double precision AS usage_value
+      FROM s3_cost_daily
+      WHERE ${scoped.whereClause}
+        AND ${filterPredicates.clause}
+        AND ${usageCondition}
+        AND bucket_name IS NOT NULL
+        AND NULLIF(BTRIM(bucket_name), '') IS NOT NULL
+        AND LOWER(COALESCE(usage_type, '')) <> 'use1-storagelens-objcount'
+        AND LOWER(COALESCE(operation, '')) <> 'storagelens'
+      GROUP BY usage_date, ${OPERATION_GROUP_SQL}, operation_name
+      ORDER BY usage_date ASC, operation_group ASC, usage_value DESC, operation_name ASC;
+      `,
+      { bind: [...scoped.params, ...filterPredicates.params], type: QueryTypes.SELECT },
+    );
+
+    const allowedGroups = new Set(["Read", "Write", "List & Metadata", "Other"]);
+    return rows
+      .map((row) => {
+        const operationGroup = String(row.operation_group ?? "Other").trim();
+        return {
+          usageDate: String(row.usage_date ?? ""),
+          operationGroup: (allowedGroups.has(operationGroup) ? operationGroup : "Other") as
+            | "Read"
+            | "Write"
+            | "List & Metadata"
+            | "Other",
+          operation: String(row.operation_name ?? "Unspecified"),
+          cost: toNumber(row.usage_value),
+        };
+      })
+      .filter((row) => row.usageDate.length > 0);
   }
 
   private async getBucketUsageTable(
@@ -286,12 +376,20 @@ export class S3UsageInsightsRepository {
     }
 
     const storageLensScopedWhere = scoped.whereClause.replaceAll("usage_date", "sl.usage_date");
-    const storageFilterPredicates = this.buildStorageLensFilterPredicates(filters, params.length + 1);
+    const storageFilterPredicates = this.buildStorageLensFilterPredicates(filters, params.length + 1, "sl");
     const costFilterPredicates = this.buildCostDailyFilterPredicates(
       filters,
       params.length + storageFilterPredicates.params.length + 1,
     );
+    const selectedSeriesValues = normalizeSeriesValues(filters);
+    const usageByRaw = String(filters.usageBy ?? filters.seriesBy ?? "bucket").trim().toLowerCase();
+    const usageBy = usageByRaw === "operation_group" ? "operation_group" : usageByRaw;
     const bind = [...params, ...storageFilterPredicates.params, ...costFilterPredicates.params];
+    const seriesValueWhere: string[] = [];
+    if (selectedSeriesValues.length > 0 && usageBy === "bucket") {
+      bind.push(selectedSeriesValues);
+      seriesValueWhere.push(`b.bucket_name = ANY($${bind.length}::text[])`);
+    }
 
     const rows = await sequelize.query<BucketUsageRow>(
       `
@@ -396,7 +494,7 @@ export class S3UsageInsightsRepository {
       LEFT JOIN request_by_bucket r ON r.bucket_name = b.bucket_name
       LEFT JOIN transfer_by_bucket t ON t.bucket_name = b.bucket_name
       LEFT JOIN bucket_regions br ON br.bucket_name = b.bucket_name
-      ${bucketFilters.length > 0 ? `WHERE ${bucketFilters.join("\n        AND ")}` : ""}
+      ${bucketFilters.length > 0 || seriesValueWhere.length > 0 ? `WHERE ${[...bucketFilters, ...seriesValueWhere].join("\n        AND ")}` : ""}
       ORDER BY storage_gb DESC, request_count DESC, transfer_gb DESC;
       `,
       { bind, type: QueryTypes.SELECT },
@@ -455,9 +553,18 @@ export class S3UsageInsightsRepository {
     scope: DashboardScope,
     filters: S3UsageInsightsFilters,
     usageYAxis: "storage_gb" | "object_count",
+    selectedSeriesValues: string[],
   ): Promise<UsageDailySeriesRow[]> {
     const scoped = this.buildS3DailyScopedWhere(scope);
     const filterPredicates = this.buildStorageLensFilterPredicates(filters, scoped.nextIndex);
+    const bind: unknown[] = [...scoped.params, ...filterPredicates.params];
+    const seriesFilter =
+      selectedSeriesValues.length > 0
+        ? (() => {
+            bind.push(selectedSeriesValues);
+            return `AND sld.bucket_name = ANY($${bind.length}::text[])`;
+          })()
+        : "";
     const metricExpr =
       usageYAxis === "object_count"
         ? "COALESCE(SUM(COALESCE(sld.object_count, 0)), 0)::double precision"
@@ -484,33 +591,36 @@ export class S3UsageInsightsRepository {
       FROM s3_storage_lens_daily sld
       WHERE ${scoped.whereClause}
         AND ${filterPredicates.clause}
+        ${seriesFilter}
         AND sld.bucket_name IS NOT NULL
         AND NULLIF(BTRIM(sld.bucket_name), '') IS NOT NULL
       GROUP BY sld.usage_date, sld.bucket_name
       ORDER BY sld.usage_date ASC, value DESC;
       `,
-      { bind: [...scoped.params, ...filterPredicates.params], type: QueryTypes.SELECT },
+      { bind, type: QueryTypes.SELECT },
     );
   }
 
   private async getBucketCostDailySeries(
     scope: DashboardScope,
     filters: S3UsageInsightsFilters,
-    usageYAxis: "request_count" | "transfer_gb" | "api_operations",
+    usageYAxis: "request_count" | "transfer_gb",
+    selectedSeriesValues: string[],
   ): Promise<UsageDailySeriesRow[]> {
     const scoped = this.buildS3DailyScopedWhere(scope);
     const filterPredicates = this.buildCostDailyFilterPredicates(filters, scoped.nextIndex);
+    const bind: unknown[] = [...scoped.params, ...filterPredicates.params];
+    const seriesFilter =
+      selectedSeriesValues.length > 0
+        ? (() => {
+            bind.push(selectedSeriesValues);
+            return `AND bucket_name = ANY($${bind.length}::text[])`;
+          })()
+        : "";
 
     const usageCondition =
       usageYAxis === "request_count"
         ? "LOWER(TRIM(COALESCE(NULLIF(pricing_unit, ''), ''))) = 'requests'"
-        : usageYAxis === "api_operations"
-          ? `
-            LOWER(TRIM(COALESCE(NULLIF(pricing_unit, ''), ''))) = 'requests'
-            AND operation IS NOT NULL
-            AND NULLIF(BTRIM(operation), '') IS NOT NULL
-            AND LOWER(TRIM(COALESCE(operation, ''))) NOT IN ('unspecified', 'none')
-          `
         : `
           LOWER(TRIM(COALESCE(NULLIF(cost_category, ''), ''))) = 'transfer'
           AND LOWER(TRIM(COALESCE(NULLIF(pricing_unit, ''), ''))) = 'gb'
@@ -528,6 +638,7 @@ export class S3UsageInsightsRepository {
       WHERE ${scoped.whereClause}
         AND ${filterPredicates.clause}
         AND ${usageCondition}
+        ${seriesFilter}
         AND bucket_name IS NOT NULL
         AND NULLIF(BTRIM(bucket_name), '') IS NOT NULL
         AND LOWER(COALESCE(usage_type, '')) <> 'use1-storagelens-objcount'
@@ -535,17 +646,26 @@ export class S3UsageInsightsRepository {
       GROUP BY usage_date, bucket_name
       ORDER BY usage_date ASC, value DESC;
       `,
-      { bind: [...scoped.params, ...filterPredicates.params], type: QueryTypes.SELECT },
+      { bind, type: QueryTypes.SELECT },
     );
   }
 
   private async getOperationGroupSeries(
     scope: DashboardScope,
     filters: S3UsageInsightsFilters,
-    usageYAxis: "request_count" | "transfer_gb" | "api_operations",
+    usageYAxis: "request_count" | "transfer_gb",
+    selectedSeriesValues: string[],
   ): Promise<UsageDailySeriesRow[]> {
     const scoped = this.buildS3DailyScopedWhere(scope);
     const filterPredicates = this.buildCostDailyFilterPredicates(filters, scoped.nextIndex);
+    const bind: unknown[] = [...scoped.params, ...filterPredicates.params];
+    const seriesFilter =
+      selectedSeriesValues.length > 0
+        ? (() => {
+            bind.push(selectedSeriesValues);
+            return `AND (${OPERATION_GROUP_SQL}) = ANY($${bind.length}::text[])`;
+          })()
+        : "";
     const usageCondition =
       usageYAxis === "transfer_gb"
         ? `
@@ -554,14 +674,7 @@ export class S3UsageInsightsRepository {
           AND COALESCE(NULLIF(operation, ''), '') NOT IN ('Unspecified', 'None', '')
           AND NOT (COALESCE(total_cost, 0) = 0 AND COALESCE(usage_quantity, 0) >= 1)
         `
-        : usageYAxis === "api_operations"
-          ? `
-            LOWER(TRIM(COALESCE(NULLIF(pricing_unit, ''), ''))) = 'requests'
-            AND operation IS NOT NULL
-            AND NULLIF(BTRIM(operation), '') IS NOT NULL
-            AND LOWER(TRIM(COALESCE(operation, ''))) NOT IN ('unspecified', 'none')
-          `
-          : "LOWER(TRIM(COALESCE(NULLIF(pricing_unit, ''), ''))) = 'requests'";
+        : "LOWER(TRIM(COALESCE(NULLIF(pricing_unit, ''), ''))) = 'requests'";
 
     return sequelize.query<UsageDailySeriesRow>(
       `
@@ -573,6 +686,7 @@ export class S3UsageInsightsRepository {
       WHERE ${scoped.whereClause}
         AND ${filterPredicates.clause}
         AND ${usageCondition}
+        ${seriesFilter}
         AND bucket_name IS NOT NULL
         AND NULLIF(BTRIM(bucket_name), '') IS NOT NULL
         AND LOWER(COALESCE(usage_type, '')) <> 'use1-storagelens-objcount'
@@ -580,47 +694,60 @@ export class S3UsageInsightsRepository {
       GROUP BY usage_date, ${OPERATION_GROUP_SQL}
       ORDER BY usage_date ASC, value DESC;
       `,
-      { bind: [...scoped.params, ...filterPredicates.params], type: QueryTypes.SELECT },
+      { bind, type: QueryTypes.SELECT },
     );
   }
 
-  private async getStorageClassSeries(
+  private async getFilterOptions(
     scope: DashboardScope,
     filters: S3UsageInsightsFilters,
-    usageYAxis: "storage_gb_mo" | "retrieval_gb",
-  ): Promise<UsageDailySeriesRow[]> {
+    bucketTable: S3UsageInsightsResponse["bucketTable"],
+  ): Promise<S3UsageInsightsResponse["filterOptions"]> {
     const scoped = this.buildS3DailyScopedWhere(scope);
-    const filterPredicates = this.buildCostDailyFilterPredicates(filters, scoped.nextIndex);
-    const usageCondition =
-      usageYAxis === "storage_gb_mo"
-        ? `
-          LOWER(TRIM(COALESCE(NULLIF(cost_category, ''), ''))) = 'storage'
-          AND LOWER(TRIM(COALESCE(NULLIF(pricing_unit, ''), ''))) IN ('gb-mo', 'gb-month', 'gbytehrs')
-        `
-        : `
-          LOWER(TRIM(COALESCE(NULLIF(cost_category, ''), ''))) = 'retrieval'
-          AND LOWER(TRIM(COALESCE(NULLIF(pricing_unit, ''), ''))) = 'gb'
-        `;
-    return sequelize.query<UsageDailySeriesRow>(
+    const costFilterPredicates = this.buildCostDailyFilterPredicates(filters, scoped.nextIndex);
+    const bind = [...scoped.params, ...costFilterPredicates.params];
+
+    const operationRows = await sequelize.query<{ value: string }>(
       `
-      SELECT
-        usage_date::text AS usage_date,
-        COALESCE(NULLIF(storage_class, ''), 'Unknown') AS series_value,
-        COALESCE(SUM(COALESCE(usage_quantity, 0)), 0)::double precision AS value
+      SELECT DISTINCT ${OPERATION_GROUP_SQL} AS value
       FROM s3_cost_daily
       WHERE ${scoped.whereClause}
-        AND ${filterPredicates.clause}
-        AND ${usageCondition}
-        AND storage_class IS NOT NULL
-        AND NULLIF(BTRIM(storage_class), '') IS NOT NULL
-        AND bucket_name IS NOT NULL
-        AND NULLIF(BTRIM(bucket_name), '') IS NOT NULL
-        AND LOWER(COALESCE(usage_type, '')) <> 'use1-storagelens-objcount'
-        AND LOWER(COALESCE(operation, '')) <> 'storagelens'
-      GROUP BY usage_date, COALESCE(NULLIF(storage_class, ''), 'Unknown')
-      ORDER BY usage_date ASC, value DESC;
+        AND ${costFilterPredicates.clause}
+        AND operation IS NOT NULL
+        AND NULLIF(BTRIM(operation), '') IS NOT NULL
+      ORDER BY value;
       `,
-      { bind: [...scoped.params, ...filterPredicates.params], type: QueryTypes.SELECT },
+      { bind, type: QueryTypes.SELECT },
     );
+
+    const regionRows = await sequelize.query<{ value: string }>(
+      `
+      SELECT DISTINCT COALESCE(NULLIF(region, ''), 'global') AS value
+      FROM s3_cost_daily
+      WHERE ${scoped.whereClause}
+        AND ${costFilterPredicates.clause}
+      ORDER BY value;
+      `,
+      { bind, type: QueryTypes.SELECT },
+    );
+
+    const accountRows = await sequelize.query<{ value: string }>(
+      `
+      SELECT DISTINCT COALESCE(NULLIF(account_id, ''), 'Unspecified') AS value
+      FROM s3_cost_daily
+      WHERE ${scoped.whereClause}
+        AND ${costFilterPredicates.clause}
+      ORDER BY value;
+      `,
+      { bind, type: QueryTypes.SELECT },
+    );
+
+    return {
+      operation: Array.from(new Set(operationRows.map((row) => String(row.value ?? "").trim()).filter((value) => value.length > 0))),
+      bucket: Array.from(new Set(bucketTable.map((row) => String(row.bucketName ?? "").trim()).filter((value) => value.length > 0))),
+      region: Array.from(new Set(regionRows.map((row) => String(row.value ?? "").trim()).filter((value) => value.length > 0))),
+      account: Array.from(new Set(accountRows.map((row) => String(row.value ?? "").trim()).filter((value) => value.length > 0))),
+    };
   }
 }
+

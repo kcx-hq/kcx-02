@@ -41,16 +41,28 @@ export type S3BucketUsageRow = {
   dominantUsageType: "Request Heavy" | "Storage Heavy" | "Transfer Heavy" | "Retrieval Heavy" | "Mixed Heavy";
 };
 
+export type S3OperationGroupUsageRow = {
+  operationGroup: string;
+  requestCount: number;
+  transferGb: number;
+  requestPct: number;
+  transferPct: number;
+};
+
 type Props = {
+  seriesBy?: "bucket" | "operation_group";
   rows: S3UsageInsightsRow[];
   bucketRows?: S3BucketUsageRow[];
-  usageCategory?: "" | "storage" | "data_transfer" | "request" | "object_count" | "api_operations" | "storage_gb_mo" | "retrieval_gb";
+  operationGroupRows?: S3OperationGroupUsageRow[];
+  usageCategory?: "" | "storage" | "data_transfer" | "request" | "object_count";
   onBucketClick?: (bucketName: string) => void;
 };
 
 export function S3UsageInsightsTable({
+  seriesBy = "bucket",
   rows,
   bucketRows,
+  operationGroupRows,
   usageCategory = "",
   onBucketClick,
 }: Props) {
@@ -146,14 +158,45 @@ export function S3UsageInsightsTable({
     ],
     [onBucketClick],
   );
+  const operationGroupColumnDefs = useMemo<ColDef<any>[]>(
+    () => [
+      { headerName: "Operation Group", field: "operationGroup", minWidth: 220 },
+      {
+        headerName: "Request Count",
+        field: "requestCount",
+        minWidth: 170,
+        valueFormatter: (params: { value: number }) => quantityFormatterCount.format(Number(params.value ?? 0)),
+      },
+      {
+        headerName: "Transfer (GB)",
+        field: "transferGb",
+        minWidth: 170,
+        valueFormatter: (params: { value: number }) => quantityFormatterPrecise.format(Number(params.value ?? 0)),
+      },
+      {
+        headerName: "% of Request",
+        field: "requestPct",
+        minWidth: 150,
+        valueFormatter: (params: { value: number }) => `${Number(params.value ?? 0).toFixed(2)}%`,
+      },
+      {
+        headerName: "% of Transfer",
+        field: "transferPct",
+        minWidth: 160,
+        valueFormatter: (params: { value: number }) => `${Number(params.value ?? 0).toFixed(2)}%`,
+      },
+    ],
+    [],
+  );
 
   const showingBucketTable = Array.isArray(bucketRows) && bucketRows.length > 0;
+  const showingOperationGroupTable = seriesBy === "operation_group" && Array.isArray(operationGroupRows) && operationGroupRows.length > 0;
 
   return (
     <div className="s3-usage-table-shell">
       <BaseDataTable
-        columnDefs={showingBucketTable ? bucketColumnDefs : usageColumnDefs}
-        rowData={showingBucketTable ? ((bucketRows ?? []) as any[]) : (rows as any[])}
+        columnDefs={showingOperationGroupTable ? operationGroupColumnDefs : showingBucketTable ? bucketColumnDefs : usageColumnDefs}
+        rowData={showingOperationGroupTable ? ((operationGroupRows ?? []) as any[]) : showingBucketTable ? ((bucketRows ?? []) as any[]) : (rows as any[])}
         emptyMessage="No usage rows available for the selected filters."
         pagination
         paginationPageSize={10}

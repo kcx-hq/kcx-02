@@ -1,8 +1,8 @@
 import { QueryTypes } from "sequelize";
 
-import { sequelize } from "../../../models/index.js";
-import type { DashboardScope } from "../dashboard.types.js";
-import { buildDashboardFilter } from "../shared/filter-builder.js";
+import { sequelize } from "../../../../models/index.js";
+import type { DashboardScope } from "../../dashboard.types.js";
+import { buildDashboardFilter } from "../../shared/filter-builder.js";
 import type {
   S3CostBucketInsight,
   S3CostBucketTableInsight,
@@ -2878,3 +2878,4 @@ END
     }));
   }
 }
+

@@ -1,7 +1,7 @@
 import { QueryTypes } from "sequelize";
 
-import { sequelize } from "../../../models/index.js";
-import type { DashboardScope } from "../dashboard.types.js";
+import { sequelize } from "../../../../models/index.js";
+import type { DashboardScope } from "../../dashboard.types.js";
 
 type BucketConfigRow = {
   bucket_name: string | null;
@@ -101,15 +101,15 @@ export class S3BucketDetailRepository {
         bucket_name,
         account_id,
         region,
-        owner,
-        environment,
+        NULL::text AS owner,
+        NULL::text AS environment,
         encryption_status,
         versioning_status,
-        public_access_status,
+        public_access_block_status AS public_access_status,
         lifecycle_status,
         lifecycle_rules_count,
-        enabled_lifecycle_rules_count,
-        transition_rules_count,
+        COALESCE(lifecycle_rules_count, 0) AS enabled_lifecycle_rules_count,
+        0::bigint AS transition_rules_count,
         replication_status,
         replication_rules_count,
         replication_config_json,
@@ -311,3 +311,4 @@ export class S3BucketDetailRepository {
     return Math.max(0, gib * 1073741824);
   }
 }
+

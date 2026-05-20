@@ -1,30 +1,24 @@
-import type { DashboardScope } from "../dashboard.types.js";
+import type { DashboardScope } from "../../dashboard.types.js";
 
 export type S3UsageInsightsFilters = {
   xAxis?: "date" | "bucket" | "region" | "account";
-  usageBy?: "bucket" | "operation_group" | "storage_class" | "operation";
+  usageBy?: "bucket" | "operation_group" | "operation";
   seriesBy?: string;
   compareBy?: "none" | "previous_period";
   yAxis?:
     | "storage_gb"
     | "request_count"
     | "transfer_gb"
-    | "object_count"
-    | "api_operations"
-    | "storage_gb_month"
-    | "retrieval_gb";
+    | "object_count";
   usageYAxis?:
     | "storage_gb"
     | "request_count"
     | "transfer_gb"
-    | "object_count"
-    | "api_operations"
-    | "storage_gb_mo"
-    | "retrieval_gb";
+    | "object_count";
   bucket?: string | null;
   region?: string[];
   account?: string[];
-  storageClass?: string[];
+  seriesValues?: string[];
 };
 
 export type S3UsageInsightsResponse = {
@@ -53,7 +47,19 @@ export type S3UsageInsightsResponse = {
         name: string;
         values: number[];
       }>;
+      operationGroupTooltip?: Array<{
+        usageDate: string;
+        operationGroup: "Read" | "Write" | "List & Metadata" | "Other";
+        operation: string;
+        cost: number;
+      }>;
     };
+  };
+  filterOptions: {
+    operation: string[];
+    bucket: string[];
+    region: string[];
+    account: string[];
   };
 };
 
@@ -61,3 +67,4 @@ export type S3UsageInsightsRepositoryInput = {
   scope: DashboardScope;
   filters: S3UsageInsightsFilters;
 };
+

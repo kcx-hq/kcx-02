@@ -23,8 +23,7 @@ type Props = {
 
 const getSeriesLabel = (seriesBy: S3UsageFilterValue["seriesBy"]) => {
   if (seriesBy === "bucket") return "Bucket";
-  if (seriesBy === "operation_group") return "Operation Group";
-  return "Storage Class";
+  return "Operation Group";
 };
 
 const getCategoryLabel = (category: S3UsageFilterValue["category"]) => {
@@ -32,20 +31,27 @@ const getCategoryLabel = (category: S3UsageFilterValue["category"]) => {
   if (category === "data_transfer") return "Data transfer";
   if (category === "request") return "Request";
   if (category === "object_count") return "Object count";
-  if (category === "api_operations") return "API Operations";
-  if (category === "storage_gb_mo") return "Storage GB-Mo";
-  if (category === "retrieval_gb") return "Retrieval GB";
   return "All";
 };
 
 const CATEGORY_BY_USAGE: Record<S3UsageFilterValue["seriesBy"], Array<Exclude<S3UsageFilterValue["category"], "">>> = {
-  bucket: ["storage", "request", "data_transfer", "object_count", "api_operations"],
-  operation_group: ["request", "data_transfer", "api_operations"],
-  storage_class: ["storage_gb_mo", "retrieval_gb"],
+  bucket: ["storage", "request", "data_transfer", "object_count"],
+  operation_group: ["request", "data_transfer"],
 };
 
 const getCompareLabel = (mode: S3UsageFilterValue["compareMode"]) =>
   mode === "previous_period" ? "Previous period" : "None";
+
+const sanitizeOptions = (options: unknown): string[] => {
+  if (!Array.isArray(options)) return [];
+  return Array.from(
+    new Set(
+      options
+        .map((item) => String(item ?? "").trim())
+        .filter((item) => item.length > 0),
+    ),
+  );
+};
 
 export function S3UsageFilters({ value, filterOptions, onChange, onReset, isLoading = false }: Props) {
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -58,7 +64,6 @@ export function S3UsageFilters({ value, filterOptions, onChange, onReset, isLoad
   const seriesByOptions: Array<S3UsageFilterValue["seriesBy"]> = [
     "bucket",
     "operation_group",
-    "storage_class",
   ];
   const xAxisOptions: Array<NonNullable<S3UsageInsightsFiltersQuery["xAxis"]>> = ["date", "bucket", "region", "account"];
   const categoryOptions: Array<Exclude<S3UsageFilterValue["category"], "">> = CATEGORY_BY_USAGE[value.seriesBy] ?? CATEGORY_BY_USAGE.bucket;
@@ -102,11 +107,13 @@ export function S3UsageFilters({ value, filterOptions, onChange, onReset, isLoad
     return options.filter((option) => normalize(option).includes(needle));
   };
   const draftSeriesValueOptions = useMemo(() => {
-    if (draftSeriesBy === "bucket") return filterOptions?.bucket ?? [];
-    if (draftSeriesBy === "operation_group") return filterOptions?.operation ?? [];
-    if (draftSeriesBy === "storage_class") return filterOptions?.storageClass ?? [];
+    const options = (filterOptions ?? {}) as Record<string, unknown>;
+    if (draftSeriesBy === "bucket") return sanitizeOptions(options.bucket);
+    if (draftSeriesBy === "operation_group") {
+      return sanitizeOptions(options.operation ?? options.operationGroup ?? options.operation_group);
+    }
     return [];
-  }, [draftSeriesBy, filterOptions?.bucket, filterOptions?.operation, filterOptions?.storageClass]);
+  }, [draftSeriesBy, filterOptions]);
 
   const chips = useMemo<FilterChip[]>(() => {
     const items: FilterChip[] = [
@@ -130,14 +137,6 @@ export function S3UsageFilters({ value, filterOptions, onChange, onReset, isLoad
         label: getSeriesLabel(value.seriesBy),
         value: value.seriesValue,
         onRemove: () => onChange({ ...value, seriesValue: "" }),
-      });
-    }
-    if (value.storageClass) {
-      items.push({
-        id: "storageClass",
-        label: "Storage Type",
-        value: value.storageClass,
-        onRemove: () => onChange({ ...value, storageClass: "" }),
       });
     }
     if (value.chartType !== "bar") {
@@ -219,6 +218,7 @@ export function S3UsageFilters({ value, filterOptions, onChange, onReset, isLoad
                           onClick={() => {
                             setDraftSeriesBy(option);
                             setDraftSeriesValue("");
+                            setSeriesValueSearch("");
                           }}
                         >
                           <span className="cost-explorer-filter-option__content">

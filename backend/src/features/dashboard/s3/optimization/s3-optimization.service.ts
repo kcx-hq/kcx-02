@@ -1,4 +1,4 @@
-import type { DashboardScope } from "../dashboard.types.js";
+import type { DashboardScope } from "../../dashboard.types.js";
 import { S3OptimizationRepository } from "./s3-optimization.repository.js";
 import type {
   S3BucketLifecycleInsightResponse,
@@ -16,11 +16,11 @@ import type {
   S3ReplicationSetupPreviewResponse,
   S3ReplicationSetupRequest,
 } from "./s3-optimization.types.js";
-import { BadRequestError, ForbiddenError, NotFoundError } from "../../../errors/http-errors.js";
-import { BillingSource, CloudConnectionV2, CloudProvider, S3BucketConfigSnapshot } from "../../../models/index.js";
-import { logger } from "../../../utils/logger.js";
-import { assumeRole } from "../../cloud-connections/aws/infrastructure/aws-sts.service.js";
-import { collectS3BucketConfigSnapshotsForBillingSource } from "../../billing/services/s3-bucket-config-snapshot.service.js";
+import { BadRequestError, ForbiddenError, NotFoundError } from "../../../../errors/http-errors.js";
+import { BillingSource, CloudConnectionV2, CloudProvider, S3BucketConfigSnapshot } from "../../../../models/index.js";
+import { logger } from "../../../../utils/logger.js";
+import { assumeRole } from "../../../cloud-connections/aws/infrastructure/aws-sts.service.js";
+import { collectS3BucketConfigSnapshotsForBillingSource } from "../../../billing/services/s3-bucket-config-snapshot.service.js";
 import {
   DeleteBucketLifecycleCommand,
   GetBucketLocationCommand,
@@ -1239,3 +1239,4 @@ export class S3OptimizationService {
     }
   }
 }
+

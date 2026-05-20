@@ -2056,25 +2056,21 @@ export type S3CostInsightsFiltersQuery = {
     | "request_count"
     | "transfer_gb"
     | "object_count"
-    | "api_operations"
     | "storage_gb_mo"
     | "retrieval_gb";
 };
 
 export type S3UsageInsightsFiltersQuery = {
   xAxis?: "date" | "bucket" | "region" | "account";
-  usageBy?: "bucket" | "operation_group" | "storage_class";
+  usageBy?: "bucket" | "operation_group";
+  seriesValues?: string[];
   yAxis?:
     | "storage_gb"
     | "request_count"
     | "transfer_gb"
-    | "object_count"
-    | "api_operations"
-    | "storage_gb_month"
-    | "retrieval_gb";
+    | "object_count";
   compareBy?: "none" | "previous_period";
   bucket?: string | null;
-  storageClass?: string[];
   region?: string[];
   account?: string[];
 };

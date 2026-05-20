@@ -266,3 +266,4 @@ export type S3ReplicationRoleAutoCreateResponse = {
   roleName: string;
   roleArn: string;
 };
+

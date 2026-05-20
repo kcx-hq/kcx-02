@@ -1,8 +1,8 @@
 import { QueryTypes } from "sequelize";
 
-import { sequelize } from "../../../models/index.js";
-import type { DashboardScope } from "../dashboard.types.js";
-import { NotFoundError } from "../../../errors/http-errors.js";
+import { sequelize } from "../../../../models/index.js";
+import type { DashboardScope } from "../../dashboard.types.js";
+import { NotFoundError } from "../../../../errors/http-errors.js";
 import type {
   S3BucketLifecycleInsight,
   S3LifecycleBucketProfile,
@@ -14,7 +14,7 @@ import type {
   S3PolicyActionStatus,
   S3BucketReplicationRow,
 } from "./s3-optimization.types.js";
-import { logger } from "../../../utils/logger.js";
+import { logger } from "../../../../utils/logger.js";
 
 type S3OptimizationDbRow = {
   bucket_name: string | null;
@@ -999,3 +999,4 @@ export class S3OptimizationRepository {
     };
   }
 }
+

@@ -1,7 +1,7 @@
 import { QueryTypes } from "sequelize";
 
-import { sequelize } from "../../../models/index.js";
-import type { DashboardScope } from "../dashboard.types.js";
+import { sequelize } from "../../../../models/index.js";
+import type { DashboardScope } from "../../dashboard.types.js";
 import type {
   S3BucketHealthScoreInsight,
   S3BucketOptimizationScoreInsight,
@@ -9,7 +9,7 @@ import type {
   S3FinopsBucketBase,
   S3StorageAnomalyInsight,
   S3StorageClassEfficiencyInsight,
-} from "./s3-cost-insights.types.js";
+} from "../cost-insights/s3-cost-insights.types.js";
 
 type BucketConfigRow = {
   bucket_name: string | null;
@@ -390,3 +390,4 @@ export class S3BucketScoreService {
     return items.slice(0, 500);
   }
 }
+

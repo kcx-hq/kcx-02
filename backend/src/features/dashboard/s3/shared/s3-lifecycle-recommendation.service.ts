@@ -3,7 +3,7 @@ import type {
   S3LifecycleRecommendationInsight,
   S3RecommendationConfidence,
   S3StorageAnomalyInsight,
-} from "./s3-cost-insights.types.js";
+} from "../cost-insights/s3-cost-insights.types.js";
 
 const createRecommendationId = (bucketName: string, category: string): string =>
   `${bucketName}:${category}`.toLowerCase().replace(/[^a-z0-9:_-]/g, "-");
@@ -179,3 +179,4 @@ export class S3LifecycleRecommendationService {
     };
   }
 }
+

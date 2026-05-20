@@ -1,12 +1,12 @@
-import type { DashboardScope } from "../dashboard.types.js";
+import type { DashboardScope } from "../../dashboard.types.js";
 import { S3CostInsightsRepository } from "./s3-cost-insights.repository.js";
-import { S3BucketScoreService } from "./s3-bucket-score.service.js";
-import { S3FinopsActionItemService } from "./s3-finops-action-item.service.js";
-import { S3LifecycleRecommendationService } from "./s3-lifecycle-recommendation.service.js";
-import { S3OwnerMappingService } from "./s3-owner-mapping.service.js";
-import { S3RequestCostIntelligenceService } from "./s3-request-cost-intelligence.service.js";
-import { S3SavingsEstimationService } from "./s3-savings-estimation.service.js";
-import { S3StorageAnomalyService } from "./s3-storage-anomaly.service.js";
+import { S3BucketScoreService } from "../shared/s3-bucket-score.service.js";
+import { S3FinopsActionItemService } from "../shared/s3-finops-action-item.service.js";
+import { S3LifecycleRecommendationService } from "../shared/s3-lifecycle-recommendation.service.js";
+import { S3OwnerMappingService } from "../shared/s3-owner-mapping.service.js";
+import { S3RequestCostIntelligenceService } from "../shared/s3-request-cost-intelligence.service.js";
+import { S3SavingsEstimationService } from "../shared/s3-savings-estimation.service.js";
+import { S3StorageAnomalyService } from "../anomalies/s3-storage-anomaly.service.js";
 import type { S3CostInsightsFilters, S3CostInsightsResponse, S3ExecutiveSummaryCard } from "./s3-cost-insights.types.js";
 
 const toDate = (value: string): Date => new Date(`${value}T00:00:00.000Z`);
@@ -729,3 +729,4 @@ export class S3CostInsightsService {
     ];
   }
 }
+

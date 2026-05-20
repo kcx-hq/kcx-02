@@ -7,6 +7,17 @@ import {
   type Sequelize,
 } from "sequelize";
 
+export const FACT_ANOMALY_ALLOWED_TYPES = [
+  "sudden_cost_spike",
+  "new_high_cost_instance",
+  "cost_drop",
+  "S3 Storage Cost Spike",
+  "S3 Data Transfer Spike",
+  "S3 Request Cost Spike",
+  "S3 Storage Growth Anomaly",
+] as const;
+const FACT_ANOMALY_ALLOWED_TYPES_LIST: string[] = Array.from(FACT_ANOMALY_ALLOWED_TYPES);
+
 class FactAnomalies extends Model<InferAttributes<FactAnomalies>, InferCreationAttributes<FactAnomalies>> {
   declare id: CreationOptional<string>;
   declare tenantId: CreationOptional<string | null>;
@@ -57,7 +68,14 @@ const createFactAnomaliesModel = (sequelize: Sequelize): typeof FactAnomalies =>
       expectedCost: { type: DataTypes.DECIMAL(18, 6), allowNull: true, field: "expected_cost" },
       actualCost: { type: DataTypes.DECIMAL(18, 6), allowNull: true, field: "actual_cost" },
       deltaCost: { type: DataTypes.DECIMAL(18, 6), allowNull: true, field: "delta_cost" },
-      anomalyType: { type: DataTypes.STRING(50), allowNull: true, field: "anomaly_type" },
+      anomalyType: {
+        type: DataTypes.STRING(50),
+        allowNull: true,
+        field: "anomaly_type",
+        validate: {
+          isIn: [FACT_ANOMALY_ALLOWED_TYPES_LIST],
+        },
+      },
       baselineType: { type: DataTypes.STRING(50), allowNull: true, field: "baseline_type" },
       deltaPercent: { type: DataTypes.DECIMAL(10, 4), allowNull: true, field: "delta_percent" },
       currencyCode: { type: DataTypes.STRING(10), allowNull: true, defaultValue: "USD", field: "currency_code" },

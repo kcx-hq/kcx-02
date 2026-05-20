@@ -1,5 +1,4 @@
 import { useMemo, useState } from "react";
-import { AnomalyDetectionHeader } from "./components/AnomalyDetectionHeader";
 import { type AnomalyFiltersState, AnomalyFiltersPanel } from "./components/AnomalyFiltersPanel";
 import { AnomalyDetectionKpis } from "./components/AnomalyDetectionKpis";
 import { type AnomalyTableRow, AnomalyDetectionTable } from "./components/AnomalyDetectionTable";
@@ -29,15 +28,6 @@ const dateFormatter = new Intl.DateTimeFormat("en-US", {
   year: "numeric",
 });
 
-const dateTimeFormatter = new Intl.DateTimeFormat("en-US", {
-  month: "2-digit",
-  day: "2-digit",
-  year: "numeric",
-  hour: "2-digit",
-  minute: "2-digit",
-  second: "2-digit",
-  timeZoneName: "short",
-});
 
 const shortDateTimeFormatter = new Intl.DateTimeFormat("en-US", {
   month: "2-digit",
@@ -55,12 +45,6 @@ const formatDate = (value: string | null | undefined): string => {
   if (!value) return "-";
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? value : dateFormatter.format(parsed);
-};
-
-const formatDateTime = (value: string | null | undefined): string => {
-  if (!value) return "-";
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? value : dateTimeFormatter.format(parsed);
 };
 
 const formatPercent = (value: number | string | null | undefined): string => {
@@ -93,10 +77,8 @@ const formatSeenWindowDuration = (anomaly: AnomalyRecord): string => {
   const end = new Date(endRaw);
   if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return "-";
 
-  const startLabel = formatShortDateTime(start);
-  const endLabel = isActive ? "Now" : formatShortDateTime(end);
   const durationLabel = formatDurationFromMs(Math.max(0, end.getTime() - start.getTime()));
-  return `${startLabel} -> ${endLabel} (${durationLabel})`;
+  return durationLabel;
 };
 
 const toSentence = (value: string | null | undefined): string => {
@@ -276,25 +258,6 @@ export default function AnomaliesAlertsPage() {
   const rawRows = anomaliesQuery.data?.items ?? [];
   const dedupedRows = useMemo(() => dedupeAnomaliesByIncident(rawRows), [rawRows]);
 
-  const insights = useMemo(() => {
-    const items = [
-      `Time: ${appliedFilters.timePeriod}`,
-      `Account: ${appliedFilters.accountName}`,
-      `Service: ${appliedFilters.service}`,
-      `Region: ${appliedFilters.region}`,
-      `Marketplace: ${appliedFilters.marketplace}`,
-      `Impact Type: ${appliedFilters.costImpactType}`,
-    ];
-
-    if (appliedFilters.costImpactValue.trim()) {
-      items.push(`Cost Impact: ${appliedFilters.costImpactOperator} ${appliedFilters.costImpactValue}`);
-    } else {
-      items.push(`Cost Impact: ${appliedFilters.costImpactOperator}`);
-    }
-
-    return items;
-  }, [appliedFilters]);
-
   const filteredAnomalies = useMemo(() => {
     const minImpact = appliedFilters.costImpactValue.trim() ? Number(appliedFilters.costImpactValue) : null;
     const normalizedSearch = searchTerm.trim().toLowerCase();
@@ -374,22 +337,6 @@ export default function AnomaliesAlertsPage() {
   const impactPct =
     totalCost > 0 ? `${((totalCostImpact / totalCost) * 100).toFixed(2)}%` : "0.00%";
 
-  const fetchedCount = dedupedRows.length;
-
-  const asOfSourceRows = dedupedRows.length > 0 ? dedupedRows : rawRows;
-  const asOfLabelFromDeduped = useMemo(() => {
-    const latest = asOfSourceRows
-      .map((item) => item.detected_at)
-      .filter((value): value is string => Boolean(value))
-      .sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0];
-    return `As of ${latest ? formatDateTime(latest) : "--/--/----, --:--:--"}`;
-  }, [asOfSourceRows]);
-
-  function openFilters() {
-    setDraftFilters(appliedFilters);
-    setIsFiltersOpen(true);
-  }
-
   function resetDraftFilters() {
     setDraftFilters(DEFAULT_FILTERS);
   }
@@ -401,17 +348,6 @@ export default function AnomaliesAlertsPage() {
 
   return (
     <section className="dashboard-page anomalies-alerts-page anomaly-ref-page" aria-label="Anomaly Detection">
-      <AnomalyDetectionHeader onOpenFilters={openFilters} asOfLabel={asOfLabelFromDeduped} />
-
-      <section className="anomaly-ref-insights" aria-label="Applied filter insights">
-        {insights.map((item) => (
-          <span key={item} className="anomaly-ref-insight-chip">
-            {item}
-          </span>
-        ))}
-        <span className="anomaly-ref-insight-chip">Fetched: {fetchedCount} anomalies</span>
-      </section>
-
       <AnomalyDetectionKpis
         anomalyCount={tableRows.length}
         totalCostImpact={currencyFormatter.format(totalCostImpact)}

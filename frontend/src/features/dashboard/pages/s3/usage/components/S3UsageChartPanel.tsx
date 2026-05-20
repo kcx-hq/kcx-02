@@ -101,11 +101,11 @@ export function S3UsageChartPanel({
   }, [isChartTypeMenuOpen]);
 
   const isBucketStorageView = seriesBy === "bucket" && yAxisMetric === "usage_quantity" && category === "storage";
-  const isRequestCountView = yAxisMetric === "usage_quantity" && (category === "request" || category === "api_operations");
+  const isRequestCountView = yAxisMetric === "usage_quantity" && category === "request";
   const isObjectCountView = yAxisMetric === "usage_quantity" && category === "object_count";
   const usageQuantityUnitLabel = useMemo(() => {
     if (yAxisMetric !== "usage_quantity") return "Units";
-    if (category === "request" || category === "object_count" || category === "api_operations") return "Count";
+    if (category === "request" || category === "object_count") return "Count";
     return "GB";
   }, [category, yAxisMetric]);
 
@@ -142,6 +142,14 @@ export function S3UsageChartPanel({
           : xAxis === "account"
             ? "Account"
             : "Date";
+    const operationTooltipRows = breakdown?.operationGroupTooltip ?? [];
+    const operationTooltipMap = new Map<string, Array<{ operation: string; cost: number }>>();
+    for (const row of operationTooltipRows) {
+      const key = `${row.usageDate}||${row.operationGroup}`;
+      const list = operationTooltipMap.get(key) ?? [];
+      list.push({ operation: row.operation, cost: Number(row.cost ?? 0) });
+      operationTooltipMap.set(key, list);
+    }
 
     return {
       color: CHART_COLORS,
@@ -179,6 +187,44 @@ export function S3UsageChartPanel({
             if (match) {
               const matchValue = Number(match.value ?? 0);
               if (matchValue === 0) return "";
+              if (xAxis === "date" && seriesBy === "operation_group" && (category === "request" || category === "data_transfer")) {
+                const usageDateLabel = title;
+                const rawDate = (breakdown?.labels ?? []).find((label) => {
+                  const parsed = new Date(`${label}T00:00:00.000Z`);
+                  const display = Number.isNaN(parsed.getTime()) ? label : xAxisFormatter.format(parsed);
+                  return display === usageDateLabel;
+                }) ?? usageDateLabel;
+                const groupName = String(match.seriesName ?? "Other");
+                const key = `${rawDate}||${groupName}`;
+                const isRequestUsage = category === "request";
+                const operations = (operationTooltipMap.get(key) ?? [])
+                  .filter((item) => Number(item.cost ?? 0) !== 0)
+                  .slice(0, 15);
+                const lines = operations
+                  .map(
+                    (item) =>
+                      `<div style="display:flex;justify-content:space-between;gap:16px;color:#c7d6ea;">
+                        <span style="flex:1;min-width:0;word-break:break-word;overflow-wrap:anywhere;">${item.operation}</span>
+                        <span>${isRequestUsage ? numberFormatterCount.format(Number(item.cost ?? 0)) : numberFormatterPrecise.format(Number(item.cost ?? 0))}</span>
+                      </div>`,
+                  )
+                  .join("<br/>");
+                return `
+                  <div style="display:flex;flex-direction:column;gap:8px;min-width:220px;">
+                    <div style="font-size:15px;font-weight:700;color:#f4f8ff;">${usageDateLabel}</div>
+                    <div style="display:flex;justify-content:space-between;align-items:center;gap:16px;color:#eaf2ff;font-size:14px;font-weight:650;">
+                      <span style="flex:1;min-width:0;word-break:break-word;overflow-wrap:anywhere;">${String(match.marker ?? "")}${groupName}</span>
+                      <span>${isRequestUsage ? numberFormatterCount.format(matchValue) : numberFormatterPrecise.format(matchValue)}</span>
+                    </div>
+                    <div style="color:#9fb9d8;font-size:12px;font-weight:600;">Operations in ${groupName}</div>
+                    ${
+                      lines.length > 0
+                        ? `<div style="margin-top:2px;padding-top:8px;border-top:1px solid rgba(160,192,228,0.22);display:flex;flex-direction:column;gap:5px;">${lines}</div>`
+                        : `<div style="margin-top:2px;padding-top:8px;border-top:1px solid rgba(160,192,228,0.22);color:#9fb9d8;">No operation-level entries for this point.</div>`
+                    }
+                  </div>
+                `;
+              }
               return [
                 title,
                 `${String(match.marker ?? "")} ${String(match.seriesName ?? "")}: ${formatValue(matchValue)}`,
@@ -204,18 +250,18 @@ export function S3UsageChartPanel({
         itemWidth: 18,
         textStyle: { color: "#58706d", fontSize: 11 },
       },
-      grid: { left: isRequestCountView ? 36 : 52, right: 12, top: 54, bottom: 36, containLabel: true },
+      grid: { left: isRequestCountView ? 30 : 36, right: 16, top: 54, bottom: 54, containLabel: true },
       xAxis: {
         type: "category",
         name: xAxisName,
         nameLocation: "middle",
-        nameGap: 24,
-        nameTextStyle: { color: "#6d837e", fontSize: 11 },
+        nameGap: 34,
+        nameTextStyle: { color: "#4f6662", fontSize: 12, fontWeight: 600 },
         data: labels,
         axisLine: { lineStyle: { color: "#d7e4df" } },
         axisLabel: {
           color: "#5c7370",
-          fontSize: 11,
+          fontSize: 12,
           hideOverlap: true,
           rotate: 0,
           margin: 12,
@@ -229,29 +275,23 @@ export function S3UsageChartPanel({
           yAxisMetric === "usage_quantity"
             ? category === "storage"
               ? "Storage (GB)"
-              : category === "storage_gb_mo"
-                ? "Storage (GB-Mo)"
               : category === "data_transfer"
                 ? "Transfer (GB)"
-                : category === "retrieval_gb"
-                  ? "Retrieval (GB)"
                 : category === "request"
                   ? "Requests (Count)"
-                  : category === "api_operations"
-                    ? "API Operations (Count)"
                   : category === "object_count"
                     ? "Object Count"
                     : `Usage Quantity (${usageQuantityUnitLabel})`
             : getYAxisLabel(yAxisMetric),
         nameLocation: "middle",
         nameRotate: 90,
-        nameGap: isRequestCountView ? 52 : 66,
-        nameTextStyle: { color: "#6d837e", fontSize: isRequestCountView ? 10 : 11 },
+        nameGap: isRequestCountView ? 56 : 64,
+        nameTextStyle: { color: "#4f6662", fontSize: 12, fontWeight: 600 },
         axisLine: { show: false },
         splitLine: { show: true, lineStyle: { color: "#e1eae7", type: "solid", width: 1 } },
         axisLabel: {
           color: "#6d837e",
-          fontSize: 11,
+          fontSize: 12,
           formatter: (value: number) =>
             isQuantity
               ? isRequestCountView || isObjectCountView

@@ -1,4 +1,4 @@
-import type { DashboardScope } from "../dashboard.types.js";
+import type { DashboardScope } from "../../dashboard.types.js";
 
 export type S3BucketDetailChartPoint = {
   date: string;
@@ -57,3 +57,4 @@ export type S3BucketDetailResponse = {
     scopeType: DashboardScope["scopeType"];
   };
 };
+

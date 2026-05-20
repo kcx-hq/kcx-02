@@ -1,10 +1,10 @@
 import type { Request, Response } from "express";
 
-import { HTTP_STATUS } from "../../../constants/http-status.js";
-import { sendSuccess } from "../../../utils/api-response.js";
-import { buildDashboardRequest } from "../shared/dashboard-request-builder.js";
-import { DashboardScopeResolver } from "../shared/dashboard-scope-resolver.service.js";
-import { validateDashboardRequest } from "../shared/validator.js";
+import { HTTP_STATUS } from "../../../../constants/http-status.js";
+import { sendSuccess } from "../../../../utils/api-response.js";
+import { buildDashboardRequest } from "../../shared/dashboard-request-builder.js";
+import { DashboardScopeResolver } from "../../shared/dashboard-scope-resolver.service.js";
+import { validateDashboardRequest } from "../../shared/validator.js";
 import { S3UsageInsightsService } from "./s3-usage-insights.service.js";
 import type { S3UsageInsightsFilters } from "./s3-usage-insights.types.js";
 
@@ -42,19 +42,11 @@ const parseS3UsageFilters = (req: Request): S3UsageInsightsFilters => {
       ? "operation_group"
       : usageByRaw?.toLowerCase() === "operation_group"
         ? "operation_group"
-        : usageByRaw?.toLowerCase() === "storage_class"
-          ? "storage_class"
-          : usageByRaw?.toLowerCase() === "bucket"
+        : usageByRaw?.toLowerCase() === "bucket"
             ? "bucket"
             : undefined;
   const normalizedYAxis =
-    yAxisRaw?.toLowerCase() === "storage_gb_mo"
-      ? "storage_gb_month"
-      : yAxisRaw?.toLowerCase() === "storage_gb_month"
-        ? "storage_gb_month"
-        : yAxisRaw?.toLowerCase() === "retrieval_gb"
-          ? "retrieval_gb"
-          : yAxisRaw?.toLowerCase() === "storage_gb"
+    yAxisRaw?.toLowerCase() === "storage_gb"
             ? "storage_gb"
             : yAxisRaw?.toLowerCase() === "request_count"
               ? "request_count"
@@ -62,8 +54,6 @@ const parseS3UsageFilters = (req: Request): S3UsageInsightsFilters => {
                 ? "transfer_gb"
                 : yAxisRaw?.toLowerCase() === "object_count"
                   ? "object_count"
-                  : yAxisRaw?.toLowerCase() === "api_operations"
-                    ? "api_operations"
                     : undefined;
 
   return {
@@ -72,11 +62,11 @@ const parseS3UsageFilters = (req: Request): S3UsageInsightsFilters => {
     seriesBy: usageByRaw ?? undefined,
     compareBy: (compareBy ?? "none") as S3UsageInsightsFilters["compareBy"],
     yAxis: normalizedYAxis,
-    usageYAxis: (normalizedYAxis === "storage_gb_month" ? "storage_gb_mo" : normalizedYAxis) as S3UsageInsightsFilters["usageYAxis"],
+    usageYAxis: normalizedYAxis as S3UsageInsightsFilters["usageYAxis"],
     bucket: parseOptionalString(req.query.bucket),
     region: parseStringList(req.query.region),
     account: parseStringList(req.query.account),
-    storageClass: parseStringList(req.query.storageClass),
+    seriesValues: parseStringList(req.query.seriesValues),
   };
 };
 
@@ -96,3 +86,4 @@ export async function handleGetS3UsageInsights(req: Request, res: Response): Pro
     data,
   });
 }
+

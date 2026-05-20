@@ -1,4 +1,4 @@
-import type { DashboardScope } from "../dashboard.types.js";
+import type { DashboardScope } from "../../dashboard.types.js";
 import { S3BucketDetailRepository } from "./s3-bucket-detail.repository.js";
 import type { S3BucketDetailResponse } from "./s3-bucket-detail.types.js";
 
@@ -23,15 +23,70 @@ export class S3BucketDetailService {
 
   async getBucketDetail(scope: DashboardScope, bucketName: string): Promise<S3BucketDetailResponse> {
     const normalizedBucketName = decodeURIComponent(bucketName).trim();
-    const [config, latestStorageLens, curRegionFallback, requestSeries, transferSeries, storageSeries, estimatedCurrentVersionBytes] = await Promise.all([
-      this.repository.getBucketConfig(scope, normalizedBucketName),
-      this.repository.getLatestStorageLens(scope, normalizedBucketName),
-      this.repository.getCurRegionFallback(scope, normalizedBucketName),
-      this.repository.getRequestSeries(scope, normalizedBucketName),
-      this.repository.getTransferSeries(scope, normalizedBucketName),
-      this.repository.getStorageSeries(scope, normalizedBucketName),
-      this.repository.getEstimatedCurrentVersionBytes(scope, normalizedBucketName),
-    ]);
+    const loadBucketData = async (effectiveScope: DashboardScope) => {
+      const [config, latestStorageLens, curRegionFallback, requestSeries, transferSeries, storageSeries, estimatedCurrentVersionBytes] = await Promise.all([
+        this.repository.getBucketConfig(effectiveScope, normalizedBucketName),
+        this.repository.getLatestStorageLens(effectiveScope, normalizedBucketName),
+        this.repository.getCurRegionFallback(effectiveScope, normalizedBucketName),
+        this.repository.getRequestSeries(effectiveScope, normalizedBucketName),
+        this.repository.getTransferSeries(effectiveScope, normalizedBucketName),
+        this.repository.getStorageSeries(effectiveScope, normalizedBucketName),
+        this.repository.getEstimatedCurrentVersionBytes(effectiveScope, normalizedBucketName),
+      ]);
+      return {
+        config,
+        latestStorageLens,
+        curRegionFallback,
+        requestSeries,
+        transferSeries,
+        storageSeries,
+        estimatedCurrentVersionBytes,
+      };
+    };
+
+    const isDataEmpty = (data: {
+      config: unknown;
+      latestStorageLens: unknown;
+      requestSeries: Map<string, number>;
+      transferSeries: Map<string, number>;
+      storageSeries: Map<string, number>;
+    }): boolean =>
+      !data.config &&
+      !data.latestStorageLens &&
+      data.requestSeries.size === 0 &&
+      data.transferSeries.size === 0 &&
+      data.storageSeries.size === 0;
+
+    let loaded = await loadBucketData(scope);
+
+    // Fallback 1: relax region/sub-account restrictions when scope is too narrow.
+    if (isDataEmpty(loaded) && scope.scopeType === "global") {
+      loaded = await loadBucketData({
+        ...scope,
+        regionKey: undefined,
+        subAccountKey: undefined,
+      });
+    }
+
+    // Fallback 2: relax billing source filter as last resort to still resolve bucket details.
+    if (isDataEmpty(loaded) && scope.scopeType === "global" && Array.isArray(scope.billingSourceIds) && scope.billingSourceIds.length > 0) {
+      loaded = await loadBucketData({
+        ...scope,
+        billingSourceIds: undefined,
+        regionKey: undefined,
+        subAccountKey: undefined,
+      });
+    }
+
+    const {
+      config,
+      latestStorageLens,
+      curRegionFallback,
+      requestSeries,
+      transferSeries,
+      storageSeries,
+      estimatedCurrentVersionBytes,
+    } = loaded;
 
     const region =
       normalizeRegion(config?.region) ??
@@ -153,3 +208,4 @@ export class S3BucketDetailService {
     };
   }
 }
+

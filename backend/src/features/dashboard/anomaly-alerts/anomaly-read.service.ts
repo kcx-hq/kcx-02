@@ -3,9 +3,6 @@ import { QueryTypes } from "sequelize";
 import { NotFoundError } from "../../../errors/http-errors.js";
 import { sequelize } from "../../../models/index.js";
 import { logger } from "../../../utils/logger.js";
-import type { DashboardScope } from "../dashboard.types.js";
-import { S3StorageAnomalyService } from "../s3/s3-storage-anomaly.service.js";
-import type { S3StorageAnomalyInsight } from "../s3/s3-cost-insights.types.js";
 
 import type { AnomalyListQuery } from "./anomaly.schema.js";
 
@@ -57,6 +54,9 @@ type AnomalyRow = {
     rank: number | null;
     created_at: string;
   }>;
+  insight_title?: string;
+  insight_description?: string;
+  recommendation?: string | null;
 };
 
 type TotalCountRow = {
@@ -72,121 +72,6 @@ type AnomaliesListResponse = {
   };
 };
 
-const s3StorageAnomalyService = new S3StorageAnomalyService();
-
-const toIsoDate = (date: Date): string => date.toISOString().slice(0, 10);
-
-const resolveDateRange = (query: AnomalyListQuery): { from: string; to: string } => {
-  if (query.date_from && query.date_to) {
-    return {
-      from: query.date_from,
-      to: query.date_to,
-    };
-  }
-
-  const to = new Date();
-  const from = new Date(to.getTime());
-  from.setDate(from.getDate() - 13);
-  return {
-    from: toIsoDate(from),
-    to: toIsoDate(to),
-  };
-};
-
-const mapS3SeverityToAnomalySeverity = (severity: S3StorageAnomalyInsight["severity"]): "low" | "medium" | "high" => {
-  if (severity === "LOW") return "low";
-  if (severity === "MEDIUM") return "medium";
-  return "high";
-};
-
-const mapS3AnomalyToAnomalyRow = (tenantId: string, item: S3StorageAnomalyInsight): AnomalyRow => {
-  const detectedAt = item.reportDate ? `${item.reportDate}T00:00:00.000Z` : new Date().toISOString();
-  const id = `s3-${item.accountId}-${item.bucketName}-${item.reportDate}-${item.anomalyType}`;
-  const normalizedSeverity = mapS3SeverityToAnomalySeverity(item.severity);
-  const deltaCost = Number(item.estimatedMonthlyCostImpact || 0);
-  const deltaPercent = item.growthPercentage ?? null;
-  return {
-    id,
-    tenant_id: tenantId,
-    billing_source_id: null,
-    billing_source_name: "S3 Storage Lens",
-    cloud_connection_id: null,
-    cloud_connection_name: null,
-    usage_date: item.reportDate,
-    account_name: item.accountId,
-    service: "Amazon S3",
-    region: item.region,
-    detected_at: detectedAt,
-    anomaly_type: item.anomalyType,
-    anomaly_scope: "s3_bucket",
-    baseline_type: "7d_storage_growth",
-    source_granularity: "daily",
-    source_table: "s3_storage_lens_daily",
-    expected_cost: "0",
-    actual_cost: String(deltaCost),
-    delta_cost: String(deltaCost),
-    delta_percent: deltaPercent == null ? null : String(deltaPercent),
-    confidence_score:
-      item.confidence === "HIGH" ? "0.9" : item.confidence === "MEDIUM" ? "0.7" : "0.5",
-    severity: normalizedSeverity,
-    status: "open",
-    root_cause_hint: item.reason,
-    explanation_json: {
-      summary: item.reason,
-      recommendation: item.recommendedAction,
-      confidence: item.confidence,
-      severity: item.severity,
-      monthlyImpactUsd: item.estimatedMonthlyCostImpact,
-    },
-    metadata_json: {
-      service: "Amazon S3",
-      bucketName: item.bucketName,
-      accountId: item.accountId,
-      region: item.region,
-      storageGibCurrent: item.storageGibCurrent,
-      storageGib7dAgo: item.storageGib7dAgo,
-      growthGib: item.growthGib,
-      growthPercentage: item.growthPercentage,
-      estimatedMonthlyCostImpact: item.estimatedMonthlyCostImpact,
-      originalSeverity: item.severity,
-      anomalyConfidence: item.confidence,
-      recommendedAction: item.recommendedAction,
-    },
-    first_seen_at: detectedAt,
-    last_seen_at: detectedAt,
-    resolved_at: null,
-    ignored_reason: null,
-    created_at: detectedAt,
-    service_name: "Amazon S3",
-    region_name: item.region,
-    resource_id: item.bucketName,
-    resource_name: item.bucketName,
-    sub_account_id: item.accountId,
-    sub_account_name: item.accountId,
-    contributors: [],
-  };
-};
-
-const matchesS3AnomalyQueryFilter = (item: S3StorageAnomalyInsight, query: AnomalyListQuery): boolean => {
-  if (query.status && query.status !== "open") {
-    return false;
-  }
-
-  const normalizedSeverity = mapS3SeverityToAnomalySeverity(item.severity);
-  if (query.severity && query.severity !== normalizedSeverity) {
-    return false;
-  }
-
-  if (query.anomaly_type) {
-    const expected = query.anomaly_type.trim().toLowerCase();
-    if (item.anomalyType.trim().toLowerCase() !== expected) {
-      return false;
-    }
-  }
-
-  return true;
-};
-
 const compareAnomalyRowsDesc = (a: AnomalyRow, b: AnomalyRow): number => {
   const aUsage = new Date(a.usage_date).getTime();
   const bUsage = new Date(b.usage_date).getTime();
@@ -198,33 +83,29 @@ const compareAnomalyRowsDesc = (a: AnomalyRow, b: AnomalyRow): number => {
   return bCreated - aCreated;
 };
 
-async function getS3AnomalyRowsForTenant({
-  tenantId,
-  query,
-}: {
-  tenantId: string;
-  query: AnomalyListQuery;
-}): Promise<AnomalyRow[]> {
-  const dateRange = resolveDateRange(query);
-  const scope: DashboardScope = {
-    scopeType: "global",
-    tenantId,
-    from: dateRange.from,
-    to: dateRange.to,
-    billingSourceIds: typeof query.billing_source_id === "number" ? [query.billing_source_id] : undefined,
-  };
+const toInsightDecoratedRow = (row: AnomalyRow): AnomalyRow => {
+  const explanation = row.explanation_json && typeof row.explanation_json === "object" ? row.explanation_json : {};
+  const insightTitle =
+    typeof (explanation as Record<string, unknown>).insightTitle === "string"
+      ? String((explanation as Record<string, unknown>).insightTitle)
+      : row.anomaly_type ?? "Unknown Anomaly";
+  const insightDescription =
+    typeof (explanation as Record<string, unknown>).insightDescription === "string"
+      ? String((explanation as Record<string, unknown>).insightDescription)
+      : row.root_cause_hint ?? "";
+  const recommendation =
+    typeof (explanation as Record<string, unknown>).recommendation === "string"
+      ? String((explanation as Record<string, unknown>).recommendation)
+      : null;
 
-  try {
-    const result = await s3StorageAnomalyService.getStorageGrowthAnomalies(scope);
-    return result.items.filter((item) => matchesS3AnomalyQueryFilter(item, query)).map((item) => mapS3AnomalyToAnomalyRow(tenantId, item));
-  } catch (error) {
-    logger.warn("Failed to load S3 storage anomalies for anomaly alerts view", {
-      tenantId,
-      message: error instanceof Error ? error.message : "unknown_error",
-    });
-    return [];
-  }
-}
+  return {
+    ...row,
+    insight_title: insightTitle,
+    insight_description: insightDescription,
+    recommendation,
+  };
+};
+
 
 async function assertTenantBillingSourceOrThrow({
   tenantId,
@@ -303,12 +184,7 @@ export async function getAnomaliesForTenant({
     replacements.dateTo = query.date_to;
   }
 
-  const s3Rows = await getS3AnomalyRowsForTenant({ tenantId, query });
-
-  const dbWindowLimit = Math.min(
-    5000,
-    Math.max(query.limit, query.offset + query.limit + s3Rows.length + 50),
-  );
+  const dbWindowLimit = Math.min(5000, Math.max(query.limit, query.offset + query.limit + 50));
   replacements.dbLimit = dbWindowLimit;
 
   const whereSql = `WHERE ${whereClauses.join(" AND ")}`;
@@ -400,15 +276,15 @@ export async function getAnomaliesForTenant({
     },
   );
 
-  const mergedItems = [...items, ...s3Rows].sort(compareAnomalyRowsDesc);
-  const paginatedItems = mergedItems.slice(query.offset, query.offset + query.limit);
+  const sortedItems = [...items.map(toInsightDecoratedRow)].sort(compareAnomalyRowsDesc);
+  const paginatedItems = sortedItems.slice(query.offset, query.offset + query.limit);
 
   return {
     items: paginatedItems,
     pagination: {
       limit: query.limit,
       offset: query.offset,
-      total: Number(countRow?.total ?? 0) + s3Rows.length,
+      total: Number(countRow?.total ?? 0),
     },
   };
 }

@@ -638,9 +638,9 @@ function withS3UsageInsightsFilters(
     params.set(key, values.join(","));
   };
 
-  appendArray("storageClass", filters?.storageClass);
   appendArray("region", filters?.region);
   appendArray("account", filters?.account);
+  appendArray("seriesValues", filters?.seriesValues);
   if (typeof filters?.bucket === "string" && filters.bucket.trim().length > 0) {
     params.set("bucket", filters.bucket.trim());
   }

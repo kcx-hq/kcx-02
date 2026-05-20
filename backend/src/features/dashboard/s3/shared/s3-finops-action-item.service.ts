@@ -3,7 +3,7 @@ import type {
   S3LifecycleRecommendationInsight,
   S3OptimizationPriority,
   S3OwnerInsight,
-} from "./s3-cost-insights.types.js";
+} from "../cost-insights/s3-cost-insights.types.js";
 
 type OwnerLookup = {
   ownerTeam: string;
@@ -126,3 +126,4 @@ export class S3FinopsActionItemService {
     return "LOW";
   }
 }
+

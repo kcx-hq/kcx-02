@@ -1,4 +1,4 @@
-import type { DashboardScope } from "../dashboard.types.js";
+import type { DashboardScope } from "../../dashboard.types.js";
 
 export type S3CostBucketInsight = {
   bucketName: string;
@@ -496,3 +496,4 @@ export type S3CostInsightsResponse = {
     cards: S3ExecutiveSummaryCard[];
   };
 };
+

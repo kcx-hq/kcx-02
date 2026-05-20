@@ -1,4 +1,4 @@
-import type { S3CostBucketTableInsight, S3FinopsBucketBase } from "./s3-cost-insights.types.js";
+import type { S3CostBucketTableInsight, S3FinopsBucketBase } from "../cost-insights/s3-cost-insights.types.js";
 
 type OwnerMapping = {
   ownerTeam: string;
@@ -68,3 +68,4 @@ export class S3OwnerMappingService {
 }
 
 export type { OwnerMapping };
+

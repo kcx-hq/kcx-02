@@ -1,4 +1,4 @@
-import type { DashboardScope } from "../dashboard.types.js";
+import type { DashboardScope } from "../../dashboard.types.js";
 import { S3UsageInsightsRepository } from "./s3-usage-insights.repository.js";
 import type { S3UsageInsightsFilters, S3UsageInsightsResponse } from "./s3-usage-insights.types.js";
 
@@ -11,3 +11,4 @@ export class S3UsageInsightsService {
     return this.repository.getUsageInsights({ scope, filters });
   }
 }
+

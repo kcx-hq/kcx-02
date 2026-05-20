@@ -6346,6 +6346,20 @@
   text-overflow: ellipsis;
 }
 
+.s3-overview-kpi-row .s3-overview-kpi-tile .s3-overview-kpi-tile__value--expandable {
+  cursor: pointer;
+}
+
+.s3-overview-kpi-row .s3-overview-kpi-tile .s3-overview-kpi-tile__value--expandable.is-expanded {
+  white-space: nowrap;
+  overflow: visible;
+  text-overflow: clip;
+  word-break: normal;
+  font-size: 0.72rem;
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+}
+
 .s3-cost-explorer-content {
   display: flex;
   flex-direction: column;

@@ -2,7 +2,7 @@ import type {
   S3LifecycleRecommendationInsight,
   S3RecommendationConfidence,
   S3SavingsEstimateInsight,
-} from "./s3-cost-insights.types.js";
+} from "../cost-insights/s3-cost-insights.types.js";
 
 const categoryToSavingsType: Record<string, string> = {
   LIFECYCLE: "STANDARD_TO_IA",
@@ -80,3 +80,4 @@ export class S3SavingsEstimationService {
     return rank[incoming] > rank[existing] ? incoming : existing;
   }
 }
+
