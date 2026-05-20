@@ -1,19 +1,46 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  BarChart3,
+  Calendar,
+  Check,
+  ChevronDown,
+  ChevronRight,
+  Clock3,
+  Copy,
+  Database,
+  DollarSign,
+  Download,
+  ExternalLink,
+  Files,
+  GitBranch,
+  Lightbulb,
+  Lock,
+  MoreVertical,
+  PackageSearch,
+  Shield,
+  Tags,
+  TrendingDown,
+  TrendingUp,
+  UserRound,
+} from "lucide-react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 
 import { useS3BucketDetailQuery } from "../../hooks/useDashboardQueries";
-import { S3BucketDetailPanel } from "./components/S3BucketDetailPanel";
 import type { S3BucketTableRow } from "./components/S3BucketInsightsTable.types";
 import { S3BucketUsageTrendPanel } from "./components/S3BucketUsageTrendPanel";
 
-const integerFormatter = new Intl.NumberFormat("en-US", {
-  maximumFractionDigits: 0,
-});
+const integerFormatter = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 });
+const decimalFormatter = new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const tinyCurrencyFormatter = new Intl.NumberFormat("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 7 });
+const SUMMARY_SEPARATOR = " \u00B7 ";
 
-const decimalFormatter = new Intl.NumberFormat("en-US", {
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2,
-});
+type CostDriverRow = {
+  key: "storage" | "request" | "transfer" | "other";
+  label: string;
+  value: number;
+  pct: number;
+  color: string;
+};
 
 const formatBytesCompact = (bytes: number): string => {
   if (bytes >= 1024 ** 4) return `${decimalFormatter.format(bytes / (1024 ** 4))} TiB`;
@@ -23,7 +50,59 @@ const formatBytesCompact = (bytes: number): string => {
   return `${integerFormatter.format(bytes)} B`;
 };
 
+const formatCurrencySmart = (value: number): string => {
+  if (value === 0) return "$0.00";
+  if (Math.abs(value) < 0.01) return `$${tinyCurrencyFormatter.format(value)}`;
+  return `$${decimalFormatter.format(value)}`;
+};
+
+const toSeverityLabel = (severity: "high" | "medium" | "low" | "info"): string => {
+  if (severity === "high") return "High";
+  if (severity === "medium") return "Medium";
+  if (severity === "low") return "Low";
+  return "Info";
+};
+
+const toConfigTone = (value: string): "positive" | "warning" | "neutral" => {
+  const normalized = value.toLowerCase();
+  if (normalized.includes("enabled") || normalized.includes("blocked") || normalized.includes("assigned") || normalized.includes("configured")) return "positive";
+  if (normalized.includes("missing") || normalized.includes("disabled") || normalized.includes("public") || normalized.includes("partial")) return "warning";
+  return "neutral";
+};
+
+const getOptimizationIconMeta = (category: string): {
+  icon: typeof Clock3;
+  tone: "lifecycle" | "storage" | "governance" | "versioning" | "replication";
+} => {
+  if (category === "lifecycle") return { icon: Clock3, tone: "lifecycle" };
+  if (category === "storage") return { icon: Database, tone: "storage" };
+  if (category === "governance") return { icon: UserRound, tone: "governance" };
+  if (category === "configuration") return { icon: Files, tone: "versioning" };
+  if (category === "replication") return { icon: GitBranch, tone: "replication" };
+  return { icon: Database, tone: "storage" };
+};
+
+const getConfigurationIconMeta = (label: string): {
+  icon: typeof Files;
+  tone: "versioning" | "encryption" | "lifecycle" | "replication" | "access" | "ownership";
+} => {
+  if (label === "Versioning") return { icon: Files, tone: "versioning" };
+  if (label === "Encryption") return { icon: Shield, tone: "encryption" };
+  if (label === "Lifecycle") return { icon: Clock3, tone: "lifecycle" };
+  if (label === "Replication") return { icon: GitBranch, tone: "replication" };
+  if (label === "Public Access") return { icon: Lock, tone: "access" };
+  if (label === "Ownership Tags") return { icon: Tags, tone: "ownership" };
+  return { icon: Files, tone: "versioning" };
+};
+
 export default function S3UsageBucketDetailPage() {
+  const [isCostDriversOpen, setIsCostDriversOpen] = useState(false);
+  const [isStorageDistributionOpen, setIsStorageDistributionOpen] = useState(false);
+  const [isActivityUsageOpen, setIsActivityUsageOpen] = useState(false);
+  const [isOptimizationOpen, setIsOptimizationOpen] = useState(false);
+  const [isConfigurationOpen, setIsConfigurationOpen] = useState(false);
+  const [isBucketNameCopied, setIsBucketNameCopied] = useState(false);
+  const optimizationSectionRef = useRef<HTMLDivElement | null>(null);
   const navigate = useNavigate();
   const location = useLocation();
   const params = useParams<{ bucketName: string }>();
@@ -41,15 +120,15 @@ export default function S3UsageBucketDetailPage() {
     return {
       bucketName: detail.bucketName,
       account: detail.metadata.accountId ?? "Unspecified",
-      cost: 0,
-      storage: 0,
-      requests: 0,
-      transfer: 0,
+      cost: Number(detail.costBreakdown.totalCost ?? 0),
+      storage: Number(detail.costBreakdown.storageCost ?? 0),
+      requests: Number(detail.costBreakdown.requestCost ?? 0),
+      transfer: Number(detail.costBreakdown.transferCost ?? 0),
       region: detail.metadata.region ?? "Unknown",
       owner: detail.metadata.owner ?? "Unassigned",
       driver: "Storage",
-      retrieval: 0,
-      other: 0,
+      retrieval: Number(detail.costBreakdown.retrievalCost ?? 0),
+      other: Number(detail.costBreakdown.otherCost ?? 0),
       replicationStatus: detail.replicationInsight.status,
       versioningStatus: detail.metadata.versioning,
       encryptionStatus: detail.metadata.encryption,
@@ -59,16 +138,7 @@ export default function S3UsageBucketDetailPage() {
           : String(detail.metadata.publicAccess ?? "").toLowerCase() === "private"
             ? "Private"
             : "Unknown",
-      trendPct: 0,
-      storageLens: {
-        usageDate: detail.filtersApplied.to,
-        objectCount: detail.objectInsights.objectCount,
-        currentVersionBytes: detail.objectInsights.currentVersionBytes,
-        avgObjectSizeBytes: detail.objectInsights.avgObjectSize,
-        accessCount: detail.usageMetrics.requestCount,
-        percentInGlacier: 0,
-        storageClassDistribution: [],
-      },
+      trendPct: Number(detail.costBreakdown.costTrendPct ?? 0),
     };
   }, [detail]);
 
@@ -77,245 +147,784 @@ export default function S3UsageBucketDetailPage() {
       storageGb: Number(detail?.usageMetrics.storageGb ?? 0),
       transferGb: Number(detail?.usageMetrics.transferGb ?? 0),
       requestCount: Number(detail?.usageMetrics.requestCount ?? 0),
+      objectCount: Number(detail?.usageMetrics.objectCount ?? 0),
     }),
-    [detail?.usageMetrics.requestCount, detail?.usageMetrics.storageGb, detail?.usageMetrics.transferGb],
+    [detail?.usageMetrics],
   );
 
-  const lifecycleStatusLabel = useMemo(() => {
-    const value = String(detail?.lifecycleInsight.status ?? "").trim();
-    if (!value) return "Unknown";
-    return value
-      .toLowerCase()
-      .split("_")
-      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-      .join(" ");
-  }, [detail?.lifecycleInsight.status]);
+  const potentialSavings = useMemo(() => {
+    if (!detail) return 0;
+    return Number((detail.costBreakdown.storageCost * 0.04 + detail.costBreakdown.requestCost * 0.12 + detail.costBreakdown.transferCost * 0.05).toFixed(2));
+  }, [detail]);
 
-  const lifecycleStatusTone = useMemo(() => {
-    const coverage = Number(detail?.lifecycleInsight.transitionCoverage ?? 0);
-    const rules = Number(detail?.lifecycleInsight.rulesCount ?? 0);
-    if (rules === 0) return "critical";
-    if (coverage <= 0) return "warn";
-    return "good";
-  }, [detail?.lifecycleInsight.rulesCount, detail?.lifecycleInsight.transitionCoverage]);
+  const costDrivers = useMemo(() => {
+    const storage = Number(selectedBucket?.storage ?? 0);
+    const request = Number(selectedBucket?.requests ?? 0);
+    const transfer = Number(selectedBucket?.transfer ?? 0);
+    const other = Number(selectedBucket?.other ?? 0);
+    const total = storage + request + transfer + other;
+    const pct = (value: number) => (total > 0 ? (value / total) * 100 : 0);
+    const rows: CostDriverRow[] = [
+      { key: "storage", label: "Storage Cost", value: storage, pct: pct(storage), color: "#2f8f78" },
+      { key: "request", label: "Request Cost", value: request, pct: pct(request), color: "#5f8fdc" },
+      { key: "transfer", label: "Data Transfer Cost", value: transfer, pct: pct(transfer), color: "#8a6fd0" },
+      { key: "other", label: "Other Cost", value: other, pct: pct(other), color: "#d6a546" },
+    ];
+    return { total, rows };
+  }, [selectedBucket?.other, selectedBucket?.requests, selectedBucket?.storage, selectedBucket?.transfer]);
 
-  const lifecycleScanLabel = useMemo(() => {
-    const value = detail?.lifecycleInsight.lastScan;
-    if (!value) return "--";
-    const scanDate = new Date(value);
-    if (Number.isNaN(scanDate.getTime())) return "--";
-    return scanDate.toLocaleString("en-US", { year: "numeric", month: "short", day: "2-digit" });
-  }, [detail?.lifecycleInsight.lastScan]);
+  const costDriversSummary = useMemo(() => {
+    if (costDrivers.total <= 0) return "No cost data";
+    const storagePct = costDrivers.rows[0]?.pct.toFixed(1) ?? "0.0";
+    const requestPct = costDrivers.rows[1]?.pct.toFixed(1) ?? "0.0";
+    const transferPct = costDrivers.rows[2]?.pct.toFixed(1) ?? "0.0";
+    return `Storage ${storagePct}%${SUMMARY_SEPARATOR}Requests ${requestPct}%${SUMMARY_SEPARATOR}Transfer ${transferPct}%`;
+  }, [costDrivers]);
 
-  const shouldShowCreatePolicyButton = useMemo(
-    () => Number(detail?.lifecycleInsight.rulesCount ?? 0) === 0,
-    [detail?.lifecycleInsight.rulesCount],
-  );
+  const costDriversInsight = useMemo(() => {
+    if (costDrivers.total <= 0) return null;
+    const [top] = [...costDrivers.rows].sort((a, b) => b.value - a.value);
+    if (!top || top.value <= 0) return null;
+    if (top.key === "storage") return "Storage is the dominant cost driver for this bucket.";
+    if (top.key === "request") return `Request charges account for ${top.pct.toFixed(1)}% of this bucket's cost.`;
+    if (top.key === "transfer") return `Data transfer charges account for ${top.pct.toFixed(1)}% of this bucket's cost.`;
+    return `Other costs account for ${top.pct.toFixed(1)}% of this bucket's spend.`;
+  }, [costDrivers]);
+  const orderedCostDriverRows = useMemo(() => {
+    const byKey = new Map(costDrivers.rows.map((row) => [row.key, row]));
+    const order: CostDriverRow["key"][] = ["request", "storage", "transfer", "other"];
+    return order.map((key) => byKey.get(key)).filter((row): row is CostDriverRow => Boolean(row));
+  }, [costDrivers.rows]);
+  const storageSummaryBytes = useMemo(() => {
+    const currentVersionBytes = Number(detail?.objectInsights?.currentVersionBytes ?? 0);
+    if (currentVersionBytes > 0) return currentVersionBytes;
+    const usageStorageGb = Number(detail?.usageMetrics?.storageGb ?? 0);
+    return usageStorageGb > 0 ? usageStorageGb * 1024 ** 3 : 0;
+  }, [detail?.objectInsights?.currentVersionBytes, detail?.usageMetrics?.storageGb]);
 
-  const handleCreatePolicy = () => {
-    const searchParams = new URLSearchParams(location.search);
-    if (bucketNameParam) {
-      searchParams.set("bucketName", bucketNameParam);
+  const storageSummaryObjectCount = useMemo(() => {
+    const lensCount = Number(detail?.objectInsights?.objectCount ?? 0);
+    if (lensCount > 0) return lensCount;
+    return Number(detail?.usageMetrics?.objectCount ?? 0);
+  }, [detail?.objectInsights?.objectCount, detail?.usageMetrics?.objectCount]);
+
+  const storageDistributionRows = useMemo(() => {
+    const rawBreakdown = detail?.storageClassBreakdown;
+    if (!Array.isArray(rawBreakdown) || rawBreakdown.length === 0) return [] as Array<{ key: string; label: string; bytes: number; objects: number | null; pct: number; color: string }>;
+
+    const classLabelMap: Record<string, string> = {
+      STANDARD: "Standard",
+      STANDARD_IA: "Standard-IA",
+      ONEZONE_IA: "One Zone-IA",
+      GLACIER: "Glacier",
+      DEEP_ARCHIVE: "Deep Archive",
+    };
+    const classColorMap: Record<string, string> = {
+      Standard: "#2f8f78",
+      "Standard-IA": "#5f8fdc",
+      "One Zone-IA": "#8a6fd0",
+      Glacier: "#5f6ecf",
+      "Deep Archive": "#4b56a5",
+      Other: "#d6a546",
+    };
+
+    const aggregated = new Map<string, { bytes: number; objects: number | null }>();
+    for (const item of rawBreakdown) {
+      const rawKey = String(item.storageClass ?? "").trim();
+      const normalizedKey = rawKey.toUpperCase().replace(/-/g, "_").replace(/\s+/g, "_");
+      const mapped = classLabelMap[normalizedKey] ?? (rawKey ? rawKey : "Other");
+      const current = aggregated.get(mapped) ?? { bytes: 0, objects: null };
+      current.bytes += Number(item.bytes ?? 0);
+      const nextObjects = item.objectCount == null ? null : Number(item.objectCount);
+      if (nextObjects != null) {
+        current.objects = (current.objects ?? 0) + nextObjects;
+      }
+      aggregated.set(mapped, current);
     }
 
-    navigate({
-      pathname: "/dashboard/policy/s3",
-      search: searchParams.toString() ? `?${searchParams.toString()}` : "",
-    });
-  };
+    const totalBytes = [...aggregated.values()].reduce((sum, row) => sum + row.bytes, 0);
+    if (totalBytes <= 0) return [];
 
-  const handleOpenReplicationOptimization = () => {
-    const searchParams = new URLSearchParams(location.search);
-    if (bucketNameParam) {
-      searchParams.set("bucketName", bucketNameParam);
-    }
-    searchParams.set("tab", "replication");
+    const shouldNormalizeToSummary =
+      storageSummaryBytes > 0 &&
+      (totalBytes > storageSummaryBytes * 4 || totalBytes < storageSummaryBytes * 0.25);
+    const normalizeFactor = shouldNormalizeToSummary ? (storageSummaryBytes / totalBytes) : 1;
 
-    navigate({
-      pathname: "/dashboard/s3/optimization",
-      search: searchParams.toString() ? `?${searchParams.toString()}` : "",
-    });
-  };
+    const rows = [...aggregated.entries()]
+      .map(([label, value]) => ({
+        key: label.toLowerCase().replace(/\s+/g, "-"),
+        label,
+        bytes: value.bytes * normalizeFactor,
+        objects: value.objects,
+        pct: totalBytes > 0 ? (value.bytes / totalBytes) * 100 : 0,
+        color: classColorMap[label] ?? classColorMap.Other,
+      }))
+      .filter((row) => row.bytes > 0)
+      .sort((a, b) => b.bytes - a.bytes);
 
-  const replicationStatusLabel = useMemo(() => {
-    const value = String(detail?.replicationInsight.status ?? "").trim().toLowerCase();
-    if (value === "present") return "Present";
-    if (value === "enabled") return "Present";
-    if (value === "absent") return "Missing";
-    if (value === "disabled") return "Missing";
-    if (value === "unknown") return "Unknown";
-    return "Not Available";
-  }, [detail?.replicationInsight.status]);
-
-  const replicationStatusTone = useMemo(() => {
-    const value = String(detail?.replicationInsight.status ?? "").trim().toLowerCase();
-    if (value === "present" || value === "enabled") return "good";
-    if (value === "absent" || value === "disabled") return "critical";
-    if (value === "unknown") return "warn";
-    return "unknown";
-  }, [detail?.replicationInsight.status]);
-
-  const objectInsights = useMemo(() => {
-    if (!detail) {
-      return {
-        statusTone: "unknown" as "good" | "warn" | "critical" | "unknown",
-        objectCount: null as number | null,
-        avgObjectSizeBytes: null as number | null,
-        currentVersionBytes: 0,
-        requestsPerObject: null as number | null,
+    const hasAnyObjects = rows.some((row) => row.objects != null && row.objects > 0);
+    if (!hasAnyObjects && rows.length === 1 && storageSummaryObjectCount > 0) {
+      rows[0] = {
+        ...rows[0],
+        objects: storageSummaryObjectCount,
       };
     }
 
-    const objectCount = detail.objectInsights.objectCount;
-    const avgObjectSizeBytes = detail.objectInsights.avgObjectSize;
-    const currentVersionBytes = detail.objectInsights.currentVersionBytes ?? 0;
-    const requestsPerObject = detail.objectInsights.requestsPerObject;
+    return rows;
+  }, [detail, storageSummaryBytes, storageSummaryObjectCount]);
 
-    let statusTone: "good" | "warn" | "critical" | "unknown" = "good";
-    if (objectCount == null) statusTone = "unknown";
-    else if (objectCount > 1_000_000 && avgObjectSizeBytes != null && avgObjectSizeBytes < 128 * 1024) statusTone = "critical";
-    else if (currentVersionBytes > 500 * 1024 * 1024 * 1024) statusTone = "warn";
+  const getStorageClassRowInsight = (label: string, options: { isOnlyStandard: boolean; isMixed: boolean }): string => {
+    const normalized = label.toLowerCase();
+    if (options.isOnlyStandard && normalized === "standard") return "All storage remains in Standard tier.";
+    if (normalized === "standard") return options.isMixed ? "Primary active storage tier." : "All storage remains in Standard tier.";
+    if (normalized.includes("standard-ia") || normalized.includes("one zone-ia") || normalized.includes("onezone-ia")) {
+      return "Lower access storage tier.";
+    }
+    if (normalized.includes("deep archive")) return "Long-term retention.";
+    if (normalized.includes("glacier")) return "Archive storage tier.";
+    return options.isMixed ? "Distributed across multiple storage tiers." : "Active storage tier.";
+  };
 
-    return {
-      statusTone,
-      objectCount,
-      avgObjectSizeBytes,
-      currentVersionBytes,
-      requestsPerObject,
-    };
-  }, [detail]);
+  const activityUsage = detail?.activityUsage;
+  const activitySummary = useMemo(() => {
+    if (!activityUsage?.hasUsageData) return "No activity data";
+    const transferGb = activityUsage.transferBytes != null ? activityUsage.transferBytes / 1024 ** 3 : null;
+    return `${integerFormatter.format(activityUsage.totalRequests)} requests${SUMMARY_SEPARATOR}${transferGb != null ? `${transferGb.toFixed(2)} GB` : "N/A"} transfer`;
+  }, [activityUsage]);
+
+  const activityInsight = useMemo(() => {
+    if (!activityUsage?.hasUsageData) return null;
+    if (activityUsage.insight) return activityUsage.insight;
+    const topOp = [...(activityUsage.requestBreakdown ?? [])].sort((a, b) => b.count - a.count)[0];
+    if (topOp && topOp.operation === "GET" && topOp.percentage >= 70) {
+      return "This bucket is request-heavy with predominantly read operations.";
+    }
+    return "Bucket activity is present with mixed request patterns.";
+  }, [activityUsage]);
+  const hasRequestBreakdown = Boolean(activityUsage?.requestBreakdownAvailable && activityUsage.requestBreakdown.length > 0);
+  const hasTransferBreakdown = Boolean(activityUsage?.transferBreakdownAvailable && activityUsage.transferBreakdown.length > 0);
+
+  const activityTrendLabel = (value: "up" | "down" | "flat" | "unknown"): string => {
+    if (value === "up") return "Up";
+    if (value === "down") return "Down";
+    if (value === "flat") return "Flat";
+    return "Unknown";
+  };
+
+  const optimization = detail?.optimization;
+  const optimizationOpportunities = optimization?.opportunities ?? [];
+  const topInsights = useMemo(() => {
+    const severityRank: Record<string, number> = { high: 0, medium: 1, low: 2, info: 3 };
+    return optimizationOpportunities
+      .map((item, index) => ({ item, index }))
+      .sort((a, b) => {
+        const aRank = severityRank[String(a.item.severity ?? "").toLowerCase()] ?? 99;
+        const bRank = severityRank[String(b.item.severity ?? "").toLowerCase()] ?? 99;
+        if (aRank !== bRank) return aRank - bRank;
+        return a.index - b.index;
+      })
+      .slice(0, 3)
+      .map(({ item }) => item);
+  }, [optimizationOpportunities]);
+  const optimizationSummary = (optimization?.totalCount ?? 0) > 0
+    ? `${optimization?.totalCount ?? 0} opportunities`
+    : "No optimization opportunities";
+  const configuration = detail?.configuration;
+  const hasConfigurationData = Boolean(configuration && configuration.bestPractices.total > 0);
+  const configurationSummary = hasConfigurationData && configuration
+    ? `${configuration.bestPractices.passed} of ${configuration.bestPractices.total} best practices met`
+    : "Configuration unavailable";
+  const configurationRows = hasConfigurationData && configuration
+    ? [
+        {
+          label: "Versioning",
+          value: configuration.versioning.status === "enabled" ? "Enabled" : configuration.versioning.status === "suspended" ? "Suspended" : configuration.versioning.status === "disabled" ? "Disabled" : "Unknown",
+          helper: configuration.versioning.status === "enabled" ? "Object recovery protection active" : "Object recovery protection not active",
+        },
+        {
+          label: "Encryption",
+          value: configuration.encryption.status === "enabled" ? (configuration.encryption.type ?? "Enabled") : configuration.encryption.status === "disabled" ? "Disabled" : "Unknown",
+          helper: configuration.encryption.status === "enabled" ? "Bucket-level encryption configured" : "Encryption posture unavailable or disabled",
+        },
+        {
+          label: "Lifecycle",
+          value: configuration.lifecycle.enabled ? `Configured (${configuration.lifecycle.ruleCount} rules)` : "Missing",
+          helper: configuration.lifecycle.enabled ? "Active lifecycle transitions available" : "No active lifecycle rules",
+        },
+        {
+          label: "Replication",
+          value: configuration.replication.enabled ? (configuration.replication.destinationRegion ? `Enabled (${configuration.replication.destinationRegion})` : "Enabled") : "Disabled",
+          helper: configuration.replication.enabled ? "Cross-region replication configured" : "Cross-region replication disabled",
+        },
+        {
+          label: "Public Access",
+          value: configuration.publicAccess.status === "blocked" ? "Blocked" : configuration.publicAccess.status === "partial" ? "Partial" : configuration.publicAccess.status === "public" ? "Public" : "Unknown",
+          helper: configuration.publicAccess.status === "blocked" ? "Public access protections active" : "Public access protections are not fully active",
+        },
+        {
+          label: "Ownership Tags",
+          value: configuration.ownershipMetadata.ownerAssigned && configuration.ownershipMetadata.environmentAssigned ? "Assigned" : "Missing",
+          helper: configuration.ownershipMetadata.ownerAssigned && configuration.ownershipMetadata.environmentAssigned
+            ? "Owner and environment metadata assigned"
+            : "Missing owner/environment metadata",
+        },
+      ]
+    : [];
+
+  
+  const handleCopyBucketName = async () => {
+    if (!selectedBucket?.bucketName) return;
+    try {
+      await navigator.clipboard.writeText(selectedBucket.bucketName);
+      setIsBucketNameCopied(true);
+    } catch {
+      setIsBucketNameCopied(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!isBucketNameCopied) return;
+    const timer = window.setTimeout(() => setIsBucketNameCopied(false), 1500);
+    return () => window.clearTimeout(timer);
+  }, [isBucketNameCopied]);
 
   const handleBack = () => {
     const searchParams = new URLSearchParams(location.search);
     searchParams.delete("s3Section");
+    navigate({ pathname: "/dashboard/s3/bucket", search: searchParams.toString() });
+  };
+
+  const handleOpportunityAction = (opportunity: NonNullable<typeof optimizationOpportunities>[number]) => {
+    const action = opportunity.action;
+    if (!action || action.type !== "navigate") return;
+    const searchParams = new URLSearchParams(location.search);
+    for (const [key, value] of Object.entries(action.query ?? {})) {
+      if (value != null && String(value).trim().length > 0) {
+        searchParams.set(key, String(value));
+      }
+    }
+    if (bucketNameParam) {
+      searchParams.set("bucket", bucketNameParam);
+    }
     navigate({
-      pathname: "/dashboard/s3/bucket",
+      pathname: action.route,
       search: searchParams.toString(),
     });
   };
 
+  const handleOpportunityRowClick = (opportunity: NonNullable<typeof optimizationOpportunities>[number]) => {
+    if (opportunity.action?.type === "navigate") {
+      handleOpportunityAction(opportunity);
+    }
+  };
+
+  const handleViewAllInsights = () => {
+    setIsOptimizationOpen(true);
+    window.requestAnimationFrame(() => {
+      optimizationSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  };
+
   return (
-    <div className="dashboard-page s3-overview-page s3-usage-bucket-detail-page">
+    <div className="dashboard-page s3-overview-page s3-usage-bucket-detail-page s3-bucket-reference">
       {bucketDetailQuery.isLoading ? <p className="dashboard-note">Loading bucket details...</p> : null}
       {bucketDetailQuery.isError ? <p className="dashboard-note">Failed to load bucket details: {bucketDetailQuery.error.message}</p> : null}
-      {!bucketDetailQuery.isLoading && !bucketDetailQuery.isError && !selectedBucket ? (
-        <p className="dashboard-note">No bucket details found for "{bucketNameParam}".</p>
-      ) : null}
+      {!bucketDetailQuery.isLoading && !bucketDetailQuery.isError && !selectedBucket ? <p className="dashboard-note">No bucket details found for "{bucketNameParam}".</p> : null}
       {!bucketDetailQuery.isLoading && !bucketDetailQuery.isError && selectedBucket ? (
-        <>
-          <S3BucketDetailPanel
-            bucket={selectedBucket}
-            usageMetrics={usageMetrics}
-            storageClassDistribution={[]}
-            storageLens={selectedBucket.storageLens ?? null}
-            onClose={handleBack}
-          />
-          <section className="s3-lifecycle-insight-card" aria-label="Object insights">
-            <div className="s3-lifecycle-insight-card__header">
-              <h3 className="s3-lifecycle-insight-card__title">Object Insights</h3>
-              <span className={`s3-lifecycle-insight-card__status is-${objectInsights.statusTone}`}>
-                {objectInsights.statusTone === "critical"
-                  ? "High Priority"
-                  : objectInsights.statusTone === "warn"
-                    ? "Review"
-                    : objectInsights.statusTone === "good"
-                      ? "Healthy"
-                      : "Unknown"}
-              </span>
-            </div>
-            <div className="s3-lifecycle-insight-card__meta">
-              <article className="s3-lifecycle-insight-card__meta-item">
-                <p className="s3-lifecycle-insight-card__meta-label">Object Count</p>
-                <p className="s3-lifecycle-insight-card__meta-value">
-                  {objectInsights.objectCount == null ? "--" : integerFormatter.format(objectInsights.objectCount)}
-                </p>
-              </article>
-              <article className="s3-lifecycle-insight-card__meta-item">
-                <p className="s3-lifecycle-insight-card__meta-label">Avg Object Size</p>
-                <p className="s3-lifecycle-insight-card__meta-value">
-                  {objectInsights.avgObjectSizeBytes == null ? "N/A" : formatBytesCompact(objectInsights.avgObjectSizeBytes)}
-                </p>
-              </article>
-              <article className="s3-lifecycle-insight-card__meta-item">
-                <p className="s3-lifecycle-insight-card__meta-label">Current Version Data</p>
-                <p className="s3-lifecycle-insight-card__meta-value">{formatBytesCompact(objectInsights.currentVersionBytes)}</p>
-              </article>
-              <article className="s3-lifecycle-insight-card__meta-item">
-                <p className="s3-lifecycle-insight-card__meta-label">Requests / Object</p>
-                <p className="s3-lifecycle-insight-card__meta-value">
-                  {objectInsights.requestsPerObject == null ? "--" : decimalFormatter.format(objectInsights.requestsPerObject)}
-                </p>
-              </article>
-            </div>
-          </section>
-          <section className="s3-lifecycle-insight-card" aria-label="Lifecycle policy insight">
-            <div className="s3-lifecycle-insight-card__header">
-              <h3 className="s3-lifecycle-insight-card__title">Lifecycle Policy Insight</h3>
-              <div className="s3-lifecycle-insight-card__header-actions">
-                {shouldShowCreatePolicyButton ? (
-                  <button type="button" className="s3-lifecycle-insight-card__create-policy-btn" onClick={handleCreatePolicy}>
-                    Set Policy
-                  </button>
-                ) : null}
-                <span className={`s3-lifecycle-insight-card__status is-${lifecycleStatusTone}`}>{lifecycleStatusLabel}</span>
-              </div>
-            </div>
-            <div className="s3-lifecycle-insight-card__meta">
-              <article className="s3-lifecycle-insight-card__meta-item">
-                <p className="s3-lifecycle-insight-card__meta-label">Rules Count</p>
-                <p className="s3-lifecycle-insight-card__meta-value">{detail?.lifecycleInsight.rulesCount ?? "--"}</p>
-              </article>
-              <article className="s3-lifecycle-insight-card__meta-item">
-                <p className="s3-lifecycle-insight-card__meta-label">Enabled Rules</p>
-                <p className="s3-lifecycle-insight-card__meta-value">{detail?.lifecycleInsight.enabledRules ?? "--"}</p>
-              </article>
-              <article className="s3-lifecycle-insight-card__meta-item">
-                <p className="s3-lifecycle-insight-card__meta-label">Transition Coverage</p>
-                <p className="s3-lifecycle-insight-card__meta-value">{detail?.lifecycleInsight.transitionCoverage ?? "--"}</p>
-              </article>
-              <article className="s3-lifecycle-insight-card__meta-item">
-                <p className="s3-lifecycle-insight-card__meta-label">Last Scan</p>
-                <p className="s3-lifecycle-insight-card__meta-value">{lifecycleScanLabel}</p>
-              </article>
-            </div>
-          </section>
-          <section className="s3-lifecycle-insight-card" aria-label="Replication insight">
-            <div className="s3-lifecycle-insight-card__header">
-              <h3 className="s3-lifecycle-insight-card__title">Replication Insight</h3>
-              <div className="s3-lifecycle-insight-card__header-actions">
-                <button type="button" className="s3-lifecycle-insight-card__create-policy-btn" onClick={handleOpenReplicationOptimization}>
-                  {detail?.replicationInsight.status ? "Manage Replication" : "Setup Replication"}
+        <div className="s3-bucket-reference__shell">
+          <header className="s3-bucket-reference__header">
+            <div className="s3-bucket-reference__title-wrap">
+              <div className="s3-bucket-reference__title-row">
+                <h1 className="s3-bucket-reference__title">{selectedBucket.bucketName}</h1>
+                <button
+                  type="button"
+                  className={`s3-bucket-reference__icon-btn s3-bucket-reference__copy-btn${isBucketNameCopied ? " is-copied" : ""}`}
+                  aria-label={isBucketNameCopied ? "Bucket name copied" : "Copy bucket name"}
+                  onClick={handleCopyBucketName}
+                >
+                  {isBucketNameCopied ? <Check /> : <Copy />}
                 </button>
-                <span className={`s3-lifecycle-insight-card__status is-${replicationStatusTone}`}>{replicationStatusLabel}</span>
+              </div>
+              <div className="s3-bucket-reference__meta-line">
+                <span><strong>Account</strong> {selectedBucket.account}</span>
+                <span><strong>Region</strong> {selectedBucket.region}</span>
+                <span><strong>Owner</strong> {selectedBucket.owner}</span>
+                <span><strong>Environment</strong> {detail?.metadata.environment ?? "N/A"}</span>
+                <span><strong>Public/Private</strong> {detail?.metadata.publicAccess ?? "Unknown"}</span>
+                <span><strong>Encryption</strong> {detail?.metadata.encryption ?? "Unknown"}</span>
               </div>
             </div>
-            <div className="s3-lifecycle-insight-card__meta">
-              <article className="s3-lifecycle-insight-card__meta-item">
-                <p className="s3-lifecycle-insight-card__meta-label">Rules Count</p>
-                <p className="s3-lifecycle-insight-card__meta-value">{detail?.replicationInsight.rulesCount ?? "--"}</p>
-              </article>
-              <article className="s3-lifecycle-insight-card__meta-item">
-                <p className="s3-lifecycle-insight-card__meta-label">Destination Bucket</p>
-                <p className="s3-lifecycle-insight-card__meta-value">{detail?.replicationInsight.destinationBucket ?? "--"}</p>
-              </article>
-              <article className="s3-lifecycle-insight-card__meta-item">
-                <p className="s3-lifecycle-insight-card__meta-label">Destination Region</p>
-                <p className="s3-lifecycle-insight-card__meta-value">{detail?.replicationInsight.destinationRegion ?? "--"}</p>
-              </article>
-              <article className="s3-lifecycle-insight-card__meta-item">
-                <p className="s3-lifecycle-insight-card__meta-label">Last Checked</p>
-                <p className="s3-lifecycle-insight-card__meta-value">{detail?.replicationInsight.lastChecked ?? "--"}</p>
-              </article>
+            <div className="s3-bucket-reference__header-actions">
+              <button type="button" className="s3-bucket-reference__ghost-btn s3-bucket-reference__view-aws-btn">
+                View in AWS
+                <ExternalLink />
+              </button>
+              <button type="button" className="s3-bucket-reference__icon-btn" aria-label="More actions">
+                <MoreVertical />
+              </button>
+            </div>
+          </header>
+
+          <section className="s3-bucket-reference__kpi-row" aria-label="KPI cards">
+            <article className="s3-bucket-reference__kpi-card">
+              <p>Total Cost</p>
+              <h3>${selectedBucket.cost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</h3>
+              <span className={selectedBucket.trendPct >= 0 ? "is-up" : "is-down"}>
+                {selectedBucket.trendPct >= 0 ? <TrendingUp /> : <TrendingDown />} {Math.abs(selectedBucket.trendPct).toFixed(1)}% vs previous 30 days
+              </span>
+              <em><DollarSign /></em>
+            </article>
+            <article className="s3-bucket-reference__kpi-card">
+              <p>Storage Size</p>
+              <h3>{usageMetrics.storageGb.toFixed(2)} GB</h3>
+              <span>Storage cost ${selectedBucket.storage.toFixed(2)}</span>
+              <em><Database /></em>
+            </article>
+            <article className="s3-bucket-reference__kpi-card">
+              <p>Request Cost</p>
+              <h3>${selectedBucket.requests.toFixed(2)}</h3>
+              <span>{integerFormatter.format(usageMetrics.requestCount)} requests</span>
+              <em><PackageSearch /></em>
+            </article>
+            <article className="s3-bucket-reference__kpi-card">
+              <p>Potential Savings</p>
+              <h3>${potentialSavings.toFixed(2)} <small>/month</small></h3>
+              <span>{optimizationSummary}</span>
+              <em><Lightbulb /></em>
+            </article>
+          </section>
+
+          <section className="s3-bucket-reference__main-row" aria-label="Main analysis">
+            <div className="s3-bucket-reference__trend-card">
+              <div className="s3-bucket-reference__card-head">
+                <div>
+                  <h3>Cost Trend</h3>
+                  <p>Daily cost ($) by cost type</p>
+                </div>
+                <div className="s3-bucket-reference__toolbar">
+                  <button type="button">
+                    <Calendar />
+                    Daily
+                    <ChevronDown />
+                  </button>
+                  <button type="button" aria-label="Chart view"><BarChart3 /></button>
+                  <button type="button" aria-label="Download"><Download /></button>
+                </div>
+              </div>
+              <S3BucketUsageTrendPanel
+                charts={detail?.charts}
+                filtersApplied={detail?.filtersApplied}
+                isLoading={bucketDetailQuery.isLoading && !bucketDetailQuery.data}
+                isError={bucketDetailQuery.isError && !bucketDetailQuery.data}
+                errorMessage={bucketDetailQuery.error?.message}
+              />
+            </div>
+
+            <aside className="s3-bucket-reference__insights">
+              <div className="s3-bucket-reference__card-head">
+                <h3>Top Insights</h3>
+                <button type="button" className="s3-bucket-reference__text-btn" onClick={handleViewAllInsights}>View all insights</button>
+              </div>
+              {topInsights.length > 0 ? (
+                topInsights.map((insight) => (
+                  <article
+                    key={insight.id}
+                    className={`s3-bucket-reference__insight-item${insight.action ? " is-clickable" : ""}`}
+                    onClick={() => handleOpportunityRowClick(insight)}
+                    role={insight.action ? "button" : undefined}
+                    tabIndex={insight.action ? 0 : -1}
+                    onKeyDown={(event) => {
+                      if (!insight.action) return;
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        handleOpportunityRowClick(insight);
+                      }
+                    }}
+                  >
+                    <div className={`s3-bucket-reference__optimization-icon is-${getOptimizationIconMeta(insight.category).tone}`}>
+                      {(() => {
+                        const Icon = getOptimizationIconMeta(insight.category).icon;
+                        return <Icon size={16} />;
+                      })()}
+                    </div>
+                    <div className="s3-bucket-reference__insight-main">
+                      <div className="s3-bucket-reference__insight-title-row">
+                        <h4>{insight.title}</h4>
+                        <span className={`s3-bucket-reference__optimization-severity is-${insight.severity}`}>
+                          {toSeverityLabel(insight.severity)}
+                        </span>
+                      </div>
+                      {insight.action ? (
+                        <button
+                          type="button"
+                          className="s3-bucket-reference__optimization-action s3-bucket-reference__insight-action"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            handleOpportunityAction(insight);
+                          }}
+                        >
+                          {insight.action.label} <ChevronRight size={14} />
+                        </button>
+                      ) : null}
+                    </div>
+                  </article>
+                ))
+              ) : (
+                <p className="s3-bucket-reference__insight-empty">No optimization insights available.</p>
+              )}
+            </aside>
+          </section>
+
+          <section className="s3-bucket-reference__accordions" aria-label="Detail sections">
+            <div className={`s3-bucket-reference__cost-drivers ${isCostDriversOpen ? "is-open" : ""}`}>
+              <button
+                type="button"
+                className="s3-bucket-reference__cost-drivers-summary"
+                onClick={() => setIsCostDriversOpen((prev) => !prev)}
+                aria-expanded={isCostDriversOpen}
+              >
+                <span>Cost Drivers</span>
+                <small>{costDriversSummary}</small>
+                <ChevronDown className="s3-bucket-reference__cost-drivers-chevron" />
+              </button>
+              <div className="s3-bucket-reference__cost-drivers-panel-wrap">
+                {isCostDriversOpen ? (
+                  <div className="s3-bucket-reference__cost-drivers-panel">
+                      {costDrivers.total > 0 ? (
+                        <>
+                          <div className="s3-bucket-reference__cost-drivers-list" aria-label="Cost drivers list">
+                            {orderedCostDriverRows.map((row) => (
+                              <div key={row.key} className="s3-bucket-reference__cost-drivers-item">
+                                <div className="s3-bucket-reference__cost-drivers-item-type">
+                                    <i style={{ background: row.color }} />
+                                    {row.label}
+                                </div>
+                                <div className="s3-bucket-reference__cost-drivers-item-meta">
+                                  {formatCurrencySmart(row.value)}{SUMMARY_SEPARATOR}{row.pct.toFixed(1)}%
+                                </div>
+                                <div
+                                  className="s3-bucket-reference__cost-drivers-item-progress"
+                                  role="progressbar"
+                                  aria-valuemin={0}
+                                  aria-valuemax={100}
+                                  aria-valuenow={Math.round(row.pct)}
+                                >
+                                  <span style={{ width: `${Math.max(0, Math.min(100, row.pct))}%`, background: row.color }} />
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                          <p className="s3-bucket-reference__cost-drivers-insight">
+                            Request operations are the primary cost driver for this bucket.
+                          </p>
+                        </>
+                      ) : (
+                      <p className="s3-bucket-reference__cost-drivers-empty">
+                        No cost driver data available for this bucket in the selected date range.
+                      </p>
+                    )}
+                  </div>
+                ) : null}
+              </div>
+            </div>
+            <div className={`s3-bucket-reference__storage-distribution ${isStorageDistributionOpen ? "is-open" : ""}`}>
+              <button
+                type="button"
+                className="s3-bucket-reference__storage-distribution-summary"
+                onClick={() => setIsStorageDistributionOpen((prev) => !prev)}
+                aria-expanded={isStorageDistributionOpen}
+              >
+                <span>Storage Distribution</span>
+                <small>{storageSummaryBytes > 0 ? `${formatBytesCompact(storageSummaryBytes)}${SUMMARY_SEPARATOR}${integerFormatter.format(storageSummaryObjectCount)} objects` : "No storage data"}</small>
+                <ChevronDown className="s3-bucket-reference__storage-distribution-chevron" />
+              </button>
+              <div className="s3-bucket-reference__storage-distribution-panel-wrap">
+                {isStorageDistributionOpen ? (
+                  <div className="s3-bucket-reference__storage-distribution-panel">
+                    {storageSummaryBytes > 0 ? (
+                      <>
+                          {storageDistributionRows.length > 0 ? (
+                            <div className="s3-bucket-reference__storage-distribution-list" aria-label="Storage class distribution">
+                              {storageDistributionRows.map((row) => {
+                                const isOnlyStandard =
+                                  storageDistributionRows.length === 1 && String(row.label).toLowerCase() === "standard" && row.pct >= 99.9;
+                                const isMixed = storageDistributionRows.length > 1;
+                                return (
+                                <div key={row.key} className="s3-bucket-reference__storage-distribution-item">
+                                  <strong className="s3-bucket-reference__storage-distribution-item-title">{row.label}</strong>
+                                  <span className="s3-bucket-reference__storage-distribution-item-meta">
+                                    {formatBytesCompact(row.bytes)}{SUMMARY_SEPARATOR}{row.objects == null ? "N/A objects" : `${integerFormatter.format(row.objects)} objects`}{SUMMARY_SEPARATOR}{row.pct.toFixed(1)}%
+                                  </span>
+                                  <div
+                                    className="s3-bucket-reference__storage-distribution-item-progress"
+                                  role="progressbar"
+                                  aria-valuemin={0}
+                                  aria-valuemax={100}
+                                  aria-valuenow={Math.round(row.pct)}
+                                  >
+                                    <span style={{ width: `${Math.max(0, Math.min(100, row.pct))}%`, background: row.color }} />
+                                  </div>
+                                  <span className="s3-bucket-reference__storage-distribution-item-insight">
+                                    {getStorageClassRowInsight(row.label, { isOnlyStandard, isMixed })}
+                                  </span>
+                                </div>
+                                );
+                              })}
+                            </div>
+                          ) : null}
+                          {storageDistributionRows.length === 0 ? (
+                            <p className="s3-bucket-reference__storage-distribution-empty">
+                              No storage distribution data available for this bucket.
+                            </p>
+                          ) : null}
+                        </>
+                      ) : (
+                      <p className="s3-bucket-reference__storage-distribution-empty">
+                        No storage distribution data available for this bucket.
+                      </p>
+                    )}
+                  </div>
+                ) : null}
+              </div>
+            </div>
+            <div className={`s3-bucket-reference__activity-usage ${isActivityUsageOpen ? "is-open" : ""}`}>
+              <button
+                type="button"
+                className="s3-bucket-reference__activity-usage-summary"
+                onClick={() => setIsActivityUsageOpen((prev) => !prev)}
+                aria-expanded={isActivityUsageOpen}
+              >
+                <span>Activity & Usage</span>
+                <small>{activitySummary}</small>
+                <ChevronDown className="s3-bucket-reference__activity-usage-chevron" />
+              </button>
+              <div className="s3-bucket-reference__activity-usage-panel-wrap">
+                {isActivityUsageOpen ? (
+                  <div className="s3-bucket-reference__activity-usage-panel">
+                    {activityUsage?.hasUsageData ? (
+                      <>
+                        <div className="s3-bucket-reference__activity-trends">
+                          <span>Requests trend: <strong>{activityTrendLabel(activityUsage.trends.requests)}</strong></span>
+                          <span>Transfer trend: <strong>{activityTrendLabel(activityUsage.trends.transfer)}</strong></span>
+                          <span>Storage trend: <strong>{activityTrendLabel(activityUsage.trends.storage)}</strong></span>
+                        </div>
+                        <div className="s3-bucket-reference__activity-metrics">
+                          <div><label>Total Requests</label><strong>{integerFormatter.format(activityUsage.totalRequests)}</strong></div>
+                          <div><label>Data Transfer</label><strong>{activityUsage.transferBytes == null ? "N/A" : formatBytesCompact(activityUsage.transferBytes)}</strong></div>
+                          <div><label>Object Count</label><strong>{activityUsage.objectCount == null ? "N/A" : integerFormatter.format(activityUsage.objectCount)}</strong></div>
+                          <div><label>Avg Object Size</label><strong>{activityUsage.averageObjectSizeBytes == null ? "N/A" : formatBytesCompact(activityUsage.averageObjectSizeBytes)}</strong></div>
+                        </div>
+                        <div className="s3-bucket-reference__activity-breakdowns-grid">
+                          <div className="s3-bucket-reference__activity-breakdown-block">
+                            <p className="s3-bucket-reference__activity-breakdown-title">Request Breakdown</p>
+                            <div className="s3-bucket-reference__activity-table-wrap">
+                              {hasRequestBreakdown ? (
+                                <table className="s3-bucket-reference__activity-table" aria-label="Request breakdown">
+                                  <thead>
+                                    <tr>
+                                      <th>Request Type</th>
+                                      <th>Count</th>
+                                      <th>Percentage</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {activityUsage.requestBreakdown.map((row) => (
+                                      <tr key={row.operation}>
+                                        <td>{row.operation}</td>
+                                        <td>{integerFormatter.format(row.count)}</td>
+                                        <td>{row.percentage.toFixed(1)}%</td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              ) : (
+                                <p className="s3-bucket-reference__activity-empty">Detailed request operation breakdown is not available for this bucket.</p>
+                              )}
+                            </div>
+                          </div>
+                          <div className="s3-bucket-reference__activity-breakdown-block">
+                            <p className="s3-bucket-reference__activity-breakdown-title">Network / Transfer Breakdown</p>
+                            <div className="s3-bucket-reference__activity-table-wrap">
+                              {hasTransferBreakdown ? (
+                                <table className="s3-bucket-reference__activity-table" aria-label="Transfer breakdown">
+                                  <thead>
+                                    <tr>
+                                      <th>Transfer Type</th>
+                                      <th>Data Volume</th>
+                                      <th>Percentage</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {activityUsage.transferBreakdown.map((row) => (
+                                      <tr key={row.type}>
+                                        <td>{row.type}</td>
+                                        <td>{formatBytesCompact(row.bytes)}</td>
+                                        <td>{row.percentage.toFixed(1)}%</td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              ) : (
+                                <p className="s3-bucket-reference__activity-empty">Detailed transfer breakdown is not available for this bucket.</p>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                        {activityInsight ? <p className="s3-bucket-reference__activity-insight">{activityInsight}</p> : null}
+                      </>
+                    ) : (
+                      <p className="s3-bucket-reference__activity-empty">
+                        No activity and usage data available for this bucket.
+                      </p>
+                    )}
+                  </div>
+                ) : null}
+              </div>
+            </div>
+            <div ref={optimizationSectionRef} className={`s3-bucket-reference__optimization ${isOptimizationOpen ? "is-open" : ""}`}>
+              <button
+                type="button"
+                className="s3-bucket-reference__optimization-summary"
+                onClick={() => setIsOptimizationOpen((prev) => !prev)}
+                aria-expanded={isOptimizationOpen}
+              >
+                <span>Optimization Opportunities</span>
+                <small>{optimizationSummary}</small>
+                <ChevronDown className="s3-bucket-reference__optimization-chevron" />
+              </button>
+              <div className="s3-bucket-reference__optimization-panel-wrap">
+                {isOptimizationOpen ? (
+                  <div className="s3-bucket-reference__optimization-panel">
+                    {(optimization?.totalCount ?? 0) > 0 ? (
+                      <div className="s3-bucket-reference__optimization-list">
+                        {optimizationOpportunities.map((item) => (
+                          <article
+                            key={item.id}
+                            className={`s3-bucket-reference__optimization-item${item.action ? " is-clickable" : ""}`}
+                            onClick={() => handleOpportunityRowClick(item)}
+                            role={item.action ? "button" : undefined}
+                            tabIndex={item.action ? 0 : -1}
+                            onKeyDown={(event) => {
+                              if (!item.action) return;
+                              if (event.key === "Enter" || event.key === " ") {
+                                event.preventDefault();
+                                handleOpportunityRowClick(item);
+                              }
+                            }}
+                          >
+                            <div className={`s3-bucket-reference__optimization-icon is-${getOptimizationIconMeta(item.category).tone}`}>
+                              {(() => {
+                                const Icon = getOptimizationIconMeta(item.category).icon;
+                                return <Icon size={18} />;
+                              })()}
+                            </div>
+                            <div className="s3-bucket-reference__optimization-main">
+                              <h4>{item.title}</h4>
+                              <p>{item.description}</p>
+                              {item.action ? (
+                                <button
+                                  type="button"
+                                  className="s3-bucket-reference__optimization-action"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    handleOpportunityAction(item);
+                                  }}
+                                >
+                                  {item.action.label} <ChevronRight size={14} />
+                                </button>
+                              ) : (
+                                <small className="s3-bucket-reference__optimization-recommendation">{item.recommendation}</small>
+                              )}
+                            </div>
+                            <div className="s3-bucket-reference__optimization-right">
+                              <span className={`s3-bucket-reference__severity-badge is-${item.severity}`}>{toSeverityLabel(item.severity)}</span>
+                              <ChevronRight className="s3-bucket-reference__optimization-row-chevron" size={18} />
+                            </div>
+                          </article>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="s3-bucket-reference__optimization-empty">This bucket appears to be reasonably optimized.</p>
+                    )}
+                    
+                  </div>
+                ) : null}
+              </div>
+            </div>
+            <div className={`s3-bucket-reference__configuration ${isConfigurationOpen ? "is-open" : ""}`}>
+              <button
+                type="button"
+                className="s3-bucket-reference__configuration-summary"
+                onClick={() => setIsConfigurationOpen((prev) => !prev)}
+                aria-expanded={isConfigurationOpen}
+              >
+                <span>Configuration</span>
+                <small>{configurationSummary}</small>
+                <ChevronDown className="s3-bucket-reference__configuration-chevron" />
+              </button>
+              <div className="s3-bucket-reference__configuration-panel-wrap">
+                {isConfigurationOpen ? (
+                  <div className="s3-bucket-reference__configuration-panel">
+                    {hasConfigurationData && configuration ? (
+                      <>
+                        <dl className="s3-bucket-reference__configuration-grid">
+                          {configurationRows.map((row) => (
+                            <div key={row.label} className="s3-bucket-reference__configuration-row">
+                              <dt>
+                                <span className={`s3-bucket-reference__configuration-icon is-${getConfigurationIconMeta(row.label).tone}`}>
+                                  {(() => {
+                                    const Icon = getConfigurationIconMeta(row.label).icon;
+                                    return <Icon size={15} />;
+                                  })()}
+                                </span>
+                                <span className="s3-bucket-reference__configuration-label-wrap">
+                                  <strong>{row.label}</strong>
+                                  {row.helper ? <small>{row.helper}</small> : null}
+                                </span>
+                              </dt>
+                              <dd>
+                                <strong className={`s3-bucket-reference__configuration-badge is-${toConfigTone(row.value)}`}>{row.value}</strong>
+                              </dd>
+                            </div>
+                          ))}
+                        </dl>
+                        <div className="s3-bucket-reference__configuration-practices">
+                          <div className="s3-bucket-reference__configuration-practices-head">
+                            <span>Best Practices</span>
+                            <strong>{configuration.bestPractices.passed} / {configuration.bestPractices.total} passed</strong>
+                          </div>
+                          <div className="s3-bucket-reference__configuration-practices-track">
+                            <span
+                              className="s3-bucket-reference__configuration-practices-fill"
+                              style={{ width: `${configuration.bestPractices.total > 0 ? (configuration.bestPractices.passed / configuration.bestPractices.total) * 100 : 0}%` }}
+                            />
+                          </div>
+                        </div>
+                        {configuration.notes.length > 0 ? (
+                          <div className="s3-bucket-reference__configuration-issues">
+                            <p>Issues</p>
+                            <ul className="s3-bucket-reference__configuration-notes">
+                              {configuration.notes.map((note) => <li key={note}>{note}</li>)}
+                            </ul>
+                          </div>
+                        ) : null}
+                      </>
+                    ) : (
+                      <p className="s3-bucket-reference__optimization-empty">Configuration unavailable.</p>
+                    )}
+                  </div>
+                ) : null}
+              </div>
             </div>
           </section>
-          <S3BucketUsageTrendPanel
-            charts={detail?.charts}
-            isLoading={bucketDetailQuery.isLoading && !bucketDetailQuery.data}
-            isError={bucketDetailQuery.isError && !bucketDetailQuery.data}
-            errorMessage={bucketDetailQuery.error?.message}
-          />
-        </>
+
+          <div className="s3-bucket-reference__footer-actions">
+            <button type="button" className="s3-bucket-reference__ghost-btn" onClick={handleBack}>Back</button>
+          </div>
+        </div>
       ) : null}
     </div>
   );
 }
+
+
