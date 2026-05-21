@@ -24,6 +24,8 @@ type EC2ExplorerGraphSeries = {
 
 type EC2ExplorerChartProps = {
   title: string;
+  explorerType?: "cost" | "usage";
+  unit?: "currency" | "percent" | "gb";
   chartType: EC2ChartType;
   canUseStackedBar: boolean;
   showChartTypeSelector?: boolean;
@@ -62,6 +64,8 @@ const xAxisFormatter = new Intl.DateTimeFormat("en-US", {
 
 export function EC2ExplorerChart({
   title,
+  explorerType = "cost",
+  unit = "currency",
   chartType,
   canUseStackedBar,
   showChartTypeSelector = true,
@@ -125,6 +129,15 @@ export function EC2ExplorerChart({
       return Number(point.value ?? 0);
     };
 
+    const resolvedUnit: "currency" | "percent" | "gb" = unit ?? (explorerType === "usage" ? "percent" : "currency");
+
+    const formatByUnit = (rawValue: number): string => {
+      const numericValue = Number.isFinite(rawValue) ? rawValue : 0;
+      if (resolvedUnit === "percent") return `${numberFormatter.format(numericValue)}%`;
+      if (resolvedUnit === "gb") return `${numberFormatter.format(numericValue)} GB`;
+      return currencyFormatter.format(numericValue);
+    };
+
     const seriesData = graph.series.map((series) => ({
       ...series,
       data: series.data.map((point) => toNumericValue(point)),
@@ -146,8 +159,9 @@ export function EC2ExplorerChart({
           const point = params as { axisValueLabel?: string; name?: string; marker?: string; seriesName?: string; value?: unknown };
           const headerValue = String(point.axisValueLabel ?? point.name ?? "");
           const numericValue = Number(point.value ?? 0);
-          const valueText =
-            valueMode === "data-transfer-cost" || valueMode === "default"
+          const valueText = valueMode === "default"
+            ? formatByUnit(numericValue)
+            : valueMode === "data-transfer-cost"
               ? currencyFormatter.format(numericValue)
               : valueMode === "data-transfer-distribution"
                 ? `${numberFormatter.format(numericValue)}%`
@@ -190,8 +204,10 @@ export function EC2ExplorerChart({
           color: "#6d837e",
           fontSize: 11,
           formatter: (value: number) =>
-            valueMode === "data-transfer-cost" || valueMode === "default"
-              ? currencyFormatter.format(value)
+            valueMode === "default"
+              ? formatByUnit(value)
+              : valueMode === "data-transfer-cost"
+                ? currencyFormatter.format(value)
               : valueMode === "data-transfer-distribution"
                 ? `${numberFormatter.format(value)}%`
                 : `${numberFormatter.format(value)} GB`,
@@ -213,7 +229,7 @@ export function EC2ExplorerChart({
         data: series.data,
       })),
     };
-  }, [displayLabels, graph.series, isLineChart, valueMode, yAxisLabel]);
+  }, [displayLabels, explorerType, graph.series, isLineChart, unit, valueMode, yAxisLabel]);
 
   if (loading) {
     return (

@@ -61,6 +61,8 @@ export function EC2ExplorerTable({
     const isDataTransferMetric = metric === "data-transfer";
     const isTransferTypeGrouping = groupBy === "transfer-type" || groupBy === "transfer_type";
     const gbColumns = new Set(["internetGb", "interAzGb", "regionalGb", "totalGb", "usageGb"]);
+    const usageGbColumns = new Set(["networkInGb", "networkOutGb", "networkTotalGb"]);
+    const cpuColumns = new Set(["avgCpu", "maxCpu"]);
     const costColumns = new Set([
       "cost",
       "dataTransferCost",
@@ -103,6 +105,13 @@ export function EC2ExplorerTable({
           }
           if (isDataTransferMetric && gbColumns.has(column.key)) {
             return formatGb(params.value as string | number | null);
+          }
+          if (usageGbColumns.has(column.key)) {
+            return formatGb(params.value as string | number | null);
+          }
+          if (cpuColumns.has(column.key)) {
+            const numeric = Number(params.value ?? 0);
+            return `${(Number.isFinite(numeric) ? numeric : 0).toFixed(2)}%`;
           }
           if (isDataTransferMetric && isTransferTypeGrouping && column.key === "pct") {
             const numeric = Number(params.value ?? 0);

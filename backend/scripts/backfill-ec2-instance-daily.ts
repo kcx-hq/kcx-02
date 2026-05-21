@@ -1,6 +1,7 @@
 import { Ec2InstanceUtilizationDailyRepository } from "../src/features/scheduled-jobs/handlers/ec2/ec2-instance-utilization-daily.repository.js";
 import { syncEc2InstanceDailyFact } from "../src/features/scheduled-jobs/handlers/ec2/ec2-instance-daily-fact.service.js";
 import { CloudConnectionV2, sequelize } from "../src/models/index.js";
+import util from "node:util";
 
 type CliOptions = {
   tenantId: string | null;
@@ -21,13 +22,28 @@ const parseArgs = (argv: string[]): CliOptions => {
     endDate: null,
   };
 
-  for (const rawArg of argv.slice(2)) {
-    const arg = String(rawArg ?? "").trim();
+  const args = argv.slice(2);
+  for (let i = 0; i < args.length; i += 1) {
+    const arg = String(args[i] ?? "").trim();
     if (!arg) continue;
 
-    const [rawKey, ...rawValueParts] = arg.split("=");
-    const key = rawKey.trim();
-    const value = rawValueParts.join("=").trim();
+    if (arg.includes("=")) {
+      const [rawKey, ...rawValueParts] = arg.split("=");
+      const key = rawKey.trim();
+      const value = rawValueParts.join("=").trim();
+      if (!value) continue;
+
+      if (key === "--tenant-id") options.tenantId = value;
+      if (key === "--provider-id") options.providerId = value;
+      if (key === "--cloud-connection-id") options.cloudConnectionId = value;
+      if (key === "--start-date") options.startDate = value;
+      if (key === "--end-date") options.endDate = value;
+      continue;
+    }
+
+    const key = arg;
+    const next = String(args[i + 1] ?? "").trim();
+    const value = next && !next.startsWith("--") ? next : "";
     if (!value) continue;
 
     if (key === "--tenant-id") options.tenantId = value;
@@ -35,6 +51,8 @@ const parseArgs = (argv: string[]): CliOptions => {
     if (key === "--cloud-connection-id") options.cloudConnectionId = value;
     if (key === "--start-date") options.startDate = value;
     if (key === "--end-date") options.endDate = value;
+
+    i += 1;
   }
 
   return options;
@@ -98,21 +116,47 @@ async function main(): Promise<void> {
     const tenantId = connection.tenantId ? String(connection.tenantId) : null;
     const providerId = connection.providerId ? String(connection.providerId) : null;
 
-    const utilization = await utilizationRepository.rollupFromHourly({
-      cloudConnectionId,
-      tenantId,
-      providerId,
-      startDate,
-      endDate,
-    });
+    let utilization: { hourlySourceRows: number; dailyRowsUpserted: number };
+    try {
+      utilization = await utilizationRepository.rollupFromHourly({
+        cloudConnectionId,
+        tenantId,
+        providerId,
+        startDate,
+        endDate,
+      });
+    } catch (error) {
+      console.error("Utilization daily rollup failed", {
+        cloudConnectionId,
+        tenantId,
+        providerId,
+        startDate,
+        endDate,
+      });
+      console.error("Utilization daily rollup error (inspect):", util.inspect(error, { depth: 10, colors: false }));
+      throw error;
+    }
 
-    const fact = await syncEc2InstanceDailyFact({
-      cloudConnectionId,
-      tenantId,
-      providerId,
-      startDate,
-      endDate,
-    });
+    let fact: { rowsUpserted: number };
+    try {
+      fact = await syncEc2InstanceDailyFact({
+        cloudConnectionId,
+        tenantId,
+        providerId,
+        startDate,
+        endDate,
+      });
+    } catch (error) {
+      console.error("EC2 instance daily unified fact sync failed", {
+        cloudConnectionId,
+        tenantId,
+        providerId,
+        startDate,
+        endDate,
+      });
+      console.error("Unified fact sync error (inspect):", util.inspect(error, { depth: 10, colors: false }));
+      throw error;
+    }
 
     console.info("Backfilled cloud connection", {
       cloudConnectionId,
@@ -129,10 +173,27 @@ async function main(): Promise<void> {
 
 main()
   .catch((error) => {
+    const details =
+      error && typeof error === "object"
+        ? {
+            name: (error as { name?: unknown }).name,
+            message: (error as { message?: unknown }).message,
+            stack: (error as { stack?: unknown }).stack,
+            parent: (error as { parent?: unknown }).parent,
+            original: (error as { original?: unknown }).original,
+            sql: (error as { sql?: unknown }).sql,
+            parameters: (error as { parameters?: unknown }).parameters,
+            errors: (error as { errors?: unknown }).errors,
+          }
+        : null;
     console.error(
       "fact_ec2_instance_daily backfill failed:",
       error instanceof Error ? error.message : String(error),
     );
+    console.error("fact_ec2_instance_daily backfill failed (inspect):", util.inspect(error, { depth: 10, colors: false }));
+    if (details) {
+      console.error("fact_ec2_instance_daily backfill failure details:", details);
+    }
     process.exitCode = 1;
   })
   .finally(async () => {

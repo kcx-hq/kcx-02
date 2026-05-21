@@ -970,6 +970,66 @@ export type Ec2CostExplorerV2Response = {
   };
 };
 
+export type Ec2UsageExplorerV2Granularity = "daily" | "weekly" | "monthly";
+export type Ec2UsageExplorerV2UsageMetric = "cpu" | "network_in" | "network_out" | "network_total";
+export type Ec2UsageExplorerV2Aggregation = "avg" | "max" | "sum";
+export type Ec2UsageExplorerV2GroupBy = "none" | "account" | "region" | "instance" | "instance_type" | "tag";
+export type Ec2UsageExplorerV2Compare = "none" | "previous_period";
+
+export type Ec2UsageExplorerV2FiltersQuery = {
+  startDate?: string;
+  endDate?: string;
+  granularity?: Ec2UsageExplorerV2Granularity;
+  usageMetric?: Ec2UsageExplorerV2UsageMetric;
+  aggregation?: Ec2UsageExplorerV2Aggregation;
+  groupBy?: Ec2UsageExplorerV2GroupBy;
+  tagKey?: string | null;
+  compare?: Ec2UsageExplorerV2Compare;
+  accountIds?: string[];
+  regions?: string[];
+  instanceTypes?: string[];
+  tags?: string[];
+};
+
+export type Ec2UsageExplorerV2Response = {
+  kpis: {
+    avgCpu: number;
+    maxCpu: number;
+    totalNetworkInGb: number;
+    totalNetworkOutGb: number;
+    instanceCount: number;
+  };
+  chart: {
+    granularity: Ec2UsageExplorerV2Granularity;
+    xAxis: "date";
+    yAxis: string;
+    series: Array<{
+      groupKey: string;
+      groupLabel: string;
+      points: Array<{ date: string; value: number }>;
+    }>;
+  };
+  table: {
+    rows: Array<{
+      groupKey: string;
+      groupLabel: string;
+      avgCpu: number;
+      maxCpu: number;
+      networkInGb: number;
+      networkOutGb: number;
+      networkTotalGb: number;
+      instanceCount: number;
+    }>;
+  };
+  meta: {
+    usageMetric: Ec2UsageExplorerV2UsageMetric;
+    aggregation: Ec2UsageExplorerV2Aggregation;
+    groupBy: Ec2UsageExplorerV2GroupBy;
+    granularity: Ec2UsageExplorerV2Granularity;
+    normalized: true;
+  };
+};
+
 export type Ec2NetworkBreakdownType =
   | "Internet Data Transfer"
   | "Inter-Region Data Transfer"
