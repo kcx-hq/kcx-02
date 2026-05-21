@@ -251,12 +251,17 @@ export default function DatabaseExplorerPage() {
     const next = new URLSearchParams(location.search);
     const rawValue = payload.rawValue.trim();
     const clickedLabel = payload.clickedLabel.trim();
+    const clickedValue = rawValue || clickedLabel;
+    const validGroupValues = new Set(data?.filterOptions?.groupedValuePreview?.[effectiveGroupBy] ?? []);
+    const canApplyGroupValue = clickedValue.length > 0 && validGroupValues.has(clickedValue);
+
+    if (clickedValue.length === 0) return;
 
     next.set("source", source);
     next.set("metric", metric);
     next.set("group_by", effectiveGroupBy);
-    next.set("groupValue", rawValue || clickedLabel);
-    next.set("clickedLabel", clickedLabel || rawValue);
+    next.set("groupValue", clickedValue);
+    next.set("clickedLabel", clickedLabel || clickedValue);
 
     if (scope?.from) {
       next.set("from", scope.from);
@@ -285,19 +290,21 @@ export default function DatabaseExplorerPage() {
       next.delete("db_engine");
     }
 
-    if (effectiveGroupBy === "db_service" && rawValue.length > 0) {
-      next.set("db_service", rawValue);
+    if (effectiveGroupBy === "db_service" && canApplyGroupValue) {
+      next.set("db_service", clickedValue);
     }
-    if (effectiveGroupBy === "db_engine" && rawValue.length > 0) {
-      next.set("db_engine", rawValue);
+    if (effectiveGroupBy === "db_engine" && canApplyGroupValue) {
+      next.set("db_engine", clickedValue);
     }
-    if (effectiveGroupBy === "instance_class" && rawValue.length > 0) {
-      next.set("instance_class", rawValue);
+    if (effectiveGroupBy === "instance_class" && canApplyGroupValue) {
+      next.set("instance_class", clickedValue);
     } else if (effectiveGroupBy !== "instance_class") {
       next.delete("instance_class");
     }
 
-    if (effectiveGroupBy !== "region") {
+    if (effectiveGroupBy === "region" && canApplyGroupValue) {
+      next.set("region_key", clickedValue);
+    } else if (effectiveGroupBy !== "region") {
       next.delete("region_key");
     }
 
@@ -309,18 +316,16 @@ export default function DatabaseExplorerPage() {
       <DashboardPageHeader
         title={
           <div className="database-explorer-page__metric-title">
-            <span className="cost-explorer-field__label">Metric</span>
             <div
-              className="cost-explorer-segmented cost-explorer-segmented--tray database-explorer-page__metric-switch"
+              className="ec2-explorer-metric-segmented database-explorer-page__metric-switch"
               role="group"
               aria-label="Database explorer metric"
-              style={{ gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }}
             >
               {metricOptions.map((option) => (
                 <button
                   key={option.value}
                   type="button"
-                  className={`cost-explorer-segmented__item${metric === option.value ? " is-active" : ""}`}
+                  className={`ec2-explorer-metric-segmented__item${metric === option.value ? " is-active" : ""}`}
                   onClick={() => handleMetricChange(option.value)}
                   aria-pressed={metric === option.value}
                 >
@@ -399,8 +404,8 @@ export default function DatabaseExplorerPage() {
             isLoading={pageLoading}
             onRowClick={(row) => {
               navigateToAssets("database-explorer-table", {
-                rawValue: row.group,
-                clickedLabel: row.group,
+                rawValue: row.groupKey ?? row.group,
+                clickedLabel: row.groupLabel ?? row.group,
               });
             }}
           />

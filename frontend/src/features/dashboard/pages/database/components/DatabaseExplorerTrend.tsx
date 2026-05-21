@@ -322,16 +322,17 @@ export function DatabaseExplorerTrend({
           option={option}
           height={420}
           onPointClick={
-            activeGrouped && onDrilldown
+            onDrilldown
               ? (event) => {
                   const point = event as { seriesIndex?: number; seriesName?: string };
-                  const series = typeof point.seriesIndex === "number" ? activeGrouped.series[point.seriesIndex] : null;
-                  if (!series) return;
+                  const series = activeGrouped && typeof point.seriesIndex === "number"
+                    ? activeGrouped.series[point.seriesIndex]
+                    : null;
                   onDrilldown({
-                    rawValue: series.key,
+                    rawValue: series?.key ?? "",
                     clickedLabel: typeof point.seriesName === "string" && point.seriesName.trim().length > 0
                       ? point.seriesName
-                      : series.label,
+                      : (series?.label ?? ""),
                   });
                 }
               : undefined

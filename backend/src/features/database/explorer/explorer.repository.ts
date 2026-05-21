@@ -356,9 +356,36 @@ const buildTrendFilters = (params: ExplorerQueryParams, tableAlias = ""): string
   return filters.join("\n    AND ");
 };
 
-const groupedExpressionForFact = (groupBy: ExplorerGroupBy): string | null => {
+type GroupedFilterFactContext = {
+  tableAlias?: string;
+  withInventory?: boolean;
+  withRegion?: boolean;
+};
+
+const groupedExpressionForFact = (
+  groupBy: ExplorerGroupBy,
+  context: GroupedFilterFactContext = {},
+): string | null => {
   if (groupBy === "cost_category") return null;
-  return GROUP_BY_COLUMNS[groupBy].selectExpression;
+  if (groupBy === "db_engine") {
+    const baseAlias = context.tableAlias && context.tableAlias.trim().length > 0 ? context.tableAlias.trim() : "f";
+    if (context.withInventory) {
+      return `COALESCE(NULLIF(NULLIF(LOWER(BTRIM(${baseAlias}.db_engine)), 'unknown'), ''), NULLIF(LOWER(BTRIM(li.db_engine)), ''), 'Unknown engine')`;
+    }
+    return `COALESCE(NULLIF(NULLIF(LOWER(BTRIM(${baseAlias}.db_engine)), 'unknown'), ''), 'Unknown engine')`;
+  }
+  if (groupBy === "region") {
+    const baseAlias = context.tableAlias && context.tableAlias.trim().length > 0 ? context.tableAlias.trim() : "f";
+    if (context.withRegion) {
+      return "COALESCE(NULLIF(BTRIM(dr.region_id), ''), NULLIF(BTRIM(dr.region_name), ''), 'Unknown region')";
+    }
+    return `CASE WHEN ${baseAlias}.region_key IS NULL THEN 'Unknown region' ELSE ${baseAlias}.region_key::text END`;
+  }
+  const expression = GROUP_BY_COLUMNS[groupBy].selectExpression;
+  if (context.tableAlias && context.tableAlias.trim().length > 0 && context.tableAlias.trim() !== "f") {
+    return expression.replaceAll("f.", `${context.tableAlias.trim()}.`);
+  }
+  return expression;
 };
 
 const groupedExpressionForCostHistory = (groupBy: ExplorerGroupBy): string | null => {
@@ -370,27 +397,33 @@ const buildGroupedValuesFilter = (
   params: ExplorerQueryParams,
   source: "fact" | "cost_history",
   tableAlias = "",
+  factContext: Omit<GroupedFilterFactContext, "tableAlias"> = {},
 ): string | null => {
   if (!Array.isArray(params.groupValues) || params.groupValues.length === 0) {
     return null;
   }
 
-  const expression = source === "fact" ? groupedExpressionForFact(params.groupBy) : groupedExpressionForCostHistory(params.groupBy);
+  const expression = source === "fact"
+    ? groupedExpressionForFact(params.groupBy, { tableAlias, ...factContext })
+    : groupedExpressionForCostHistory(params.groupBy);
   if (!expression) {
     return null;
   }
 
-  const trimmed = [...new Set(params.groupValues.map((value) => value.trim().toLowerCase()).filter((value) => value.length > 0))];
+  let trimmed = [...new Set(params.groupValues.map((value) => value.trim().toLowerCase()).filter((value) => value.length > 0))];
+  if (params.groupBy === "resource_type") {
+    trimmed = trimmed.filter(
+      (value) =>
+        value !== "scoped"
+        && value !== "unknown resource type"
+        && value !== "unknown-resource-type",
+    );
+  }
   if (trimmed.length === 0) {
     return null;
   }
 
   params.groupValues = trimmed;
-
-  if (source === "fact" && tableAlias) {
-    const expr = expression.replaceAll("f.", `${tableAlias}.`);
-    return `LOWER(BTRIM(${expr})) IN (:groupValues)`;
-  }
 
   return `LOWER(BTRIM(${expression})) IN (:groupValues)`;
 };
@@ -567,6 +600,16 @@ CASE
 END
 `;
 
+const resourceTypeCanonicalExpression = (tableAlias = "f"): string => `
+CASE
+  WHEN LOWER(COALESCE(${tableAlias}.resource_id, '')) LIKE 'db-scope:%' THEN 'unknown resource type'
+  WHEN LOWER(COALESCE(${tableAlias}.resource_id, '')) LIKE 'arn:aws:rds:%:db:%' THEN 'instance'
+  WHEN LOWER(COALESCE(${tableAlias}.resource_id, '')) LIKE 'arn:aws:rds:%:cluster:%' THEN 'cluster'
+  WHEN LOWER(COALESCE(${tableAlias}.resource_id, '')) LIKE 'arn:aws:elasticache:%' THEN 'cache'
+  ELSE COALESCE(NULLIF(LOWER(BTRIM(${tableAlias}.resource_type)), ''), 'unknown resource type')
+END
+`;
+
 const GROUP_BY_COLUMNS = {
   db_service: {
     selectExpression: buildDbServiceDisplaySql("f"),
@@ -593,9 +636,9 @@ const GROUP_BY_COLUMNS = {
     requiresRegion: true,
   },
   resource_type: {
-    selectExpression: "COALESCE(NULLIF(BTRIM(f.resource_type), ''), 'Unknown resource type')",
-    groupExpression: "COALESCE(NULLIF(BTRIM(f.resource_type), ''), 'Unknown resource type')",
-    keyExpression: "COALESCE(NULLIF(BTRIM(f.resource_type), ''), 'unknown-resource-type')",
+    selectExpression: resourceTypeCanonicalExpression("f"),
+    groupExpression: resourceTypeCanonicalExpression("f"),
+    keyExpression: "COALESCE(NULLIF(BTRIM(LOWER(REGEXP_REPLACE((" + resourceTypeCanonicalExpression("f") + "), '[^a-z0-9]+', '-', 'g'))), ''), 'unknown-resource-type')",
     requiresInventory: false,
     requiresRegion: false,
   },
@@ -672,30 +715,36 @@ const factTotalCostExpression = (tableAlias: string, costBasis: ExplorerCostBasi
 const buildResourceDrilldownFilters = (params: ExplorerQueryParams, tableAlias = ""): string => {
   const pref = tableAlias ? `${tableAlias}.` : "";
   const resourceTypeValues = normalizeFilterValues(params.resourceTypeValues);
-  const shouldExcludeScopedByDefault = !resourceTypeValues.includes("scoped");
+  const shouldExcludeScopedByDefault = params.groupBy === "resource_type" ? true : !resourceTypeValues.includes("scoped");
   const base = `${buildTrendFilters(params, tableAlias)}
     ${shouldExcludeScopedByDefault ? `AND COALESCE(LOWER(BTRIM(${pref}resource_type)), '') <> 'scoped'` : ""}
-    AND ${pref}resource_id NOT LIKE 'db-scope:%'`;
-  const groupedValuesFilter = buildGroupedValuesFilter(params, "fact", tableAlias || "fact_db_resource_daily");
+    ${shouldExcludeScopedByDefault ? `AND ${pref}resource_id NOT LIKE 'db-scope:%'` : ""}`;
+  const groupedValuesFilter = buildGroupedValuesFilter(params, "fact", tableAlias || "f");
   const resourceTypeFilter = resourceTypeValues.length > 0
-    ? `LOWER(BTRIM(COALESCE(${pref}resource_type, ''))) IN (:resourceTypeValues)`
+    ? `LOWER(BTRIM((${resourceTypeCanonicalExpression(tableAlias || "f")}))) IN (:resourceTypeValues)`
     : null;
+  const excludeUnknownWhenGroupingResourceType =
+    params.groupBy === "resource_type"
+      ? `${resourceTypeCanonicalExpression(tableAlias || "f")} <> 'unknown resource type'`
+      : null;
   const parts = [base];
   if (groupedValuesFilter) parts.push(groupedValuesFilter);
   if (resourceTypeFilter) {
     params.resourceTypeValues = resourceTypeValues;
     parts.push(resourceTypeFilter);
   }
+  if (excludeUnknownWhenGroupingResourceType) parts.push(excludeUnknownWhenGroupingResourceType);
   return `${parts[0]}${parts.slice(1).map((part) => `\n    AND ${part}`).join("")}`;
 };
 
 const buildCostHistoryDrilldownFilters = (params: ExplorerQueryParams, tableAlias = ""): string => {
   const pref = tableAlias ? `${tableAlias}.` : "";
+  const resourceTypeValues = normalizeFilterValues(params.resourceTypeValues);
+  const shouldExcludeScopedByDefault = params.groupBy === "resource_type" ? true : !resourceTypeValues.includes("scoped");
   const base = `${buildTrendFilters(params, tableAlias)}
-    AND ${pref}resource_id NOT LIKE 'db-scope:%'
+    ${shouldExcludeScopedByDefault ? `AND ${pref}resource_id NOT LIKE 'db-scope:%'` : ""}
     AND ${pref}resource_id NOT LIKE 'db-unattributed:%'`;
   const groupedValuesFilter = buildGroupedValuesFilter(params, "cost_history", tableAlias);
-  const resourceTypeValues = normalizeFilterValues(params.resourceTypeValues);
   const resourceTypeFilter = resourceTypeValues.length > 0
     ? `EXISTS (
       SELECT 1
@@ -704,7 +753,7 @@ const buildCostHistoryDrilldownFilters = (params: ExplorerQueryParams, tableAlia
         AND f_rt.usage_date = ${pref}usage_date
         AND f_rt.resource_id = ${pref}resource_id
         AND f_rt.cloud_connection_id IS NOT DISTINCT FROM ${pref}cloud_connection_id
-        AND LOWER(BTRIM(COALESCE(f_rt.resource_type, ''))) IN (:resourceTypeValues)
+        AND LOWER(BTRIM((${resourceTypeCanonicalExpression("f_rt")}))) IN (:resourceTypeValues)
     )`
     : null;
   const costCategoryValues = normalizeFilterValues(params.costCategoryValues);
@@ -750,7 +799,15 @@ SELECT EXISTS (
 
   async getFilterOptions(params: ExplorerQueryParams): Promise<ExplorerFilterOptions> {
     const queryParams = buildExplorerReplacements(buildTrendQueryParams(params));
-    const filters = buildFilterOptionsFilters(queryParams);
+    // Keep explorer payload (cards/trend/table) scoped by group_values, but do not
+    // let filter-option universes collapse to currently selected values.
+    const filterPreviewParams = buildExplorerReplacements(
+      buildTrendQueryParams({
+        ...params,
+        groupValues: undefined,
+      }),
+    );
+    const filters = buildFilterOptionsFilters(filterPreviewParams);
 
     const discoveryParams = buildExplorerReplacements(
       buildTrendQueryParams({
@@ -783,7 +840,7 @@ WHERE ${filters}
 ORDER BY value ASC;
 `,
         {
-          replacements: queryParams,
+          replacements: filterPreviewParams,
           type: QueryTypes.SELECT,
         },
       ),
@@ -796,7 +853,7 @@ SELECT DISTINCT
     NULLIF(LOWER(BTRIM(li.db_engine)), '')
   ) AS value
 ${fromFactBaseSql({ withInventory: true, withRegion: false })}
-WHERE ${buildTrendFilters(queryParams, "f")}
+WHERE ${buildTrendFilters(filterPreviewParams, "f")}
   AND COALESCE(
     NULLIF(NULLIF(LOWER(BTRIM(f.db_engine)), 'unknown'), ''),
     NULLIF(LOWER(BTRIM(li.db_engine)), '')
@@ -804,7 +861,7 @@ WHERE ${buildTrendFilters(queryParams, "f")}
 ORDER BY value ASC;
 `,
         {
-          replacements: queryParams,
+          replacements: filterPreviewParams,
           type: QueryTypes.SELECT,
         },
       ),
@@ -814,59 +871,63 @@ SELECT DISTINCT
   COALESCE(NULLIF(BTRIM(dr.region_id), ''), NULLIF(BTRIM(dr.region_name), ''), 'Unknown region') AS value
 FROM fact_db_resource_daily f
 LEFT JOIN dim_region dr ON dr.id = f.region_key
-WHERE ${buildTrendFilters(queryParams, "f")}
+WHERE ${buildTrendFilters(filterPreviewParams, "f")}
+  AND COALESCE(NULLIF(BTRIM(dr.region_id), ''), NULLIF(BTRIM(dr.region_name), ''), 'Unknown region') <> 'Unknown region'
 ORDER BY value ASC;
 `,
-        { replacements: queryParams, type: QueryTypes.SELECT },
+        { replacements: filterPreviewParams, type: QueryTypes.SELECT },
       ),
       sequelize.query<FilterOptionValueRow>(
         `
-SELECT DISTINCT COALESCE(NULLIF(BTRIM(f.resource_type), ''), 'Unknown resource type') AS value
+SELECT DISTINCT ${resourceTypeCanonicalExpression("f")} AS value
 FROM fact_db_resource_daily f
-WHERE ${buildTrendFilters(queryParams, "f")}
+WHERE ${buildTrendFilters(filterPreviewParams, "f")}
+  AND LOWER(COALESCE(f.resource_id, '')) NOT LIKE 'db-scope:%'
+  AND ${resourceTypeCanonicalExpression("f")} <> 'scoped'
+  AND ${resourceTypeCanonicalExpression("f")} <> 'unknown resource type'
 ORDER BY value ASC;
 `,
-        { replacements: queryParams, type: QueryTypes.SELECT },
+        { replacements: filterPreviewParams, type: QueryTypes.SELECT },
       ),
       sequelize.query<FilterOptionValueRow>(
         `
 WITH ${latestInventoryCteSql}
 SELECT DISTINCT COALESCE(NULLIF(BTRIM(li.instance_class), ''), 'Unknown class') AS value
 ${fromFactBaseSql({ withInventory: true, withRegion: false })}
-WHERE ${buildResourceDrilldownFilters(queryParams, "f")}
+WHERE ${buildResourceDrilldownFilters(filterPreviewParams, "f")}
 ORDER BY value ASC;
 `,
-        { replacements: queryParams, type: QueryTypes.SELECT },
+        { replacements: filterPreviewParams, type: QueryTypes.SELECT },
       ),
       sequelize.query<FilterOptionValueRow>(
         `
 WITH ${latestInventoryCteSql}
 SELECT DISTINCT COALESCE(NULLIF(BTRIM(f.cluster_id), ''), NULLIF(BTRIM(li.cluster_id), ''), 'Standalone / No cluster') AS value
 ${fromFactBaseSql({ withInventory: true, withRegion: false })}
-WHERE ${buildResourceDrilldownFilters(queryParams, "f")}
+WHERE ${buildResourceDrilldownFilters(filterPreviewParams, "f")}
 ORDER BY value ASC;
 `,
-        { replacements: queryParams, type: QueryTypes.SELECT },
+        { replacements: filterPreviewParams, type: QueryTypes.SELECT },
       ),
       sequelize.query<FilterOptionValueRow>(
         `
 SELECT DISTINCT ${COST_CATEGORY_LABEL_CASE} AS value
 FROM db_cost_history_daily ch
-WHERE ${buildCostHistoryDrilldownFilters(queryParams, "ch")}
+WHERE ${buildCostHistoryDrilldownFilters(filterPreviewParams, "ch")}
 ORDER BY value ASC;
 `,
-        { replacements: queryParams, type: QueryTypes.SELECT },
+        { replacements: filterPreviewParams, type: QueryTypes.SELECT },
       ),
       sequelize.query<FilterOptionValueRow>(
         `
 SELECT DISTINCT
   ${buildDbServiceDisplaySql("f")} AS value
 FROM fact_db_resource_daily f
-WHERE ${buildTrendFilters(queryParams, "f")}
+WHERE ${buildTrendFilters(filterPreviewParams, "f")}
   AND ${buildDbServiceDisplaySql("f")} <> 'Unknown service'
 ORDER BY value ASC;
 `,
-        { replacements: queryParams, type: QueryTypes.SELECT },
+        { replacements: filterPreviewParams, type: QueryTypes.SELECT },
       ),
     ]);
 
@@ -1037,10 +1098,27 @@ CROSS JOIN previous_period;
         startDate: queryParams.previousStartDate,
         endDate: queryParams.previousEndDate,
       }));
-      const factGroupedValuesFilterCurrent = buildGroupedValuesFilter(costCurrentParams, "fact", "f");
-      const factGroupedValuesFilterPrevious = buildGroupedValuesFilter(costPreviousParams, "fact", "f");
+      const groupedFactMeta = params.groupBy === "cost_category" ? null : GROUP_BY_COLUMNS[params.groupBy];
+      const withFactInventoryJoin = groupedFactMeta?.requiresInventory ?? false;
+      const withFactRegionJoin = groupedFactMeta?.requiresRegion ?? false;
+      const factJoinClauses = `
+${withFactRegionJoin ? "LEFT JOIN dim_region dr ON dr.id = f.region_key" : ""}
+${withFactInventoryJoin ? `LEFT JOIN latest_inventory li
+  ON li.tenant_id = f.tenant_id
+ AND li.resource_id = f.resource_id
+ AND li.cloud_connection_id IS NOT DISTINCT FROM f.cloud_connection_id` : ""}
+`;
+      const factGroupedValuesFilterCurrentSafe = buildGroupedValuesFilter(costCurrentParams, "fact", "f", {
+        withInventory: withFactInventoryJoin,
+        withRegion: withFactRegionJoin,
+      });
+      const factGroupedValuesFilterPreviousSafe = buildGroupedValuesFilter(costPreviousParams, "fact", "f", {
+        withInventory: withFactInventoryJoin,
+        withRegion: withFactRegionJoin,
+      });
       const currentCostRows = await sequelize.query<{ totalCost: string | number | null; activeResources: string | number | null }>(
         `
+${withFactInventoryJoin ? `WITH ${latestInventoryCteSql}` : ""}
 SELECT
   COALESCE(SUM(${costHistoryBaseExpression("ch", queryParams.costBasis)}), 0) AS "totalCost",
   COUNT(DISTINCT ch.resource_id) AS "activeResources"
@@ -1050,8 +1128,9 @@ JOIN fact_db_resource_daily f
  AND f.usage_date = ch.usage_date
  AND f.resource_id = ch.resource_id
  AND f.cloud_connection_id IS NOT DISTINCT FROM ch.cloud_connection_id
+${factJoinClauses}
 WHERE ${buildCostHistoryDrilldownFilters(costCurrentParams, "ch")}
-${factGroupedValuesFilterCurrent ? `  AND ${factGroupedValuesFilterCurrent}` : ""};
+${factGroupedValuesFilterCurrentSafe ? `  AND ${factGroupedValuesFilterCurrentSafe}` : ""};
 `,
         {
           replacements: costCurrentParams,
@@ -1060,6 +1139,7 @@ ${factGroupedValuesFilterCurrent ? `  AND ${factGroupedValuesFilterCurrent}` : "
       );
       const previousCostRows = await sequelize.query<{ totalCost: string | number | null }>(
         `
+${withFactInventoryJoin ? `WITH ${latestInventoryCteSql}` : ""}
 SELECT
   COALESCE(SUM(${costHistoryBaseExpression("ch", queryParams.costBasis)}), 0) AS "totalCost"
 FROM db_cost_history_daily ch
@@ -1068,8 +1148,9 @@ JOIN fact_db_resource_daily f
  AND f.usage_date = ch.usage_date
  AND f.resource_id = ch.resource_id
  AND f.cloud_connection_id IS NOT DISTINCT FROM ch.cloud_connection_id
+${factJoinClauses}
 WHERE ${buildCostHistoryDrilldownFilters(costPreviousParams, "ch")}
-${factGroupedValuesFilterPrevious ? `  AND ${factGroupedValuesFilterPrevious}` : ""};
+${factGroupedValuesFilterPreviousSafe ? `  AND ${factGroupedValuesFilterPreviousSafe}` : ""};
 `,
         {
           replacements: costPreviousParams,
@@ -1443,7 +1524,14 @@ ORDER BY "totalCost" DESC;
       const groupBy = GROUP_BY_COLUMNS[queryParams.groupBy];
       const withInventory = groupBy.requiresInventory;
       const withRegion = groupBy.requiresRegion;
-      const factGroupedValuesFilter = buildGroupedValuesFilter(queryParams, "fact", "f");
+      const factGroupedValuesFilter = buildGroupedValuesFilter(queryParams, "fact", "f", {
+        withInventory,
+        withRegion,
+      });
+      const excludeUnknownResourceType =
+        queryParams.groupBy === "resource_type"
+          ? `  AND ${resourceTypeCanonicalExpression("f")} <> 'unknown resource type'`
+          : "";
 
       const rows = await sequelize.query<TableAggregateRow>(
         `
@@ -1471,6 +1559,7 @@ ${withInventory ? `LEFT JOIN latest_inventory li
  AND li.cloud_connection_id IS NOT DISTINCT FROM f.cloud_connection_id` : ""}
 WHERE ${buildCostHistoryDrilldownFilters(queryParams, "ch")}
 ${factGroupedValuesFilter ? `  AND ${factGroupedValuesFilter}` : ""}
+${excludeUnknownResourceType}
 GROUP BY ${groupBy.groupExpression}
 ORDER BY "totalCost" DESC;
 `,
@@ -1727,7 +1816,14 @@ ORDER BY ch.usage_date ASC;
       const unknownLabel = GROUPED_UNKNOWN_LABELS[queryParams.groupBy];
       const withInventory = groupBy.requiresInventory;
       const withRegion = groupBy.requiresRegion;
-      const factGroupedValuesFilter = buildGroupedValuesFilter(queryParams, "fact", "f");
+      const factGroupedValuesFilter = buildGroupedValuesFilter(queryParams, "fact", "f", {
+        withInventory,
+        withRegion,
+      });
+      const excludeUnknownResourceType =
+        queryParams.groupBy === "resource_type"
+          ? `  AND ${resourceTypeCanonicalExpression("f")} <> 'unknown resource type'`
+          : "";
 
       const rows = await sequelize.query<GroupedTrendAggregateRow>(
         `
@@ -1750,6 +1846,7 @@ ${withInventory ? `LEFT JOIN latest_inventory li
  AND li.cloud_connection_id IS NOT DISTINCT FROM f.cloud_connection_id` : ""}
 WHERE ${buildCostHistoryDrilldownFilters(queryParams, "ch")}
 ${factGroupedValuesFilter ? `  AND ${factGroupedValuesFilter}` : ""}
+${excludeUnknownResourceType}
 GROUP BY ch.usage_date, ${groupBy.groupExpression}, ${groupBy.keyExpression}
 ORDER BY ch.usage_date ASC;
 `,
