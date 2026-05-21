@@ -1,10 +1,8 @@
 import type { DatabaseAssetDetail } from "../../../api/dashboardTypes";
 import { WidgetShell } from "../../../common/components";
 import {
-  DETAIL_EMPTY_NOTE,
   displayValue,
   formatNumber,
-  toTitleCase,
 } from "./database-asset-detail.formatters";
 
 type DatabaseAssetDetailTopologySectionProps = {
@@ -12,45 +10,43 @@ type DatabaseAssetDetailTopologySectionProps = {
 };
 
 export function DatabaseAssetDetailTopologySection({ detail }: DatabaseAssetDetailTopologySectionProps) {
+  const hasClusterId = Boolean(detail.topology.clusterId && detail.topology.clusterId.trim().length > 0);
+  const relatedCount = detail.topology.relatedResourceCount;
+  const hasRelatedCount = relatedCount !== null && typeof relatedCount !== "undefined" && Number.isFinite(relatedCount);
+  const hasMeaningfulTopology = hasClusterId || detail.topology.isClusterResource || (hasRelatedCount && Number(relatedCount) > 1);
+
+  if (!hasMeaningfulTopology) {
+    return (
+      <WidgetShell title="Topology & Placement" subtitle="Cluster membership and account placement details">
+        <p className="dashboard-note">No cluster topology data is available for this resource.</p>
+      </WidgetShell>
+    );
+  }
+
   return (
     <WidgetShell title="Topology & Placement" subtitle="Cluster membership and account placement details">
       <div className="database-asset-detail__meta-grid">
+        {hasClusterId ? (
+          <div>
+            <span>Cluster ID</span>
+            <strong>{displayValue(detail.topology.clusterId)}</strong>
+          </div>
+        ) : null}
         <div>
-          <span>Cluster ID</span>
-          <strong>{displayValue(detail.topology.clusterId)}</strong>
-        </div>
-        <div>
-          <span>Placement</span>
+          <span>Cluster Membership</span>
           <strong>{detail.topology.isClusterResource ? "Cluster resource" : "Standalone resource"}</strong>
         </div>
-        <div>
-          <span>Related Resource Count</span>
-          <strong>{formatNumber(detail.topology.relatedResourceCount)}</strong>
-        </div>
+        {hasRelatedCount ? (
+          <div>
+            <span>Related Resource Count</span>
+            <strong>{formatNumber(detail.topology.relatedResourceCount)}</strong>
+          </div>
+        ) : null}
         <div>
           <span>Resource Type</span>
           <strong>{displayValue(detail.topology.resourceType)}</strong>
         </div>
-        <div>
-          <span>Region</span>
-          <strong>{displayValue(detail.identity.regionName ?? detail.identity.regionKey)}</strong>
-        </div>
-        <div>
-          <span>Account / Sub-account</span>
-          <strong>{displayValue(detail.identity.subAccountName ?? detail.identity.subAccountKey)}</strong>
-        </div>
-        <div>
-          <span>Status</span>
-          <strong>{toTitleCase(detail.identity.status)}</strong>
-        </div>
-        <div>
-          <span>DB Service</span>
-          <strong>{displayValue(detail.identity.dbService)}</strong>
-        </div>
       </div>
-      <p className="dashboard-note">
-        Replica roles, failover state, and AZ topology are {DETAIL_EMPTY_NOTE.toLowerCase()}.
-      </p>
     </WidgetShell>
   );
 }

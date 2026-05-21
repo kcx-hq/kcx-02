@@ -18,9 +18,6 @@ import {
   DETAIL_EMPTY_NOTE,
   displayValue,
   formatDateRange,
-  getActivitySignal,
-  getResourceFootprint,
-  toTitleCase,
 } from "./components/database-asset-detail.formatters";
 
 const ASSETS_PAGE_PATH = "/dashboard/services/database/assets";
@@ -163,14 +160,6 @@ export default function DatabaseAssetDetailPage() {
               <span>Account / Sub-account</span>
               <strong>{displayValue(detail.identity.subAccountName ?? detail.identity.subAccountKey)}</strong>
             </div>
-            <div>
-              <span>Status</span>
-              <strong>{toTitleCase(detail.identity.status)}</strong>
-            </div>
-            <div>
-              <span>Date Range</span>
-              <strong>{formatDateRange(startDate, endDate)}</strong>
-            </div>
           </div>
         </WidgetShell>
 
@@ -179,36 +168,6 @@ export default function DatabaseAssetDetailPage() {
         {activeTab === "overview" ? (
           <div className="database-asset-detail__stack">
             <DatabaseAssetDetailSummary detail={detail} />
-            <WidgetShell title="Executive Summary" subtitle="Immediate context for this database asset">
-              <div className="database-asset-detail__summary-grid database-asset-detail__summary-grid--text">
-                <div className="database-asset-detail__summary-card">
-                  <span>Primary Cost Driver</span>
-                  <strong>{detail.costSummary.primaryCostDriver ?? DETAIL_EMPTY_NOTE}</strong>
-                </div>
-                <div className="database-asset-detail__summary-card">
-                  <span>Activity Signal</span>
-                  <strong>
-                    {getActivitySignal({
-                      avgLoad: detail.usageSummary.avgLoad,
-                      avgCpu: detail.usageSummary.avgCpu,
-                      avgConnections: detail.usageSummary.avgConnections,
-                      requestCount: detail.usageSummary.requestCount,
-                    })}
-                  </strong>
-                </div>
-                <div className="database-asset-detail__summary-card">
-                  <span>Resource Footprint</span>
-                  <strong>
-                    {getResourceFootprint({
-                      allocatedStorageGb: detail.storageSummary.allocatedStorageGb,
-                      dataFootprintGb: detail.storageSummary.dataFootprintGb,
-                      instanceClass: detail.identity.instanceClass,
-                      resourceType: detail.identity.resourceType,
-                    })}
-                  </strong>
-                </div>
-              </div>
-            </WidgetShell>
           </div>
         ) : null}
 

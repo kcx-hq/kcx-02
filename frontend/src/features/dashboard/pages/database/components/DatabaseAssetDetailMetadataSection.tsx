@@ -9,6 +9,7 @@ import {
   displayValue,
   formatDateOnly,
   formatDateTime,
+  toTitleCase,
 } from "./database-asset-detail.formatters";
 
 type DatabaseAssetDetailMetadataSectionProps = {
@@ -74,6 +75,14 @@ export function DatabaseAssetDetailMetadataSection({ detail }: DatabaseAssetDeta
           <div>
             <span>Engine Version</span>
             <strong>{displayValue(detail.identity.dbEngineVersion)}</strong>
+          </div>
+          <div>
+            <span>Status</span>
+            <strong>{toTitleCase(detail.identity.status)}</strong>
+          </div>
+          <div>
+            <span>Instance Class</span>
+            <strong>{displayValue(detail.identity.instanceClass)}</strong>
           </div>
           <div>
             <span>Capacity Mode</span>
