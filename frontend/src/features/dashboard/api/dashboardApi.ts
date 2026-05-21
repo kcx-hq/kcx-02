@@ -33,13 +33,10 @@ import type {
   Ec2ExplorerResponse,
   Ec2CostExplorerV2FiltersQuery,
   Ec2CostExplorerV2Response,
-  Ec2UsageExplorerV2Granularity,
-  Ec2UsageExplorerV2UsageMetric,
-  Ec2UsageExplorerV2Aggregation,
-  Ec2UsageExplorerV2GroupBy,
-  Ec2UsageExplorerV2Compare,
   Ec2UsageExplorerV2FiltersQuery,
   Ec2UsageExplorerV2Response,
+  Ec2DataTransferExplorerV2FiltersQuery,
+  Ec2DataTransferExplorerV2Response,
   Ec2NetworkBreakdownResponse,
   Ec2DataTransferFiltersQuery,
   Ec2DataTransferResponse,
@@ -1009,6 +1006,25 @@ export const dashboardApi = {
       },
     );
   },
+  getEc2DataTransferExplorerV2(scope: DashboardResolvedScope, filters: Ec2DataTransferExplorerV2FiltersQuery) {
+    return apiPost<Ec2DataTransferExplorerV2Response>(
+      withEc2CostExplorerV2Path("/ec2/explorer/data-transfer", scope),
+      {
+        startDate: filters.startDate,
+        endDate: filters.endDate,
+        granularity: filters.granularity ?? "daily",
+        yAxis: filters.yAxis ?? "transfer_cost",
+        groupBy: filters.groupBy ?? "none",
+        tagKey: filters.tagKey ?? null,
+        compare: filters.compare ?? "none",
+        accountIds: filters.accountIds ?? [],
+        regions: filters.regions ?? [],
+        instanceTypes: filters.instanceTypes ?? [],
+        transferTypes: filters.transferTypes ?? [],
+        tags: filters.tags ?? [],
+      },
+    );
+  },
   getEc2ExplorerNetworkBreakdown(scope: DashboardResolvedScope, filters: Ec2ExplorerFiltersQuery) {
     return apiGet<Ec2NetworkBreakdownResponse>(withEc2ExplorerFilters("/dashboard/ec2/explorer/network-breakdown", scope, filters));
   },
@@ -1182,6 +1198,8 @@ export type {
   Ec2UsageExplorerV2Compare,
   Ec2UsageExplorerV2FiltersQuery,
   Ec2UsageExplorerV2Response,
+  Ec2DataTransferExplorerV2FiltersQuery,
+  Ec2DataTransferExplorerV2Response,
   Ec2NetworkBreakdownResponse,
   Ec2DataTransferFiltersQuery,
   Ec2DataTransferResponse,

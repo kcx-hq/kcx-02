@@ -11,7 +11,7 @@ type EC2ExplorerGraphSeries = {
   label: string;
   data: Array<{
     date: string;
-    value: number;
+    value: number | null;
     cost?: number;
     total_cost?: number;
     data_transfer_cost?: number;
@@ -116,7 +116,10 @@ export function EC2ExplorerChart({
       maximumFractionDigits: 2,
     });
 
-    const toNumericValue = (point: EC2ExplorerGraphSeries["data"][number]): number => {
+    const toNumericValue = (point: EC2ExplorerGraphSeries["data"][number]): number | null => {
+      if (point.value === null || typeof point.value === "undefined") {
+        return null;
+      }
       if (valueMode === "data-transfer-cost") {
         return Number(point.cost ?? point.total_cost ?? point.data_transfer_cost ?? point.value ?? 0);
       }
@@ -158,7 +161,11 @@ export function EC2ExplorerChart({
         formatter: (params: unknown) => {
           const point = params as { axisValueLabel?: string; name?: string; marker?: string; seriesName?: string; value?: unknown };
           const headerValue = String(point.axisValueLabel ?? point.name ?? "");
-          const numericValue = Number(point.value ?? 0);
+          const rawValue = point.value;
+          if (rawValue === null || typeof rawValue === "undefined") {
+            return `${headerValue}<br/>${String(point.marker ?? "")}${String(point.seriesName ?? "")}: -`;
+          }
+          const numericValue = Number(rawValue);
           const valueText = valueMode === "default"
             ? formatByUnit(numericValue)
             : valueMode === "data-transfer-cost"

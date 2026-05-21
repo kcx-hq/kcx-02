@@ -73,7 +73,7 @@ export function EC2ExplorerTable({
       "eipCost",
       "otherCost",
     ]);
-    const percentColumns = new Set(["pct", "percentOfTotal"]);
+    const percentColumns = new Set(["pct", "percentOfTotal", "percentOfTransferCost"]);
     const countColumns = new Set(["instanceCount", "resourceCount"]);
     const defs = table.columns.map((column) => {
       const isRecommendationColumn = /recommendation/i.test(column.key) || /recommendation/i.test(column.label);
@@ -110,6 +110,7 @@ export function EC2ExplorerTable({
             return formatGb(params.value as string | number | null);
           }
           if (cpuColumns.has(column.key)) {
+            if (params.value === null || typeof params.value === "undefined" || String(params.value).trim() === "") return "-";
             const numeric = Number(params.value ?? 0);
             return `${(Number.isFinite(numeric) ? numeric : 0).toFixed(2)}%`;
           }

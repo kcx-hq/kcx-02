@@ -1030,6 +1030,68 @@ export type Ec2UsageExplorerV2Response = {
   };
 };
 
+export type Ec2DataTransferExplorerV2Granularity = "daily" | "weekly" | "monthly";
+export type Ec2DataTransferExplorerV2YAxis = "transfer_cost" | "usage_gb";
+export type Ec2DataTransferExplorerV2GroupBy = "none" | "account" | "region" | "instance" | "transfer_type" | "tag";
+export type Ec2DataTransferExplorerV2Compare = "none" | "previous_period";
+
+export type Ec2DataTransferExplorerV2FiltersQuery = {
+  startDate?: string;
+  endDate?: string;
+  granularity?: Ec2DataTransferExplorerV2Granularity;
+  yAxis?: Ec2DataTransferExplorerV2YAxis;
+  groupBy?: Ec2DataTransferExplorerV2GroupBy;
+  tagKey?: string | null;
+  compare?: Ec2DataTransferExplorerV2Compare;
+  accountIds?: string[];
+  regions?: string[];
+  instanceTypes?: string[];
+  transferTypes?: Array<"internet" | "inter_region" | "inter_az" | "regional" | "unknown">;
+  tags?: string[];
+};
+
+export type Ec2DataTransferExplorerV2Response = {
+  kpis: {
+    transferCost: number;
+    usageGb: number;
+    internetTransferCost: number;
+    interRegionInterAzTransferCost: number;
+  };
+  chart: {
+    granularity: Ec2DataTransferExplorerV2Granularity;
+    xAxis: "date";
+    yAxis: Ec2DataTransferExplorerV2YAxis;
+    series: Array<{
+      groupKey: string;
+      groupLabel: string;
+      points: Array<{ date: string; value: number }>;
+    }>;
+  };
+  table: {
+    rows: Array<{
+      groupKey: string;
+      groupLabel: string;
+      transferCost: number;
+      usageGb: number;
+      internetCost: number;
+      interRegionCost: number;
+      interAzCost: number;
+      regionalCost: number;
+      unknownCost: number;
+      percentOfTransferCost: number;
+      mainDriver: "Internet" | "Inter-Region" | "Inter-AZ" | "Regional" | "Unknown";
+    }>;
+  };
+  meta: {
+    yAxis: Ec2DataTransferExplorerV2YAxis;
+    groupBy: Ec2DataTransferExplorerV2GroupBy;
+    granularity: Ec2DataTransferExplorerV2Granularity;
+    compare: Ec2DataTransferExplorerV2Compare;
+    currency: "USD";
+    normalized: true;
+  };
+};
+
 export type Ec2NetworkBreakdownType =
   | "Internet Data Transfer"
   | "Inter-Region Data Transfer"

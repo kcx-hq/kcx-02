@@ -6,4 +6,5 @@ export { EC2ExplorerGroupByPopover } from "./EC2ExplorerGroupByPopover";
 export { EC2ExplorerUnifiedSkeleton } from "./EC2ExplorerUnifiedSkeleton";
 export { EC2CostExplorerFilters } from "./EC2CostExplorerFilters";
 export { EC2UsageExplorerFilters } from "./EC2UsageExplorerFilters";
+export { EC2DataTransferExplorerFilters } from "./EC2DataTransferExplorerFilters";
 export type { UsageYAxisKey } from "./EC2UsageExplorerFilters";

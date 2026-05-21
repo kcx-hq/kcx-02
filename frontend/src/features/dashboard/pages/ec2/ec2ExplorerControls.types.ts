@@ -167,7 +167,7 @@ export const GROUP_BY_OPTIONS_BY_METRIC: Record<EC2Metric, EC2GroupBy[]> = {
   usage: ["none", "account", "region", "instance", "instance-type", "tag"],
   instances: ["none", "account", "region", "instance", "instance-type", "instance-state", "recommendation", "tag"],
   volumes: ["none", "account", "region", "instance", "volume", "volume_type", "attachment_state", "size_bucket", "tag"],
-  "data-transfer": ["none", "account", "region", "instance", "transfer-type", "tag"],
+  "data-transfer": ["account", "region", "instance", "transfer-type", "tag"],
 };
 
 export const isGroupByAllowedForMetric = (groupBy: EC2GroupBy, metric: EC2Metric): boolean =>
@@ -181,7 +181,11 @@ export const getGroupByOptionsForMetric = (metric: EC2Metric): Array<{ key: EC2G
 export const getValidGroupByForMetric = (
   metric: EC2Metric,
   currentGroupBy: EC2GroupBy,
-): EC2GroupBy => (isGroupByAllowedForMetric(currentGroupBy, metric) ? currentGroupBy : "none");
+): EC2GroupBy => {
+  if (isGroupByAllowedForMetric(currentGroupBy, metric)) return currentGroupBy;
+  if (metric === "data-transfer") return "transfer-type";
+  return "none";
+};
 
 export const INSTANCE_TYPE_OPTIONS: Array<{ key: string; label: string }> = [
   { key: "all", label: "All types" },

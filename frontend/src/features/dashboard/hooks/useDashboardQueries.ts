@@ -20,6 +20,8 @@ import {
   type Ec2CostExplorerV2Response,
   type Ec2UsageExplorerV2FiltersQuery,
   type Ec2UsageExplorerV2Response,
+  type Ec2DataTransferExplorerV2FiltersQuery,
+  type Ec2DataTransferExplorerV2Response,
   type Ec2NetworkBreakdownResponse,
   type Ec2DataTransferFiltersQuery,
   type Ec2DataTransferResponse,
@@ -588,6 +590,17 @@ export function useEc2UsageExplorerV2Query(filters: Ec2UsageExplorerV2FiltersQue
   return useQuery<Ec2UsageExplorerV2Response, Error>({
     queryKey: ["dashboard", "ec2", "explorer", "usage-v2", scope, filters],
     queryFn: () => dashboardApi.getEc2UsageExplorerV2(assertScope(scope), filters),
+    enabled: Boolean(scope) && enabledOverride,
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
+  });
+}
+
+export function useEc2DataTransferExplorerV2Query(filters: Ec2DataTransferExplorerV2FiltersQuery, enabledOverride: boolean = true) {
+  const { scope } = useDashboardScope();
+  return useQuery<Ec2DataTransferExplorerV2Response, Error>({
+    queryKey: ["dashboard", "ec2", "explorer", "data-transfer-v2", scope, filters],
+    queryFn: () => dashboardApi.getEc2DataTransferExplorerV2(assertScope(scope), filters),
     enabled: Boolean(scope) && enabledOverride,
     staleTime: 60_000,
     refetchOnWindowFocus: false,

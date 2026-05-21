@@ -3,11 +3,12 @@ import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import { useDashboardScope } from "../../hooks/useDashboardScope";
-import { useEc2CostExplorerV2Query, useEc2ExplorerQuery, useEc2UsageExplorerV2Query } from "../../hooks/useDashboardQueries";
-import type { Ec2CostExplorerV2FiltersQuery, Ec2ExplorerFiltersQuery, Ec2UsageExplorerV2FiltersQuery } from "../../api/dashboardApi";
+import { useEc2CostExplorerV2Query, useEc2DataTransferExplorerV2Query, useEc2ExplorerQuery, useEc2UsageExplorerV2Query } from "../../hooks/useDashboardQueries";
+import type { Ec2CostExplorerV2FiltersQuery, Ec2DataTransferExplorerV2FiltersQuery, Ec2ExplorerFiltersQuery, Ec2UsageExplorerV2FiltersQuery } from "../../api/dashboardApi";
 import {
   EC2_EXPLORER_DEFAULT_CONTROLS,
   EC2CostExplorerFilters,
+  EC2DataTransferExplorerFilters,
   EC2ExplorerChart,
   EC2ExplorerTable,
   EC2ExplorerTopControls,
@@ -101,6 +102,12 @@ const toUsageV2GroupBy = (groupBy: EC2ExplorerControlsState["groupBy"]): Ec2Usag
     : groupBy === "account" || groupBy === "region" || groupBy === "instance" || groupBy === "tag" || groupBy === "none"
       ? groupBy
       : "none";
+const toDataTransferV2GroupBy = (groupBy: EC2ExplorerControlsState["groupBy"]): Ec2DataTransferExplorerV2FiltersQuery["groupBy"] =>
+  groupBy === "transfer-type"
+    ? "transfer_type"
+    : groupBy === "account" || groupBy === "region" || groupBy === "instance" || groupBy === "tag"
+      ? groupBy
+      : "transfer_type";
 
 const toApiAggregation = (
   aggregation: EC2ExplorerControlsState["usageAggregation"],
@@ -270,7 +277,7 @@ export default function EC2ExplorerPage() {
     return {
       ...EC2_EXPLORER_DEFAULT_CONTROLS,
       metric,
-      groupBy,
+      groupBy: metric === "data-transfer" && groupBy === "none" ? "transfer-type" : groupBy,
       usageType,
     };
   }, [location.search]);
@@ -312,6 +319,7 @@ export default function EC2ExplorerPage() {
 
   const isCostMetric = controls.metric === "cost";
   const isUsageMetric = controls.metric === "usage";
+  const isDataTransferMetric = controls.metric === "data-transfer";
   const costFilters = useMemo<Ec2CostExplorerV2FiltersQuery>(
     () => ({
       startDate: scopeStartDate,
@@ -331,7 +339,6 @@ export default function EC2ExplorerPage() {
     [controls, globalGranularity, scopeEndDate, scopeStartDate],
   );
   const legacyQuery = useEc2ExplorerQuery(filters, Boolean(scope) && !isCostMetric);
-  // TODO(ec2-explorer): Migrate Usage and Data Transfer tabs to their dedicated backend routes in a later phase.
   const costV2Query = useEc2CostExplorerV2Query(costFilters, Boolean(scope) && isCostMetric);
   const usageV2Filters = useMemo<Ec2UsageExplorerV2FiltersQuery>(
     () => ({
@@ -351,8 +358,33 @@ export default function EC2ExplorerPage() {
     [controls, globalGranularity, scopeEndDate, scopeStartDate, usageYAxis],
   );
   const usageV2Query = useEc2UsageExplorerV2Query(usageV2Filters, Boolean(scope) && isUsageMetric);
+  const dataTransferV2Filters = useMemo<Ec2DataTransferExplorerV2FiltersQuery>(
+    () => ({
+      startDate: scopeStartDate,
+      endDate: scopeEndDate,
+      granularity: globalGranularity,
+      yAxis: controls.usageType === "network" ? "transfer_cost" : "usage_gb",
+      groupBy: toDataTransferV2GroupBy(controls.groupBy),
+      tagKey: controls.groupBy === "tag" ? controls.scopeFilters.tags[0] ?? "owner" : null,
+      compare: toCostV2Compare(controls.compare),
+      accountIds: [],
+      regions: controls.scopeFilters.region,
+      instanceTypes: controls.instanceType && controls.instanceType !== "all" ? [controls.instanceType] : [],
+      transferTypes: [],
+      tags: controls.scopeFilters.tags,
+    }),
+    [controls, globalGranularity, scopeEndDate, scopeStartDate],
+  );
+  const dataTransferV2Query = useEc2DataTransferExplorerV2Query(dataTransferV2Filters, Boolean(scope) && isDataTransferMetric);
   const shouldUseUsageV2 = isUsageMetric && Boolean(usageV2Query.data) && !usageV2Query.isError;
-  const query = isCostMetric ? costV2Query : isUsageMetric ? (shouldUseUsageV2 ? usageV2Query : legacyQuery) : legacyQuery;
+  const shouldUseDataTransferV2 = isDataTransferMetric && Boolean(dataTransferV2Query.data) && !dataTransferV2Query.isError;
+  const query = isCostMetric
+    ? costV2Query
+    : isUsageMetric
+      ? (shouldUseUsageV2 ? usageV2Query : legacyQuery)
+      : isDataTransferMetric
+        ? (shouldUseDataTransferV2 ? dataTransferV2Query : legacyQuery)
+        : legacyQuery;
   const hasExplorerData = Boolean(query.data);
   const isSectionLoading = query.isFetching || !hasExplorerData;
   const dataTransferView = controls.metric === "data-transfer"
@@ -563,8 +595,8 @@ export default function EC2ExplorerPage() {
     const rows = response.table.rows.map((row) => ({
       id: row.groupKey,
       group: row.groupLabel,
-      avgCpu: Number(row.avgCpu ?? 0),
-      maxCpu: Number(row.maxCpu ?? 0),
+      avgCpu: row.avgCpu == null ? null : Number(row.avgCpu),
+      maxCpu: row.maxCpu == null ? null : Number(row.maxCpu),
       networkInGb: Number(row.networkInGb ?? 0),
       networkOutGb: Number(row.networkOutGb ?? 0),
       networkTotalGb: Number(row.networkTotalGb ?? 0),
@@ -600,7 +632,46 @@ export default function EC2ExplorerPage() {
         storageGb: 0,
         storageGbHours: 0,
         avgCpu: response.kpis.avgCpu ?? 0,
-        totalNetworkGb: Number(response.kpis.totalNetworkInGb ?? 0) + Number(response.kpis.totalNetworkOutGb ?? 0),
+        totalNetworkGb: Number((response.kpis as { networkTotalGb?: number | null }).networkTotalGb ?? 0),
+      },
+      graph: {
+        type: resolvedGraphType,
+        xKey: "date" as const,
+        series: response.chart.series.map((series) => ({
+          key: series.groupKey,
+          label: series.groupLabel,
+          data: (() => {
+            const pointMap = new Map(series.points.map((point) => [point.date, point.value == null ? null : Number(point.value)]));
+            const filledBuckets = dateBuckets.length > 0 ? dateBuckets : series.points.map((point) => point.date);
+            return filledBuckets.map((date) => ({ date, value: pointMap.has(date) ? pointMap.get(date) ?? null : null }));
+          })(),
+        })),
+      },
+      table: { columns, rows },
+      usageKpis: response.kpis,
+    };
+  }, [controls.groupBy, isUsageMetric, resolvedGraphType, scopeEndDate, scopeStartDate, usageV2Filters.granularity, usageV2Query.data]);
+  const dataTransferV2Mapped = useMemo(() => {
+    if (!isDataTransferMetric || !dataTransferV2Query.data) return null;
+    const response = dataTransferV2Query.data;
+    const isTransferTypeGrouping = controls.groupBy === "transfer-type";
+    const dateBuckets =
+      scopeStartDate && scopeEndDate
+        ? buildDateBuckets(scopeStartDate, scopeEndDate, dataTransferV2Filters.granularity ?? "daily")
+        : [];
+    return {
+      summary: {
+        totalCost: response.kpis.transferCost ?? 0,
+        previousCost: 0,
+        trendPercent: 0,
+        instanceCount: 0,
+        volumeCount: 0,
+        attachedInstanceCount: 0,
+        unattachedVolumeCount: 0,
+        storageGb: response.kpis.usageGb ?? 0,
+        storageGbHours: 0,
+        avgCpu: 0,
+        totalNetworkGb: response.kpis.usageGb ?? 0,
       },
       graph: {
         type: resolvedGraphType,
@@ -615,12 +686,45 @@ export default function EC2ExplorerPage() {
           })(),
         })),
       },
-      table: { columns, rows },
-      usageKpis: response.kpis,
+      table: {
+        columns: isTransferTypeGrouping
+          ? [
+              { key: "group", label: "Transfer Type" },
+              { key: "transferCost", label: "Transfer Cost" },
+              { key: "usageGb", label: "Usage GB" },
+              { key: "percentOfTransferCost", label: "% of Total" },
+            ]
+          : [
+              { key: "group", label: "Group" },
+              { key: "transferCost", label: "Transfer Cost" },
+              { key: "usageGb", label: "Usage GB" },
+              { key: "internetCost", label: "Internet Cost" },
+              { key: "interRegionCost", label: "Inter-Region Cost" },
+              { key: "interAzCost", label: "Inter-AZ Cost" },
+              { key: "regionalCost", label: "Regional Cost" },
+              { key: "unknownCost", label: "Unknown Cost" },
+              { key: "percentOfTransferCost", label: "% of Transfer Cost" },
+              { key: "mainDriver", label: "Main Driver" },
+            ],
+        rows: response.table.rows.map((row) => ({
+          id: row.groupKey,
+          group: row.groupLabel,
+          transferCost: Number(row.transferCost ?? 0),
+          usageGb: Number(row.usageGb ?? 0),
+          internetCost: Number(row.internetCost ?? 0),
+          interRegionCost: Number(row.interRegionCost ?? 0),
+          interAzCost: Number(row.interAzCost ?? 0),
+          regionalCost: Number(row.regionalCost ?? 0),
+          unknownCost: Number(row.unknownCost ?? 0),
+          percentOfTransferCost: Number(row.percentOfTransferCost ?? 0),
+          mainDriver: row.mainDriver ?? "Unknown",
+        })),
+      },
+      transferKpis: response.kpis,
     };
-  }, [controls.groupBy, isUsageMetric, resolvedGraphType, scopeEndDate, scopeStartDate, usageV2Filters.granularity, usageV2Query.data]);
+  }, [controls.groupBy, dataTransferV2Filters.granularity, dataTransferV2Query.data, isDataTransferMetric, resolvedGraphType, scopeEndDate, scopeStartDate]);
 
-  const explorerData = isCostMetric ? costV2Mapped : isUsageMetric ? usageV2Mapped : legacyQuery.data;
+  const explorerData = isCostMetric ? costV2Mapped : isUsageMetric ? usageV2Mapped : isDataTransferMetric ? dataTransferV2Mapped : legacyQuery.data;
 
   const metricLabel = METRIC_OPTIONS.find((option) => option.key === controls.metric)?.label ?? "Cost";
   const costYAxisLabel =
@@ -638,9 +742,19 @@ export default function EC2ExplorerPage() {
         ? "Max CPU (%)"
         : usageYAxis === "network_in"
           ? "Network In (GB)"
-          : usageYAxis === "network_out"
-            ? "Network Out (GB)"
-            : "Network Total (GB)";
+        : usageYAxis === "network_out"
+          ? "Network Out (GB)"
+          : "Network Total (GB)";
+  const dataTransferYAxisLabel = dataTransferV2Filters.yAxis === "usage_gb" ? "Usage (GB)" : "Transfer Cost ($)";
+  useEffect(() => {
+    if (!isDataTransferMetric) return;
+    const chartUnitFormatter = dataTransferV2Filters.yAxis === "usage_gb" ? "gb" : "currency";
+    console.debug("[EC2 Explorer][Data Transfer V2][Formatter Debug]", {
+      selectedYAxis: dataTransferV2Filters.yAxis,
+      selectedView: dataTransferV2Filters.yAxis === "usage_gb" ? "usage" : "transfer_cost",
+      chartUnitFormatter,
+    });
+  }, [dataTransferV2Filters.yAxis, isDataTransferMetric]);
   const usageUnit: "percent" | "gb" = usageYAxis === "avg_cpu" || usageYAxis === "max_cpu" ? "percent" : "gb";
   const formatCurrency = (value: number): string =>
     (Number.isFinite(value) ? value : 0).toLocaleString("en-US", {
@@ -861,6 +975,13 @@ export default function EC2ExplorerPage() {
             onUsageYAxisChange={setUsageYAxis}
             availableValues={(usageV2Query.data?.table.rows ?? []).map((row) => row.groupLabel)}
           />
+        ) : isDataTransferMetric ? (
+          <EC2DataTransferExplorerFilters
+            value={controls}
+            onChange={setControls}
+            loading={isSectionLoading}
+            availableValues={(dataTransferV2Query.data?.table.rows ?? []).map((row) => row.groupLabel)}
+          />
         ) : (
         <EC2ExplorerTopControls value={controls} onChange={setControls} loading={isSectionLoading}>
           <div className="cost-explorer-chip-bar" aria-label="Selected filter summary">
@@ -934,12 +1055,69 @@ export default function EC2ExplorerPage() {
             <div className="cost-explorer-chart-insights s3-overview-kpi-row">
               {(() => {
                 const usageKpis = usageV2Mapped?.usageKpis;
+                const avgCpu = Number((usageKpis as { avgCpu?: number | null } | undefined)?.avgCpu ?? 0);
+                const maxCpu = Number((usageKpis as { maxCpu?: number | null } | undefined)?.maxCpu ?? 0);
+                const networkInGb = Number(
+                  (usageKpis as { networkInGb?: number | null; totalNetworkInGb?: number | null } | undefined)?.networkInGb
+                  ?? (usageKpis as { totalNetworkInGb?: number | null } | undefined)?.totalNetworkInGb
+                  ?? 0,
+                );
+                const networkOutGb = Number(
+                  (usageKpis as { networkOutGb?: number | null; totalNetworkOutGb?: number | null } | undefined)?.networkOutGb
+                  ?? (usageKpis as { totalNetworkOutGb?: number | null } | undefined)?.totalNetworkOutGb
+                  ?? 0,
+                );
+                const networkTotalGb = Number(
+                  (usageKpis as { networkTotalGb?: number | null } | undefined)?.networkTotalGb
+                  ?? (networkInGb + networkOutGb),
+                );
+                const instanceCount = Number((usageKpis as { instanceCount?: number | null } | undefined)?.instanceCount ?? 0);
                 return [
-                  { label: "Avg CPU", value: `${Number(usageKpis?.avgCpu ?? 0).toFixed(2)}%`, tone: "" },
-                  { label: "Max CPU", value: `${Number(usageKpis?.maxCpu ?? 0).toFixed(2)}%`, tone: "" },
-                  { label: "Network In", value: `${Number(usageKpis?.totalNetworkInGb ?? 0).toFixed(2)} GB`, tone: "" },
-                  { label: "Network Out", value: `${Number(usageKpis?.totalNetworkOutGb ?? 0).toFixed(2)} GB`, tone: "" },
-                  { label: "Instances", value: Number(usageKpis?.instanceCount ?? 0).toLocaleString(), tone: "" },
+                  { label: "Avg CPU", value: `${avgCpu.toFixed(2)}%`, tone: "" },
+                  { label: "Max CPU", value: `${maxCpu.toFixed(2)}%`, tone: "" },
+                  { label: "Network Total", value: `${networkTotalGb.toFixed(2)} GB`, tone: "" },
+                  { label: "Instances", value: instanceCount.toLocaleString(), tone: "" },
+                ];
+              })().map((card) => (
+                <article key={card.label} className={`cost-explorer-insight-tile s3-overview-kpi-tile${card.tone}${isSectionLoading ? " is-loading" : ""}`}>
+                  {isSectionLoading ? (
+                    <div className="ec2-explorer-summary__skeleton" aria-hidden="true">
+                      <span className="ec2-explorer-summary__skeleton-line ec2-explorer-summary__skeleton-line--label" />
+                      <span className="ec2-explorer-summary__skeleton-line ec2-explorer-summary__skeleton-line--value" />
+                    </div>
+                  ) : (
+                    <>
+                      <p className="cost-explorer-insight-tile__label">{card.label}</p>
+                      <p className="cost-explorer-insight-tile__value">{card.value}</p>
+                    </>
+                  )}
+                </article>
+              ))}
+            </div>
+          </section>
+        ) : isDataTransferMetric ? (
+          <section className="cost-explorer-kpi-surface s3-overview-kpi-surface" aria-label="EC2 data transfer explorer summary cards">
+            <div className="cost-explorer-chart-insights s3-overview-kpi-row">
+              {(() => {
+                const transferKpis = dataTransferV2Mapped?.transferKpis;
+                const isUsageView = dataTransferV2Filters.yAxis === "usage_gb";
+                return [
+                  { label: "Transfer Cost", value: formatCurrency(Number(transferKpis?.transferCost ?? 0)), tone: "" },
+                  { label: "Usage GB", value: `${Number(transferKpis?.usageGb ?? 0).toFixed(2)} GB`, tone: "" },
+                  {
+                    label: isUsageView ? "Internet Usage" : "Internet Transfer Cost",
+                    value: isUsageView
+                      ? `${Number(transferKpis?.internetTransferCost ?? 0).toFixed(2)} GB`
+                      : formatCurrency(Number(transferKpis?.internetTransferCost ?? 0)),
+                    tone: "",
+                  },
+                  {
+                    label: isUsageView ? "Regional Usage" : "Regional Transfer Cost",
+                    value: isUsageView
+                      ? `${Number(transferKpis?.interRegionInterAzTransferCost ?? 0).toFixed(2)} GB`
+                      : formatCurrency(Number(transferKpis?.interRegionInterAzTransferCost ?? 0)),
+                    tone: "",
+                  },
                 ];
               })().map((card) => (
                 <article key={card.label} className={`cost-explorer-insight-tile s3-overview-kpi-tile${card.tone}${isSectionLoading ? " is-loading" : ""}`}>
@@ -964,7 +1142,7 @@ export default function EC2ExplorerPage() {
       </section>
 
       <section className="ec2-explorer-chart-panel" aria-label="EC2 explorer chart panel">
-        {controls.metric === "data-transfer" && dataTransferDebugEnabled && legacyQuery.data?.dataTransferDebug ? (
+        {controls.metric === "data-transfer" && dataTransferDebugEnabled && !shouldUseDataTransferV2 && legacyQuery.data?.dataTransferDebug ? (
           <p className="dashboard-note">
             Unknown cost: {legacyQuery.data.dataTransferDebug.totalUnknownCost.toFixed(2)} | Unknown usage GB: {legacyQuery.data.dataTransferDebug.totalUnknownUsageGb.toFixed(2)} | Unmapped resources: {legacyQuery.data.dataTransferDebug.unmappedResourceCount} ({legacyQuery.data.dataTransferDebug.unmappedResourceCost.toFixed(2)}){legacyQuery.data.dataTransferDebug.topUnknownRows.some((row) => row.likelyDemoData) ? " | Includes demo unclassified transfer rows" : ""}
           </p>
@@ -975,15 +1153,15 @@ export default function EC2ExplorerPage() {
           </p>
         ) : null}
         <EC2ExplorerChart
-          title={isUsageMetric ? "EC2 Usage Breakdown" : isCostMetric ? "EC2 Cost Breakdown" : `${metricLabel} Breakdown`}
+          title={isUsageMetric ? "EC2 Usage Breakdown" : isCostMetric ? "EC2 Cost Breakdown" : isDataTransferMetric ? "EC2 Data Transfer Breakdown" : `${metricLabel} Breakdown`}
           explorerType={isUsageMetric ? "usage" : "cost"}
-          unit={isUsageMetric ? usageUnit : "currency"}
+          unit={isUsageMetric ? usageUnit : isDataTransferMetric ? (dataTransferV2Filters.yAxis === "usage_gb" ? "gb" : "currency") : "currency"}
           chartType={resolvedGraphType}
           canUseStackedBar
-          showChartTypeSelector={isCostMetric || isUsageMetric}
-          yAxisLabel={isCostMetric ? costYAxisLabel : isUsageMetric ? usageYAxisLabel : undefined}
+          showChartTypeSelector={isCostMetric || isUsageMetric || isDataTransferMetric}
+          yAxisLabel={isCostMetric ? costYAxisLabel : isUsageMetric ? usageYAxisLabel : isDataTransferMetric ? dataTransferYAxisLabel : undefined}
           valueMode={
-            controls.metric === "data-transfer"
+            controls.metric === "data-transfer" && !shouldUseDataTransferV2
               ? controls.usageType === "disk"
                 ? "data-transfer-usage"
                 : controls.usageType === "cpu"
