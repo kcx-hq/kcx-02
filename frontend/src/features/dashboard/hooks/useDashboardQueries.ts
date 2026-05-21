@@ -16,6 +16,8 @@ import {
   type Ec2RecommendationsResponse,
   type Ec2ExplorerFiltersQuery,
   type Ec2ExplorerResponse,
+  type Ec2CostExplorerV2FiltersQuery,
+  type Ec2CostExplorerV2Response,
   type Ec2NetworkBreakdownResponse,
   type Ec2DataTransferFiltersQuery,
   type Ec2DataTransferResponse,
@@ -565,6 +567,17 @@ export function useS3CostInsightsQuery(
     staleTime: options?.staleTime ?? 90_000,
     refetchOnWindowFocus: false,
     refetchInterval: options?.refetchInterval ?? false,
+  });
+}
+
+export function useEc2CostExplorerV2Query(filters: Ec2CostExplorerV2FiltersQuery, enabledOverride: boolean = true) {
+  const { scope } = useDashboardScope();
+  return useQuery<Ec2CostExplorerV2Response, Error>({
+    queryKey: ["dashboard", "ec2", "explorer", "cost-v2", scope, filters],
+    queryFn: () => dashboardApi.getEc2CostExplorerV2(assertScope(scope), filters),
+    enabled: Boolean(scope) && enabledOverride,
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
   });
 }
 

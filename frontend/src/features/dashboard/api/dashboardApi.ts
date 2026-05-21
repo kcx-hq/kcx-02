@@ -31,6 +31,8 @@ import type {
   Ec2RecommendationStatus,
   Ec2ExplorerFiltersQuery,
   Ec2ExplorerResponse,
+  Ec2CostExplorerV2FiltersQuery,
+  Ec2CostExplorerV2Response,
   Ec2NetworkBreakdownResponse,
   Ec2DataTransferFiltersQuery,
   Ec2DataTransferResponse,
@@ -478,6 +480,15 @@ function withEc2ExplorerFilters(
     params.set("debugDataTransfer", String(filters.debugDataTransfer));
   }
 
+  const query = params.toString();
+  return query.length > 0 ? `${path}?${query}` : path;
+}
+
+function withEc2CostExplorerV2Path(
+  path: string,
+  scope: DashboardResolvedScope,
+): string {
+  const params = new URLSearchParams(buildDashboardQueryParams(scope));
   const query = params.toString();
   return query.length > 0 ? `${path}?${query}` : path;
 }
@@ -952,6 +963,26 @@ export const dashboardApi = {
   getEc2Explorer(scope: DashboardResolvedScope, filters: Ec2ExplorerFiltersQuery) {
     return apiGet<Ec2ExplorerResponse>(withEc2ExplorerFilters("/dashboard/ec2/explorer", scope, filters));
   },
+  getEc2CostExplorerV2(scope: DashboardResolvedScope, filters: Ec2CostExplorerV2FiltersQuery) {
+    return apiPost<Ec2CostExplorerV2Response>(
+      withEc2CostExplorerV2Path("/ec2/explorer/cost", scope),
+      {
+        startDate: filters.startDate,
+        endDate: filters.endDate,
+        granularity: filters.granularity ?? "daily",
+        costBasis: filters.costBasis ?? "gross_cost",
+        groupBy: filters.groupBy ?? "none",
+        tagKey: filters.tagKey ?? null,
+        compare: filters.compare ?? "none",
+        accountIds: filters.accountIds ?? [],
+        regions: filters.regions ?? [],
+        instanceTypes: filters.instanceTypes ?? [],
+        reservationTypes: filters.reservationTypes ?? [],
+        costTypes: filters.costTypes ?? [],
+        tags: filters.tags ?? [],
+      },
+    );
+  },
   getEc2ExplorerNetworkBreakdown(scope: DashboardResolvedScope, filters: Ec2ExplorerFiltersQuery) {
     return apiGet<Ec2NetworkBreakdownResponse>(withEc2ExplorerFilters("/dashboard/ec2/explorer/network-breakdown", scope, filters));
   },
@@ -1112,6 +1143,12 @@ export type {
   Ec2ExplorerCondition,
   Ec2ExplorerFiltersQuery,
   Ec2ExplorerResponse,
+  Ec2CostExplorerV2Granularity,
+  Ec2CostExplorerV2CostBasis,
+  Ec2CostExplorerV2GroupBy,
+  Ec2CostExplorerV2Compare,
+  Ec2CostExplorerV2FiltersQuery,
+  Ec2CostExplorerV2Response,
   Ec2NetworkBreakdownResponse,
   Ec2DataTransferFiltersQuery,
   Ec2DataTransferResponse,

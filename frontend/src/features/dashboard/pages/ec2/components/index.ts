@@ -4,3 +4,4 @@ export { EC2ExplorerChart } from "./EC2ExplorerChart";
 export { EC2ExplorerTable } from "./EC2ExplorerTable";
 export { EC2ExplorerGroupByPopover } from "./EC2ExplorerGroupByPopover";
 export { EC2ExplorerUnifiedSkeleton } from "./EC2ExplorerUnifiedSkeleton";
+export { EC2CostExplorerFilters } from "./EC2CostExplorerFilters";

@@ -897,6 +897,79 @@ export type Ec2ExplorerResponse = {
   };
 };
 
+export type Ec2CostExplorerV2Granularity = "daily" | "weekly" | "monthly";
+export type Ec2CostExplorerV2CostBasis = "gross_cost" | "net_cost" | "effective_cost" | "amortized_cost";
+export type Ec2CostExplorerV2GroupBy =
+  | "none"
+  | "account"
+  | "region"
+  | "instance_type"
+  | "cost_type"
+  | "reservation_type"
+  | "tag";
+export type Ec2CostExplorerV2Compare = "none" | "previous_period";
+
+export type Ec2CostExplorerV2FiltersQuery = {
+  startDate?: string;
+  endDate?: string;
+  granularity?: Ec2CostExplorerV2Granularity;
+  costBasis?: Ec2CostExplorerV2CostBasis;
+  groupBy?: Ec2CostExplorerV2GroupBy;
+  tagKey?: string | null;
+  compare?: Ec2CostExplorerV2Compare;
+  accountIds?: string[];
+  regions?: string[];
+  instanceTypes?: string[];
+  reservationTypes?: string[];
+  costTypes?: string[];
+  tags?: string[];
+};
+
+export type Ec2CostExplorerV2Response = {
+  kpis: {
+    grossCost: number;
+    credits: number;
+    netCost: number;
+    computeCost: number;
+    instanceCount: number;
+  };
+  chart: {
+    granularity: Ec2CostExplorerV2Granularity;
+    xAxis: "date";
+    yAxis: string;
+    series: Array<{
+      groupKey: string;
+      groupLabel: string;
+      points: Array<{ date: string; value: number }>;
+    }>;
+  };
+  table: {
+    rows: Array<{
+      groupKey: string;
+      groupLabel: string;
+      grossCost: number;
+      netCost: number;
+      effectiveCost: number;
+      computeCost: number;
+      ebsCost: number;
+      snapshotCost: number;
+      dataTransferCost: number;
+      eipCost: number;
+      otherCost: number;
+      instanceCount: number;
+      percentOfTotal: number;
+      mainCostDriver: "Compute" | "EBS" | "Snapshot" | "Data Transfer" | "EIP" | "Other";
+    }>;
+  };
+  meta: {
+    costBasis: Ec2CostExplorerV2CostBasis;
+    groupBy: Ec2CostExplorerV2GroupBy;
+    granularity: Ec2CostExplorerV2Granularity;
+    currency: string;
+    normalized: true;
+  };
+};
+
 export type Ec2NetworkBreakdownType =
   | "Internet Data Transfer"
   | "Inter-Region Data Transfer"

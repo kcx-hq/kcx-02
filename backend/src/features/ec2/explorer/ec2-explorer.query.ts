@@ -368,6 +368,7 @@ export class Ec2ExplorerQuery {
   async getCurCostRows(input: Ec2ExplorerInput): Promise<Array<{
     date: string;
     category: "compute" | "ebs" | "snapshot" | "data_transfer" | "nat_gateway" | "elastic_ip" | "other";
+    rawCost: number;
     cost: number;
     usageQuantity: number;
     usageType: string | null;
@@ -553,6 +554,7 @@ export class Ec2ExplorerQuery {
     return rows
       .filter((row) => !isLoadBalancerLineItem(row))
       .map((row) => ({
+      rawCost: toNumber(row.cost),
       date: row.date,
       category: classifyExplorerCostCategory(row),
       cost: Math.max(0, toNumber(row.cost)),

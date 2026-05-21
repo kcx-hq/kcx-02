@@ -3,10 +3,11 @@ import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import { useDashboardScope } from "../../hooks/useDashboardScope";
-import { useEc2ExplorerQuery } from "../../hooks/useDashboardQueries";
-import type { Ec2ExplorerFiltersQuery } from "../../api/dashboardApi";
+import { useEc2CostExplorerV2Query, useEc2ExplorerQuery } from "../../hooks/useDashboardQueries";
+import type { Ec2CostExplorerV2FiltersQuery, Ec2ExplorerFiltersQuery } from "../../api/dashboardApi";
 import {
   EC2_EXPLORER_DEFAULT_CONTROLS,
+  EC2CostExplorerFilters,
   EC2ExplorerChart,
   EC2ExplorerTable,
   EC2ExplorerTopControls,
@@ -44,6 +45,43 @@ const toApiGroupBy = (
 const toApiCostBasis = (
   costBasis: EC2ExplorerControlsState["costBasis"],
 ): Ec2ExplorerFiltersQuery["costBasis"] => costBasis;
+
+const toCostV2Basis = (
+  costBasis: EC2ExplorerControlsState["costBasis"],
+): Ec2CostExplorerV2FiltersQuery["costBasis"] =>
+  costBasis === "billed_cost"
+    ? "gross_cost"
+    : costBasis === "amortized_cost"
+      ? "amortized_cost"
+      : costBasis === "net_amortized_cost" || costBasis === "net_unblended_cost"
+        ? "net_cost"
+        : "effective_cost";
+
+const toCostV2GroupBy = (
+  groupBy: EC2ExplorerControlsState["groupBy"],
+): Ec2CostExplorerV2FiltersQuery["groupBy"] =>
+  groupBy === "cost-category"
+    ? "cost_type"
+    : groupBy === "instance-type"
+      ? "instance_type"
+      : groupBy === "reservation-type"
+        ? "reservation_type"
+        : groupBy === "account" || groupBy === "region" || groupBy === "tag" || groupBy === "none"
+          ? groupBy
+          : "none";
+
+const toCostV2GranularityFromGlobal = (
+  granularity: string | null | undefined,
+): Ec2CostExplorerV2FiltersQuery["granularity"] => {
+  const normalized = String(granularity ?? "").trim().toLowerCase();
+  if (normalized === "weekly") return "weekly";
+  if (normalized === "monthly") return "monthly";
+  return "daily";
+};
+
+const toCostV2Compare = (
+  compare: EC2ExplorerControlsState["compare"],
+): Ec2CostExplorerV2FiltersQuery["compare"] => (compare === "previous-period" ? "previous_period" : "none");
 
 const toApiAggregation = (
   aggregation: EC2ExplorerControlsState["usageAggregation"],
@@ -109,6 +147,44 @@ const normalizeReservationType = (value: string): string | null => {
   return null;
 };
 
+const toIsoDate = (value: string): string => value.slice(0, 10);
+const startOfWeekIso = (value: string): string => {
+  const date = new Date(`${toIsoDate(value)}T00:00:00.000Z`);
+  const day = date.getUTCDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  date.setUTCDate(date.getUTCDate() + diff);
+  return date.toISOString().slice(0, 10);
+};
+const startOfMonthIso = (value: string): string => `${toIsoDate(value).slice(0, 7)}-01`;
+const buildDateBuckets = (startDate: string, endDate: string, granularity: Ec2CostExplorerV2FiltersQuery["granularity"]): string[] => {
+  const start = new Date(`${toIsoDate(startDate)}T00:00:00.000Z`);
+  const end = new Date(`${toIsoDate(endDate)}T00:00:00.000Z`);
+  if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime()) || start > end) return [];
+  const buckets: string[] = [];
+  if (granularity === "monthly") {
+    const cursor = new Date(`${startOfMonthIso(startDate)}T00:00:00.000Z`);
+    while (cursor <= end) {
+      buckets.push(cursor.toISOString().slice(0, 10));
+      cursor.setUTCMonth(cursor.getUTCMonth() + 1);
+    }
+    return buckets;
+  }
+  if (granularity === "weekly") {
+    const cursor = new Date(`${startOfWeekIso(startDate)}T00:00:00.000Z`);
+    while (cursor <= end) {
+      buckets.push(cursor.toISOString().slice(0, 10));
+      cursor.setUTCDate(cursor.getUTCDate() + 7);
+    }
+    return buckets;
+  }
+  const cursor = new Date(start);
+  while (cursor <= end) {
+    buckets.push(cursor.toISOString().slice(0, 10));
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+  return buckets;
+};
+
 export default function EC2ExplorerPage() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -130,6 +206,10 @@ export default function EC2ExplorerPage() {
     scopeParams.get("billingPeriodEnd") ??
     scopeParams.get("endDate") ??
     undefined;
+  const globalGranularity = useMemo(
+    () => toCostV2GranularityFromGlobal(scopeParams.get("granularity")),
+    [scopeParams],
+  );
 
   const initialControls = useMemo<EC2ExplorerControlsState>(() => {
     const params = new URLSearchParams(location.search);
@@ -210,7 +290,29 @@ export default function EC2ExplorerPage() {
     [controls, dataTransferDebugEnabled, scopeEndDate, scopeStartDate],
   );
 
-  const query = useEc2ExplorerQuery(filters, Boolean(scope));
+  const isCostMetric = controls.metric === "cost";
+  const costFilters = useMemo<Ec2CostExplorerV2FiltersQuery>(
+    () => ({
+      startDate: scopeStartDate,
+      endDate: scopeEndDate,
+      granularity: globalGranularity,
+      costBasis: toCostV2Basis(controls.costBasis),
+      groupBy: toCostV2GroupBy(controls.groupBy),
+      tagKey: controls.groupBy === "tag" ? controls.scopeFilters.tags[0] ?? "owner" : null,
+      compare: toCostV2Compare(controls.compare),
+      accountIds: [],
+      regions: controls.scopeFilters.region,
+      instanceTypes: controls.instanceType && controls.instanceType !== "all" ? [controls.instanceType] : [],
+      reservationTypes: [],
+      costTypes: [],
+      tags: controls.scopeFilters.tags,
+    }),
+    [controls, globalGranularity, scopeEndDate, scopeStartDate],
+  );
+  const legacyQuery = useEc2ExplorerQuery(filters, Boolean(scope) && !isCostMetric);
+  // TODO(ec2-explorer): Migrate Usage and Data Transfer tabs to their dedicated backend routes in a later phase.
+  const costV2Query = useEc2CostExplorerV2Query(costFilters, Boolean(scope) && isCostMetric);
+  const query = isCostMetric ? costV2Query : legacyQuery;
   const hasExplorerData = Boolean(query.data);
   const isSectionLoading = query.isFetching || !hasExplorerData;
   const dataTransferView = controls.metric === "data-transfer"
@@ -228,9 +330,9 @@ export default function EC2ExplorerPage() {
         ? "cost"
         : null;
   useEffect(() => {
-    if (controls.metric !== "data-transfer" || !query.data || !dataTransferDebugEnabled) return;
-    const firstRow = query.data.graph.series[0]?.data[0] ?? null;
-    const chartTotal = query.data.graph.series.reduce(
+    if (controls.metric !== "data-transfer" || !legacyQuery.data || !dataTransferDebugEnabled) return;
+    const firstRow = legacyQuery.data.graph.series[0]?.data[0] ?? null;
+    const chartTotal = legacyQuery.data.graph.series.reduce(
       (sum, series) =>
         sum +
         series.data.reduce((inner, point) => {
@@ -245,11 +347,11 @@ export default function EC2ExplorerPage() {
       selectedValueKey: dataTransferValueKey,
       firstChartRow: firstRow,
       chartTotal,
-      kpiCost: query.data.summary.totalCost,
-      kpiUsageGb: query.data.summary.storageGb,
+      kpiCost: legacyQuery.data.summary.totalCost,
+      kpiUsageGb: legacyQuery.data.summary.storageGb,
     });
-    const topUnknown = query.data.dataTransferDebug?.topUnknownContributors ?? [];
-    const topUnknownRows = query.data.dataTransferDebug?.topUnknownRows ?? [];
+    const topUnknown = legacyQuery.data.dataTransferDebug?.topUnknownContributors ?? [];
+    const topUnknownRows = legacyQuery.data.dataTransferDebug?.topUnknownRows ?? [];
     const topUsageTypes = new Map<string, number>();
     const topDescriptions = new Map<string, number>();
     for (const row of topUnknown) {
@@ -258,25 +360,140 @@ export default function EC2ExplorerPage() {
     }
     const sortDesc = (a: [string, number], b: [string, number]) => b[1] - a[1];
     console.debug("[EC2 Explorer][Data Transfer][Unknown Debug]", {
-      totalUnknownCost: query.data.dataTransferDebug?.totalUnknownCost ?? 0,
-      totalUnknownUsageGb: query.data.dataTransferDebug?.totalUnknownUsageGb ?? 0,
-      unknownResourceCount: query.data.dataTransferDebug?.unknownResourceCount ?? 0,
-      unmappedResourceCount: query.data.dataTransferDebug?.unmappedResourceCount ?? 0,
-      unmappedResourceCost: query.data.dataTransferDebug?.unmappedResourceCost ?? 0,
-      unmappedResourceUsageGb: query.data.dataTransferDebug?.unmappedResourceUsageGb ?? 0,
+      totalUnknownCost: legacyQuery.data.dataTransferDebug?.totalUnknownCost ?? 0,
+      totalUnknownUsageGb: legacyQuery.data.dataTransferDebug?.totalUnknownUsageGb ?? 0,
+      unknownResourceCount: legacyQuery.data.dataTransferDebug?.unknownResourceCount ?? 0,
+      unmappedResourceCount: legacyQuery.data.dataTransferDebug?.unmappedResourceCount ?? 0,
+      unmappedResourceCost: legacyQuery.data.dataTransferDebug?.unmappedResourceCost ?? 0,
+      unmappedResourceUsageGb: legacyQuery.data.dataTransferDebug?.unmappedResourceUsageGb ?? 0,
       topUnknownUsageTypes: [...topUsageTypes.entries()].sort(sortDesc).slice(0, 10),
       topUnknownDescriptions: [...topDescriptions.entries()].sort(sortDesc).slice(0, 10),
       topUnknownRows: topUnknownRows.slice(0, 20),
       likelyDemoUnknownRows: topUnknownRows.filter((row) => row.likelyDemoData).length,
       unknownDateBuckets: [...new Set(topUnknownRows.map((row) => row.dateBucket))].slice(0, 50),
     });
-  }, [controls.metric, dataTransferDebugEnabled, dataTransferValueKey, dataTransferView, query.data]);
+  }, [controls.metric, dataTransferDebugEnabled, dataTransferValueKey, dataTransferView, legacyQuery.data]);
   const resolvedGraphType = useMemo<"line" | "stacked_bar">(
     () => controls.chartType,
     [controls.chartType],
   );
 
+  useEffect(() => {
+    if (!isCostMetric) return;
+    console.debug("[EC2 Explorer Cost V2][Global Filter]", {
+      startDate: scopeStartDate,
+      endDate: scopeEndDate,
+      granularity: globalGranularity,
+    });
+    console.debug("[EC2 Explorer Cost V2][Request]", costFilters);
+    console.debug("[EC2 Explorer Cost V2][Selection]", {
+      costBasis: costFilters.costBasis,
+      groupBy: costFilters.groupBy,
+    });
+  }, [costFilters, globalGranularity, isCostMetric, scopeEndDate, scopeStartDate]);
+
+  useEffect(() => {
+    if (!isCostMetric || !costV2Query.data) return;
+    console.debug("[EC2 Explorer Cost V2][Response]", costV2Query.data);
+    console.debug("[EC2 Explorer Cost V2][Counts]", {
+      chartSeriesCount: costV2Query.data.chart.series.length,
+      tableRowCount: costV2Query.data.table.rows.length,
+    });
+  }, [costV2Query.data, isCostMetric]);
+
+  const costV2Mapped = useMemo(() => {
+    if (!isCostMetric || !costV2Query.data) return null;
+    const response = costV2Query.data;
+    const dateBuckets =
+      scopeStartDate && scopeEndDate
+        ? buildDateBuckets(scopeStartDate, scopeEndDate, costFilters.granularity ?? "daily")
+        : [];
+    const baseRows = response.table.rows.map((row) => ({
+      id: row.groupKey,
+      group: row.groupLabel,
+      grossCost: Number(row.grossCost ?? 0),
+      computeCost: Number(row.computeCost ?? 0),
+      ebsCost: Number(row.ebsCost ?? 0),
+      snapshotCost: Number(row.snapshotCost ?? 0),
+      dataTransferCost: Number(row.dataTransferCost ?? 0),
+      eipCost: Number(row.eipCost ?? 0),
+      otherCost: Number(row.otherCost ?? 0),
+      instanceCount: Number(row.instanceCount ?? 0),
+      percentOfTotal: Number(row.percentOfTotal ?? 0),
+      mainCostDriver: row.mainCostDriver,
+    }));
+    const valueFilter = new Set((controls.groupByValues ?? []).map((value) => value.toLowerCase()));
+    const filteredRows = valueFilter.size > 0
+      ? baseRows.filter((row) => valueFilter.has(String(row.group ?? "").toLowerCase()))
+      : baseRows;
+    const columns = [
+      { key: "group", label: controls.groupBy === "instance-type" ? "Instance Type" : controls.groupBy === "region" ? "Region" : controls.groupBy === "reservation-type" ? "Reservation Type" : "Group" },
+      { key: "grossCost", label: "Gross Cost" },
+      { key: "computeCost", label: "Compute Cost" },
+      { key: "ebsCost", label: "EBS Cost" },
+      { key: "snapshotCost", label: "Snapshot Cost" },
+      { key: "dataTransferCost", label: "Data Transfer Cost" },
+      { key: "eipCost", label: "EIP Cost" },
+      { key: "otherCost", label: "Other Cost" },
+      { key: "percentOfTotal", label: "% of EC2 Cost" },
+      { key: "mainCostDriver", label: "Main Cost Driver" },
+    ];
+
+    return {
+      summary: {
+        totalCost: response.kpis.grossCost ?? 0,
+        previousCost: response.kpis.netCost ?? 0,
+        trendPercent: 0,
+        instanceCount: response.kpis.instanceCount ?? 0,
+        volumeCount: 0,
+        attachedInstanceCount: 0,
+        unattachedVolumeCount: 0,
+        storageGb: 0,
+        storageGbHours: 0,
+        avgCpu: 0,
+        totalNetworkGb: 0,
+      },
+      graph: {
+        type: resolvedGraphType,
+        xKey: "date" as const,
+        series: response.chart.series.map((series) => ({
+          key: series.groupKey,
+          label: series.groupLabel,
+          data: (() => {
+            const pointMap = new Map(
+              series.points.map((point) => [point.date, Number(point.value ?? 0)]),
+            );
+            const filledBuckets = dateBuckets.length > 0 ? dateBuckets : series.points.map((point) => point.date);
+            return filledBuckets.map((date) => ({ date, value: pointMap.get(date) ?? 0 }));
+          })(),
+        })),
+      },
+      table: {
+        columns,
+        rows: filteredRows,
+      },
+      kpis: response.kpis,
+    };
+  }, [controls.groupBy, controls.groupByValues, costFilters.granularity, costV2Query.data, isCostMetric, resolvedGraphType, scopeEndDate, scopeStartDate]);
+
+  const explorerData = isCostMetric ? costV2Mapped : legacyQuery.data;
+
   const metricLabel = METRIC_OPTIONS.find((option) => option.key === controls.metric)?.label ?? "Cost";
+  const costYAxisLabel =
+    controls.costBasis === "billed_cost"
+      ? "Gross Cost ($)"
+      : controls.costBasis === "net_unblended_cost" || controls.costBasis === "net_amortized_cost"
+        ? "Net Cost ($)"
+        : controls.costBasis === "amortized_cost"
+          ? "Amortized Cost ($)"
+          : "Effective Cost ($)";
+  const formatCurrency = (value: number): string =>
+    (Number.isFinite(value) ? value : 0).toLocaleString("en-US", {
+      style: "currency",
+      currency: "USD",
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
 
   const resetControls = () => {
     setControls(EC2_EXPLORER_DEFAULT_CONTROLS);
@@ -473,6 +690,14 @@ export default function EC2ExplorerPage() {
   return (
     <div className="dashboard-page cost-explorer-page ec2-explorer-page">
       <section className="ec2-explorer-head-stack" aria-label="EC2 explorer controls and summary">
+        {isCostMetric ? (
+          <EC2CostExplorerFilters
+            value={controls}
+            onChange={setControls}
+            loading={isSectionLoading}
+            availableValues={(costV2Query.data?.table.rows ?? []).map((row) => row.groupLabel)}
+          />
+        ) : (
         <EC2ExplorerTopControls value={controls} onChange={setControls} loading={isSectionLoading}>
           <div className="cost-explorer-chip-bar" aria-label="Selected filter summary">
             <div className="cost-explorer-chip-row">
@@ -503,14 +728,52 @@ export default function EC2ExplorerPage() {
             </div>
           </div>
         </EC2ExplorerTopControls>
+        )}
 
-        <EC2SummaryCards summary={query.data?.summary ?? defaultSummary} loading={isSectionLoading} metric={controls.metric} />
+        {isCostMetric ? (
+          <section className="cost-explorer-kpi-surface s3-overview-kpi-surface" aria-label="EC2 explorer summary cards">
+            <div className="cost-explorer-chart-insights s3-overview-kpi-row">
+              {(() => {
+                const grossCost = Number(costV2Mapped?.kpis.grossCost ?? 0);
+                const netCost = Number(costV2Mapped?.kpis.netCost ?? 0);
+                const credits = Math.max(0, Number(costV2Mapped?.kpis.credits ?? 0));
+                const instanceCount = Number(costV2Mapped?.kpis.instanceCount ?? 0);
+                return [
+                  { label: "Gross EC2 Cost", value: formatCurrency(grossCost), tone: "" },
+                  {
+                    label: "Credits",
+                    value: credits > 0 ? `${formatCurrency(credits)} Credit Applied` : formatCurrency(0),
+                    tone: " is-positive",
+                  },
+                  { label: "Net EC2 Cost", value: formatCurrency(netCost), tone: "" },
+                  { label: "Total Instances", value: instanceCount.toLocaleString(), tone: "" },
+                ];
+              })().map((card) => (
+                <article key={card.label} className={`cost-explorer-insight-tile s3-overview-kpi-tile${card.tone}${isSectionLoading ? " is-loading" : ""}`}>
+                  {isSectionLoading ? (
+                    <div className="ec2-explorer-summary__skeleton" aria-hidden="true">
+                      <span className="ec2-explorer-summary__skeleton-line ec2-explorer-summary__skeleton-line--label" />
+                      <span className="ec2-explorer-summary__skeleton-line ec2-explorer-summary__skeleton-line--value" />
+                    </div>
+                  ) : (
+                    <>
+                      <p className="cost-explorer-insight-tile__label">{card.label}</p>
+                      <p className="cost-explorer-insight-tile__value">{card.value}</p>
+                    </>
+                  )}
+                </article>
+              ))}
+            </div>
+          </section>
+        ) : (
+          <EC2SummaryCards summary={legacyQuery.data?.summary ?? defaultSummary} loading={isSectionLoading} metric={controls.metric} />
+        )}
       </section>
 
       <section className="ec2-explorer-chart-panel" aria-label="EC2 explorer chart panel">
-        {controls.metric === "data-transfer" && dataTransferDebugEnabled && query.data?.dataTransferDebug ? (
+        {controls.metric === "data-transfer" && dataTransferDebugEnabled && legacyQuery.data?.dataTransferDebug ? (
           <p className="dashboard-note">
-            Unknown cost: {query.data.dataTransferDebug.totalUnknownCost.toFixed(2)} | Unknown usage GB: {query.data.dataTransferDebug.totalUnknownUsageGb.toFixed(2)} | Unmapped resources: {query.data.dataTransferDebug.unmappedResourceCount} ({query.data.dataTransferDebug.unmappedResourceCost.toFixed(2)}){query.data.dataTransferDebug.topUnknownRows.some((row) => row.likelyDemoData) ? " | Includes demo unclassified transfer rows" : ""}
+            Unknown cost: {legacyQuery.data.dataTransferDebug.totalUnknownCost.toFixed(2)} | Unknown usage GB: {legacyQuery.data.dataTransferDebug.totalUnknownUsageGb.toFixed(2)} | Unmapped resources: {legacyQuery.data.dataTransferDebug.unmappedResourceCount} ({legacyQuery.data.dataTransferDebug.unmappedResourceCost.toFixed(2)}){legacyQuery.data.dataTransferDebug.topUnknownRows.some((row) => row.likelyDemoData) ? " | Includes demo unclassified transfer rows" : ""}
           </p>
         ) : null}
         {(controls.groupBy === "transfer-type" || (controls.metric === "usage" && controls.usageType === "network" && controls.groupBy === "usage-type")) ? (
@@ -519,10 +782,11 @@ export default function EC2ExplorerPage() {
           </p>
         ) : null}
         <EC2ExplorerChart
-          title={`${metricLabel} Breakdown`}
+          title={isCostMetric ? "EC2 Cost Breakdown" : `${metricLabel} Breakdown`}
           chartType={resolvedGraphType}
           canUseStackedBar
-          showChartTypeSelector={false}
+          showChartTypeSelector={isCostMetric}
+          yAxisLabel={isCostMetric ? costYAxisLabel : undefined}
           valueMode={
             controls.metric === "data-transfer"
               ? controls.usageType === "disk"
@@ -536,9 +800,9 @@ export default function EC2ExplorerPage() {
             setControls((current) => ({ ...current, chartType: nextChartType }));
           }}
           graph={
-            query.data?.graph
+            explorerData?.graph
               ? {
-                  ...query.data.graph,
+                  ...explorerData.graph,
                   type: resolvedGraphType,
                 }
               : {
@@ -591,7 +855,7 @@ export default function EC2ExplorerPage() {
           groupBy={controls.groupBy}
           loading={isSectionLoading}
           error={query.isError ? query.error : null}
-          table={query.data?.table ?? null}
+          table={explorerData?.table ?? null}
           onRetry={() => {
             void query.refetch();
           }}

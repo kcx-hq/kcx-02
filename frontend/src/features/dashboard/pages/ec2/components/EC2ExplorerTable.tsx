@@ -21,7 +21,7 @@ type EC2ExplorerTableProps = {
 };
 
 const formatCellValue = (value: string | number | null): string => {
-  if (value === null || typeof value === "undefined") return "-";
+  if (value === null || typeof value === "undefined") return "0";
   if (typeof value === "number") {
     if (Number.isInteger(value)) return value.toLocaleString();
     return value.toLocaleString(undefined, { maximumFractionDigits: 2 });
@@ -33,7 +33,7 @@ const CURRENCY_FORMATTER = new Intl.NumberFormat("en-US", {
   style: "currency",
   currency: "USD",
   minimumFractionDigits: 2,
-  maximumFractionDigits: 2,
+  maximumFractionDigits: 5,
 });
 
 const formatCost = (value: string | number | null): string => {
@@ -61,13 +61,34 @@ export function EC2ExplorerTable({
     const isDataTransferMetric = metric === "data-transfer";
     const isTransferTypeGrouping = groupBy === "transfer-type" || groupBy === "transfer_type";
     const gbColumns = new Set(["internetGb", "interAzGb", "regionalGb", "totalGb", "usageGb"]);
-    const costColumns = new Set(["cost", "dataTransferCost"]);
+    const costColumns = new Set([
+      "cost",
+      "dataTransferCost",
+      "grossCost",
+      "computeCost",
+      "ebsCost",
+      "snapshotCost",
+      "eipCost",
+      "otherCost",
+    ]);
+    const percentColumns = new Set(["pct", "percentOfTotal"]);
+    const countColumns = new Set(["instanceCount", "resourceCount"]);
     const defs = table.columns.map((column) => {
       const isRecommendationColumn = /recommendation/i.test(column.key) || /recommendation/i.test(column.label);
       return {
         headerName: column.label,
         field: column.key,
-        minWidth: 160,
+        minWidth: column.key === "group" ? 220 : column.key === "mainCostDriver" ? 170 : 130,
+        maxWidth: column.key === "group" || column.key === "mainCostDriver" ? undefined : 190,
+        pinned: column.key === "group" ? "left" : undefined,
+        lockPinned: column.key === "group",
+        suppressMovable: column.key === "group",
+        cellClass: costColumns.has(column.key) || percentColumns.has(column.key) || countColumns.has(column.key)
+          ? "ec2-explorer-table__cell--numeric s3-analytics-number-cell"
+          : undefined,
+        headerClass: costColumns.has(column.key) || percentColumns.has(column.key) || countColumns.has(column.key)
+          ? "ec2-explorer-table__header--numeric"
+          : undefined,
         valueFormatter: (params) => {
           const row = params.data;
           if (
@@ -86,6 +107,17 @@ export function EC2ExplorerTable({
           if (isDataTransferMetric && isTransferTypeGrouping && column.key === "pct") {
             const numeric = Number(params.value ?? 0);
             return `${(Number.isFinite(numeric) ? numeric : 0).toFixed(2)}%`;
+          }
+          if (costColumns.has(column.key)) {
+            return formatCost(params.value as string | number | null);
+          }
+          if (percentColumns.has(column.key)) {
+            const numeric = Number(params.value ?? 0);
+            return `${(Number.isFinite(numeric) ? numeric : 0).toFixed(2)}%`;
+          }
+          if (countColumns.has(column.key)) {
+            const numeric = Number(params.value ?? 0);
+            return Number.isFinite(numeric) ? Math.round(numeric).toLocaleString() : "0";
           }
           return formatCellValue(params.value as string | number | null);
         },
