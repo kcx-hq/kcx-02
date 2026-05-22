@@ -15,6 +15,7 @@ type SavingOptionInsight = {
 type Props = {
   costInsights: S3CostInsightsResponse | undefined;
   lifecycleRows: S3OptimizationBucketRow[];
+  isLoading?: boolean;
 };
 
 const COLOR_PALETTE = ["#23a282", "#b99abf", "#89b5cf", "#d38b5d", "#6d91d8", "#83b95f"];
@@ -72,6 +73,7 @@ function S3PotentialSavingWidget({ costInsights }: Pick<Props, "costInsights">) 
     [optionInsights],
   );
   const donutGradient = useMemo(() => buildDonutGradient(optionInsights), [optionInsights]);
+  const primaryOption = optionInsights[0] ?? null;
 
   return (
     <WidgetShell title="Potential Saving" subtitle="S3 saving options overview">
@@ -86,8 +88,8 @@ function S3PotentialSavingWidget({ costInsights }: Pick<Props, "costInsights">) 
         </div>
 
         <div className="optimization-overview-insight-list">
-          {optionInsights.length === 0 ? (
-            <article className="optimization-overview-insight-item">
+          {!primaryOption ? (
+            <article className="optimization-overview-insight-item optimization-overview-insight-item--single">
               <div className="optimization-overview-insight-item__head">
                 <span className="optimization-overview-insight-item__dot" style={{ backgroundColor: "#d8e7e5" }} />
                 <p className="optimization-overview-insight-item__title">No saving options yet</p>
@@ -96,21 +98,16 @@ function S3PotentialSavingWidget({ costInsights }: Pick<Props, "costInsights">) 
               <p className="optimization-overview-insight-item__meta">Run S3 optimization signals to populate this view.</p>
             </article>
           ) : (
-            optionInsights.map((option) => {
-              const share = totalPotential > 0 ? Math.round((option.potential / totalPotential) * 100) : 0;
-              return (
-                <article key={option.key} className="optimization-overview-insight-item">
-                  <div className="optimization-overview-insight-item__head">
-                    <span className="optimization-overview-insight-item__dot" style={{ backgroundColor: option.color }} />
-                    <p className="optimization-overview-insight-item__title">{option.label}</p>
-                  </div>
-                  <p className="optimization-overview-insight-item__value">{compactCurrencyFormatter.format(option.potential)}</p>
-                  <p className="optimization-overview-insight-item__meta">
-                    {option.recommendations} opportunities - {share}% of total potential
-                  </p>
-                </article>
-              );
-            })
+            <article className="optimization-overview-insight-item optimization-overview-insight-item--single">
+              <div className="optimization-overview-insight-item__head">
+                <span className="optimization-overview-insight-item__dot" style={{ backgroundColor: primaryOption.color }} />
+                <p className="optimization-overview-insight-item__title">{primaryOption.label}</p>
+              </div>
+              <p className="optimization-overview-insight-item__value">{compactCurrencyFormatter.format(primaryOption.potential)}</p>
+              <p className="optimization-overview-insight-item__meta">
+                {primaryOption.recommendations} opportunities
+              </p>
+            </article>
           )}
         </div>
       </div>
@@ -118,7 +115,7 @@ function S3PotentialSavingWidget({ costInsights }: Pick<Props, "costInsights">) 
   );
 }
 
-function S3RealizedSavingWidget({ costInsights, lifecycleRows }: Props) {
+function S3RealizedSavingWidget({ costInsights, lifecycleRows }: Pick<Props, "costInsights" | "lifecycleRows">) {
   const totalRealized = useMemo(
     () =>
       lifecycleRows.reduce((sum, row) => {
@@ -142,11 +139,21 @@ function S3RealizedSavingWidget({ costInsights, lifecycleRows }: Props) {
   const backlogSummary = costInsights?.finopsActionBacklog.summary;
   const metricCards = [
     {
+      key: "total",
+      label: "Estimated + Realized Saving / month",
+      value: totalRealized + trackedPotential,
+      meta: "",
+      color: "#23a282",
+      valueType: "currency" as const,
+      wide: true,
+    },
+    {
       key: "realized",
       label: "Realized Saving / month",
       value: totalRealized,
       meta: `${lifecycleRows.filter((row) => row.lifecycleSavings?.status === "realized").length} buckets realized`,
       color: "#23a282",
+      valueType: "currency" as const,
     },
     {
       key: "tracked",
@@ -154,6 +161,7 @@ function S3RealizedSavingWidget({ costInsights, lifecycleRows }: Props) {
       value: trackedPotential,
       meta: `${lifecycleRows.filter((row) => row.lifecycleSavings?.status === "tracking").length} buckets tracking`,
       color: "#b99abf",
+      valueType: "currency" as const,
     },
     {
       key: "backlog-open",
@@ -161,28 +169,21 @@ function S3RealizedSavingWidget({ costInsights, lifecycleRows }: Props) {
       value: Number(backlogSummary?.open ?? 0),
       meta: `${Number(backlogSummary?.slaBreached ?? 0)} SLA breached`,
       color: "#89b5cf",
+      valueType: "number" as const,
     },
   ];
 
   return (
     <WidgetShell title="Savings Execution" subtitle="Realized and in-progress S3 savings">
       <div className="optimization-verified-surface">
-        <article className="optimization-verified-total">
-          <p className="optimization-verified-total__label">Estimated + Realized Saving / month</p>
-          <p className="optimization-verified-total__value">{compactCurrencyFormatter.format(totalRealized + trackedPotential)}</p>
-        </article>
-
         <div className="optimization-verified-grid">
           {metricCards.map((card) => (
-            <article key={card.key} className="optimization-verified-item">
-              <div className="optimization-verified-item__head">
-                <span className="optimization-overview-insight-item__dot" style={{ backgroundColor: card.color }} />
-                <p className="optimization-overview-insight-item__title">{card.label}</p>
-              </div>
+            <article key={card.key} className={`optimization-verified-item${card.wide ? " optimization-verified-item--wide" : ""}`}>
+              <p className="optimization-overview-insight-item__title">{card.label}</p>
               <p className="optimization-overview-insight-item__value">
-                {card.key === "backlog-open" ? card.value : compactCurrencyFormatter.format(card.value)}
+                {card.valueType === "currency" ? compactCurrencyFormatter.format(card.value) : card.value}
               </p>
-              <p className="optimization-overview-insight-item__meta">{card.meta}</p>
+              {card.meta ? <p className="optimization-overview-insight-item__meta">{card.meta}</p> : null}
             </article>
           ))}
         </div>
@@ -191,7 +192,51 @@ function S3RealizedSavingWidget({ costInsights, lifecycleRows }: Props) {
   );
 }
 
-export function S3OptimizationOverviewSection({ costInsights, lifecycleRows }: Props) {
+function S3OptimizationOverviewSkeleton() {
+  return (
+    <div className="optimization-layout" aria-label="Loading S3 optimization overview">
+      <section>
+        <WidgetShell title="Potential Saving" subtitle="S3 saving options overview">
+          <div className="optimization-overview-surface">
+            <div className="optimization-overview-donut-panel">
+              <div className="optimization-overview-donut optimization-overview-donut--skeleton" />
+            </div>
+            <div className="optimization-overview-insight-list">
+              <article className="optimization-overview-insight-item optimization-overview-insight-item--single optimization-overview-insight-item--skeleton">
+                <div className="optimization-overview-insight-item__head">
+                  <span className="optimization-overview-insight-item__dot optimization-overview-insight-item__dot--skeleton" style={{ width: 12, height: 12 }} />
+                  <span className="optimization-overview-skeleton-bar optimization-overview-skeleton-bar--title" />
+                </div>
+                <span className="optimization-overview-skeleton-bar optimization-overview-skeleton-bar--value" />
+                <span className="optimization-overview-skeleton-bar optimization-overview-skeleton-bar--meta" />
+              </article>
+            </div>
+          </div>
+        </WidgetShell>
+      </section>
+      <section>
+        <WidgetShell title="Savings Execution" subtitle="Realized and in-progress S3 savings">
+          <div className="optimization-verified-surface">
+            <div className="optimization-verified-grid">
+              {Array.from({ length: 4 }).map((_, index) => (
+                <article key={`optimization-overview-kpi-skeleton-${index}`} className="optimization-verified-item optimization-overview-insight-item--skeleton">
+                  <span className="optimization-overview-skeleton-bar optimization-overview-skeleton-bar--title" />
+                  <span className="optimization-overview-skeleton-bar optimization-overview-skeleton-bar--verified-total" />
+                  <span className="optimization-overview-skeleton-bar optimization-overview-skeleton-bar--meta" />
+                </article>
+              ))}
+            </div>
+          </div>
+        </WidgetShell>
+      </section>
+    </div>
+  );
+}
+
+export function S3OptimizationOverviewSection({ costInsights, lifecycleRows, isLoading = false }: Props) {
+  if (isLoading) {
+    return <S3OptimizationOverviewSkeleton />;
+  }
   return (
     <div className="optimization-layout">
       <section>

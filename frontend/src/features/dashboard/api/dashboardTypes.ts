@@ -2491,6 +2491,33 @@ export type AnomaliesListResponse = {
     offset: number;
     total: number;
   };
+  summary?: {
+    totalAnomalies: number;
+    criticalAnomalies: number;
+    totalCostImpact: number;
+    potentialSavings: number;
+  };
+};
+
+export type AnomalyTimelinePoint = {
+  date: string;
+  cost: number;
+  is_anomaly: boolean;
+  cost_impact?: number;
+  cost_impact_percentage?: number;
+};
+
+export type AnomalyTimelineResponse = {
+  anomaly: AnomalyRecord;
+  timeline: AnomalyTimelinePoint[];
+  related_anomalies: Array<{
+    id: string;
+    date: string;
+    anomaly_type: string | null;
+    status: string;
+    cost_impact: number;
+    cost_impact_percentage: number;
+  }>;
 };
 
 export type OverviewFiltersResponse = {

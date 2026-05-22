@@ -49,7 +49,7 @@ export class S3AnomaliesRepository {
       "fa.tenant_id = $1::uuid",
       "fa.usage_date BETWEEN $2::date AND $3::date",
       "fa.anomaly_scope = 'service_category'",
-      "fa.source_table = 's3_cost_daily'",
+      "fa.source_table IN ('s3_cost_daily', 's3_storage_lens_daily', 's3_bucket_config_snapshot')",
     ];
 
     if (Array.isArray(scope.billingSourceIds) && scope.billingSourceIds.length > 0) {

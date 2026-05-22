@@ -16,6 +16,37 @@ function formatCreatedByLabel(createdByUserId: string | null, currentUserId: str
   return `${compact.slice(0, 8)}...${compact.slice(-4)}`;
 }
 
+function PolicyHistorySkeleton() {
+  return (
+    <div className="policy-history-shell policy-history-skeleton" aria-label="Loading policy history">
+      <div className="optimization-rightsizing-table-scroll">
+        <div className="policy-history-skeleton__table" aria-hidden="true">
+          <div className="policy-history-skeleton__head">
+            {Array.from({ length: 10 }).map((_, index) => (
+              <span key={`policy-skeleton-head-${index}`} className="policy-history-skeleton__cell policy-history-skeleton__cell--head" />
+            ))}
+          </div>
+          <div className="policy-history-skeleton__body">
+            {Array.from({ length: 8 }).map((_, rowIndex) => (
+              <div key={`policy-skeleton-row-${rowIndex}`} className="policy-history-skeleton__row">
+                {Array.from({ length: 10 }).map((_, colIndex) => (
+                  <span key={`policy-skeleton-cell-${rowIndex}-${colIndex}`} className="policy-history-skeleton__cell policy-history-skeleton__cell--body" />
+                ))}
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="policy-history-skeleton__scroll" />
+      </div>
+      <div className="policy-history-skeleton__pagination" aria-hidden="true">
+        <span className="policy-history-skeleton__cell policy-history-skeleton__cell--pagination-sm" />
+        <span className="policy-history-skeleton__cell policy-history-skeleton__cell--pagination-md" />
+        <span className="policy-history-skeleton__cell policy-history-skeleton__cell--pagination-sm" />
+      </div>
+    </div>
+  );
+}
+
 export default function PolicyPage() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -57,7 +88,7 @@ export default function PolicyPage() {
 
   const handleSelectS3 = () => {
     navigate({
-      pathname: "/dashboard/policy/s3",
+      pathname: "/dashboard/policy/lifecycle",
       search: location.search,
     });
     setIsServiceMenuOpen(false);
@@ -65,7 +96,7 @@ export default function PolicyPage() {
 
   const handleEdit = (item: S3PolicyActionHistoryItem) => {
     navigate({
-      pathname: "/dashboard/policy/s3",
+      pathname: "/dashboard/policy/lifecycle",
       search: `${location.search ? `${location.search}&` : "?"}bucketName=${encodeURIComponent(item.bucketName)}&ruleName=${encodeURIComponent(item.ruleName ?? "")}`,
     });
   };
@@ -120,7 +151,7 @@ export default function PolicyPage() {
             ) : null}
           </div>
         </header>
-        {policyHistoryQuery.isLoading ? <p className="dashboard-note">Loading policy history...</p> : null}
+        {policyHistoryQuery.isLoading ? <PolicyHistorySkeleton /> : null}
         {policyHistoryQuery.isError ? <p className="dashboard-note">Failed to load policy history: {policyHistoryQuery.error.message}</p> : null}
         {!policyHistoryQuery.isLoading && !policyHistoryQuery.isError ? (
           <div className="policy-history-shell">

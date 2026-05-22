@@ -520,6 +520,20 @@ export function DashboardGlobalHeader() {
         { label: "Explorer" },
       ];
     }
+    if (path.startsWith("/dashboard/anomalies-alerts/")) {
+      return [
+        { label: rootCrumb, path: "/dashboard/overview" },
+        { label: "Anomalies", path: "/dashboard/anomalies-alerts" },
+        { label: "Anomaly Details" },
+      ];
+    }
+    if (path === "/dashboard/policy/lifecycle" || path === "/dashboard/policy/s3") {
+      return [
+        { label: rootCrumb, path: "/dashboard/overview" },
+        { label: "Policy", path: "/dashboard/policy" },
+        { label: "Lifecycle Policy Setup" },
+      ];
+    }
 
     const bestMatch = dashboardNavLinks
       .filter((item) => path.startsWith(item.path))

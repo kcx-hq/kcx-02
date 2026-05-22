@@ -3,6 +3,8 @@ import {
   dashboardApi,
   type AnomaliesFiltersQuery,
   type AnomaliesListResponse,
+  type AnomalyRecord,
+  type AnomalyTimelineResponse,
   type CostExplorerFiltersQuery,
   type CostHistoryFilterOptionsResponse,
   type CostHistoryFiltersQuery,
@@ -405,6 +407,24 @@ export function useAnomaliesAlertsQuery(filters?: AnomaliesFiltersQuery) {
     queryKey: ["dashboard", "anomalies-alerts", scope, filters],
     queryFn: () => dashboardApi.getAnomaliesAlerts(assertScope(scope), filters),
     enabled: Boolean(scope),
+  });
+}
+
+export function useAnomalyAlertDetailQuery(anomalyId: string | null) {
+  const { scope } = useDashboardScope();
+  return useQuery<AnomalyRecord, Error>({
+    queryKey: ["dashboard", "anomalies-alerts", "detail", scope, anomalyId],
+    queryFn: () => dashboardApi.getAnomalyAlertById(assertScope(scope), anomalyId as string),
+    enabled: Boolean(scope) && Boolean(anomalyId),
+  });
+}
+
+export function useAnomalyTimelineQuery(anomalyId: string | null, period: 3 | 7 | 14 | 30 | 90) {
+  const { scope } = useDashboardScope();
+  return useQuery<AnomalyTimelineResponse, Error>({
+    queryKey: ["dashboard", "anomalies-alerts", "timeline", scope, anomalyId, period],
+    queryFn: () => dashboardApi.getAnomalyTimeline(assertScope(scope), anomalyId as string, period),
+    enabled: Boolean(scope) && Boolean(anomalyId),
   });
 }
 

@@ -9,7 +9,6 @@ import {
   Copy,
   Database,
   DollarSign,
-  Download,
   ExternalLink,
   Files,
   GitBranch,
@@ -306,10 +305,13 @@ export default function S3UsageBucketDetailPage() {
   };
 
   const optimization = detail?.optimization;
+  const configuration = detail?.configuration;
+  const hasReplicationConfigured = Boolean(configuration?.replication.enabled);
   const optimizationOpportunities = optimization?.opportunities ?? [];
+  type OptimizationOpportunity = NonNullable<typeof optimizationOpportunities>[number];
   const topInsights = useMemo(() => {
     const severityRank: Record<string, number> = { high: 0, medium: 1, low: 2, info: 3 };
-    return optimizationOpportunities
+    const baseInsights = optimizationOpportunities
       .map((item, index) => ({ item, index }))
       .sort((a, b) => {
         const aRank = severityRank[String(a.item.severity ?? "").toLowerCase()] ?? 99;
@@ -317,13 +319,45 @@ export default function S3UsageBucketDetailPage() {
         if (aRank !== bRank) return aRank - bRank;
         return a.index - b.index;
       })
-      .slice(0, 3)
       .map(({ item }) => item);
-  }, [optimizationOpportunities]);
+
+    const alreadyHasReplicationSetupInsight = baseInsights.some((item) => {
+      const category = String(item.category ?? "").toLowerCase();
+      const title = String(item.title ?? "").toLowerCase();
+      return category === "replication" || title.includes("replication");
+    });
+
+    const shouldInjectReplicationInsight =
+      bucketNameParam.length > 0 && !hasReplicationConfigured && !alreadyHasReplicationSetupInsight;
+
+    const replicationInsight: OptimizationOpportunity[] = shouldInjectReplicationInsight
+      ? [{
+          id: `replication-setup-${bucketNameParam}`,
+          category: "replication" as const,
+          title: "Replication not configured",
+          severity: "medium" as const,
+          description: "Cross-region replication is not configured for this bucket.",
+          recommendation: "Configure replication for resilience and recovery.",
+          estimatedSavings: null,
+          source: "system",
+          evidence: {},
+          action: {
+            type: "navigate" as const,
+            label: "Set replication",
+            route: "/dashboard/s3/optimization",
+            query: {
+              tab: "replication",
+              bucketName: bucketNameParam,
+            },
+          },
+        }]
+      : [];
+
+    return [...replicationInsight, ...baseInsights].slice(0, 3);
+  }, [bucketNameParam, hasReplicationConfigured, optimizationOpportunities]);
   const optimizationSummary = (optimization?.totalCount ?? 0) > 0
     ? `${optimization?.totalCount ?? 0} opportunities`
     : "No optimization opportunities";
-  const configuration = detail?.configuration;
   const hasConfigurationData = Boolean(configuration && configuration.bestPractices.total > 0);
   const configurationSummary = hasConfigurationData && configuration
     ? `${configuration.bestPractices.passed} of ${configuration.bestPractices.total} best practices met`
@@ -391,6 +425,9 @@ export default function S3UsageBucketDetailPage() {
   const handleOpportunityAction = (opportunity: NonNullable<typeof optimizationOpportunities>[number]) => {
     const action = opportunity.action;
     if (!action || action.type !== "navigate") return;
+    const isLifecycleCategory = String(opportunity.category ?? "").toLowerCase() === "lifecycle";
+    const isLifecycleMissingInsight = isLifecycleCategory && /no\s+lifecycle\s+policy/i.test(String(opportunity.title ?? ""));
+    const shouldRedirectToPolicySetup = isLifecycleMissingInsight && !configuration?.lifecycle.enabled;
     const searchParams = new URLSearchParams(location.search);
     for (const [key, value] of Object.entries(action.query ?? {})) {
       if (value != null && String(value).trim().length > 0) {
@@ -400,10 +437,25 @@ export default function S3UsageBucketDetailPage() {
     if (bucketNameParam) {
       searchParams.set("bucket", bucketNameParam);
     }
+    if (shouldRedirectToPolicySetup && bucketNameParam) {
+      searchParams.set("bucketName", bucketNameParam);
+    }
     navigate({
-      pathname: action.route,
+      pathname: shouldRedirectToPolicySetup ? "/dashboard/policy/lifecycle" : action.route,
       search: searchParams.toString(),
     });
+  };
+
+  const getOpportunityActionLabel = (opportunity: NonNullable<typeof optimizationOpportunities>[number]): string => {
+    const fallbackLabel = opportunity.action?.label ?? "View details";
+    const isLifecycleCategory = String(opportunity.category ?? "").toLowerCase() === "lifecycle";
+    const isLifecycleMissingInsight = isLifecycleCategory && /no\s+lifecycle\s+policy/i.test(String(opportunity.title ?? ""));
+    const isReplicationCategory = String(opportunity.category ?? "").toLowerCase() === "replication";
+    const isReplicationMissingInsight =
+      isReplicationCategory && /replication\s+(not\s+configured|missing|not\s+set)/i.test(String(opportunity.title ?? ""));
+    if (!isLifecycleMissingInsight && !isReplicationMissingInsight) return fallbackLabel;
+    if (isReplicationMissingInsight) return hasReplicationConfigured ? "View replication" : "Set replication";
+    return configuration?.lifecycle.enabled ? "View lifecycle policy" : "Set lifecycle policy";
   };
 
   const handleOpportunityRowClick = (opportunity: NonNullable<typeof optimizationOpportunities>[number]) => {
@@ -502,7 +554,6 @@ export default function S3UsageBucketDetailPage() {
                     <ChevronDown />
                   </button>
                   <button type="button" aria-label="Chart view"><BarChart3 /></button>
-                  <button type="button" aria-label="Download"><Download /></button>
                 </div>
               </div>
               <S3BucketUsageTrendPanel
@@ -557,7 +608,7 @@ export default function S3UsageBucketDetailPage() {
                             handleOpportunityAction(insight);
                           }}
                         >
-                          {insight.action.label} <ChevronRight size={14} />
+                          {getOpportunityActionLabel(insight)} <ChevronRight size={14} />
                         </button>
                       ) : null}
                     </div>

@@ -2,6 +2,8 @@ import { apiGet, apiPatch, apiPost } from "@/lib/api";
 import type {
   AnomaliesFiltersQuery,
   AnomaliesListResponse,
+  AnomalyRecord,
+  AnomalyTimelineResponse,
   BudgetDashboardResponse,
   BudgetUpsertPayload,
   BudgetActualForecastPoint,
@@ -891,6 +893,14 @@ export const dashboardApi = {
   getAnomaliesAlerts(scope: DashboardResolvedScope, filters?: AnomaliesFiltersQuery) {
     return apiGet<AnomaliesListResponse>(withAnomaliesAlertsFilters("/dashboard/anomalies-alerts", scope, filters));
   },
+  getAnomalyAlertById(scope: DashboardResolvedScope, anomalyId: string) {
+    return apiGet<AnomalyRecord>(withDashboardQuery(`/dashboard/anomalies-alerts/${encodeURIComponent(anomalyId)}`, scope));
+  },
+  getAnomalyTimeline(scope: DashboardResolvedScope, anomalyId: string, period: 3 | 7 | 14 | 30 | 90) {
+    const basePath = withDashboardQuery(`/dashboard/anomalies-alerts/${encodeURIComponent(anomalyId)}/timeline`, scope);
+    const separator = basePath.includes("?") ? "&" : "?";
+    return apiGet<AnomalyTimelineResponse>(`${basePath}${separator}period=${period}`);
+  },
 
   getBudget(scope: DashboardResolvedScope) {
     return apiGet<BudgetDashboardResponse>(withDashboardQuery("/dashboard/budget", scope));
@@ -1041,6 +1051,7 @@ export const dashboardApi = {
 export type {
   BudgetActualForecastPoint,
   AnomalyRecord,
+  AnomalyTimelineResponse,
   AnomaliesFiltersQuery,
   AnomaliesListResponse,
   BudgetDashboardResponse,

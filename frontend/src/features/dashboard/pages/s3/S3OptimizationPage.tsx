@@ -52,19 +52,67 @@ const toPolicyAppliedLabel = (value: string | null | undefined): string => {
   return "Not Applied";
 };
 
-const toReplicationBadgeClass = (value: string | null | undefined): string => {
-  const normalized = String(value ?? "").trim().toLowerCase();
-  if (normalized === "present") return "is-present";
-  if (normalized === "absent") return "is-absent";
-  return "is-unknown";
-};
+function S3LifecyclePolicyTableSkeleton() {
+  return (
+    <div className="s3-lifecycle-table-shell s3-lifecycle-skeleton" aria-label="Loading lifecycle policy table">
+      <div className="optimization-rightsizing-table-scroll">
+        <div className="s3-lifecycle-skeleton__table" aria-hidden="true">
+          <div className="s3-lifecycle-skeleton__head">
+            {Array.from({ length: 11 }).map((_, index) => (
+              <span key={`s3-lifecycle-skeleton-head-${index}`} className="s3-lifecycle-skeleton__cell s3-lifecycle-skeleton__cell--head" />
+            ))}
+          </div>
+          <div className="s3-lifecycle-skeleton__body">
+            {Array.from({ length: 12 }).map((_, rowIndex) => (
+              <div key={`s3-lifecycle-skeleton-row-${rowIndex}`} className="s3-lifecycle-skeleton__row">
+                {Array.from({ length: 11 }).map((_, colIndex) => (
+                  <span key={`s3-lifecycle-skeleton-cell-${rowIndex}-${colIndex}`} className="s3-lifecycle-skeleton__cell s3-lifecycle-skeleton__cell--body" />
+                ))}
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="s3-lifecycle-skeleton__scroll" aria-hidden="true" />
+      </div>
+      <div className="s3-lifecycle-skeleton__pagination" aria-hidden="true">
+        <span className="s3-lifecycle-skeleton__cell s3-lifecycle-skeleton__cell--pagination-sm" />
+        <span className="s3-lifecycle-skeleton__cell s3-lifecycle-skeleton__cell--pagination-md" />
+        <span className="s3-lifecycle-skeleton__cell s3-lifecycle-skeleton__cell--pagination-sm" />
+      </div>
+    </div>
+  );
+}
 
-const toReplicationActionLabel = (value: string): string => {
-  if (value === "setup_replication") return "Setup Replication";
-  if (value === "view_setup_guide") return "View Setup Guide";
-  if (value === "fix_permission") return "Fix Permission";
-  return toStatusLabel(value);
-};
+function S3ReplicationTableSkeleton() {
+  return (
+    <div className="s3-lifecycle-table-shell s3-replication-skeleton" aria-label="Loading replication table">
+      <div className="optimization-rightsizing-table-scroll">
+        <div className="s3-replication-skeleton__table" aria-hidden="true">
+          <div className="s3-replication-skeleton__head">
+            {Array.from({ length: 9 }).map((_, index) => (
+              <span key={`s3-replication-skeleton-head-${index}`} className="s3-replication-skeleton__cell s3-replication-skeleton__cell--head" />
+            ))}
+          </div>
+          <div className="s3-replication-skeleton__body">
+            {Array.from({ length: 12 }).map((_, rowIndex) => (
+              <div key={`s3-replication-skeleton-row-${rowIndex}`} className="s3-replication-skeleton__row">
+                {Array.from({ length: 9 }).map((_, colIndex) => (
+                  <span key={`s3-replication-skeleton-cell-${rowIndex}-${colIndex}`} className="s3-replication-skeleton__cell s3-replication-skeleton__cell--body" />
+                ))}
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="s3-replication-skeleton__scroll" aria-hidden="true" />
+      </div>
+      <div className="s3-replication-skeleton__pagination" aria-hidden="true">
+        <span className="s3-replication-skeleton__cell s3-replication-skeleton__cell--pagination-sm" />
+        <span className="s3-replication-skeleton__cell s3-replication-skeleton__cell--pagination-md" />
+        <span className="s3-replication-skeleton__cell s3-replication-skeleton__cell--pagination-sm" />
+      </div>
+    </div>
+  );
+}
 
 export default function S3OptimizationPage() {
   const location = useLocation();
@@ -83,7 +131,6 @@ export default function S3OptimizationPage() {
   const [showReplicationSlowHint, setShowReplicationSlowHint] = useState(false);
   const lifecycleRows = useMemo(() => lifecycleQuery.data?.buckets ?? [], [lifecycleQuery.data?.buckets]);
   const replicationRows = useMemo(() => replicationQuery.data?.buckets ?? [], [replicationQuery.data?.buckets]);
-  const [replicationActionMessage, setReplicationActionMessage] = useState<string | null>(null);
   const [setupForm, setSetupForm] = useState({
     sourceBucketName: "",
     destinationBucketName: "",
@@ -188,12 +235,6 @@ export default function S3OptimizationPage() {
   }, [activeTab, currentPage, replicationRows, pageSize]);
   const startRow = totalItems === 0 ? 0 : (currentPage - 1) * pageSize + 1;
   const endRow = Math.min(currentPage * pageSize, totalItems);
-  const replicationSummary = useMemo(() => {
-    const present = replicationRows.filter((row) => row.replicationStatus === "present").length;
-    const absent = replicationRows.filter((row) => row.replicationStatus === "absent").length;
-    const unknown = replicationRows.filter((row) => row.replicationStatus === "unknown").length;
-    return { present, absent, unknown, total: replicationRows.length };
-  }, [replicationRows]);
 
   const openBucketDetail = (bucketName: string) => {
     const trimmed = String(bucketName ?? "").trim();
@@ -212,9 +253,7 @@ export default function S3OptimizationPage() {
       setShowReplicationGuide(true);
       return;
     }
-    setReplicationActionMessage(
-      `${toReplicationActionLabel(action)} for ${bucketName} will be enabled after replication write APIs are completed.`,
-    );
+    return;
   };
 
   return (
@@ -239,16 +278,16 @@ export default function S3OptimizationPage() {
 
         {activeTab === "overview" ? (
           <>
-            {s3CostInsightsQuery.isLoading ? <p className="dashboard-note">Loading S3 optimization overview...</p> : null}
             {s3CostInsightsQuery.isError ? <p className="dashboard-note">Failed to load S3 optimization overview: {s3CostInsightsQuery.error.message}</p> : null}
             <S3OptimizationOverviewSection
               costInsights={s3CostInsightsQuery.data}
               lifecycleRows={lifecycleRows}
+              isLoading={s3CostInsightsQuery.isLoading}
             />
           </>
         ) : activeTab === "lifecycle" ? (
           <>
-            {lifecycleQuery.isLoading ? <p className="dashboard-note">Loading S3 lifecycle policy data...</p> : null}
+            {lifecycleQuery.isLoading ? <S3LifecyclePolicyTableSkeleton /> : null}
             {lifecycleQuery.isError ? <p className="dashboard-note">Failed to load S3 lifecycle policy data: {lifecycleQuery.error.message}</p> : null}
 
             {!lifecycleQuery.isLoading && !lifecycleQuery.isError ? (
@@ -325,7 +364,7 @@ export default function S3OptimizationPage() {
           </>
         ) : (
           <>
-            {replicationQuery.isLoading ? <p className="dashboard-note">Loading S3 replication data...</p> : null}
+            {replicationQuery.isLoading ? <S3ReplicationTableSkeleton /> : null}
             {showReplicationSlowHint ? (
               <p className="dashboard-note">
                 Replication data is taking longer than expected. You can continue using other tabs while this loads.
@@ -334,29 +373,6 @@ export default function S3OptimizationPage() {
             {replicationQuery.isError ? <p className="dashboard-note">Failed to load S3 replication data: {replicationQuery.error.message}</p> : null}
             {!replicationQuery.isLoading && !replicationQuery.isError ? (
               <>
-                <div className="s3-replication-summary">
-                  <div className="s3-replication-summary__item">
-                    <span>Total Buckets</span>
-                    <strong>{replicationSummary.total}</strong>
-                  </div>
-                  <div className="s3-replication-summary__item">
-                    <span>Replication Configured</span>
-                    <strong>{replicationSummary.present}</strong>
-                  </div>
-                  <div className="s3-replication-summary__item">
-                    <span>Replication Missing</span>
-                    <strong>{replicationSummary.absent}</strong>
-                  </div>
-                  <div className="s3-replication-summary__item">
-                    <span>Permission Unknown</span>
-                    <strong>{replicationSummary.unknown}</strong>
-                  </div>
-                </div>
-                {replicationActionMessage ? (
-                  <p className="s3-replication-action-message">
-                    {replicationActionMessage}
-                  </p>
-                ) : null}
                 <div className="s3-lifecycle-table-shell">
                 <div className="optimization-rightsizing-table-scroll">
                   <table className="optimization-rightsizing-table s3-lifecycle-table s3-replication-table">
@@ -383,11 +399,22 @@ export default function S3OptimizationPage() {
                       ) : (
                         replicationPagedRows.map((row) => (
                           <tr key={`${row.bucketName}-${row.accountId}`}>
-                            <td>{row.bucketName || "--"}</td>
                             <td>
-                              <span className={`s3-replication-status-pill ${toReplicationBadgeClass(row.replicationStatus)}`}>
-                                {toStatusLabel(row.replicationStatus)}
-                              </span>
+                              {row.bucketName ? (
+                                <button
+                                  type="button"
+                                  className="s3-lifecycle-table__bucket-btn"
+                                  onClick={() => openBucketDetail(row.bucketName)}
+                                  title={`Open ${row.bucketName} details`}
+                                >
+                                  {row.bucketName}
+                                </button>
+                              ) : (
+                                "--"
+                              )}
+                            </td>
+                            <td>
+                              {toStatusLabel(row.replicationStatus)}
                             </td>
                             <td>{row.rulesCount ?? 0}</td>
                             <td>{row.destinationBucket || "--"}</td>
@@ -397,20 +424,14 @@ export default function S3OptimizationPage() {
                             <td>{formatScanTime(row.lastChecked)}</td>
                             <td>
                               <div className="s3-replication-actions">
-                                {(row.actions ?? []).map((action: string) => (
-                                  <button
-                                    key={`${row.bucketName}-${action}`}
-                                    type="button"
-                                    className="optimization-rightsizing-view-btn"
-                                    onClick={() => onReplicationAction(action, row.bucketName)}
-                                  >
-                                    {toReplicationActionLabel(action)}
-                                  </button>
-                                ))}
+                                <button
+                                  type="button"
+                                  className="s3-lifecycle-table__bucket-btn s3-replication-actions__text-link"
+                                  onClick={() => onReplicationAction("setup_replication", row.bucketName)}
+                                >
+                                  Set replication
+                                </button>
                               </div>
-                              {row.recommendation ? (
-                                <p className="s3-replication-recommendation">{row.recommendation}</p>
-                              ) : null}
                             </td>
                           </tr>
                         ))
@@ -451,32 +472,35 @@ export default function S3OptimizationPage() {
                 Page {currentPage} of {totalPages}
               </span>
               <div className="policy-history-pagination__actions">
-                <button type="button" className="optimization-rightsizing-view-btn" onClick={() => setCurrentPage(1)} disabled={currentPage <= 1}>
-                  {"<<"}
+                <button type="button" className="policy-history-pagination__icon-btn" onClick={() => setCurrentPage(1)} disabled={currentPage <= 1} aria-label="First page">
+                  {"|<"}
                 </button>
                 <button
                   type="button"
-                  className="optimization-rightsizing-view-btn"
+                  className="policy-history-pagination__icon-btn"
                   onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
                   disabled={currentPage <= 1}
+                  aria-label="Previous page"
                 >
                   {"<"}
                 </button>
                 <button
                   type="button"
-                  className="optimization-rightsizing-view-btn"
+                  className="policy-history-pagination__icon-btn"
                   onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
                   disabled={currentPage >= totalPages}
+                  aria-label="Next page"
                 >
                   {">"}
                 </button>
                 <button
                   type="button"
-                  className="optimization-rightsizing-view-btn"
+                  className="policy-history-pagination__icon-btn"
                   onClick={() => setCurrentPage(totalPages)}
                   disabled={currentPage >= totalPages}
+                  aria-label="Last page"
                 >
-                  {">>"}
+                  {">|"}
                 </button>
               </div>
             </div>

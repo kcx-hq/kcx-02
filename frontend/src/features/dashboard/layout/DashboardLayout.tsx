@@ -115,6 +115,7 @@ function DashboardScopeGate() {
     location.pathname.startsWith("/dashboard/cost/explorer") || location.pathname.startsWith("/dashboard/cost-explorer");
   const isCostHistoryRoute = location.pathname.startsWith("/dashboard/cost/history");
   const isEc2ExplorerRoute = location.pathname.startsWith("/dashboard/ec2/explorer");
+  const isAnomaliesRoute = location.pathname.startsWith("/dashboard/anomalies-alerts");
   const isS3BucketRoute = location.pathname.startsWith("/dashboard/s3/bucket");
   const isS3ExplorerLikeRoute =
     location.pathname.startsWith("/dashboard/s3/cost") ||
@@ -123,6 +124,9 @@ function DashboardScopeGate() {
 
   if (isLoading && !scope) {
     if (isEc2Route) {
+      return <Outlet />;
+    }
+    if (isAnomaliesRoute) {
       return <Outlet />;
     }
     if (isOverviewRoute) {

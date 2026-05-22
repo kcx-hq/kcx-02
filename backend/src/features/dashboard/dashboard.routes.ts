@@ -48,7 +48,11 @@ import {
   handleGetOverviewTopRegions,
   handleGetOverviewTopServices,
 } from "./overview/overview.controller.js";
-import { handleGetAnomalies as handleGetAnomaliesAlertsDashboard } from "./anomaly-alerts/anomaly.controller.js";
+import {
+  handleGetAnomalies as handleGetAnomaliesAlertsDashboard,
+  handleGetAnomalyById as handleGetAnomalyByIdDashboard,
+  handleGetAnomalyTimelineById as handleGetAnomalyTimelineByIdDashboard,
+} from "./anomaly-alerts/anomaly.controller.js";
 import { handleGetReportDashboard } from "./report/report.controller.js";
 import { handleGetResourcesDashboard } from "./resources/resources.controller.js";
 import s3Router from "./s3/s3.routes.js";
@@ -156,6 +160,8 @@ router.get(
   asyncHandler(handleDebugSyncOptimizationRecommendations),
 );
 router.get("/dashboard/anomalies-alerts", asyncHandler(handleGetAnomaliesAlertsDashboard));
+router.get("/dashboard/anomalies-alerts/:anomalyId", asyncHandler(handleGetAnomalyByIdDashboard));
+router.get("/dashboard/anomalies-alerts/:anomalyId/timeline", asyncHandler(handleGetAnomalyTimelineByIdDashboard));
 router.use("/dashboard/s3", s3Router);
 router.get("/dashboard/policy/actions", asyncHandler(handleGetPolicyActionHistory));
 router.get("/dashboard/budget", asyncHandler(handleGetBudgetDashboard));

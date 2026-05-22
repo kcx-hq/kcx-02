@@ -8,8 +8,14 @@ import {
   createManualAnomalyDetectionJob,
   getAnomalyDetectionJobStatusForTenant,
 } from "./anomaly-jobs.service.js";
-import { getAnomaliesForTenant } from "./anomaly-read.service.js";
-import { parseAnomalyListQuery, parseCreateAnomalyJobPayload, parseAnomalyJobIdParams } from "./anomaly.schema.js";
+import { getAnomaliesForTenant, getAnomalyByIdForTenant, getAnomalyTimelineByIdForTenant } from "./anomaly-read.service.js";
+import {
+  parseAnomalyListQuery,
+  parseCreateAnomalyJobPayload,
+  parseAnomalyJobIdParams,
+  parseAnomalyIdParams,
+  parseAnomalyTimelineQuery,
+} from "./anomaly.schema.js";
 
 const requireTenantContext = (req: Request): { tenantId: string; userId: string | null } => {
   const tenantId = req.auth?.user.tenantId?.trim();
@@ -74,6 +80,44 @@ export async function handleGetAnomalies(req: Request, res: Response): Promise<v
     req,
     statusCode: HTTP_STATUS.OK,
     message: "Anomalies loaded",
+    data,
+  });
+}
+
+export async function handleGetAnomalyById(req: Request, res: Response): Promise<void> {
+  const context = requireTenantContext(req);
+  const { anomalyId } = parseAnomalyIdParams(req.params);
+
+  const data = await getAnomalyByIdForTenant({
+    tenantId: context.tenantId,
+    anomalyId,
+  });
+
+  sendSuccess({
+    res,
+    req,
+    statusCode: HTTP_STATUS.OK,
+    message: "Anomaly detail loaded",
+    data,
+  });
+}
+
+export async function handleGetAnomalyTimelineById(req: Request, res: Response): Promise<void> {
+  const context = requireTenantContext(req);
+  const { anomalyId } = parseAnomalyIdParams(req.params);
+  const { period } = parseAnomalyTimelineQuery(req.query);
+
+  const data = await getAnomalyTimelineByIdForTenant({
+    tenantId: context.tenantId,
+    anomalyId,
+    period,
+  });
+
+  sendSuccess({
+    res,
+    req,
+    statusCode: HTTP_STATUS.OK,
+    message: "Anomaly timeline loaded",
     data,
   });
 }

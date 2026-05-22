@@ -8,12 +8,12 @@ import type { S3CostSpikeAnomalyType, S3CostSpikeCandidate } from "./s3-cost-spi
 const BASELINE_TYPE = "rolling_7d";
 const SOURCE_GRANULARITY = "daily";
 const SOURCE_TABLE = "s3_cost_daily";
+const SOURCE_TABLES = ["s3_cost_daily", "s3_storage_lens_daily", "s3_bucket_config_snapshot"] as const;
 const ANOMALY_SCOPE = "service_category";
 const ANOMALY_TYPES: S3CostSpikeAnomalyType[] = [
-  "S3 Storage Cost Spike",
-  "S3 Data Transfer Spike",
-  "S3 Request Cost Spike",
-  "S3 Storage Growth Anomaly",
+  "S3_STORAGE_COST_SPIKE",
+  "S3_DATA_TRANSFER_COST_SPIKE",
+  "S3_REQUEST_COST_SPIKE",
 ];
 
 type S3CostSpikeLifecycleInput = {
@@ -48,18 +48,44 @@ const toConfidenceScore = (severity: "low" | "medium" | "high"): string =>
 
 const normalize = (value: string | null | undefined): string => String(value ?? "").trim().toLowerCase();
 
+const toInsightTitle = (anomalyType: S3CostSpikeAnomalyType): string => {
+  if (anomalyType === "S3_STORAGE_COST_SPIKE") return "S3 Storage Cost Spike";
+  if (anomalyType === "S3_DATA_TRANSFER_COST_SPIKE") return "S3 Data Transfer Spike";
+  if (anomalyType === "S3_REQUEST_COST_SPIKE") return "S3 Request Cost Spike";
+  return anomalyType;
+};
+
+const toInsightDescription = (candidate: S3CostSpikeCandidate): string => {
+  const percentage = Number.isFinite(candidate.deltaPercent) ? Math.max(0, candidate.deltaPercent * 100) : 0;
+  const roundedPercent = Math.round(percentage);
+  if (candidate.anomalyType === "S3_STORAGE_COST_SPIKE") {
+    return `S3 storage cost increased by ${roundedPercent}% compared to normal daily usage.`;
+  }
+  if (candidate.anomalyType === "S3_DATA_TRANSFER_COST_SPIKE") {
+    return "Unexpected increase in S3 internet egress traffic detected.";
+  }
+  if (candidate.anomalyType === "S3_REQUEST_COST_SPIKE") {
+    return "S3 API request charges significantly exceeded baseline usage.";
+  }
+  return candidate.description;
+};
+
 const buildFingerprint = ({
   tenantId,
   billingSourceId,
   usageDate,
   anomalyType,
+  subAccountId,
+  regionKey,
 }: {
   tenantId: string | null;
   billingSourceId: string;
   usageDate: string;
   anomalyType: S3CostSpikeAnomalyType;
+  subAccountId: string | null;
+  regionKey: string | null;
 }): string =>
-  `s3_spike:${normalize(tenantId) || "none"}:${normalize(billingSourceId)}:${normalize(usageDate)}:${normalize(anomalyType)}`;
+  `s3_spike:${normalize(tenantId) || "none"}:${normalize(billingSourceId)}:${normalize(subAccountId) || "unknown_account"}:${normalize(regionKey) || "global_unknown"}:${normalize(usageDate)}:${normalize(anomalyType)}`;
 
 const resolveS3ServiceKey = async (): Promise<string | null> => {
   const [row] = await sequelize.query<{ id: string | null }>(
@@ -76,63 +102,6 @@ const resolveS3ServiceKey = async (): Promise<string | null> => {
   return row?.id ?? null;
 };
 
-const resolveResourceKeysByBucketName = async ({
-  tenantId,
-  bucketNames,
-}: {
-  tenantId: string | null;
-  bucketNames: string[];
-}): Promise<Map<string, string>> => {
-  if (!tenantId || bucketNames.length === 0) return new Map();
-
-  const names = Array.from(new Set(bucketNames.map((value) => String(value ?? "").trim()).filter((value) => value.length > 0)));
-  if (names.length === 0) return new Map();
-
-  const rows = await sequelize.query<{ id: string; resource_name: string | null; resource_id: string | null }>(
-    `
-      SELECT
-        dr.id::text AS id,
-        dr.resource_name,
-        dr.resource_id
-      FROM dim_resource dr
-      WHERE dr.tenant_id = CAST(:tenantId AS UUID)
-        AND (
-          dr.resource_name IN (:names)
-          OR dr.resource_id IN (:names)
-          OR dr.resource_id IN (:s3Arns)
-          OR dr.resource_id IN (:s3Uris)
-        )
-    `,
-    {
-      replacements: {
-        tenantId,
-        names,
-        s3Arns: names.map((name) => `arn:aws:s3:::${name}`),
-        s3Uris: names.map((name) => `s3://${name}`),
-      },
-      type: QueryTypes.SELECT,
-    },
-  );
-
-  const map = new Map<string, string>();
-  for (const row of rows) {
-    const id = String(row.id ?? "").trim();
-    if (!id) continue;
-    const byName = String(row.resource_name ?? "").trim();
-    const byId = String(row.resource_id ?? "").trim();
-    if (byName.length > 0 && !map.has(byName)) map.set(byName, id);
-    if (byId.length > 0 && !map.has(byId)) map.set(byId, id);
-    if (byId.startsWith("arn:aws:s3:::")) {
-      const bucket = byId.slice("arn:aws:s3:::".length);
-      if (bucket.length > 0 && !map.has(bucket)) map.set(bucket, id);
-    }
-    if (byId.startsWith("s3://")) {
-      const bucket = byId.slice("s3://".length).split("/")[0];
-      if (bucket.length > 0 && !map.has(bucket)) map.set(bucket, id);
-    }
-  }
-  return map;
-};
 
 async function replaceContributorsForAnomaly({
   anomalyId,
@@ -200,18 +169,14 @@ async function upsertDetectedCandidates(input: S3CostSpikeLifecycleInput): Promi
 }> {
   const now = new Date();
   const serviceKey = await resolveS3ServiceKey();
-  const resourceKeyByBucket = await resolveResourceKeysByBucketName({
-    tenantId: input.tenantId,
-    bucketNames: input.candidates
-      .map((candidate) => candidate.bucketName)
-      .filter((value): value is string => typeof value === "string" && value.trim().length > 0),
-  });
   const detectedFingerprints = input.candidates.map((candidate) =>
     buildFingerprint({
       tenantId: input.tenantId,
       billingSourceId: input.billingSourceId,
       usageDate: candidate.usageDate,
       anomalyType: candidate.anomalyType,
+      subAccountId: candidate.subAccountId,
+      regionKey: candidate.regionKey,
     }),
   );
 
@@ -240,30 +205,24 @@ async function upsertDetectedCandidates(input: S3CostSpikeLifecycleInput): Promi
       billingSourceId: input.billingSourceId,
       usageDate: candidate.usageDate,
       anomalyType: candidate.anomalyType,
+      subAccountId: candidate.subAccountId,
+      regionKey: candidate.regionKey,
     });
     const existing = existingByFingerprint.get(fingerprint);
-    const normalizedBucket = String(candidate.bucketName ?? "").trim();
-    const resourceKey =
-      normalizedBucket.length > 0
-        ? resourceKeyByBucket.get(normalizedBucket) ??
-          resourceKeyByBucket.get(`arn:aws:s3:::${normalizedBucket}`) ??
-          resourceKeyByBucket.get(`s3://${normalizedBucket}`) ??
-          null
-        : null;
 
     const patch = {
       tenantId: input.tenantId,
       cloudConnectionId: input.cloudConnectionId,
       billingSourceId: input.billingSourceId,
       serviceKey,
-      resourceKey,
+      resourceKey: null,
       detectedAt: now,
       usageDate: candidate.usageDate,
       anomalyType: candidate.anomalyType,
       anomalyScope: ANOMALY_SCOPE,
       baselineType: BASELINE_TYPE,
       sourceGranularity: SOURCE_GRANULARITY,
-      sourceTable: SOURCE_TABLE,
+      sourceTable: candidate.sourceTable ?? SOURCE_TABLE,
       expectedCost: toFixedString(candidate.expectedCost, 6),
       actualCost: toFixedString(candidate.actualCost, 6),
       deltaCost: toFixedString(candidate.deltaCost, 6),
@@ -275,16 +234,31 @@ async function upsertDetectedCandidates(input: S3CostSpikeLifecycleInput): Promi
       rootCauseHint: candidate.description,
       explanationJson: {
         detector: "s3_cost_spike",
-        insightTitle: candidate.anomalyType,
-        insightDescription: candidate.description,
+        insightTitle: toInsightTitle(candidate.anomalyType),
+        insightDescription: toInsightDescription(candidate),
         recommendation: candidate.recommendation,
         historyCount: candidate.historyCount,
+        region: candidate.regionName ?? "Global/Unknown",
+        usageType: candidate.usageType ?? null,
       },
       metadataJson: {
         detectionRunId: input.runId,
         detector: "s3_cost_spike",
-        insightTitle: candidate.anomalyType,
+        insightTitle: toInsightTitle(candidate.anomalyType),
         recommendation: candidate.recommendation,
+        anomalyKey: [
+          candidate.subAccountId ?? "unknown_account",
+          "amazon_s3",
+          candidate.regionKey ?? "global_unknown",
+          candidate.anomalyType,
+          candidate.usageDate,
+        ].join("|"),
+        subAccountId: candidate.subAccountId ?? null,
+        subAccountName: candidate.subAccountName ?? null,
+        accountId: candidate.accountId ?? candidate.subAccountId ?? null,
+        bucketName: candidate.bucketName ?? null,
+        regionName: candidate.regionName ?? "Global/Unknown",
+        usageType: candidate.usageType ?? null,
       },
       lastSeenAt: now,
       fingerprint,
@@ -346,7 +320,9 @@ async function resolveMissingOpenAnomaliesInScope(input: {
       anomalyType: { [Op.in]: ANOMALY_TYPES },
       anomalyScope: ANOMALY_SCOPE,
       sourceGranularity: SOURCE_GRANULARITY,
-      sourceTable: SOURCE_TABLE,
+      sourceTable: {
+        [Op.in]: SOURCE_TABLES as unknown as string[],
+      },
       status: "open",
       usageDate: { [Op.between]: [input.effectiveDateFrom, input.effectiveDateTo] },
     },

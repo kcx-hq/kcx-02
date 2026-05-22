@@ -5,6 +5,7 @@ import { sequelize } from "../src/models/index.js";
 type CliOptions = {
   billingSourceId: string;
   tenantId: string | null;
+  days: number;
 };
 
 type BillingSourceRow = {
@@ -20,6 +21,7 @@ const REGION = "us-east-1";
 const parseArgs = (argv: string[]): CliOptions => {
   let billingSourceId: string | null = null;
   let tenantId: string | null = null;
+  let days = 30;
 
   for (const rawArg of argv.slice(2)) {
     const arg = String(rawArg ?? "").trim();
@@ -34,6 +36,14 @@ const parseArgs = (argv: string[]): CliOptions => {
     }
     if (key === "--tenant-id") {
       tenantId = value;
+      continue;
+    }
+    if (key === "--days") {
+      const parsed = Number(value);
+      if (!Number.isFinite(parsed) || parsed < 2 || parsed > 365) {
+        throw new Error("Provide valid --days=<number> between 2 and 365");
+      }
+      days = Math.floor(parsed);
     }
   }
 
@@ -41,7 +51,7 @@ const parseArgs = (argv: string[]): CliOptions => {
     throw new Error("Provide valid --billing-source-id=<number>");
   }
 
-  return { billingSourceId, tenantId };
+  return { billingSourceId, tenantId, days };
 };
 
 const toDateOnly = (date: Date): string => date.toISOString().slice(0, 10);
@@ -231,8 +241,8 @@ async function main(): Promise<void> {
   const options = parseArgs(process.argv);
   const scope = await resolveScope(options);
   const today = new Date();
-  const start = addDays(today, -3);
-  const dates = [0, 1, 2, 3].map((i) => toDateOnly(addDays(start, i)));
+  const start = addDays(today, -(options.days - 1));
+  const dates = Array.from({ length: options.days }, (_, i) => toDateOnly(addDays(start, i)));
 
   const insertedCostRows = await seedS3CostDaily(scope, dates);
   const insertedStorageRows = await seedS3StorageLensDaily(scope, dates);
@@ -242,6 +252,7 @@ async function main(): Promise<void> {
     billingSourceId: scope.id,
     cloudConnectionId: scope.cloud_connection_id,
     bucketPrefix: BUCKET_PREFIX,
+    days: options.days,
     dates,
     insertedCostRows,
     insertedStorageRows,

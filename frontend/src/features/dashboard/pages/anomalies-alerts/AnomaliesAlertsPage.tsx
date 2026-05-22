@@ -4,6 +4,7 @@ import { AnomalyDetectionKpis } from "./components/AnomalyDetectionKpis";
 import { type AnomalyTableRow, AnomalyDetectionTable } from "./components/AnomalyDetectionTable";
 import { useAnomaliesAlertsQuery } from "../../hooks/useDashboardQueries";
 import type { AnomaliesFiltersQuery, AnomalyRecord } from "../../api/dashboardApi";
+import { useDashboardScope } from "../../hooks/useDashboardScope";
 
 const DEFAULT_FILTERS: AnomalyFiltersState = {
   timePeriod: "Last 14 days",
@@ -191,6 +192,16 @@ const resolveServiceText = (anomaly: AnomalyRecord): string => {
   return anomaly.service ?? anomaly.service_name ?? fromMetadata ?? "-";
 };
 
+const isAmazonS3Service = (anomaly: AnomalyRecord): boolean => {
+  const serviceText = resolveServiceText(anomaly).toLowerCase();
+  if (serviceText.includes("amazons3") || serviceText.includes("amazon s3") || serviceText.includes("s3")) {
+    return true;
+  }
+  const sourceTable = String(anomaly.source_table ?? "").toLowerCase();
+  const anomalyType = String(anomaly.anomaly_type ?? "").toLowerCase();
+  return sourceTable.includes("s3") || anomalyType.includes("s3");
+};
+
 const resolveTimeRange = (timePeriod: string): Pick<AnomaliesFiltersQuery, "date_from" | "date_to"> => {
   const normalized = timePeriod.trim().toLowerCase();
   const daysMatch = normalized.match(/last\s+(\d+)\s+days?/);
@@ -232,6 +243,7 @@ const mapAnomalyToRow = (anomaly: AnomalyRecord): AnomalyTableRow => {
 };
 
 export default function AnomaliesAlertsPage() {
+  const { scope } = useDashboardScope();
   const [isFiltersOpen, setIsFiltersOpen] = useState(false);
   const [draftFilters, setDraftFilters] = useState<AnomalyFiltersState>(DEFAULT_FILTERS);
   const [appliedFilters, setAppliedFilters] = useState<AnomalyFiltersState>(DEFAULT_FILTERS);
@@ -247,6 +259,7 @@ export default function AnomaliesAlertsPage() {
   }, [appliedFilters.timePeriod]);
 
   const anomaliesQuery = useAnomaliesAlertsQuery(queryFilters);
+  const isInitialLoading = !scope || anomaliesQuery.isPending || (anomaliesQuery.isFetching && !anomaliesQuery.data);
   const rawRows = anomaliesQuery.data?.items ?? [];
   const dedupedRows = useMemo(() => dedupeAnomaliesByIncident(rawRows), [rawRows]);
 
@@ -311,23 +324,45 @@ export default function AnomaliesAlertsPage() {
     searchTerm,
   ]);
 
-  const tableRows = useMemo(() => filteredAnomalies.map(mapAnomalyToRow), [filteredAnomalies]);
+  const s3Anomalies = useMemo(() => filteredAnomalies.filter(isAmazonS3Service), [filteredAnomalies]);
+  const s3ServiceRows = useMemo(() => s3Anomalies.map(mapAnomalyToRow), [s3Anomalies]);
+  const anomalyByRowId = useMemo(
+    () => new Map(s3Anomalies.map((item) => [String(item.id), item])),
+    [s3Anomalies],
+  );
 
-  const activeCount = useMemo(() => {
-    return filteredAnomalies.filter((item) => String(item.status ?? "").toLowerCase() === "open").length;
-  }, [filteredAnomalies]);
-  const inactiveCount = Math.max(0, tableRows.length - activeCount);
+  const activeCount = useMemo(
+    () => s3Anomalies.filter((item) => String(item.status ?? "").toLowerCase() === "open").length,
+    [s3Anomalies],
+  );
+  const inactiveCount = Math.max(0, s3ServiceRows.length - activeCount);
 
   const totalCostImpact = useMemo(
-    () => filteredAnomalies.reduce((sum, item) => sum + Math.abs(toNumber(item.delta_cost)), 0),
-    [filteredAnomalies],
+    () => s3Anomalies.reduce((sum, item) => sum + Math.abs(toNumber(item.delta_cost)), 0),
+    [s3Anomalies],
   );
-  const totalCost = useMemo(
-    () => filteredAnomalies.reduce((sum, item) => sum + Math.abs(toNumber(item.actual_cost)), 0),
-    [filteredAnomalies],
+  const hasCriticalS3Anomaly = useMemo(
+    () =>
+      s3Anomalies.some((item) => {
+      const severity = String(item.severity ?? "").toLowerCase();
+      return severity === "high" || severity === "critical";
+      }),
+    [s3Anomalies],
   );
-  const impactPct =
-    totalCost > 0 ? `${((totalCostImpact / totalCost) * 100).toFixed(2)}%` : "0.00%";
+  const potentialSavings = useMemo(() => {
+    return s3Anomalies
+      .filter((item) => String(item.status ?? "").toLowerCase() === "open")
+      .reduce((sum, item) => sum + Math.abs(toNumber(item.delta_cost)), 0);
+  }, [s3Anomalies]);
+
+  const backendSummary = anomaliesQuery.data?.summary;
+  const totalAnomaliesKpi = s3Anomalies.length;
+  const criticalAnomaliesKpi = s3Anomalies.length > 0 && hasCriticalS3Anomaly ? s3Anomalies.filter((item) => {
+    const severity = String(item.severity ?? "").toLowerCase();
+    return severity === "high" || severity === "critical";
+  }).length : 0;
+  const totalCostImpactKpi = s3Anomalies.length > 0 ? totalCostImpact : (backendSummary?.totalCostImpact ?? 0);
+  const potentialSavingsKpi = s3Anomalies.length > 0 ? potentialSavings : (backendSummary?.potentialSavings ?? 0);
 
   function resetDraftFilters() {
     setDraftFilters(DEFAULT_FILTERS);
@@ -341,19 +376,22 @@ export default function AnomaliesAlertsPage() {
   return (
     <section className="dashboard-page anomalies-alerts-page anomaly-ref-page" aria-label="Anomaly Detection">
       <AnomalyDetectionKpis
-        anomalyCount={tableRows.length}
-        totalCostImpact={currencyFormatter.format(totalCostImpact)}
-        totalCost={currencyFormatter.format(totalCost)}
-        impactPercent={impactPct}
+        totalAnomalies={totalAnomaliesKpi}
+        criticalAnomalies={criticalAnomaliesKpi}
+        totalCostImpact={currencyFormatter.format(totalCostImpactKpi)}
+        potentialSavings={currencyFormatter.format(potentialSavingsKpi)}
+        isLoading={isInitialLoading}
       />
       <AnomalyDetectionTable
-        rows={tableRows}
+        rows={s3ServiceRows}
         activeCount={activeCount}
         inactiveCount={inactiveCount}
         searchTerm={searchTerm}
         onSearchTermChange={setSearchTerm}
-        isLoading={anomaliesQuery.isLoading}
+        isLoading={isInitialLoading}
         errorMessage={anomaliesQuery.isError ? anomaliesQuery.error.message : null}
+        getRowHref={(row) => `/dashboard/anomalies-alerts/${encodeURIComponent(row.id)}`}
+        getRowState={(row) => ({ anomaly: anomalyByRowId.get(String(row.id)) ?? null })}
       />
 
       <AnomalyFiltersPanel
