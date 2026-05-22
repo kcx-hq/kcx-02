@@ -315,7 +315,7 @@ const buildFactFilters = (
   }
 
   if (params.dbEngine) {
-    filters.push(`${pref}db_engine = :dbEngine`);
+    filters.push(dbEngineFilterSql(`${pref}db_engine`));
   }
 
   filters.push(`COALESCE(LOWER(BTRIM(${pref}resource_type)), '') <> 'scoped'`);
@@ -350,7 +350,7 @@ const buildTrendFilters = (params: ExplorerQueryParams, tableAlias = ""): string
   }
 
   if (params.dbEngine) {
-    filters.push(`${pref}db_engine = :dbEngine`);
+    filters.push(dbEngineFilterSql(`${pref}db_engine`));
   }
 
   return filters.join("\n    AND ");
@@ -418,6 +418,9 @@ const buildGroupedValuesFilter = (
         && value !== "unknown resource type"
         && value !== "unknown-resource-type",
     );
+  }
+  if (params.groupBy === "cost_category") {
+    trimmed = trimmed.filter((value) => value !== "other");
   }
   if (trimmed.length === 0) {
     return null;
@@ -520,6 +523,22 @@ CASE
   WHEN LOWER(COALESCE(db_service, '')) IN ('amazontimestream', 'amazon timestream', 'timestream') THEN 'Amazon Timestream'
   ELSE 'Unknown service'
 END
+`;
+
+const normalizedEngineTokenSql = (expression: string): string => `
+REGEXP_REPLACE(
+  LOWER(BTRIM(COALESCE(${expression}, ''))),
+  '[^a-z0-9]+',
+  '',
+  'g'
+)
+`;
+
+const dbEngineFilterSql = (expression: string): string => `
+(
+  LOWER(BTRIM(COALESCE(${expression}, ''))) = LOWER(BTRIM(:dbEngine))
+  OR ${normalizedEngineTokenSql(expression)} = REGEXP_REPLACE(LOWER(BTRIM(:dbEngine)), '[^a-z0-9]+', '', 'g')
+)
 `;
 
 const buildDbServiceDisplayKeySql = (tableAlias: string): string => `
@@ -914,6 +933,7 @@ ORDER BY value ASC;
 SELECT DISTINCT ${COST_CATEGORY_LABEL_CASE} AS value
 FROM db_cost_history_daily ch
 WHERE ${buildCostHistoryDrilldownFilters(filterPreviewParams, "ch")}
+  AND LOWER(BTRIM(COALESCE(ch.cost_category, ''))) <> 'other'
 ORDER BY value ASC;
 `,
         { replacements: filterPreviewParams, type: QueryTypes.SELECT },

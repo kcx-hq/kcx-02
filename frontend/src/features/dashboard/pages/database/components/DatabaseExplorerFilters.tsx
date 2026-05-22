@@ -59,6 +59,10 @@ const groupByOptions: Array<{ value: DatabaseExplorerGroupBy; label: string; all
 ];
 
 const groupByDimensions = groupByOptions.map((option) => ({ key: option.value, label: option.label }));
+const groupByDisplayLabel = (value: DatabaseExplorerGroupBy): string => {
+  const base = groupByOptions.find((option) => option.value === value)?.label ?? value;
+  return value === "db_service" ? `${base} (Recommended)` : base;
+};
 const costBasisOptions: Array<{ value: DatabaseExplorerCostBasis; label: string; enabled: boolean }> = [
   { value: "billed_cost", label: "Billed Cost", enabled: true },
   { value: "effective_cost", label: "Effective Cost", enabled: false },
@@ -202,7 +206,7 @@ export function DatabaseExplorerFilters({
     [allowedDimensionSet],
   );
   const activeGroupByOption = groupByOptions.find((option) => option.value === effectiveGroupBy) ?? groupByOptions[0];
-  const groupByLabel = activeGroupByOption.label;
+  const groupByLabel = groupByDisplayLabel(activeGroupByOption.value);
   const filtersChipLabel =
     groupValues.length === 0 ? `All ${activeGroupByOption.allLabel}` : `${groupValues.length} selected`;
 
@@ -229,7 +233,13 @@ export function DatabaseExplorerFilters({
     return uniqueSorted(preview);
   }, [draftGroupBy, groupedValuePreview]);
   const resourceTypePreview = useMemo(() => uniqueSorted(groupedValuePreview?.resource_type ?? []), [groupedValuePreview]);
-  const costCategoryPreview = useMemo(() => uniqueSorted(groupedValuePreview?.cost_category ?? []), [groupedValuePreview]);
+  const costCategoryPreview = useMemo(
+    () =>
+      uniqueSorted(groupedValuePreview?.cost_category ?? []).filter(
+        (value) => value.trim().toLowerCase() !== "other",
+      ),
+    [groupedValuePreview],
+  );
 
   const applyGroupDrawer = () => {
     const safeGroupBy = allowedDimensionSet.has(draftGroupBy) ? draftGroupBy : (allowedGroupBy[0] ?? "db_service");
@@ -672,7 +682,7 @@ export function DatabaseExplorerFilters({
                             aria-selected={selected}
                             style={selected ? groupBySelectedStyle : undefined}
                           >
-                            <span className="cost-explorer-filter-option__label">{dimension.label}</span>
+                            <span className="cost-explorer-filter-option__label">{groupByDisplayLabel(dimension.key)}</span>
                             {selected ? <Check className="cost-explorer-filter-option__check" size={15} aria-hidden="true" /> : null}
                           </button>
                         );
@@ -695,7 +705,7 @@ export function DatabaseExplorerFilters({
                               style={groupBySelectedStyle}
                             >
                               <span className="cost-explorer-filter-option__label">
-                                {groupByOptions.find((option) => option.value === draftGroupBy)?.label ?? "Group"}
+                                {groupByDisplayLabel(draftGroupBy)}
                               </span>
                               <Check className="cost-explorer-filter-option__check" size={15} aria-hidden="true" />
                             </div>
@@ -703,7 +713,7 @@ export function DatabaseExplorerFilters({
                         </section>
                         <section className="database-explorer-groupby__section" aria-labelledby="database-groupby-values">
                           <p id="database-groupby-values" className="database-explorer-groupby__section-label">
-                            {`Filters for ${groupByOptions.find((option) => option.value === draftGroupBy)?.label ?? "Group"}`}
+                            {`Filters for ${groupByDisplayLabel(draftGroupBy)}`}
                           </p>
                           <div className="database-explorer-groupby__section-list">
                             {groupedValuesPreview.length > 0 ? (

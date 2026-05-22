@@ -234,11 +234,6 @@ export default function DatabaseExplorerPage() {
   };
 
   const handleApplyGroupBy = (next: { groupBy: DatabaseExplorerGroupBy; groupValues: string[] }) => {
-    if (next.groupBy !== groupBy) {
-      setGroupBy(next.groupBy);
-      setGroupValues([]);
-      return;
-    }
     setGroupBy(next.groupBy);
     setGroupValues(next.groupValues);
   };
@@ -246,6 +241,38 @@ export default function DatabaseExplorerPage() {
   const availableDatabaseScopes = data?.filterOptions?.availableDatabaseScopes ?? ["all"];
   const backendServiceOptions = data?.filterOptions?.dbServices ?? [];
   const backendEngineOptions = data?.filterOptions?.dbEngines ?? [];
+  const nestedServiceEngineLabel = useMemo(() => {
+    const service = dbService.trim();
+    const engine = dbEngine.trim();
+    if (!service || !engine) return "";
+    return `${service} - ${engine}`;
+  }, [dbEngine, dbService]);
+
+  const displayTrendGrouped = useMemo(() => {
+    const base = data?.trendGrouped;
+    if (!base) return base;
+    if (!nestedServiceEngineLabel) return base;
+    if (effectiveGroupBy !== "db_service") return base;
+
+    return {
+      ...base,
+      series: base.series.map((series) => ({
+        ...series,
+        label: nestedServiceEngineLabel,
+      })),
+    };
+  }, [data?.trendGrouped, effectiveGroupBy, nestedServiceEngineLabel]);
+
+  const displayTableRows = useMemo(() => {
+    const rows = data?.table ?? [];
+    if (!nestedServiceEngineLabel) return rows;
+    if (effectiveGroupBy !== "db_service") return rows;
+    return rows.map((row) => ({
+      ...row,
+      group: nestedServiceEngineLabel,
+      groupLabel: nestedServiceEngineLabel,
+    }));
+  }, [data?.table, effectiveGroupBy, nestedServiceEngineLabel]);
 
   const navigateToAssets = (source: DrilldownSource, payload: ExplorerDrilldownPayload) => {
     const next = new URLSearchParams(location.search);
@@ -391,7 +418,7 @@ export default function DatabaseExplorerPage() {
             metric={metric}
             groupBy={effectiveGroupBy}
             trend={data?.trend ?? []}
-            trendGrouped={data?.trendGrouped}
+            trendGrouped={displayTrendGrouped}
             isLoading={pageLoading}
             onDrilldown={({ rawValue, clickedLabel }) => {
               navigateToAssets("database-explorer-chart", { rawValue, clickedLabel });
@@ -400,7 +427,7 @@ export default function DatabaseExplorerPage() {
           <DatabaseExplorerGroupedTable
             metric={metric}
             capabilityFamily={capabilityFamily}
-            rows={data?.table ?? []}
+            rows={displayTableRows}
             isLoading={pageLoading}
             onRowClick={(row) => {
               navigateToAssets("database-explorer-table", {
