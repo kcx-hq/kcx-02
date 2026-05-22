@@ -63,12 +63,37 @@ const ENABLED_DB_EXPLORER_COST_BASES: ReadonlySet<DatabaseExplorerCostBasis> = n
 
 const DATABASE_ASSETS_PATH = "/dashboard/services/database/assets";
 
-type DrilldownSource = "database-explorer-chart" | "database-explorer-table";
-
 type ExplorerDrilldownPayload = {
   rawValue: string;
   clickedLabel: string;
 };
+
+type CostCtaPayload = {
+  groupKey: string;
+  groupLabel: string;
+  filters: Partial<Record<"db_service" | "db_engine" | "region_key" | "resource_type", string>>;
+};
+
+type UsageCtaPayload = {
+  groupKey: string;
+  groupLabel: string;
+  filters: Partial<Record<"db_service" | "db_engine" | "region_key" | "instance_class" | "cluster", string>>;
+};
+
+const COST_CTA_SUPPORTED_GROUP_BY = new Set<DatabaseExplorerGroupBy>([
+  "db_service",
+  "db_engine",
+  "region",
+  "resource_type",
+]);
+
+const USAGE_CTA_SUPPORTED_GROUP_BY = new Set<DatabaseExplorerGroupBy>([
+  "db_service",
+  "db_engine",
+  "region",
+  "instance_class",
+  "cluster",
+]);
 
 export default function DatabaseExplorerPage() {
   const location = useLocation();
@@ -251,6 +276,17 @@ export default function DatabaseExplorerPage() {
   const displayTrendGrouped = useMemo(() => {
     const base = data?.trendGrouped;
     if (!base) return base;
+    if (metric === "cost" && effectiveGroupBy === "db_engine") {
+      const filteredSeries = base.series.filter((series) => {
+        const key = String(series.key ?? "").trim().toLowerCase();
+        const label = String(series.label ?? "").trim().toLowerCase();
+        return !key.startsWith("unknown") && !label.startsWith("unknown");
+      });
+      return {
+        ...base,
+        series: filteredSeries,
+      };
+    }
     if (!nestedServiceEngineLabel) return base;
     if (effectiveGroupBy !== "db_service") return base;
 
@@ -261,10 +297,17 @@ export default function DatabaseExplorerPage() {
         label: nestedServiceEngineLabel,
       })),
     };
-  }, [data?.trendGrouped, effectiveGroupBy, nestedServiceEngineLabel]);
+  }, [data?.trendGrouped, effectiveGroupBy, metric, nestedServiceEngineLabel]);
 
   const displayTableRows = useMemo(() => {
     const rows = data?.table ?? [];
+    if (metric === "cost" && effectiveGroupBy === "db_engine") {
+      return rows.filter((row) => {
+        const key = String(row.groupKey ?? "").trim().toLowerCase();
+        const label = String(row.groupLabel ?? row.group ?? "").trim().toLowerCase();
+        return !key.startsWith("unknown") && !label.startsWith("unknown");
+      });
+    }
     if (!nestedServiceEngineLabel) return rows;
     if (effectiveGroupBy !== "db_service") return rows;
     return rows.map((row) => ({
@@ -272,23 +315,128 @@ export default function DatabaseExplorerPage() {
       group: nestedServiceEngineLabel,
       groupLabel: nestedServiceEngineLabel,
     }));
-  }, [data?.table, effectiveGroupBy, nestedServiceEngineLabel]);
+  }, [data?.table, effectiveGroupBy, metric, nestedServiceEngineLabel]);
 
-  const navigateToAssets = (source: DrilldownSource, payload: ExplorerDrilldownPayload) => {
+  const buildCostCtaPayload = (payload: ExplorerDrilldownPayload): CostCtaPayload | null => {
+    if (!COST_CTA_SUPPORTED_GROUP_BY.has(effectiveGroupBy)) return null;
+
+    const groupKey = payload.rawValue.trim();
+    const groupLabel = payload.clickedLabel.trim();
+    const fallbackValue = groupKey || groupLabel;
+    const filters: CostCtaPayload["filters"] = {};
+
+    if (effectiveGroupBy === "db_service") {
+      // Keep group_key for context/debug, but use label-first concrete filter value
+      // so graph and table clicks resolve to the same service value.
+      const serviceValue = groupLabel || fallbackValue;
+      if (!serviceValue) return null;
+      filters.db_service = serviceValue;
+    } else if (effectiveGroupBy === "db_engine") {
+      // Keep group_key for context/debug, but use label-first concrete filter value
+      // so graph and table clicks resolve to the same engine value.
+      const engineValue = groupLabel || fallbackValue;
+      if (!engineValue) return null;
+      filters.db_engine = engineValue;
+    } else if (effectiveGroupBy === "region") {
+      const candidate = groupKey || fallbackValue;
+      if (!candidate) return null;
+      filters.region_key = candidate;
+    } else if (effectiveGroupBy === "resource_type") {
+      const candidate = groupKey || fallbackValue;
+      if (!candidate) return null;
+      filters.resource_type = candidate;
+    }
+
+    return {
+      groupKey: groupKey || fallbackValue,
+      groupLabel: groupLabel || fallbackValue,
+      filters,
+    };
+  };
+
+  const buildUsageCtaPayload = (payload: ExplorerDrilldownPayload): UsageCtaPayload | null => {
+    if (!USAGE_CTA_SUPPORTED_GROUP_BY.has(effectiveGroupBy)) return null;
+
+    const groupKey = payload.rawValue.trim();
+    const groupLabel = payload.clickedLabel.trim();
+    const fallbackValue = groupKey || groupLabel;
+    const filters: UsageCtaPayload["filters"] = {};
+
+    if (effectiveGroupBy === "db_service") {
+      const serviceValue = groupLabel || fallbackValue;
+      if (!serviceValue) return null;
+      filters.db_service = serviceValue;
+    } else if (effectiveGroupBy === "db_engine") {
+      const engineValue = groupLabel || fallbackValue;
+      if (!engineValue) return null;
+      filters.db_engine = engineValue;
+    } else if (effectiveGroupBy === "region") {
+      const candidate = groupKey || fallbackValue;
+      if (!candidate) return null;
+      filters.region_key = candidate;
+    } else if (effectiveGroupBy === "instance_class") {
+      const candidate = groupLabel || fallbackValue;
+      if (!candidate) return null;
+      filters.instance_class = candidate;
+    } else if (effectiveGroupBy === "cluster") {
+      const candidate = groupKey || groupLabel;
+      if (!candidate) return null;
+      const normalized = candidate.trim().toLowerCase();
+      if (
+        normalized === "unknown"
+        || normalized.startsWith("unknown ")
+        || normalized === "standalone-no-cluster"
+      ) {
+        return null;
+      }
+      filters.cluster = candidate;
+    }
+
+    return {
+      groupKey: groupKey || fallbackValue,
+      groupLabel: groupLabel || fallbackValue,
+      filters,
+    };
+  };
+
+  const navigateToAssets = (payload: ExplorerDrilldownPayload) => {
     const next = new URLSearchParams(location.search);
-    const rawValue = payload.rawValue.trim();
-    const clickedLabel = payload.clickedLabel.trim();
-    const clickedValue = rawValue || clickedLabel;
-    const validGroupValues = new Set(data?.filterOptions?.groupedValuePreview?.[effectiveGroupBy] ?? []);
-    const canApplyGroupValue = clickedValue.length > 0 && validGroupValues.has(clickedValue);
 
-    if (clickedValue.length === 0) return;
+    if (metric === "cost") {
+      const cta = buildCostCtaPayload(payload);
+      if (!cta) return;
 
-    next.set("source", source);
-    next.set("metric", metric);
-    next.set("group_by", effectiveGroupBy);
-    next.set("groupValue", clickedValue);
-    next.set("clickedLabel", clickedLabel || clickedValue);
+      if (!cta.groupKey && !cta.groupLabel) return;
+
+      next.set("source", "database_explorer");
+      next.set("metric", "cost");
+      next.set("group_by", effectiveGroupBy);
+      next.set("group_key", cta.groupKey);
+      next.set("group_label", cta.groupLabel);
+      next.delete("groupValue");
+      next.delete("clickedLabel");
+
+      if (costBasis) {
+        next.set("cost_basis", costBasis);
+      } else {
+        next.delete("cost_basis");
+      }
+    } else {
+      const usageCta = buildUsageCtaPayload(payload);
+      if (!usageCta) return;
+
+      if (!usageCta.groupKey && !usageCta.groupLabel) return;
+
+      next.set("source", "database_explorer");
+      next.set("metric", "usage");
+      next.set("group_by", effectiveGroupBy);
+      next.set("group_key", usageCta.groupKey);
+      next.set("group_label", usageCta.groupLabel);
+      next.delete("groupValue");
+      next.delete("clickedLabel");
+      next.set("capability_family", capabilityFamily);
+      next.set("usage_metric", usageMetric);
+    }
 
     if (scope?.from) {
       next.set("from", scope.from);
@@ -317,22 +465,64 @@ export default function DatabaseExplorerPage() {
       next.delete("db_engine");
     }
 
-    if (effectiveGroupBy === "db_service" && canApplyGroupValue) {
-      next.set("db_service", clickedValue);
-    }
-    if (effectiveGroupBy === "db_engine" && canApplyGroupValue) {
-      next.set("db_engine", clickedValue);
-    }
-    if (effectiveGroupBy === "instance_class" && canApplyGroupValue) {
-      next.set("instance_class", clickedValue);
-    } else if (effectiveGroupBy !== "instance_class") {
+    if (metric === "cost") {
+      const cta = buildCostCtaPayload(payload);
+      if (!cta) return;
       next.delete("instance_class");
-    }
-
-    if (effectiveGroupBy === "region" && canApplyGroupValue) {
-      next.set("region_key", clickedValue);
-    } else if (effectiveGroupBy !== "region") {
       next.delete("region_key");
+      next.delete("resource_type");
+      next.delete("cluster");
+
+      if (typeof cta.filters.db_service === "string") {
+        next.set("db_service", cta.filters.db_service);
+      } else if (effectiveGroupBy === "db_service") {
+        next.delete("db_service");
+      }
+
+      if (typeof cta.filters.db_engine === "string") {
+        next.set("db_engine", cta.filters.db_engine);
+      } else if (effectiveGroupBy === "db_engine") {
+        next.delete("db_engine");
+      }
+
+      if (typeof cta.filters.region_key === "string") {
+        next.set("region_key", cta.filters.region_key);
+      }
+
+      if (typeof cta.filters.resource_type === "string") {
+        next.set("resource_type", cta.filters.resource_type);
+      }
+    } else {
+      const usageCta = buildUsageCtaPayload(payload);
+      if (!usageCta) return;
+
+      next.delete("instance_class");
+      next.delete("region_key");
+      next.delete("cluster");
+
+      if (typeof usageCta.filters.db_service === "string") {
+        next.set("db_service", usageCta.filters.db_service);
+      } else if (effectiveGroupBy === "db_service") {
+        next.delete("db_service");
+      }
+
+      if (typeof usageCta.filters.db_engine === "string") {
+        next.set("db_engine", usageCta.filters.db_engine);
+      } else if (effectiveGroupBy === "db_engine") {
+        next.delete("db_engine");
+      }
+
+      if (typeof usageCta.filters.region_key === "string") {
+        next.set("region_key", usageCta.filters.region_key);
+      }
+
+      if (typeof usageCta.filters.instance_class === "string") {
+        next.set("instance_class", usageCta.filters.instance_class);
+      }
+
+      if (typeof usageCta.filters.cluster === "string") {
+        next.set("cluster", usageCta.filters.cluster);
+      }
     }
 
     navigate({ pathname: DATABASE_ASSETS_PATH, search: next.toString() });
@@ -421,7 +611,7 @@ export default function DatabaseExplorerPage() {
             trendGrouped={displayTrendGrouped}
             isLoading={pageLoading}
             onDrilldown={({ rawValue, clickedLabel }) => {
-              navigateToAssets("database-explorer-chart", { rawValue, clickedLabel });
+              navigateToAssets({ rawValue, clickedLabel });
             }}
           />
           <DatabaseExplorerGroupedTable
@@ -431,7 +621,7 @@ export default function DatabaseExplorerPage() {
             rows={displayTableRows}
             isLoading={pageLoading}
             onRowClick={(row) => {
-              navigateToAssets("database-explorer-table", {
+              navigateToAssets({
                 rawValue: row.groupKey ?? row.group,
                 clickedLabel: row.groupLabel ?? row.group,
               });

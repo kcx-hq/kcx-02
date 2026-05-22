@@ -22,6 +22,13 @@ type DatabaseExplorerTrendProps = {
   onDrilldown?: (payload: { rawValue: string; clickedLabel: string }) => void;
 };
 
+type EChartClickEvent = {
+  componentType?: string;
+  seriesId?: string | number;
+  seriesIndex?: number;
+  seriesName?: string;
+};
+
 const dateFormatter = new Intl.DateTimeFormat("en-US", {
   month: "short",
   day: "2-digit",
@@ -68,6 +75,44 @@ export function DatabaseExplorerTrend({
     if (!Array.isArray(trendGrouped.series) || trendGrouped.series.length === 0) return null;
     return trendGrouped;
   }, [groupBy, metric, trendGrouped]);
+  const groupedSeriesByKey = useMemo(() => {
+    const map = new Map<string, DatabaseExplorerTrendGrouped["series"][number]>();
+    if (!activeGrouped) return map;
+    for (const series of activeGrouped.series) {
+      const key = String(series.key ?? "").trim();
+      if (key.length > 0) map.set(key, series);
+    }
+    return map;
+  }, [activeGrouped]);
+  const groupedSeriesByLabel = useMemo(() => {
+    const map = new Map<string, DatabaseExplorerTrendGrouped["series"][number] | null>();
+    if (!activeGrouped) return map;
+    for (const series of activeGrouped.series) {
+      const label = String(series.label ?? "").trim();
+      if (!label) continue;
+      if (!map.has(label)) {
+        map.set(label, series);
+        continue;
+      }
+      // Duplicate labels are ambiguous for drilldown; mark as unusable.
+      map.set(label, null);
+    }
+    return map;
+  }, [activeGrouped]);
+  const groupedSeriesByNormalizedLabel = useMemo(() => {
+    const map = new Map<string, DatabaseExplorerTrendGrouped["series"][number] | null>();
+    if (!activeGrouped) return map;
+    for (const series of activeGrouped.series) {
+      const label = String(series.label ?? "").trim().toLowerCase();
+      if (!label) continue;
+      if (!map.has(label)) {
+        map.set(label, series);
+        continue;
+      }
+      map.set(label, null);
+    }
+    return map;
+  }, [activeGrouped]);
   const labels = useMemo(() => activeTrend.map((item) => item.date), [activeTrend]);
   const groupedLabels = useMemo(() => {
     if (!activeGrouped) return [];
@@ -138,6 +183,7 @@ export function DatabaseExplorerTrend({
             (Array.isArray(series.data) ? series.data : []).map((point) => [point.date, point.value ?? null]),
           );
           return {
+            id: series.key,
             name: series.label || series.key,
             type: metric === "cost" ? "bar" : "line",
             smooth: metric === "usage",
@@ -324,15 +370,29 @@ export function DatabaseExplorerTrend({
           onPointClick={
             onDrilldown
               ? (event) => {
-                  const point = event as { seriesIndex?: number; seriesName?: string };
-                  const series = activeGrouped && typeof point.seriesIndex === "number"
+                  const point = event as EChartClickEvent;
+                  if (point.componentType && point.componentType !== "series") return;
+                  const seriesId = String(point.seriesId ?? "").trim();
+                  if (!activeGrouped) return;
+                  const byId = seriesId.length > 0 ? groupedSeriesByKey.get(seriesId) : undefined;
+                  const byIndex = !byId && activeGrouped && typeof point.seriesIndex === "number"
                     ? activeGrouped.series[point.seriesIndex]
+                    : undefined;
+                  const byExactName = !byId && !byIndex && typeof point.seriesName === "string"
+                    ? groupedSeriesByLabel.get(point.seriesName.trim()) ?? null
                     : null;
+                  const byNormalizedName = !byId && !byIndex && !byExactName && typeof point.seriesName === "string"
+                    ? groupedSeriesByNormalizedLabel.get(point.seriesName.trim().toLowerCase()) ?? null
+                    : null;
+                  const series = byId ?? byIndex ?? byExactName ?? byNormalizedName ?? null;
+                  if (!series) return;
+
+                  const rawValue = String(series.key ?? "").trim();
+                  const clickedLabel = String(series.label ?? "").trim();
+                  if (!rawValue && !clickedLabel) return;
                   onDrilldown({
-                    rawValue: series?.key ?? "",
-                    clickedLabel: typeof point.seriesName === "string" && point.seriesName.trim().length > 0
-                      ? point.seriesName
-                      : (series?.label ?? ""),
+                    rawValue,
+                    clickedLabel,
                   });
                 }
               : undefined

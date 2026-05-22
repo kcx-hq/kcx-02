@@ -20,7 +20,9 @@ const buildFilterStateFromSearch = (search: string): DatabaseAssetsFiltersValue 
     regionKey: params.get("region_key") ?? params.get("regionKey") ?? "",
     dbService: params.get("db_service") ?? params.get("dbService") ?? "",
     dbEngine: params.get("db_engine") ?? params.get("dbEngine") ?? "",
+    resourceType: params.get("resource_type") ?? params.get("resourceType") ?? "",
     instanceClass: params.get("instance_class") ?? params.get("instanceClass") ?? "",
+    cluster: params.get("cluster") ?? params.get("clusterId") ?? "",
   };
 };
 
@@ -42,7 +44,9 @@ export default function DatabaseAssetsPage() {
       ...(filterState.regionKey ? { regionKey: filterState.regionKey } : {}),
       ...(filterState.dbService ? { dbService: filterState.dbService } : {}),
       ...(filterState.dbEngine ? { dbEngine: filterState.dbEngine } : {}),
+      ...(filterState.resourceType ? { resourceType: filterState.resourceType } : {}),
       ...(filterState.instanceClass ? { instanceClass: filterState.instanceClass } : {}),
+      ...(filterState.cluster ? { cluster: filterState.cluster } : {}),
       ...(filterState.search.trim() ? { search: filterState.search.trim() } : {}),
       page,
       pageSize,
@@ -82,7 +86,7 @@ export default function DatabaseAssetsPage() {
           setPage(1);
         }}
         onClear={() => {
-          setFilterState({ search: "", regionKey: "", dbService: "", dbEngine: "", instanceClass: "" });
+          setFilterState({ search: "", regionKey: "", dbService: "", dbEngine: "", resourceType: "", instanceClass: "", cluster: "" });
           setPage(1);
         }}
       />

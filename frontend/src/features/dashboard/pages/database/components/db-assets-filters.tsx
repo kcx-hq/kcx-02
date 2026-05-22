@@ -7,7 +7,9 @@ type DatabaseAssetsFiltersValue = {
   regionKey: string;
   dbService: string;
   dbEngine: string;
+  resourceType: string;
   instanceClass: string;
+  cluster: string;
 };
 
 type DatabaseAssetsFiltersProps = {
@@ -77,8 +79,9 @@ export function DatabaseAssetsFilters({ value, filterOptions, onChange, onClear 
       { key: "service", label: "DB Service", value: services.find((s) => s.value === value.dbService)?.label ?? "All Services" },
       { key: "engine", label: "Engine", value: engines.find((e) => e.value === value.dbEngine)?.label ?? "All Engines" },
       { key: "class", label: "Instance Class", value: classes.find((c) => c.value === value.instanceClass)?.label ?? "All Classes" },
+      { key: "cluster", label: "Cluster", value: value.cluster.trim() || "All Clusters" },
     ],
-    [classes, engines, regions, services, value.dbEngine, value.dbService, value.instanceClass, value.regionKey, value.search],
+    [classes, engines, regions, services, value.cluster, value.dbEngine, value.dbService, value.instanceClass, value.regionKey, value.search],
   );
 
   const renderOptionList = (

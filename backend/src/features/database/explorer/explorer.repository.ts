@@ -690,6 +690,20 @@ const GROUPED_UNKNOWN_LABELS: Record<ExplorerGroupBy, string> = {
   cost_category: "Other",
 };
 
+const isUnknownInstanceClassGroup = (groupBy: ExplorerGroupBy, key: string, label: string): boolean => {
+  if (groupBy !== "instance_class") return false;
+  const normalizedKey = key.trim().toLowerCase();
+  const normalizedLabel = label.trim().toLowerCase();
+  return normalizedKey === "unknown-class" || normalizedLabel === "unknown class";
+};
+
+const isUnknownDbEngineGroup = (groupBy: ExplorerGroupBy, key: string, label: string): boolean => {
+  if (groupBy !== "db_engine") return false;
+  const normalizedKey = key.trim().toLowerCase();
+  const normalizedLabel = label.trim().toLowerCase();
+  return normalizedKey === "unknown-engine" || normalizedLabel === "unknown engine";
+};
+
 const COST_CATEGORY_CANONICAL_KEY_SQL = "REGEXP_REPLACE(LOWER(BTRIM(COALESCE(ch.cost_category, ''))), '[^a-z0-9]+', '_', 'g')";
 
 const COST_CATEGORY_LABEL_CASE = `
@@ -986,7 +1000,9 @@ ORDER BY value ASC;
         db_engine: engineRows.map((row) => (typeof row.value === "string" ? row.value.trim() : "")).filter((value) => value.length > 0),
         region: regionRows.map((row) => (typeof row.value === "string" ? row.value.trim() : "")).filter((value) => value.length > 0),
         resource_type: resourceTypeRows.map((row) => (typeof row.value === "string" ? row.value.trim() : "")).filter((value) => value.length > 0),
-        instance_class: instanceClassRows.map((row) => (typeof row.value === "string" ? row.value.trim() : "")).filter((value) => value.length > 0),
+        instance_class: instanceClassRows
+          .map((row) => (typeof row.value === "string" ? row.value.trim() : ""))
+          .filter((value) => value.length > 0 && value.toLowerCase() !== "unknown class"),
         cluster: clusterRows.map((row) => (typeof row.value === "string" ? row.value.trim() : "")).filter((value) => value.length > 0),
         cost_category: costCategoryRows.map((row) => (typeof row.value === "string" ? row.value.trim() : "")).filter((value) => value.length > 0),
       },
@@ -1699,27 +1715,307 @@ ORDER BY "totalCost" DESC;
     const selectedFamily = queryParams.capabilityFamily ?? "compute_pressure";
     const selectedUsageMetric: UsageMetric = queryParams.usageMetric ?? USAGE_CAPABILITY_REGISTRY[selectedFamily].defaultMetric;
     const familyDef = USAGE_CAPABILITY_REGISTRY[selectedFamily];
-    const hasUtilizationFallback = await this.hasDbUtilizationDailyTable();
-    const selectedMetricExpr = hasUtilizationFallback
-      ? usageMetricSqlWithFallback(selectedUsageMetric, "f", "u")
-      : usageMetricSql(selectedUsageMetric, "f");
-    const avgCpuExpr = hasUtilizationFallback ? "COALESCE(f.cpu_avg, u.cpu_avg)" : "f.cpu_avg";
-    const peakCpuExpr = hasUtilizationFallback ? "COALESCE(f.cpu_max, u.cpu_max)" : "f.cpu_max";
-    const avgConnectionsExpr = hasUtilizationFallback ? "COALESCE(f.connections_avg, u.connections_avg)" : "f.connections_avg";
-    const peakConnectionsExpr = hasUtilizationFallback ? "COALESCE(f.connections_max, u.connections_max)" : "f.connections_max";
-    const readIopsExpr = hasUtilizationFallback ? "COALESCE(f.read_iops, u.read_iops)" : "f.read_iops";
-    const writeIopsExpr = hasUtilizationFallback ? "COALESCE(f.write_iops, u.write_iops)" : "f.write_iops";
-    const readThroughputExpr = hasUtilizationFallback ? "COALESCE(f.read_throughput_bytes, u.read_throughput_bytes)" : "f.read_throughput_bytes";
-    const writeThroughputExpr = hasUtilizationFallback ? "COALESCE(f.write_throughput_bytes, u.write_throughput_bytes)" : "f.write_throughput_bytes";
-    const storageUsedExpr = hasUtilizationFallback ? "COALESCE(f.storage_used_gb, u.storage_used_gb)" : "f.storage_used_gb";
-    const allocatedStorageExpr = hasUtilizationFallback ? "COALESCE(f.allocated_storage_gb, u.allocated_storage_gb)" : "f.allocated_storage_gb";
-
-    const rows = await sequelize.query<TableAggregateRow>(
-      `
-${withInventory ? `WITH ${latestInventoryCteSql}` : ""}
+    const executeEmergencyClusterTableQuery = async (): Promise<TableAggregateRow[]> => {
+      const hasUtilizationFallback = await this.hasDbUtilizationDailyTable();
+      const primaryMetricExpr = hasUtilizationFallback
+        ? usageMetricSqlWithFallback(selectedUsageMetric, "f", "u")
+        : usageMetricSql(selectedUsageMetric, "f");
+      const avgCpuExpr = hasUtilizationFallback ? "COALESCE(f.cpu_avg, u.cpu_avg)" : "f.cpu_avg";
+      const peakCpuExpr = hasUtilizationFallback ? "COALESCE(f.cpu_max, u.cpu_max)" : "f.cpu_max";
+      const avgConnectionsExpr = hasUtilizationFallback ? "COALESCE(f.connections_avg, u.connections_avg)" : "f.connections_avg";
+      const peakConnectionsExpr = hasUtilizationFallback ? "COALESCE(f.connections_max, u.connections_max)" : "f.connections_max";
+      const readIopsExpr = hasUtilizationFallback ? "COALESCE(f.read_iops, u.read_iops)" : "f.read_iops";
+      const writeIopsExpr = hasUtilizationFallback ? "COALESCE(f.write_iops, u.write_iops)" : "f.write_iops";
+      const readThroughputExpr = hasUtilizationFallback ? "COALESCE(f.read_throughput_bytes, u.read_throughput_bytes)" : "f.read_throughput_bytes";
+      const writeThroughputExpr = hasUtilizationFallback ? "COALESCE(f.write_throughput_bytes, u.write_throughput_bytes)" : "f.write_throughput_bytes";
+      const storageUsedExpr = hasUtilizationFallback ? "COALESCE(f.storage_used_gb, u.storage_used_gb)" : "f.storage_used_gb";
+      const allocatedStorageExpr = hasUtilizationFallback ? "COALESCE(f.allocated_storage_gb, u.allocated_storage_gb)" : "f.allocated_storage_gb";
+      return sequelize.query<TableAggregateRow>(
+        `
+WITH ${latestInventoryCteSql}
 SELECT
-  ${groupBy.keyExpression}::text AS "groupKey",
-  ${groupBy.selectExpression} AS "groupLabel",
+  COALESCE(NULLIF(BTRIM(f.cluster_id), ''), NULLIF(BTRIM(li.cluster_id), ''), 'standalone-no-cluster') AS "groupKey",
+  COALESCE(NULLIF(BTRIM(f.cluster_id), ''), NULLIF(BTRIM(li.cluster_id), ''), 'Standalone / No cluster') AS "groupLabel",
+  COALESCE(SUM(${factTotalCostExpression("f", queryParams.costBasis)}), 0) AS "totalCost",
+  COALESCE(SUM(f.compute_cost), 0) AS "computeCost",
+  COALESCE(SUM(f.storage_cost), 0) AS "storageCost",
+  COALESCE(SUM(f.io_cost), 0) AS "ioCost",
+  COALESCE(SUM(f.backup_cost), 0) AS "backupCost",
+  COUNT(DISTINCT f.resource_id) AS "resourceCount",
+  COUNT(DISTINCT f.resource_id) FILTER (WHERE ${usageServicePredicateSql("f")}) AS "inScopeResources",
+  COUNT(DISTINCT f.resource_id) FILTER (WHERE ${usageServicePredicateSql("f")} AND (${primaryMetricExpr}) IS NOT NULL) AS "telemetryCoveredResources",
+  AVG(f.cpu_avg) AS "avgLoad",
+  AVG(f.connections_avg) AS "connections",
+  AVG(CASE WHEN ${usageServicePredicateSql("f")} THEN ${avgCpuExpr} ELSE NULL END) AS "avgCpu",
+  AVG(CASE WHEN ${usageServicePredicateSql("f")} THEN ${peakCpuExpr} ELSE NULL END) AS "peakCpu",
+  AVG(CASE WHEN ${usageServicePredicateSql("f")} THEN ${avgConnectionsExpr} ELSE NULL END) AS "avgConnections",
+  AVG(CASE WHEN ${usageServicePredicateSql("f")} THEN ${peakConnectionsExpr} ELSE NULL END) AS "peakConnections",
+  AVG(CASE WHEN ${usageServicePredicateSql("f")} THEN ${readIopsExpr} ELSE NULL END) AS "readIops",
+  AVG(CASE WHEN ${usageServicePredicateSql("f")} THEN ${writeIopsExpr} ELSE NULL END) AS "writeIops",
+  AVG(CASE WHEN ${usageServicePredicateSql("f")} AND NOT (${readIopsExpr} IS NULL AND ${writeIopsExpr} IS NULL) THEN COALESCE(${readIopsExpr}, 0) + COALESCE(${writeIopsExpr}, 0) ELSE NULL END) AS "totalIops",
+  AVG(CASE WHEN ${usageServicePredicateSql("f")} THEN ${readThroughputExpr} ELSE NULL END) AS "readThroughputBytes",
+  AVG(CASE WHEN ${usageServicePredicateSql("f")} THEN ${writeThroughputExpr} ELSE NULL END) AS "writeThroughputBytes",
+  AVG(CASE WHEN ${usageServicePredicateSql("f")} AND NOT (${readThroughputExpr} IS NULL AND ${writeThroughputExpr} IS NULL) THEN COALESCE(${readThroughputExpr}, 0) + COALESCE(${writeThroughputExpr}, 0) ELSE NULL END) AS "totalThroughputBytes",
+  AVG(CASE WHEN ${usageServicePredicateSql("f")} THEN ${storageUsedExpr} ELSE NULL END) AS "storageUsedGb",
+  AVG(CASE WHEN ${usageServicePredicateSql("f")} THEN ${allocatedStorageExpr} ELSE NULL END) AS "allocatedStorageGb",
+  AVG(CASE WHEN ${usageServicePredicateSql("f")} THEN ${primaryMetricExpr} ELSE NULL END) AS "primaryMetricValue"
+FROM fact_db_resource_daily f
+LEFT JOIN latest_inventory li
+  ON li.tenant_id = f.tenant_id
+ AND li.resource_id = f.resource_id
+ AND li.cloud_connection_id IS NOT DISTINCT FROM f.cloud_connection_id
+${hasUtilizationFallback ? `LEFT JOIN db_utilization_daily u
+  ON u.tenant_id = f.tenant_id
+ AND u.usage_date = f.usage_date
+ AND u.resource_id = f.resource_id
+ AND u.cloud_connection_id IS NOT DISTINCT FROM f.cloud_connection_id` : ""}
+WHERE ${filters}
+  AND ${usageServicePredicateSql("f")}
+GROUP BY
+  COALESCE(NULLIF(BTRIM(f.cluster_id), ''), NULLIF(BTRIM(li.cluster_id), ''), 'Standalone / No cluster'),
+  COALESCE(NULLIF(BTRIM(f.cluster_id), ''), NULLIF(BTRIM(li.cluster_id), ''), 'standalone-no-cluster')
+ORDER BY "primaryMetricValue" DESC NULLS LAST, "resourceCount" DESC;
+`,
+        {
+          replacements: { ...queryParams, usageSupportedServices: familyDef.supportedServices },
+          type: QueryTypes.SELECT,
+        },
+      );
+    };
+    const executeEmergencyInstanceClassTableQuery = async (): Promise<TableAggregateRow[]> => {
+      const hasUtilizationFallback = await this.hasDbUtilizationDailyTable();
+      const primaryMetricExpr = hasUtilizationFallback
+        ? usageMetricSqlWithFallback(selectedUsageMetric, "f", "u")
+        : usageMetricSql(selectedUsageMetric, "f");
+      const avgCpuExpr = hasUtilizationFallback ? "COALESCE(f.cpu_avg, u.cpu_avg)" : "f.cpu_avg";
+      const peakCpuExpr = hasUtilizationFallback ? "COALESCE(f.cpu_max, u.cpu_max)" : "f.cpu_max";
+      const avgConnectionsExpr = hasUtilizationFallback ? "COALESCE(f.connections_avg, u.connections_avg)" : "f.connections_avg";
+      const peakConnectionsExpr = hasUtilizationFallback ? "COALESCE(f.connections_max, u.connections_max)" : "f.connections_max";
+      const readIopsExpr = hasUtilizationFallback ? "COALESCE(f.read_iops, u.read_iops)" : "f.read_iops";
+      const writeIopsExpr = hasUtilizationFallback ? "COALESCE(f.write_iops, u.write_iops)" : "f.write_iops";
+      const readThroughputExpr = hasUtilizationFallback ? "COALESCE(f.read_throughput_bytes, u.read_throughput_bytes)" : "f.read_throughput_bytes";
+      const writeThroughputExpr = hasUtilizationFallback ? "COALESCE(f.write_throughput_bytes, u.write_throughput_bytes)" : "f.write_throughput_bytes";
+      const storageUsedExpr = hasUtilizationFallback ? "COALESCE(f.storage_used_gb, u.storage_used_gb)" : "f.storage_used_gb";
+      const allocatedStorageExpr = hasUtilizationFallback ? "COALESCE(f.allocated_storage_gb, u.allocated_storage_gb)" : "f.allocated_storage_gb";
+      return sequelize.query<TableAggregateRow>(
+        `
+WITH ${latestInventoryCteSql}
+SELECT
+  COALESCE(NULLIF(BTRIM(li.instance_class), ''), 'unknown-class') AS "groupKey",
+  COALESCE(NULLIF(BTRIM(li.instance_class), ''), 'Unknown class') AS "groupLabel",
+  COALESCE(SUM(${factTotalCostExpression("f", queryParams.costBasis)}), 0) AS "totalCost",
+  COALESCE(SUM(f.compute_cost), 0) AS "computeCost",
+  COALESCE(SUM(f.storage_cost), 0) AS "storageCost",
+  COALESCE(SUM(f.io_cost), 0) AS "ioCost",
+  COALESCE(SUM(f.backup_cost), 0) AS "backupCost",
+  COUNT(DISTINCT f.resource_id) AS "resourceCount",
+  COUNT(DISTINCT f.resource_id) FILTER (WHERE ${usageServicePredicateSql("f")}) AS "inScopeResources",
+  COUNT(DISTINCT f.resource_id) FILTER (WHERE ${usageServicePredicateSql("f")} AND (${primaryMetricExpr}) IS NOT NULL) AS "telemetryCoveredResources",
+  AVG(f.cpu_avg) AS "avgLoad",
+  AVG(f.connections_avg) AS "connections",
+  AVG(CASE WHEN ${usageServicePredicateSql("f")} THEN ${avgCpuExpr} ELSE NULL END) AS "avgCpu",
+  AVG(CASE WHEN ${usageServicePredicateSql("f")} THEN ${peakCpuExpr} ELSE NULL END) AS "peakCpu",
+  AVG(CASE WHEN ${usageServicePredicateSql("f")} THEN ${avgConnectionsExpr} ELSE NULL END) AS "avgConnections",
+  AVG(CASE WHEN ${usageServicePredicateSql("f")} THEN ${peakConnectionsExpr} ELSE NULL END) AS "peakConnections",
+  AVG(CASE WHEN ${usageServicePredicateSql("f")} THEN ${readIopsExpr} ELSE NULL END) AS "readIops",
+  AVG(CASE WHEN ${usageServicePredicateSql("f")} THEN ${writeIopsExpr} ELSE NULL END) AS "writeIops",
+  AVG(CASE WHEN ${usageServicePredicateSql("f")} AND NOT (${readIopsExpr} IS NULL AND ${writeIopsExpr} IS NULL) THEN COALESCE(${readIopsExpr}, 0) + COALESCE(${writeIopsExpr}, 0) ELSE NULL END) AS "totalIops",
+  AVG(CASE WHEN ${usageServicePredicateSql("f")} THEN ${readThroughputExpr} ELSE NULL END) AS "readThroughputBytes",
+  AVG(CASE WHEN ${usageServicePredicateSql("f")} THEN ${writeThroughputExpr} ELSE NULL END) AS "writeThroughputBytes",
+  AVG(CASE WHEN ${usageServicePredicateSql("f")} AND NOT (${readThroughputExpr} IS NULL AND ${writeThroughputExpr} IS NULL) THEN COALESCE(${readThroughputExpr}, 0) + COALESCE(${writeThroughputExpr}, 0) ELSE NULL END) AS "totalThroughputBytes",
+  AVG(CASE WHEN ${usageServicePredicateSql("f")} THEN ${storageUsedExpr} ELSE NULL END) AS "storageUsedGb",
+  AVG(CASE WHEN ${usageServicePredicateSql("f")} THEN ${allocatedStorageExpr} ELSE NULL END) AS "allocatedStorageGb",
+  AVG(CASE WHEN ${usageServicePredicateSql("f")} THEN ${primaryMetricExpr} ELSE NULL END) AS "primaryMetricValue"
+FROM fact_db_resource_daily f
+LEFT JOIN latest_inventory li
+  ON li.tenant_id = f.tenant_id
+ AND li.resource_id = f.resource_id
+ AND li.cloud_connection_id IS NOT DISTINCT FROM f.cloud_connection_id
+${hasUtilizationFallback ? `LEFT JOIN db_utilization_daily u
+  ON u.tenant_id = f.tenant_id
+ AND u.usage_date = f.usage_date
+ AND u.resource_id = f.resource_id
+ AND u.cloud_connection_id IS NOT DISTINCT FROM f.cloud_connection_id` : ""}
+WHERE ${filters}
+  AND ${usageServicePredicateSql("f")}
+GROUP BY
+  COALESCE(NULLIF(BTRIM(li.instance_class), ''), 'Unknown class'),
+  COALESCE(NULLIF(BTRIM(li.instance_class), ''), 'unknown-class')
+ORDER BY "primaryMetricValue" DESC NULLS LAST, "resourceCount" DESC;
+`,
+        {
+          replacements: { ...queryParams, usageSupportedServices: familyDef.supportedServices },
+          type: QueryTypes.SELECT,
+        },
+      );
+    };
+    const executeEmergencyRegionTableQuery = async (): Promise<TableAggregateRow[]> => {
+      const hasUtilizationFallback = await this.hasDbUtilizationDailyTable();
+      const primaryMetricExpr = hasUtilizationFallback
+        ? usageMetricSqlWithFallback(selectedUsageMetric, "f", "u")
+        : usageMetricSql(selectedUsageMetric, "f");
+      const avgCpuExpr = hasUtilizationFallback ? "COALESCE(f.cpu_avg, u.cpu_avg)" : "f.cpu_avg";
+      const peakCpuExpr = hasUtilizationFallback ? "COALESCE(f.cpu_max, u.cpu_max)" : "f.cpu_max";
+      const avgConnectionsExpr = hasUtilizationFallback ? "COALESCE(f.connections_avg, u.connections_avg)" : "f.connections_avg";
+      const peakConnectionsExpr = hasUtilizationFallback ? "COALESCE(f.connections_max, u.connections_max)" : "f.connections_max";
+      const readIopsExpr = hasUtilizationFallback ? "COALESCE(f.read_iops, u.read_iops)" : "f.read_iops";
+      const writeIopsExpr = hasUtilizationFallback ? "COALESCE(f.write_iops, u.write_iops)" : "f.write_iops";
+      const readThroughputExpr = hasUtilizationFallback ? "COALESCE(f.read_throughput_bytes, u.read_throughput_bytes)" : "f.read_throughput_bytes";
+      const writeThroughputExpr = hasUtilizationFallback ? "COALESCE(f.write_throughput_bytes, u.write_throughput_bytes)" : "f.write_throughput_bytes";
+      const storageUsedExpr = hasUtilizationFallback ? "COALESCE(f.storage_used_gb, u.storage_used_gb)" : "f.storage_used_gb";
+      const allocatedStorageExpr = hasUtilizationFallback ? "COALESCE(f.allocated_storage_gb, u.allocated_storage_gb)" : "f.allocated_storage_gb";
+      return sequelize.query<TableAggregateRow>(
+        `
+SELECT
+  COALESCE(NULLIF(BTRIM(dr.region_id), ''), NULLIF(BTRIM(dr.region_name), ''), CASE WHEN f.region_key IS NULL THEN 'unknown-region' ELSE f.region_key::text END) AS "groupKey",
+  COALESCE(NULLIF(BTRIM(dr.region_id), ''), NULLIF(BTRIM(dr.region_name), ''), 'Unknown region') AS "groupLabel",
+  COALESCE(SUM(${factTotalCostExpression("f", queryParams.costBasis)}), 0) AS "totalCost",
+  COALESCE(SUM(f.compute_cost), 0) AS "computeCost",
+  COALESCE(SUM(f.storage_cost), 0) AS "storageCost",
+  COALESCE(SUM(f.io_cost), 0) AS "ioCost",
+  COALESCE(SUM(f.backup_cost), 0) AS "backupCost",
+  COUNT(DISTINCT f.resource_id) AS "resourceCount",
+  COUNT(DISTINCT f.resource_id) FILTER (WHERE ${usageServicePredicateSql("f")}) AS "inScopeResources",
+  COUNT(DISTINCT f.resource_id) FILTER (WHERE ${usageServicePredicateSql("f")} AND (${primaryMetricExpr}) IS NOT NULL) AS "telemetryCoveredResources",
+  AVG(f.cpu_avg) AS "avgLoad",
+  AVG(f.connections_avg) AS "connections",
+  AVG(CASE WHEN ${usageServicePredicateSql("f")} THEN ${avgCpuExpr} ELSE NULL END) AS "avgCpu",
+  AVG(CASE WHEN ${usageServicePredicateSql("f")} THEN ${peakCpuExpr} ELSE NULL END) AS "peakCpu",
+  AVG(CASE WHEN ${usageServicePredicateSql("f")} THEN ${avgConnectionsExpr} ELSE NULL END) AS "avgConnections",
+  AVG(CASE WHEN ${usageServicePredicateSql("f")} THEN ${peakConnectionsExpr} ELSE NULL END) AS "peakConnections",
+  AVG(CASE WHEN ${usageServicePredicateSql("f")} THEN ${readIopsExpr} ELSE NULL END) AS "readIops",
+  AVG(CASE WHEN ${usageServicePredicateSql("f")} THEN ${writeIopsExpr} ELSE NULL END) AS "writeIops",
+  AVG(CASE WHEN ${usageServicePredicateSql("f")} AND NOT (${readIopsExpr} IS NULL AND ${writeIopsExpr} IS NULL) THEN COALESCE(${readIopsExpr}, 0) + COALESCE(${writeIopsExpr}, 0) ELSE NULL END) AS "totalIops",
+  AVG(CASE WHEN ${usageServicePredicateSql("f")} THEN ${readThroughputExpr} ELSE NULL END) AS "readThroughputBytes",
+  AVG(CASE WHEN ${usageServicePredicateSql("f")} THEN ${writeThroughputExpr} ELSE NULL END) AS "writeThroughputBytes",
+  AVG(CASE WHEN ${usageServicePredicateSql("f")} AND NOT (${readThroughputExpr} IS NULL AND ${writeThroughputExpr} IS NULL) THEN COALESCE(${readThroughputExpr}, 0) + COALESCE(${writeThroughputExpr}, 0) ELSE NULL END) AS "totalThroughputBytes",
+  AVG(CASE WHEN ${usageServicePredicateSql("f")} THEN ${storageUsedExpr} ELSE NULL END) AS "storageUsedGb",
+  AVG(CASE WHEN ${usageServicePredicateSql("f")} THEN ${allocatedStorageExpr} ELSE NULL END) AS "allocatedStorageGb",
+  AVG(CASE WHEN ${usageServicePredicateSql("f")} THEN ${primaryMetricExpr} ELSE NULL END) AS "primaryMetricValue"
+FROM fact_db_resource_daily f
+LEFT JOIN dim_region dr ON dr.id = f.region_key
+${hasUtilizationFallback ? `LEFT JOIN db_utilization_daily u
+  ON u.tenant_id = f.tenant_id
+ AND u.usage_date = f.usage_date
+ AND u.resource_id = f.resource_id
+ AND u.cloud_connection_id IS NOT DISTINCT FROM f.cloud_connection_id` : ""}
+WHERE ${filters}
+  AND ${usageServicePredicateSql("f")}
+GROUP BY
+  COALESCE(NULLIF(BTRIM(dr.region_id), ''), NULLIF(BTRIM(dr.region_name), ''), 'Unknown region'),
+  COALESCE(NULLIF(BTRIM(dr.region_id), ''), NULLIF(BTRIM(dr.region_name), ''), CASE WHEN f.region_key IS NULL THEN 'unknown-region' ELSE f.region_key::text END)
+ORDER BY "primaryMetricValue" DESC NULLS LAST, "resourceCount" DESC;
+`,
+        {
+          replacements: { ...queryParams, usageSupportedServices: familyDef.supportedServices },
+          type: QueryTypes.SELECT,
+        },
+      );
+    };
+    const executeEmergencyDbEngineTableQuery = async (): Promise<TableAggregateRow[]> => {
+      const hasUtilizationFallback = await this.hasDbUtilizationDailyTable();
+      const primaryMetricExpr = hasUtilizationFallback
+        ? usageMetricSqlWithFallback(selectedUsageMetric, "f", "u")
+        : usageMetricSql(selectedUsageMetric, "f");
+      const avgCpuExpr = hasUtilizationFallback ? "COALESCE(f.cpu_avg, u.cpu_avg)" : "f.cpu_avg";
+      const peakCpuExpr = hasUtilizationFallback ? "COALESCE(f.cpu_max, u.cpu_max)" : "f.cpu_max";
+      const avgConnectionsExpr = hasUtilizationFallback ? "COALESCE(f.connections_avg, u.connections_avg)" : "f.connections_avg";
+      const peakConnectionsExpr = hasUtilizationFallback ? "COALESCE(f.connections_max, u.connections_max)" : "f.connections_max";
+      const readIopsExpr = hasUtilizationFallback ? "COALESCE(f.read_iops, u.read_iops)" : "f.read_iops";
+      const writeIopsExpr = hasUtilizationFallback ? "COALESCE(f.write_iops, u.write_iops)" : "f.write_iops";
+      const readThroughputExpr = hasUtilizationFallback ? "COALESCE(f.read_throughput_bytes, u.read_throughput_bytes)" : "f.read_throughput_bytes";
+      const writeThroughputExpr = hasUtilizationFallback ? "COALESCE(f.write_throughput_bytes, u.write_throughput_bytes)" : "f.write_throughput_bytes";
+      const storageUsedExpr = hasUtilizationFallback ? "COALESCE(f.storage_used_gb, u.storage_used_gb)" : "f.storage_used_gb";
+      const allocatedStorageExpr = hasUtilizationFallback ? "COALESCE(f.allocated_storage_gb, u.allocated_storage_gb)" : "f.allocated_storage_gb";
+      return sequelize.query<TableAggregateRow>(
+        `
+SELECT
+  COALESCE(NULLIF(NULLIF(LOWER(BTRIM(f.db_engine)), 'unknown'), ''), 'unknown-engine') AS "groupKey",
+  COALESCE(NULLIF(NULLIF(LOWER(BTRIM(f.db_engine)), 'unknown'), ''), 'Unknown engine') AS "groupLabel",
+  COALESCE(SUM(${factTotalCostExpression("f", queryParams.costBasis)}), 0) AS "totalCost",
+  COALESCE(SUM(f.compute_cost), 0) AS "computeCost",
+  COALESCE(SUM(f.storage_cost), 0) AS "storageCost",
+  COALESCE(SUM(f.io_cost), 0) AS "ioCost",
+  COALESCE(SUM(f.backup_cost), 0) AS "backupCost",
+  COUNT(DISTINCT f.resource_id) AS "resourceCount",
+  COUNT(DISTINCT f.resource_id) FILTER (WHERE ${usageServicePredicateSql("f")}) AS "inScopeResources",
+  COUNT(DISTINCT f.resource_id) FILTER (WHERE ${usageServicePredicateSql("f")} AND (${primaryMetricExpr}) IS NOT NULL) AS "telemetryCoveredResources",
+  AVG(f.cpu_avg) AS "avgLoad",
+  AVG(f.connections_avg) AS "connections",
+  AVG(CASE WHEN ${usageServicePredicateSql("f")} THEN ${avgCpuExpr} ELSE NULL END) AS "avgCpu",
+  AVG(CASE WHEN ${usageServicePredicateSql("f")} THEN ${peakCpuExpr} ELSE NULL END) AS "peakCpu",
+  AVG(CASE WHEN ${usageServicePredicateSql("f")} THEN ${avgConnectionsExpr} ELSE NULL END) AS "avgConnections",
+  AVG(CASE WHEN ${usageServicePredicateSql("f")} THEN ${peakConnectionsExpr} ELSE NULL END) AS "peakConnections",
+  AVG(CASE WHEN ${usageServicePredicateSql("f")} THEN ${readIopsExpr} ELSE NULL END) AS "readIops",
+  AVG(CASE WHEN ${usageServicePredicateSql("f")} THEN ${writeIopsExpr} ELSE NULL END) AS "writeIops",
+  AVG(CASE WHEN ${usageServicePredicateSql("f")} AND NOT (${readIopsExpr} IS NULL AND ${writeIopsExpr} IS NULL) THEN COALESCE(${readIopsExpr}, 0) + COALESCE(${writeIopsExpr}, 0) ELSE NULL END) AS "totalIops",
+  AVG(CASE WHEN ${usageServicePredicateSql("f")} THEN ${readThroughputExpr} ELSE NULL END) AS "readThroughputBytes",
+  AVG(CASE WHEN ${usageServicePredicateSql("f")} THEN ${writeThroughputExpr} ELSE NULL END) AS "writeThroughputBytes",
+  AVG(CASE WHEN ${usageServicePredicateSql("f")} AND NOT (${readThroughputExpr} IS NULL AND ${writeThroughputExpr} IS NULL) THEN COALESCE(${readThroughputExpr}, 0) + COALESCE(${writeThroughputExpr}, 0) ELSE NULL END) AS "totalThroughputBytes",
+  AVG(CASE WHEN ${usageServicePredicateSql("f")} THEN ${storageUsedExpr} ELSE NULL END) AS "storageUsedGb",
+  AVG(CASE WHEN ${usageServicePredicateSql("f")} THEN ${allocatedStorageExpr} ELSE NULL END) AS "allocatedStorageGb",
+  AVG(CASE WHEN ${usageServicePredicateSql("f")} THEN ${primaryMetricExpr} ELSE NULL END) AS "primaryMetricValue"
+FROM fact_db_resource_daily f
+${hasUtilizationFallback ? `LEFT JOIN db_utilization_daily u
+  ON u.tenant_id = f.tenant_id
+ AND u.usage_date = f.usage_date
+ AND u.resource_id = f.resource_id
+ AND u.cloud_connection_id IS NOT DISTINCT FROM f.cloud_connection_id` : ""}
+WHERE ${filters}
+  AND ${usageServicePredicateSql("f")}
+GROUP BY
+  COALESCE(NULLIF(NULLIF(LOWER(BTRIM(f.db_engine)), 'unknown'), ''), 'Unknown engine'),
+  COALESCE(NULLIF(NULLIF(LOWER(BTRIM(f.db_engine)), 'unknown'), ''), 'unknown-engine')
+ORDER BY "primaryMetricValue" DESC NULLS LAST, "resourceCount" DESC;
+`,
+        {
+          replacements: { ...queryParams, usageSupportedServices: familyDef.supportedServices },
+          type: QueryTypes.SELECT,
+        },
+      );
+    };
+    const executeUsageTableQuery = async (
+      useUtilizationFallback: boolean,
+      simpleMode: "none" | "db_engine" | "region" = "none",
+    ): Promise<TableAggregateRow[]> => {
+      const localGroupBy = simpleMode === "db_engine"
+        ? {
+            selectExpression: "COALESCE(NULLIF(NULLIF(LOWER(BTRIM(f.db_engine)), 'unknown'), ''), 'Unknown engine')",
+            groupExpression: "COALESCE(NULLIF(NULLIF(LOWER(BTRIM(f.db_engine)), 'unknown'), ''), 'Unknown engine')",
+            keyExpression: "COALESCE(NULLIF(NULLIF(LOWER(BTRIM(f.db_engine)), 'unknown'), ''), 'unknown-engine')",
+            requiresInventory: false,
+            requiresRegion: false,
+          }
+        : simpleMode === "region"
+          ? {
+              selectExpression: "CASE WHEN f.region_key IS NULL THEN 'Unknown region' ELSE f.region_key::text END",
+              groupExpression: "CASE WHEN f.region_key IS NULL THEN 'Unknown region' ELSE f.region_key::text END",
+              keyExpression: "CASE WHEN f.region_key IS NULL THEN 'unknown-region' ELSE f.region_key::text END",
+              requiresInventory: false,
+              requiresRegion: false,
+            }
+        : groupBy;
+      const localWithInventory = simpleMode === "none" ? withInventory : false;
+      const localWithRegion = simpleMode === "none" ? withRegion : false;
+      const selectedMetricExpr = useUtilizationFallback
+        ? usageMetricSqlWithFallback(selectedUsageMetric, "f", "u")
+        : usageMetricSql(selectedUsageMetric, "f");
+      const avgCpuExpr = useUtilizationFallback ? "COALESCE(f.cpu_avg, u.cpu_avg)" : "f.cpu_avg";
+      const peakCpuExpr = useUtilizationFallback ? "COALESCE(f.cpu_max, u.cpu_max)" : "f.cpu_max";
+      const avgConnectionsExpr = useUtilizationFallback ? "COALESCE(f.connections_avg, u.connections_avg)" : "f.connections_avg";
+      const peakConnectionsExpr = useUtilizationFallback ? "COALESCE(f.connections_max, u.connections_max)" : "f.connections_max";
+      const readIopsExpr = useUtilizationFallback ? "COALESCE(f.read_iops, u.read_iops)" : "f.read_iops";
+      const writeIopsExpr = useUtilizationFallback ? "COALESCE(f.write_iops, u.write_iops)" : "f.write_iops";
+      const readThroughputExpr = useUtilizationFallback ? "COALESCE(f.read_throughput_bytes, u.read_throughput_bytes)" : "f.read_throughput_bytes";
+      const writeThroughputExpr = useUtilizationFallback ? "COALESCE(f.write_throughput_bytes, u.write_throughput_bytes)" : "f.write_throughput_bytes";
+      const storageUsedExpr = useUtilizationFallback ? "COALESCE(f.storage_used_gb, u.storage_used_gb)" : "f.storage_used_gb";
+      const allocatedStorageExpr = useUtilizationFallback ? "COALESCE(f.allocated_storage_gb, u.allocated_storage_gb)" : "f.allocated_storage_gb";
+      return sequelize.query<TableAggregateRow>(
+      `
+${localWithInventory ? `WITH ${latestInventoryCteSql}` : ""}
+SELECT
+  ${localGroupBy.keyExpression}::text AS "groupKey",
+  ${localGroupBy.selectExpression} AS "groupLabel",
   COALESCE(SUM(${factTotalCostExpression("f", queryParams.costBasis)}), 0) AS "totalCost",
   COALESCE(SUM(f.compute_cost), 0) AS "computeCost",
   COALESCE(SUM(f.storage_cost), 0) AS "storageCost",
@@ -1743,14 +2039,14 @@ SELECT
   AVG(CASE WHEN ${usageServicePredicateSql("f")} THEN ${storageUsedExpr} ELSE NULL END) AS "storageUsedGb",
   AVG(CASE WHEN ${usageServicePredicateSql("f")} THEN ${allocatedStorageExpr} ELSE NULL END) AS "allocatedStorageGb",
   AVG(CASE WHEN ${usageServicePredicateSql("f")} THEN ${selectedMetricExpr} ELSE NULL END) AS "primaryMetricValue"
-${fromFactBaseSql({ withInventory, withRegion })}
-${hasUtilizationFallback ? `LEFT JOIN db_utilization_daily u
+${fromFactBaseSql({ withInventory: localWithInventory, withRegion: localWithRegion })}
+${useUtilizationFallback ? `LEFT JOIN db_utilization_daily u
   ON u.tenant_id = f.tenant_id
  AND u.usage_date = f.usage_date
  AND u.resource_id = f.resource_id
  AND u.cloud_connection_id IS NOT DISTINCT FROM f.cloud_connection_id` : ""}
 WHERE ${filters}
-GROUP BY ${groupBy.groupExpression}
+GROUP BY ${localGroupBy.groupExpression}
 ORDER BY "primaryMetricValue" DESC NULLS LAST, "resourceCount" DESC;
 `,
       {
@@ -1758,8 +2054,66 @@ ORDER BY "primaryMetricValue" DESC NULLS LAST, "resourceCount" DESC;
         type: QueryTypes.SELECT,
       },
     );
+    };
 
-    const withRanking = rows
+    const hasUtilizationFallback = await this.hasDbUtilizationDailyTable();
+    let rows: TableAggregateRow[] = [];
+    try {
+      rows = await executeUsageTableQuery(hasUtilizationFallback);
+    } catch {
+      try {
+        rows = await executeUsageTableQuery(false);
+      } catch {
+        if (queryParams.groupBy === "db_engine") {
+          try {
+            rows = await executeUsageTableQuery(false, "db_engine");
+          } catch {
+            rows = await executeEmergencyDbEngineTableQuery();
+          }
+        } else if (queryParams.groupBy === "region") {
+          try {
+            rows = await executeUsageTableQuery(false, "region");
+          } catch {
+            rows = await executeEmergencyRegionTableQuery();
+          }
+        } else if (queryParams.groupBy === "instance_class") {
+          rows = await executeEmergencyInstanceClassTableQuery();
+        } else if (queryParams.groupBy === "cluster") {
+          rows = await executeEmergencyClusterTableQuery();
+        } else {
+          rows = [];
+        }
+      }
+    }
+    if (queryParams.groupBy === "db_engine" && rows.length === 0) {
+      try {
+        rows = await executeUsageTableQuery(false, "db_engine");
+      } catch {
+        rows = await executeEmergencyDbEngineTableQuery();
+      }
+    }
+    if (queryParams.groupBy === "region" && rows.length === 0) {
+      try {
+        rows = await executeUsageTableQuery(false, "region");
+      } catch {
+        rows = await executeEmergencyRegionTableQuery();
+      }
+    }
+    if (queryParams.groupBy === "instance_class" && rows.length === 0) {
+      rows = await executeEmergencyInstanceClassTableQuery();
+    }
+    if (queryParams.groupBy === "cluster" && rows.length === 0) {
+      rows = await executeEmergencyClusterTableQuery();
+    }
+
+    const rowsForRanking =
+      queryParams.groupBy === "instance_class"
+        ? rows.filter((row) => String(row.groupLabel ?? "").trim().toLowerCase() !== "unknown class")
+        : queryParams.groupBy === "db_engine"
+          ? rows.filter((row) => String(row.groupLabel ?? "").trim().toLowerCase() !== "unknown engine")
+        : rows;
+
+    const withRanking = rowsForRanking
       .map((row) => {
         const inScopeResources = toNumber(row.inScopeResources);
         const telemetryCoveredResources = toNumber(row.telemetryCoveredResources);
@@ -2072,6 +2426,8 @@ ORDER BY f.usage_date ASC;
       const rawLabel = String(row.groupLabel ?? "").trim();
       const label = rawLabel.length > 0 ? rawLabel : unknownLabel;
       const key = rawKey.length > 0 ? rawKey : `unknown-${queryParams.groupBy}`;
+      if (isUnknownInstanceClassGroup(queryParams.groupBy, key, label)) continue;
+      if (isUnknownDbEngineGroup(queryParams.groupBy, key, label)) continue;
       const value = isUsage ? toNullableNumber(row.value) : toNumber(row.value);
       const current = bySeries.get(key) ?? { key, label, total: 0, points: [] };
       current.points.push({ date, value });

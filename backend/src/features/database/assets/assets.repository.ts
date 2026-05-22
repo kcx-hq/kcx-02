@@ -431,6 +431,40 @@ COALESCE(LOWER(BTRIM(f.resource_type)), '') <> 'scoped'
       AND f.resource_id NOT LIKE 'db-scope:%'
 `;
 
+const resourceTypeCanonicalSql = (tableAlias: string): string => `
+CASE
+  WHEN LOWER(COALESCE(${tableAlias}.resource_id, '')) LIKE 'db-scope:%' THEN 'unknown resource type'
+  WHEN LOWER(COALESCE(${tableAlias}.resource_id, '')) LIKE 'arn:aws:rds:%:db:%' THEN 'instance'
+  WHEN LOWER(COALESCE(${tableAlias}.resource_id, '')) LIKE 'arn:aws:rds:%:cluster:%' THEN 'cluster'
+  WHEN LOWER(COALESCE(${tableAlias}.resource_id, '')) LIKE 'arn:aws:elasticache:%' THEN 'cache'
+  ELSE COALESCE(NULLIF(LOWER(BTRIM(${tableAlias}.resource_type)), ''), 'unknown resource type')
+END
+`;
+
+const normalizedTokenSql = (expression: string): string => `
+REGEXP_REPLACE(
+  LOWER(BTRIM(COALESCE(${expression}, ''))),
+  '[^a-z0-9]+',
+  '',
+  'g'
+)
+`;
+
+const dbServiceDisplaySql = (tableAlias: string): string => `
+CASE
+  WHEN LOWER(COALESCE(${tableAlias}.db_engine, '')) LIKE 'aurora%' THEN 'Amazon Aurora'
+  WHEN LOWER(COALESCE(${tableAlias}.db_service, '')) IN ('amazonrds', 'amazon rds', 'amazonrelationaldatabaseservice') THEN 'Amazon RDS'
+  WHEN LOWER(COALESCE(${tableAlias}.db_service, '')) IN ('amazonelasticache', 'amazon elasticache', 'elasticache') THEN 'Amazon ElastiCache'
+  WHEN LOWER(COALESCE(${tableAlias}.db_service, '')) IN ('amazonmemorydb', 'amazon memorydb', 'memorydb') THEN 'Amazon MemoryDB'
+  WHEN LOWER(COALESCE(${tableAlias}.db_service, '')) IN ('amazondynamodb', 'amazon dynamodb', 'dynamodb') THEN 'Amazon DynamoDB'
+  WHEN LOWER(COALESCE(${tableAlias}.db_service, '')) IN ('amazondocdb', 'amazon docdb', 'amazon documentdb', 'documentdb') THEN 'Amazon DocumentDB'
+  WHEN LOWER(COALESCE(${tableAlias}.db_service, '')) IN ('amazonneptune', 'amazon neptune', 'neptune') THEN 'Amazon Neptune'
+  WHEN LOWER(COALESCE(${tableAlias}.db_service, '')) IN ('amazonkeyspaces', 'amazon keyspaces', 'keyspaces') THEN 'Amazon Keyspaces'
+  WHEN LOWER(COALESCE(${tableAlias}.db_service, '')) IN ('amazontimestream', 'amazon timestream', 'timestream') THEN 'Amazon Timestream'
+  ELSE 'Unknown service'
+END
+`;
+
 const buildScopedFactWhere = (params: DatabaseAssetsQueryParams): SqlWhere => {
   const clauses = [
     'f.tenant_id = CAST(:tenantId AS uuid)',
@@ -449,16 +483,34 @@ const buildScopedFactWhere = (params: DatabaseAssetsQueryParams): SqlWhere => {
     replacements.cloudConnectionId = params.cloudConnectionId;
   }
   if (params.regionKey) {
-    clauses.push('f.region_key = CAST(:regionKey AS bigint)');
+    clauses.push(`(
+      f.region_key::text = BTRIM(:regionKey)
+      OR EXISTS (
+        SELECT 1
+        FROM dim_region drf
+        WHERE drf.id = f.region_key
+          AND (
+            LOWER(BTRIM(COALESCE(drf.region_id, ''))) = LOWER(BTRIM(:regionKey))
+            OR LOWER(BTRIM(COALESCE(drf.region_name, ''))) = LOWER(BTRIM(:regionKey))
+          )
+      )
+    )`);
     replacements.regionKey = params.regionKey;
   }
   if (params.dbService) {
-    clauses.push('f.db_service = :dbService');
+    clauses.push(`(
+      ${normalizedTokenSql("f.db_service")} = ${normalizedTokenSql(":dbService")}
+      OR ${normalizedTokenSql(dbServiceDisplaySql("f"))} = ${normalizedTokenSql(":dbService")}
+    )`);
     replacements.dbService = params.dbService;
   }
   if (params.dbEngine) {
-    clauses.push('f.db_engine = :dbEngine');
+    clauses.push(`${normalizedTokenSql("f.db_engine")} = ${normalizedTokenSql(":dbEngine")}`);
     replacements.dbEngine = params.dbEngine;
+  }
+  if (params.resourceType) {
+    clauses.push(`${normalizedTokenSql(resourceTypeCanonicalSql("f"))} = ${normalizedTokenSql(":resourceType")}`);
+    replacements.resourceType = params.resourceType;
   }
   if (params.subAccountKey) {
     clauses.push('f.sub_account_key = CAST(:subAccountKey AS bigint)');
@@ -479,6 +531,22 @@ const buildPostJoinWhere = (params: DatabaseAssetsQueryParams): SqlWhere => {
   if (params.instanceClass) {
     clauses.push('li.instance_class = :instanceClass');
     replacements.instanceClass = params.instanceClass;
+  }
+  if (params.cluster) {
+    const normalizedCluster = params.cluster.trim().toLowerCase();
+    if (
+      normalizedCluster !== "unknown"
+      && !normalizedCluster.startsWith("unknown ")
+      && normalizedCluster !== "standalone-no-cluster"
+    ) {
+      clauses.push(`(
+        ${normalizedTokenSql("COALESCE(li.cluster_id, a.cluster_id)")} = ${normalizedTokenSql(":cluster")}
+        OR ${normalizedTokenSql("COALESCE(li.resource_arn, a.resource_arn)")} = ${normalizedTokenSql(":cluster")}
+        OR ${normalizedTokenSql("COALESCE(li.resource_name, a.resource_name)")} = ${normalizedTokenSql(":cluster")}
+        OR ${normalizedTokenSql("COALESCE(CAST(li.metadata_json->>'clusterIdentifier' AS text), CAST(li.metadata_json->>'cluster_id' AS text), '')")} = ${normalizedTokenSql(":cluster")}
+      )`);
+      replacements.cluster = params.cluster;
+    }
   }
   if (params.search) {
     clauses.push(`(

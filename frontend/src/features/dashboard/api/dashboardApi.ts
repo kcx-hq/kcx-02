@@ -273,8 +273,14 @@ function withDatabaseAssetsFilters(
   if (typeof filters?.dbEngine === "string" && filters.dbEngine.trim().length > 0) {
     params.set("db_engine", filters.dbEngine.trim());
   }
+  if (typeof filters?.resourceType === "string" && filters.resourceType.trim().length > 0) {
+    params.set("resource_type", filters.resourceType.trim());
+  }
   if (typeof filters?.instanceClass === "string" && filters.instanceClass.trim().length > 0) {
     params.set("instance_class", filters.instanceClass.trim());
+  }
+  if (typeof filters?.cluster === "string" && filters.cluster.trim().length > 0) {
+    params.set("cluster", filters.cluster.trim());
   }
   if (typeof filters?.status === "string" && filters.status.trim().length > 0) {
     params.set("status", filters.status.trim());

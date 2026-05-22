@@ -33,6 +33,7 @@
     "backfill:ebs-volume-utilization-hourly": "npm run build && node dist/scripts/backfill-ebs-volume-utilization-hourly.js",
     "backfill:ebs-volume-utilization-daily": "npm run build && node dist/scripts/backfill-ebs-volume-utilization-daily.js",
     "backfill:ebs-volume-daily": "npm run build && node dist/scripts/backfill-ebs-volume-daily.js",
+    "backfill:db-cost-history": "npm run build && node dist/scripts/backfill-db-cost-history.js",
     "recover:stale:ec2-inventory-job": "npm run build && node dist/scripts/recover-stale-ec2-inventory-job.js",
     "diagnose:billing:parquet": "node scripts/diagnose-billing-parquet.mjs",
     "lint": "eslint . --ext .ts",
@@ -46,7 +47,8 @@
     "db:demo:reset": "tsx scripts/db-demo-reset.ts",
     "db:demo:seed": "tsx scripts/db-demo-seed.ts",
     "db:demo:rebuild": "tsx scripts/db-demo-rebuild.ts",
-    "validate:ec2-demo": "tsx scripts/validate-ec2-demo.ts"
+    "validate:ec2-demo": "tsx scripts/validate-ec2-demo.ts",
+    "verify:db:redis-storage-classification": "tsx scripts/verify-db-redis-storage-classification.ts"
   },
   "keywords": [],
   "author": "",

@@ -579,7 +579,9 @@ export type DatabaseAssetsFilters = {
   subAccountKey?: string;
   dbService?: string;
   dbEngine?: string;
+  resourceType?: string;
   instanceClass?: string;
+  cluster?: string;
   status?: string;
   search?: string;
   page?: number;

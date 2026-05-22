@@ -87,6 +87,7 @@ const serviceMatchesScope = (service: string, scope: DatabaseExplorerScopeValue)
 
 const uniqueSorted = (values: string[]): string[] =>
   [...new Set(values.map((value) => value.trim()).filter(Boolean))].sort((left, right) => left.localeCompare(right));
+const normalizeValueKey = (value: string): string => value.trim().toLowerCase();
 
 const serviceToScope = (service: string): DatabaseExplorerScopeValue => {
   const key = service.trim().toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -232,6 +233,10 @@ export function DatabaseExplorerFilters({
     if (!Array.isArray(preview)) return [];
     return uniqueSorted(preview);
   }, [draftGroupBy, groupedValuePreview]);
+  const selectedDraftValueKeys = useMemo(
+    () => new Set(draftGroupValues.map((value) => normalizeValueKey(value))),
+    [draftGroupValues],
+  );
   const resourceTypePreview = useMemo(() => uniqueSorted(groupedValuePreview?.resource_type ?? []), [groupedValuePreview]);
   const costCategoryPreview = useMemo(
     () =>
@@ -717,26 +722,33 @@ export function DatabaseExplorerFilters({
                           </p>
                           <div className="database-explorer-groupby__section-list">
                             {groupedValuesPreview.length > 0 ? (
-                              groupedValuesPreview.map((value) => (
-                                <button
-                                  key={`${draftGroupBy}-${value}`}
-                                  type="button"
-                                  className={`cost-explorer-filter-option${draftGroupValues.includes(value) ? " is-active" : ""}`}
-                                  role="option"
-                                  aria-selected={draftGroupValues.includes(value)}
-                                  style={draftGroupValues.includes(value) ? groupBySelectedStyle : groupByValuePreviewStyle}
-                                  onClick={() =>
-                                    setDraftGroupValues((prev) =>
-                                      prev.includes(value) ? prev.filter((entry) => entry !== value) : [...prev, value],
-                                    )
-                                  }
-                                >
-                                  <span className="cost-explorer-filter-option__label">{value}</span>
-                                  {draftGroupValues.includes(value) ? (
-                                    <Check className="cost-explorer-filter-option__check" size={15} aria-hidden="true" />
-                                  ) : null}
-                                </button>
-                              ))
+                              groupedValuesPreview.map((value) => {
+                                const normalized = normalizeValueKey(value);
+                                const isSelected = selectedDraftValueKeys.has(normalized);
+                                return (
+                                  <button
+                                    key={`${draftGroupBy}-${value}`}
+                                    type="button"
+                                    className={`cost-explorer-filter-option${isSelected ? " is-active" : ""}`}
+                                    role="option"
+                                    aria-selected={isSelected}
+                                    style={isSelected ? groupBySelectedStyle : groupByValuePreviewStyle}
+                                    onClick={() =>
+                                      setDraftGroupValues((prev) => {
+                                        const prevHas = prev.some((entry) => normalizeValueKey(entry) === normalized);
+                                        return prevHas
+                                          ? prev.filter((entry) => normalizeValueKey(entry) !== normalized)
+                                          : [...prev, value];
+                                      })
+                                    }
+                                  >
+                                    <span className="cost-explorer-filter-option__label">{value}</span>
+                                    {isSelected ? (
+                                      <Check className="cost-explorer-filter-option__check" size={15} aria-hidden="true" />
+                                    ) : null}
+                                  </button>
+                                );
+                              })
                             ) : (
                               <p className="database-explorer-groupby__section-empty">
                                 Filters are contextual to this Group By dimension and appear when available.

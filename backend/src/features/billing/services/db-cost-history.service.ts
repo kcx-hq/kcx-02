@@ -64,6 +64,26 @@ CASE
   WHEN LOWER(COALESCE(f.line_item_type, '')) = 'tax' THEN 'tax'
   WHEN LOWER(COALESCE(f.line_item_type, '')) = 'credit' THEN 'credit'
   WHEN LOWER(COALESCE(f.line_item_type, '')) = 'refund' THEN 'refund'
+  -- Redis/ElastiCache storage guardrail (regression-safe):
+  -- CachedData and Redis data-storage line items are storage semantics, not compute/other.
+  -- Keep this branch above generic compute/io/other fallbacks so ingestion cannot drift.
+  WHEN (
+    COALESCE(ds.service_name, '') IN ('AmazonElastiCache')
+    OR LOWER(COALESCE(ds.service_name, '')) LIKE '%elasticache%'
+    OR LOWER(COALESCE(f.usage_type, '')) LIKE '%elasticache%'
+    OR LOWER(COALESCE(f.product_usage_type, '')) LIKE '%elasticache%'
+    OR LOWER(COALESCE(f.operation, '')) LIKE '%elasticache%'
+    OR LOWER(COALESCE(f.line_item_description, '')) LIKE '%elasticache%'
+    OR LOWER(COALESCE(f.usage_type, '')) LIKE '%redis%'
+    OR LOWER(COALESCE(f.product_usage_type, '')) LIKE '%redis%'
+    OR LOWER(COALESCE(f.operation, '')) LIKE '%redis%'
+    OR LOWER(COALESCE(f.line_item_description, '')) LIKE '%redis%'
+  ) AND (
+    LOWER(COALESCE(f.usage_type, '')) LIKE '%cacheddata%'
+    OR LOWER(COALESCE(f.product_usage_type, '')) LIKE '%cacheddata%'
+    OR LOWER(COALESCE(f.line_item_description, '')) LIKE '%redis data storage%'
+    OR LOWER(COALESCE(f.line_item_description, '')) LIKE '%data storage%'
+  ) THEN 'storage'
   WHEN (
     COALESCE(ds.service_name, '') IN ('AmazonElastiCache', 'AmazonMemoryDB')
     OR LOWER(COALESCE(f.usage_type, '')) LIKE '%elasticache%'
@@ -189,6 +209,8 @@ END
 
 const DB_ENGINE_SQL = `
 CASE
+  WHEN COALESCE(ds.service_name, '') = 'AmazonDynamoDB' THEN 'DynamoDB'
+  WHEN COALESCE(ds.service_name, '') = 'AmazonElastiCache' THEN 'Redis'
   WHEN LOWER(COALESCE(f.usage_type, '')) LIKE '%aurora%' OR LOWER(COALESCE(f.product_usage_type, '')) LIKE '%aurora%' THEN 'Aurora PostgreSQL'
   WHEN LOWER(COALESCE(f.usage_type, '')) LIKE '%cacheddata:redis%' OR LOWER(COALESCE(f.product_usage_type, '')) LIKE '%cacheddata:redis%' THEN 'Redis'
   WHEN LOWER(COALESCE(f.line_item_description, '')) LIKE '%running mysql%'
