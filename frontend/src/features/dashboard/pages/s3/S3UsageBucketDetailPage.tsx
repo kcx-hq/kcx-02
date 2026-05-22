@@ -1,25 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  BarChart3,
-  Calendar,
   Check,
   ChevronDown,
   ChevronRight,
   Clock3,
   Copy,
   Database,
-  DollarSign,
   ExternalLink,
   Files,
   GitBranch,
-  Lightbulb,
   Lock,
   MoreVertical,
-  PackageSearch,
   Shield,
   Tags,
-  TrendingDown,
-  TrendingUp,
   UserRound,
 } from "lucide-react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
@@ -60,6 +53,25 @@ const toSeverityLabel = (severity: "high" | "medium" | "low" | "info"): string =
   if (severity === "medium") return "Medium";
   if (severity === "low") return "Low";
   return "Info";
+};
+
+const toInsightAvailabilityLabel = (insight: {
+  title?: string | null;
+  description?: string | null;
+  recommendation?: string | null;
+}): "Missing" | "Available" => {
+  const content = `${insight.title ?? ""} ${insight.description ?? ""} ${insight.recommendation ?? ""}`.toLowerCase();
+  const missingSignals = [
+    "not configured",
+    "no ",
+    "missing",
+    "disabled",
+    "not active",
+    "unavailable",
+    "not enabled",
+    "without ",
+  ];
+  return missingSignals.some((signal) => content.includes(signal)) ? "Missing" : "Available";
 };
 
 const toConfigTone = (value: string): "positive" | "warning" | "neutral" => {
@@ -153,11 +165,6 @@ export default function S3UsageBucketDetailPage() {
     }),
     [detail?.usageMetrics],
   );
-
-  const potentialSavings = useMemo(() => {
-    if (!detail) return 0;
-    return Number((detail.costBreakdown.storageCost * 0.04 + detail.costBreakdown.requestCost * 0.12 + detail.costBreakdown.transferCost * 0.05).toFixed(2));
-  }, [detail]);
 
   const costDrivers = useMemo(() => {
     const storage = Number(selectedBucket?.storage ?? 0);
@@ -511,32 +518,26 @@ export default function S3UsageBucketDetailPage() {
             </div>
           </header>
 
-          <section className="s3-bucket-reference__kpi-row" aria-label="KPI cards">
-            <article className="s3-bucket-reference__kpi-card">
-              <p>Total Cost</p>
-              <h3>${selectedBucket.cost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</h3>
-              <span className={selectedBucket.trendPct >= 0 ? "is-up" : "is-down"}>
-                {selectedBucket.trendPct >= 0 ? <TrendingUp /> : <TrendingDown />} {Math.abs(selectedBucket.trendPct).toFixed(1)}% vs previous 30 days
-              </span>
-              <em><DollarSign /></em>
+          <section className="s3-bucket-reference__kpi-row" aria-label="Bucket KPI summary">
+            <article className="s3-bucket-reference__kpi-item">
+              <p>Storage Cost</p>
+              <h3>{formatCurrencySmart(selectedBucket.storage)}</h3>
             </article>
-            <article className="s3-bucket-reference__kpi-card">
-              <p>Storage Size</p>
-              <h3>{usageMetrics.storageGb.toFixed(2)} GB</h3>
-              <span>Storage cost ${selectedBucket.storage.toFixed(2)}</span>
-              <em><Database /></em>
+            <article className="s3-bucket-reference__kpi-item">
+              <p>Transfer Cost</p>
+              <h3>{formatCurrencySmart(selectedBucket.transfer)}</h3>
             </article>
-            <article className="s3-bucket-reference__kpi-card">
+            <article className="s3-bucket-reference__kpi-item">
               <p>Request Cost</p>
-              <h3>${selectedBucket.requests.toFixed(2)}</h3>
-              <span>{integerFormatter.format(usageMetrics.requestCount)} requests</span>
-              <em><PackageSearch /></em>
+              <h3>{formatCurrencySmart(selectedBucket.requests)}</h3>
             </article>
-            <article className="s3-bucket-reference__kpi-card">
-              <p>Potential Savings</p>
-              <h3>${potentialSavings.toFixed(2)} <small>/month</small></h3>
-              <span>{optimizationSummary}</span>
-              <em><Lightbulb /></em>
+            <article className="s3-bucket-reference__kpi-item">
+              <p>Storage Size</p>
+              <h3>{storageSummaryBytes > 0 ? formatBytesCompact(storageSummaryBytes) : `${usageMetrics.storageGb.toFixed(2)} GB`}</h3>
+            </article>
+            <article className="s3-bucket-reference__kpi-item">
+              <p>No. of Objects</p>
+              <h3>{integerFormatter.format(storageSummaryObjectCount > 0 ? storageSummaryObjectCount : usageMetrics.objectCount)}</h3>
             </article>
           </section>
 
@@ -546,14 +547,6 @@ export default function S3UsageBucketDetailPage() {
                 <div>
                   <h3>Cost Trend</h3>
                   <p>Daily cost ($) by cost type</p>
-                </div>
-                <div className="s3-bucket-reference__toolbar">
-                  <button type="button">
-                    <Calendar />
-                    Daily
-                    <ChevronDown />
-                  </button>
-                  <button type="button" aria-label="Chart view"><BarChart3 /></button>
                 </div>
               </div>
               <S3BucketUsageTrendPanel
@@ -596,7 +589,7 @@ export default function S3UsageBucketDetailPage() {
                       <div className="s3-bucket-reference__insight-title-row">
                         <h4>{insight.title}</h4>
                         <span className={`s3-bucket-reference__optimization-severity is-${insight.severity}`}>
-                          {toSeverityLabel(insight.severity)}
+                          {toInsightAvailabilityLabel(insight)}
                         </span>
                       </div>
                       {insight.action ? (

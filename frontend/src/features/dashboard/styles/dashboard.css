@@ -18665,21 +18665,26 @@
 }
 
 .s3-bucket-reference__kpi-row {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.s3-bucket-reference__kpi-card {
   background: #ffffff;
   border: 1px solid #e6edf1;
   border-radius: 15px;
   box-shadow: 0 8px 20px rgba(16, 35, 51, 0.055);
-  padding: 14px 15px 13px;
-  position: relative;
+  padding: 6px 4px;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0;
 }
 
-.s3-bucket-reference__kpi-card p {
+.s3-bucket-reference__kpi-item {
+  padding: 10px 14px;
+  min-width: 0;
+}
+
+.s3-bucket-reference__kpi-item:not(:last-child) {
+  border-right: 1px solid #e6edf1;
+}
+
+.s3-bucket-reference__kpi-item p {
   margin: 0;
   color: #748791;
   font-size: 0.74rem;
@@ -18687,75 +18692,12 @@
   letter-spacing: 0.004em;
 }
 
-.s3-bucket-reference__kpi-card h3 {
-  margin: 8px 0 7px;
+.s3-bucket-reference__kpi-item h3 {
+  margin: 7px 0 0;
   color: #172c3c;
-  font-size: 1.92rem;
+  font-size: 1.5rem;
   line-height: 1.1;
   letter-spacing: -0.01em;
-}
-
-.s3-bucket-reference__kpi-card h3 small {
-  font-size: 0.95rem;
-  color: #607683;
-}
-
-.s3-bucket-reference__kpi-card span {
-  color: #6c7f8a;
-  font-size: 0.75rem;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  line-height: 1.25;
-}
-
-.s3-bucket-reference__kpi-card span svg {
-  width: 13px;
-  height: 13px;
-  stroke-width: 1.9;
-}
-
-.s3-bucket-reference__kpi-card span.is-up {
-  color: #cb594d;
-}
-
-.s3-bucket-reference__kpi-card span.is-down {
-  color: #1b8b65;
-}
-
-.s3-bucket-reference__kpi-card em {
-  position: absolute;
-  right: 15px;
-  top: 13px;
-  width: 33px;
-  height: 33px;
-  border-radius: 999px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-style: normal;
-}
-
-.s3-bucket-reference__kpi-card em svg {
-  width: 17px;
-  height: 17px;
-  stroke-width: 1.85;
-}
-
-.s3-bucket-reference__kpi-card:nth-child(1) em,
-.s3-bucket-reference__kpi-card:nth-child(2) em {
-  background: #eaf7f1;
-  color: #2b8a64;
-}
-
-.s3-bucket-reference__kpi-card:nth-child(3) em {
-  background: #f0e9fb;
-  color: #7a58c7;
-}
-
-.s3-bucket-reference__kpi-card:nth-child(4) em {
-  background: #fff4e4;
-  color: #c1832d;
 }
 
 .s3-bucket-reference__main-row {
@@ -19987,7 +19929,7 @@
 
 @media (max-width: 1180px) {
   .s3-bucket-reference__kpi-row {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
   .s3-bucket-reference__main-row {
     grid-template-columns: 1fr;
@@ -20002,7 +19944,13 @@
     position: static;
   }
   .s3-bucket-reference__kpi-row {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .s3-bucket-reference__kpi-item:nth-child(2n) {
+    border-right: 0;
+  }
+  .s3-bucket-reference__kpi-item:nth-child(-n + 4) {
+    border-bottom: 1px solid #e6edf1;
   }
   .s3-bucket-reference__header {
     flex-direction: column;
