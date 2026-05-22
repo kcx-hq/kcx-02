@@ -897,6 +897,250 @@ export type Ec2ExplorerResponse = {
   };
 };
 
+export type Ec2CostExplorerV2Granularity = "daily" | "weekly" | "monthly";
+export type Ec2CostExplorerV2CostBasis = "gross_cost" | "net_cost" | "effective_cost" | "amortized_cost";
+export type Ec2CostExplorerV2GroupBy =
+  | "none"
+  | "account"
+  | "region"
+  | "instance"
+  | "instance_type"
+  | "cost_type"
+  | "reservation_type"
+  | "tag";
+export type Ec2CostExplorerV2Compare = "none" | "previous_period";
+
+export type Ec2CostExplorerV2FiltersQuery = {
+  startDate?: string;
+  endDate?: string;
+  granularity?: Ec2CostExplorerV2Granularity;
+  costBasis?: Ec2CostExplorerV2CostBasis;
+  groupBy?: Ec2CostExplorerV2GroupBy;
+  tagKey?: string | null;
+  compare?: Ec2CostExplorerV2Compare;
+  accountIds?: string[];
+  regions?: string[];
+  instanceTypes?: string[];
+  reservationTypes?: string[];
+  costTypes?: string[];
+  tags?: string[];
+};
+
+export type Ec2CostExplorerV2Response = {
+  kpis: {
+    grossCost: number;
+    credits: number;
+    netCost: number;
+    computeCost: number;
+    instanceCount: number;
+  };
+  chart: {
+    granularity: Ec2CostExplorerV2Granularity;
+    xAxis: "date";
+    yAxis: string;
+    series: Array<{
+      groupKey: string;
+      groupLabel: string;
+      points: Array<{ date: string; value: number }>;
+    }>;
+  };
+  table: {
+    rows: Array<{
+      groupKey: string;
+      groupLabel: string;
+      grossCost: number;
+      netCost: number;
+      effectiveCost: number;
+      computeCost: number;
+      volumeCost: number;
+      snapshotCost: number;
+      dataTransferCost: number;
+      elasticIpCost: number;
+      otherCost: number;
+      instanceCount: number;
+      percentOfTotal: number;
+      mainCostDriver: "Compute" | "Volume" | "Snapshot" | "Data Transfer" | "Elastic IP" | "Other";
+    }>;
+  };
+  meta: {
+    costBasis: Ec2CostExplorerV2CostBasis;
+    groupBy: Ec2CostExplorerV2GroupBy;
+    granularity: Ec2CostExplorerV2Granularity;
+    currency: string;
+    normalized: true;
+  };
+};
+
+export type Ec2RecommendationActionKey =
+  | "stop_instance"
+  | "resize_instance"
+  | "delete_volume"
+  | "snapshot_then_delete_volume"
+  | "delete_snapshot"
+  | "release_eip"
+  | "review_ri_sp"
+  | "review_traffic"
+  | "review_load_balancer"
+  | "terminate_instance";
+
+export type Ec2RecommendationActionRequest = {
+  actionKey: Ec2RecommendationActionKey;
+  parameters?: {
+    targetInstanceType?: string;
+    createSnapshotBeforeDelete?: boolean;
+    confirmationText?: string;
+  };
+};
+
+export type Ec2RecommendationActionPrecheckResponse = {
+  allowed: boolean;
+  actionKey: Ec2RecommendationActionKey;
+  resourceId: string;
+  resourceType: Ec2RecommendationRecord["resourceType"];
+  region: string | null;
+  accountId: string | null;
+  warnings: string[];
+  blockers: string[];
+  dryRunSupported: boolean;
+  dryRunPassed?: boolean;
+};
+
+export type Ec2RecommendationActionExecuteResponse = {
+  success: boolean;
+  actionKey: Ec2RecommendationActionKey;
+  resourceId: string;
+  awsRequestId: string | null;
+  resultMessage: string;
+  updatedStatus: Ec2RecommendationStatus;
+};
+
+export type Ec2UsageExplorerV2Granularity = "daily" | "weekly" | "monthly";
+export type Ec2UsageExplorerV2UsageMetric = "cpu" | "network_in" | "network_out" | "network_total";
+export type Ec2UsageExplorerV2Aggregation = "avg" | "max" | "sum";
+export type Ec2UsageExplorerV2GroupBy = "none" | "account" | "region" | "instance" | "instance_type" | "tag";
+export type Ec2UsageExplorerV2Compare = "none" | "previous_period";
+
+export type Ec2UsageExplorerV2FiltersQuery = {
+  startDate?: string;
+  endDate?: string;
+  granularity?: Ec2UsageExplorerV2Granularity;
+  usageMetric?: Ec2UsageExplorerV2UsageMetric;
+  aggregation?: Ec2UsageExplorerV2Aggregation;
+  groupBy?: Ec2UsageExplorerV2GroupBy;
+  tagKey?: string | null;
+  compare?: Ec2UsageExplorerV2Compare;
+  accountIds?: string[];
+  regions?: string[];
+  instanceTypes?: string[];
+  tags?: string[];
+};
+
+export type Ec2UsageExplorerV2Response = {
+  kpis: {
+    avgCpu: number;
+    maxCpu: number;
+    totalNetworkInGb: number;
+    totalNetworkOutGb: number;
+    instanceCount: number;
+  };
+  chart: {
+    granularity: Ec2UsageExplorerV2Granularity;
+    xAxis: "date";
+    yAxis: string;
+    series: Array<{
+      groupKey: string;
+      groupLabel: string;
+      points: Array<{ date: string; value: number; transferCost?: number; usageGb?: number }>;
+    }>;
+  };
+  table: {
+    rows: Array<{
+      groupKey: string;
+      groupLabel: string;
+      avgCpu: number;
+      maxCpu: number;
+      networkInGb: number;
+      networkOutGb: number;
+      networkTotalGb: number;
+      instanceCount: number;
+    }>;
+  };
+  meta: {
+    usageMetric: Ec2UsageExplorerV2UsageMetric;
+    aggregation: Ec2UsageExplorerV2Aggregation;
+    groupBy: Ec2UsageExplorerV2GroupBy;
+    granularity: Ec2UsageExplorerV2Granularity;
+    normalized: true;
+  };
+};
+
+export type Ec2DataTransferExplorerV2Granularity = "daily" | "weekly" | "monthly";
+export type Ec2DataTransferExplorerV2YAxis = "transfer_cost" | "usage_gb";
+export type Ec2DataTransferExplorerV2GroupBy = "none" | "account" | "region" | "instance" | "transfer_type" | "tag";
+export type Ec2DataTransferExplorerV2Compare = "none" | "previous_period";
+
+export type Ec2DataTransferExplorerV2FiltersQuery = {
+  startDate?: string;
+  endDate?: string;
+  granularity?: Ec2DataTransferExplorerV2Granularity;
+  yAxis?: Ec2DataTransferExplorerV2YAxis;
+  groupBy?: Ec2DataTransferExplorerV2GroupBy;
+  tagKey?: string | null;
+  compare?: Ec2DataTransferExplorerV2Compare;
+  accountIds?: string[];
+  regions?: string[];
+  instanceTypes?: string[];
+  transferTypes?: Array<"internet" | "inter_region" | "inter_az" | "regional" | "unknown">;
+  tags?: string[];
+};
+
+export type Ec2DataTransferExplorerV2Response = {
+  kpis: {
+    transferCost: number;
+    usageGb: number;
+    internetTransferCost: number;
+    regionalTransferCost: number;
+    interRegionInterAzTransferCost: number;
+  };
+  chart: {
+    granularity: Ec2DataTransferExplorerV2Granularity;
+    xAxis: "date";
+    yAxis: Ec2DataTransferExplorerV2YAxis;
+    unit: "currency" | "gb";
+    series: Array<{
+      groupKey: string;
+      groupLabel: string;
+      points: Array<{ date: string; value: number; transferCost?: number; usageGb?: number }>;
+    }>;
+  };
+  table: {
+    rows: Array<{
+      groupKey: string;
+      groupLabel: string;
+      transferCost: number;
+      usageGb: number;
+      internetCost: number;
+      interRegionCost: number;
+      interAzCost: number;
+      regionalCost: number;
+      unknownCost: number;
+      percentOfTransferCost: number;
+      mainDriver: "Internet" | "Inter-Region" | "Inter-AZ" | "Regional" | "Unknown";
+    }>;
+  };
+  meta: {
+    yAxis: Ec2DataTransferExplorerV2YAxis;
+    groupBy: Ec2DataTransferExplorerV2GroupBy;
+    granularity: Ec2DataTransferExplorerV2Granularity;
+    compare: Ec2DataTransferExplorerV2Compare;
+    currency: "USD";
+    normalized: true;
+    source: "data_transfer_explorer";
+    hasTransferUsage: boolean;
+    hasTransferCost: boolean;
+  };
+};
+
 export type Ec2NetworkBreakdownType =
   | "Internet Data Transfer"
   | "Inter-Region Data Transfer"

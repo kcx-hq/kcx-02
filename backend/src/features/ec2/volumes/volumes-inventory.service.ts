@@ -2,6 +2,7 @@ import { QueryTypes } from "sequelize";
 
 import { NotFoundError } from "../../../errors/http-errors.js";
 import { sequelize } from "../../../models/index.js";
+import { logger } from "../../../utils/logger.js";
 import type {
   InventoryEc2VolumeDetailQuery,
   InventoryEc2VolumeDetailResponse,
@@ -38,6 +39,13 @@ type SummaryRow = {
   attachedToStoppedInstance: number | string;
   idleVolumes: number | string;
   underutilizedVolumes: number | string;
+};
+
+type BaseDebugRow = {
+  rawRowsCount: number | string;
+  negativeCostRowsCount: number | string;
+  unknownVolumeRowsCount: number | string;
+  finalRowsCount: number | string;
 };
 
 type VolumeRow = {
@@ -437,6 +445,42 @@ export class VolumesInventoryService {
     const pageSize = input.query.pageSize;
     const dateRange = resolveDateRange(input.query);
     const base = this.buildBaseQuery({ tenantId: input.tenantId, query: input.query, dateRange });
+    const debugRows = await sequelize.query<BaseDebugRow>(
+      `
+      ${base.sql}
+      SELECT
+        (SELECT COUNT(*)::double precision FROM pre_base) AS "rawRowsCount",
+        (
+          SELECT COUNT(*)::double precision
+          FROM pre_base
+          WHERE COALESCE(pre_base.raw_mtd_cost, 0) < 0
+             OR COALESCE(pre_base.raw_storage_cost, 0) < 0
+        ) AS "negativeCostRowsCount",
+        (
+          SELECT COUNT(*)::double precision
+          FROM pre_base
+          WHERE pre_base.volume_id IS NULL
+             OR LENGTH(TRIM(pre_base.volume_id)) = 0
+             OR LOWER(TRIM(pre_base.volume_id)) = 'unknown'
+        ) AS "unknownVolumeRowsCount",
+        (SELECT COUNT(*)::double precision FROM base) AS "finalRowsCount";
+      `,
+      {
+        bind: base.bind,
+        type: QueryTypes.SELECT,
+      },
+    );
+    const debugRow = debugRows[0];
+    logger.info("[EC2 Volumes] Inventory row sanitization stats", {
+      tenantId: input.tenantId,
+      cloudConnectionId: input.query.cloudConnectionId ?? null,
+      startDate: dateRange.startDate,
+      endDate: dateRange.endDate,
+      rawRowsCount: toNumberOrZero(debugRow?.rawRowsCount),
+      negativeCostRowsCount: toNumberOrZero(debugRow?.negativeCostRowsCount),
+      unknownVolumeRowsCount: toNumberOrZero(debugRow?.unknownVolumeRowsCount),
+      finalRowsCount: toNumberOrZero(debugRow?.finalRowsCount),
+    });
 
     const countRows = await sequelize.query<CountRow>(
       `
@@ -911,14 +955,20 @@ export class VolumesInventoryService {
         SELECT
           cost_scoped.volume_id,
           cost_scoped.cloud_connection_id,
-          COALESCE(SUM(cost_scoped.total_cost), 0)::double precision AS mtd_cost,
-          COALESCE(SUM(cost_scoped.storage_cost), 0)::double precision AS storage_cost,
-          COALESCE(SUM(cost_scoped.io_cost), 0)::double precision AS io_cost,
-          COALESCE(SUM(cost_scoped.throughput_cost), 0)::double precision AS piops_cost,
+          COALESCE(SUM(cost_scoped.total_cost), 0)::double precision AS raw_mtd_cost,
+          COALESCE(SUM(cost_scoped.storage_cost), 0)::double precision AS raw_storage_cost,
+          COALESCE(SUM(GREATEST(cost_scoped.total_cost, 0)), 0)::double precision AS mtd_cost,
+          COALESCE(SUM(GREATEST(cost_scoped.storage_cost, 0)), 0)::double precision AS storage_cost,
+          COALESCE(SUM(GREATEST(cost_scoped.io_cost, 0)), 0)::double precision AS io_cost,
+          COALESCE(SUM(GREATEST(cost_scoped.throughput_cost, 0)), 0)::double precision AS piops_cost,
           (($3::date - $2::date + 1) * 24)::double precision AS hours,
           COALESCE(
             SUM(
-              CASE WHEN cost_scoped.usage_date = cost_scoped.latest_usage_date THEN cost_scoped.total_cost ELSE 0 END
+              CASE
+                WHEN cost_scoped.usage_date = cost_scoped.latest_usage_date
+                  THEN GREATEST(cost_scoped.total_cost, 0)
+                ELSE 0
+              END
             ),
             0
           )::double precision AS daily_cost
@@ -987,7 +1037,7 @@ export class VolumesInventoryService {
          AND scs.cloud_connection_id IS NOT DISTINCT FROM ss.cloud_connection_id
         GROUP BY ss.volume_id, ss.cloud_connection_id
       ),
-      base AS (
+      pre_base AS (
         SELECT
           current.volume_id,
           COALESCE(NULLIF(TRIM(COALESCE(current.tags_json ->> 'Name', '')), ''), current.volume_id) AS volume_name,
@@ -1016,6 +1066,8 @@ export class VolumesInventoryService {
           COALESCE(cost_agg.storage_cost, 0)::double precision AS storage_cost,
           COALESCE(cost_agg.io_cost, 0)::double precision AS io_cost,
           COALESCE(cost_agg.piops_cost, 0)::double precision AS piops_cost,
+          COALESCE(cost_agg.raw_mtd_cost, 0)::double precision AS raw_mtd_cost,
+          COALESCE(cost_agg.raw_storage_cost, 0)::double precision AS raw_storage_cost,
           COALESCE(cost_agg.hours, 0)::double precision AS hours,
           0::double precision AS ssd_savings,
           COALESCE(snapshot.snapshot_count, 0)::double precision AS snapshot_count,
@@ -1077,6 +1129,8 @@ export class VolumesInventoryService {
             agg.storage_cost,
             agg.io_cost,
             agg.piops_cost,
+            agg.raw_mtd_cost,
+            agg.raw_storage_cost,
             agg.hours
           FROM cost_agg agg
           WHERE agg.volume_id = current.volume_id
@@ -1157,6 +1211,17 @@ export class VolumesInventoryService {
           LIMIT 1
         ) inst ON TRUE
         ${latestWhereClause}
+      ),
+      base AS (
+        SELECT
+          *
+        FROM pre_base
+        WHERE
+          pre_base.volume_id IS NOT NULL
+          AND LENGTH(TRIM(pre_base.volume_id)) > 0
+          AND LOWER(TRIM(pre_base.volume_id)) <> 'unknown'
+          AND COALESCE(pre_base.raw_mtd_cost, 0) >= 0
+          AND COALESCE(pre_base.raw_storage_cost, 0) >= 0
       )
     `;
 

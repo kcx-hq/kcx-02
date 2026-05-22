@@ -9,6 +9,8 @@ import {
 } from "./ec2-optimization.controller.js";
 import {
   handleGetEc2Recommendations as handleGetEc2RecommendationsV1,
+  handlePostEc2RecommendationActionExecute as handlePostEc2RecommendationActionExecuteV1,
+  handlePostEc2RecommendationActionPrecheck as handlePostEc2RecommendationActionPrecheckV1,
   handlePatchEc2RecommendationStatus as handlePatchEc2RecommendationStatusV1,
   handleRefreshEc2Recommendations as handleRefreshEc2RecommendationsV1,
 } from "./ec2-recommendations.controller.js";
@@ -37,9 +39,13 @@ router.get(
 router.get("/ec2/recommendations", asyncHandler(handleGetEc2RecommendationsV1));
 router.post("/ec2/recommendations/refresh", asyncHandler(handleRefreshEc2RecommendationsV1));
 router.patch("/ec2/recommendations/:id/status", asyncHandler(handlePatchEc2RecommendationStatusV1));
+router.post("/ec2/recommendations/:id/actions/precheck", asyncHandler(handlePostEc2RecommendationActionPrecheckV1));
+router.post("/ec2/recommendations/:id/actions/execute", asyncHandler(handlePostEc2RecommendationActionExecuteV1));
 
 router.get("/dashboard/ec2/recommendations", asyncHandler(handleGetEc2RecommendationsV1));
 router.post("/dashboard/ec2/recommendations/refresh", asyncHandler(handleRefreshEc2RecommendationsV1));
 router.patch("/dashboard/ec2/recommendations/:id/status", asyncHandler(handlePatchEc2RecommendationStatusV1));
+router.post("/dashboard/ec2/recommendations/:id/actions/precheck", asyncHandler(handlePostEc2RecommendationActionPrecheckV1));
+router.post("/dashboard/ec2/recommendations/:id/actions/execute", asyncHandler(handlePostEc2RecommendationActionExecuteV1));
 
 export default router;

@@ -7,7 +7,13 @@ import type { ColDef } from "ag-grid-community";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ApiError } from "@/lib/api";
 import { dashboardApi } from "../../api/dashboardApi";
-import type { Ec2RecommendationRecord, Ec2RecommendationStatus, Ec2RecommendationType } from "../../api/dashboardTypes";
+import type {
+  Ec2RecommendationActionKey,
+  Ec2RecommendationActionPrecheckResponse,
+  Ec2RecommendationRecord,
+  Ec2RecommendationStatus,
+  Ec2RecommendationType,
+} from "../../api/dashboardTypes";
 
 import { BaseDataTable } from "../../common/tables/BaseDataTable";
 import { useEc2RecommendationsQuery } from "../../hooks/useDashboardQueries";
@@ -23,12 +29,23 @@ type RecommendationsFilterKey = "category" | "issueType" | "status" | "severity"
 type FilterOption = { key: string; label: string };
 type ResourceRoute = { pathname: string; search: string } | null;
 type StatusAction = { label: string; status?: Ec2RecommendationStatus; kind?: "details" | "resource" };
+type RecommendationActionItem = {
+  key: Ec2RecommendationActionKey;
+  label: string;
+  advisory?: boolean;
+  destructive?: boolean;
+  disabled?: boolean;
+  disabledReason?: string;
+};
+type ActionKind = "executable" | "advisory";
+type ActionSeverity = "destructive" | "optimization" | "advisory";
 
 const MAIN_TABS: Array<{ key: MainTab; label: string }> = [
   { key: "overview", label: "Overview" },
   { key: "recommendations", label: "Recommendations" },
 ];
 const GLOBAL_SCOPE_DEFAULTS: EC2ScopeFilters = { region: [], tags: [] };
+const ENABLE_EC2_REAL_ACTIONS = String((import.meta.env as Record<string, unknown>).VITE_ENABLE_EC2_REAL_ACTIONS ?? "false").toLowerCase() === "true";
 
 const CURRENCY_FORMATTER = new Intl.NumberFormat("en-US", {
   style: "currency",
@@ -74,6 +91,65 @@ const typeLabel = (value: Ec2RecommendationType): string => {
   if (value === "high_data_processing_cost") return "High Data Processing Cost";
   return "Unattached Elastic IP";
 };
+const recommendationActionsFor = (item: Ec2RecommendationRecord): RecommendationActionItem[] => {
+  if (item.type === "idle_instance") {
+    return [{ key: "stop_instance", label: "Stop Instance" }];
+  }
+  if (item.type === "underutilized_instance" || item.type === "overutilized_instance") {
+    return [{ key: "resize_instance", label: "Resize Instance" }];
+  }
+  if (item.type === "unattached_volume") {
+    return [
+      { key: "delete_volume", label: "Delete Volume", destructive: true },
+      { key: "snapshot_then_delete_volume", label: "Snapshot then Delete Volume", destructive: true },
+    ];
+  }
+  if (item.type === "old_snapshot" || item.type === "orphaned_snapshot") {
+    return [{ key: "delete_snapshot", label: "Delete Snapshot", destructive: true }];
+  }
+  if (item.type === "unattached_elastic_ip") {
+    return [{ key: "release_eip", label: "Release Elastic IP", destructive: true }];
+  }
+  if (item.type === "uncovered_on_demand") {
+    return [{ key: "review_ri_sp", label: "Review RI / Savings Plan", advisory: true }];
+  }
+  if (
+    item.type === "high_internet_data_transfer" ||
+    item.type === "high_inter_region_data_transfer" ||
+    item.type === "high_inter_az_data_transfer" ||
+    item.type === "low_cpu_high_network" ||
+    item.type === "high_nat_gateway_cost"
+  ) {
+    return [{ key: "review_traffic", label: "Review Traffic", advisory: true }];
+  }
+  if (
+    item.type === "idle_load_balancer" ||
+    item.type === "low_traffic_load_balancer" ||
+    item.type === "unhealthy_targets" ||
+    item.type === "high_error_rate" ||
+    item.type === "high_data_processing_cost"
+  ) {
+    return [{ key: "review_load_balancer", label: "Review Load Balancer", advisory: true }];
+  }
+  return [{ key: "terminate_instance", label: "Terminate Instance", disabled: true, disabledReason: "Terminate action is disabled in Safety Mode." }];
+};
+const actionTypeFor = (action: RecommendationActionItem | null): ActionKind =>
+  action?.advisory ? "advisory" : "executable";
+const actionSeverityFor = (action: RecommendationActionItem | null): ActionSeverity => {
+  if (!action) return "optimization";
+  if (action.advisory) return "advisory";
+  if (action.destructive) return "destructive";
+  return "optimization";
+};
+const expectedImpactFor = (item: Ec2RecommendationRecord): string => {
+  if (item.category === "compute") return "Reduce idle or over/under-sized compute waste.";
+  if (item.category === "storage") return "Reduce unused storage and snapshot-related waste.";
+  if (item.category === "network") return "Reduce data transfer/network optimization overhead.";
+  if (item.category === "pricing") return "Improve commitment coverage and reduce on-demand exposure.";
+  return "Improve resource efficiency and lower avoidable spend.";
+};
+const withUnknownRegion = (region: string | null | undefined): string =>
+  region && region.trim().length > 0 ? region : "Unknown Region";
 const truncateText = (value: string | null | undefined, max: number = 90): string => {
   const raw = (value ?? "").trim();
   if (!raw) return "-";
@@ -488,6 +564,95 @@ function OptimizationRecommendationsSkeleton() {
   );
 }
 
+function RecommendationActionLauncher({
+  item,
+  onSelectAction,
+}: {
+  item: Ec2RecommendationRecord;
+  onSelectAction: (item: Ec2RecommendationRecord, action: RecommendationActionItem) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [menuPosition, setMenuPosition] = useState<{ top: number; left: number } | null>(null);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const options = recommendationActionsFor(item);
+
+  useEffect(() => {
+    if (!open) return;
+    const close = (event: Event) => {
+      if (event.target instanceof Element && event.target.closest("[data-ec2-row-actions-menu='true']")) return;
+      setOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    window.addEventListener("mousedown", close);
+    window.addEventListener("keydown", closeOnEscape);
+    window.addEventListener("scroll", close, true);
+    return () => {
+      window.removeEventListener("mousedown", close);
+      window.removeEventListener("keydown", closeOnEscape);
+      window.removeEventListener("scroll", close, true);
+    };
+  }, [open]);
+
+  const toggleMenu = () => {
+    const rect = triggerRef.current?.getBoundingClientRect();
+    if (rect) {
+      const width = 220;
+      setMenuPosition({
+        top: rect.bottom + 6,
+        left: Math.max(12, Math.min(rect.right - width, window.innerWidth - width - 12)),
+      });
+    }
+    setOpen((value) => !value);
+  };
+
+  return (
+    <div
+      className="relative inline-flex"
+      data-stop-row-click="true"
+      data-ec2-row-actions-menu="true"
+      onClick={(event) => event.stopPropagation()}
+      onMouseDown={(event) => event.stopPropagation()}
+    >
+      <button
+        ref={triggerRef}
+        type="button"
+        className="optimization-action-menu__trigger"
+        onClick={toggleMenu}
+        aria-expanded={open}
+        aria-haspopup="menu"
+      >
+        Actions <ChevronDown size={13} aria-hidden="true" />
+      </button>
+      {open ? createPortal(
+        <div
+          className="optimization-action-menu__content"
+          role="menu"
+          style={menuPosition ? { position: "fixed", top: menuPosition.top, left: menuPosition.left } : undefined}
+          data-ec2-row-actions-menu="true"
+        >
+          {options.map((option) => (
+            <button
+              key={option.key}
+              type="button"
+              className={`optimization-action-menu__item${option.destructive ? " is-danger" : option.advisory ? " is-advisory" : " is-optimization"}`}
+              disabled={option.disabled}
+              onClick={() => {
+                setOpen(false);
+                onSelectAction(item, option);
+              }}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>,
+        document.body,
+      ) : null}
+    </div>
+  );
+}
+
 export default function EC2OptimizationPage() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -519,6 +684,14 @@ export default function EC2OptimizationPage() {
   const [snoozeTarget, setSnoozeTarget] = useState<Ec2RecommendationRecord | null>(null);
   const [snoozePreset, setSnoozePreset] = useState<"7" | "30" | "custom">("7");
   const [customSnoozeDate, setCustomSnoozeDate] = useState("");
+  const [actionTarget, setActionTarget] = useState<Ec2RecommendationRecord | null>(null);
+  const [selectedActionKey, setSelectedActionKey] = useState<Ec2RecommendationActionKey | null>(null);
+  const [actionPrecheck, setActionPrecheck] = useState<Ec2RecommendationActionPrecheckResponse | null>(null);
+  const [actionTargetInstanceType, setActionTargetInstanceType] = useState("");
+  const [actionConfirmed, setActionConfirmed] = useState(false);
+  const [actionDowntimeAck, setActionDowntimeAck] = useState(false);
+  const [actionConfirmationText, setActionConfirmationText] = useState("");
+  const [actionLoading, setActionLoading] = useState<"precheck" | "execute" | null>(null);
   const deferredSearchFilter = useDeferredValue(searchFilter);
   const queryResourceId = normalizeFilterValue(searchParams.get("resourceId") ?? searchParams.get("instanceId"));
   const queryCategory = normalizeFilterValue(searchParams.get("category"));
@@ -795,6 +968,100 @@ export default function EC2OptimizationPage() {
     void updateRecommendationStatus(item, "snoozed", { snoozedUntil });
   };
 
+  const closeActionModal = () => {
+    setActionTarget(null);
+    setSelectedActionKey(null);
+    setActionPrecheck(null);
+    setActionTargetInstanceType("");
+    setActionConfirmed(false);
+    setActionDowntimeAck(false);
+    setActionConfirmationText("");
+    setActionLoading(null);
+  };
+
+  const openActionModal = (item: Ec2RecommendationRecord, action?: RecommendationActionItem) => {
+    const firstAction = action ?? recommendationActionsFor(item)[0];
+    setActionTarget(item);
+    setSelectedActionKey(firstAction?.key ?? null);
+    setActionPrecheck(null);
+    setActionTargetInstanceType("");
+    setActionConfirmed(false);
+    setActionDowntimeAck(false);
+    setActionConfirmationText("");
+  };
+
+  const runActionPrecheck = async () => {
+    if (!scope || !actionTarget || !selectedActionKey) return;
+    setActionLoading("precheck");
+    try {
+      const payload = {
+        actionKey: selectedActionKey,
+        parameters: {
+          targetInstanceType: actionTargetInstanceType || undefined,
+          confirmationText: actionConfirmationText || undefined,
+        },
+      } as const;
+      const result = ENABLE_EC2_REAL_ACTIONS
+        ? await dashboardApi.precheckEc2RecommendationAction(scope, actionTarget.id, payload)
+        : {
+            allowed: true,
+            actionKey: selectedActionKey,
+            resourceId: actionTarget.resourceId,
+            resourceType: actionTarget.resourceType,
+            region: actionTarget.region ?? null,
+            accountId: actionTarget.accountId ?? null,
+            warnings: ["Real AWS actions are disabled by feature flag. This is intent-only mode."],
+            blockers: [],
+            dryRunSupported: false,
+            dryRunPassed: true,
+          };
+      setActionPrecheck(result);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Precheck failed";
+      setActionPrecheck({
+        allowed: false,
+        actionKey: selectedActionKey,
+        resourceId: actionTarget.resourceId,
+        resourceType: actionTarget.resourceType,
+        region: actionTarget.region ?? null,
+        accountId: actionTarget.accountId ?? null,
+        warnings: [],
+        blockers: [message],
+        dryRunSupported: true,
+        dryRunPassed: false,
+      });
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const executeAction = async () => {
+    if (!scope || !actionTarget || !selectedActionKey || !actionPrecheck?.allowed) return;
+    setActionLoading("execute");
+    try {
+      const payload = {
+        actionKey: selectedActionKey,
+        parameters: {
+          targetInstanceType: actionTargetInstanceType || undefined,
+          confirmationText: actionConfirmationText || undefined,
+        },
+      } as const;
+      if (ENABLE_EC2_REAL_ACTIONS) {
+        await dashboardApi.executeEc2RecommendationAction(scope, actionTarget.id, payload);
+      } else {
+        await updateRecommendationStatus(actionTarget, "in_progress");
+      }
+      await query.refetch();
+      setActionMessage("Action submitted successfully");
+      closeActionModal();
+    } catch (error) {
+      setActionMessage(error instanceof Error ? error.message : "Action execution failed");
+    } finally {
+      setActionLoading(null);
+      window.setTimeout(() => setActionMessage(null), 3000);
+    }
+  };
+
   const topTypeSummary = useMemo(() => {
     const byType = new Map<Ec2RecommendationType, { count: number; saving: number; risk: Ec2RecommendationRecord["risk"] }>();
     for (const row of scopedRows) {
@@ -868,7 +1135,10 @@ export default function EC2OptimizationPage() {
       {
         headerName: "Resource",
         field: "resourceName",
-        minWidth: 170,
+        minWidth: 190,
+        pinned: "left",
+        lockPinned: true,
+        suppressMovable: true,
         cellRenderer: (p: { data?: Ec2RecommendationRecord }) => {
           if (!p.data) return null;
           const row = p.data;
@@ -892,11 +1162,14 @@ export default function EC2OptimizationPage() {
           );
         },
       },
-      { headerName: "Category", valueGetter: (p) => toTitle(p.data?.category ?? "-"), minWidth: 110, maxWidth: 125 },
+      { headerName: "Category", valueGetter: (p) => toTitle(p.data?.category ?? "-"), minWidth: 120, maxWidth: 140, pinned: "left", lockPinned: true, suppressMovable: true },
       {
         headerName: "Issue Type",
         valueGetter: (p) => typeLabel((p.data?.type ?? "idle_instance") as Ec2RecommendationType),
-        minWidth: 165,
+        minWidth: 180,
+        pinned: "left",
+        lockPinned: true,
+        suppressMovable: true,
       },
       {
         headerName: "Evidence Summary",
@@ -904,7 +1177,7 @@ export default function EC2OptimizationPage() {
         minWidth: 220,
       },
       { headerName: "Recommended Action", valueGetter: (p) => truncateText(p.data?.action, 78), minWidth: 210, tooltipField: "action" },
-      { headerName: "Saving", valueGetter: (p) => formatCurrency(p.data?.estimatedMonthlySaving), minWidth: 115, maxWidth: 130 },
+      { headerName: "Saving", valueGetter: (p) => formatCurrency(p.data?.estimatedMonthlySaving), minWidth: 128, maxWidth: 140, pinned: "left", lockPinned: true, suppressMovable: true },
       {
         headerName: "Risk",
         maxWidth: 110,
@@ -920,32 +1193,28 @@ export default function EC2OptimizationPage() {
       {
         headerName: "Status",
         maxWidth: 140,
+        minWidth: 132,
+        pinned: "right",
+        lockPinned: true,
+        suppressMovable: true,
         cellRenderer: (p: { data?: Ec2RecommendationRecord }) =>
           p.data ? <StatusBadge status={normalizeStatus(statusOverrides[p.data.id] ?? p.data.status)} /> : null,
       },
       {
         headerName: "Actions",
-        minWidth: 150,
-        maxWidth: 170,
+        minWidth: 158,
+        maxWidth: 188,
         pinned: "right",
+        lockPinned: true,
+        suppressMovable: true,
         cellRenderer: (p: { data?: Ec2RecommendationRecord }) => {
           if (!p.data) return null;
           const row = p.data;
-          return (
-            <RecommendationActions
-              item={row}
-              status={normalizeStatus(statusOverrides[row.id] ?? row.status)}
-              pending={pendingRecommendationId === row.id}
-              canOpenResource={Boolean(getResourceRoute(row))}
-              onStatusChange={requestStatusChange}
-              onViewDetails={setSelectedRecommendation}
-              onOpenResource={openResource}
-            />
-          );
+          return <RecommendationActionLauncher item={row} onSelectAction={(target, action) => openActionModal(target, action)} />;
         },
       },
     ],
-    [statusOverrides, pendingRecommendationId, searchParams],
+    [searchParams, statusOverrides],
   );
 
   const errorMessage =
@@ -971,6 +1240,25 @@ export default function EC2OptimizationPage() {
   const selectedWorkflow = getWorkflowActions(selectedStatus);
   const isOptimizationLoading = !scope || query.isPending || (!query.data && !query.error);
   const isRecommendationsLoading = activeTab === "recommendations" && (isOptimizationLoading || query.isFetching || recommendationsTabLoading);
+  const actionOptions = actionTarget ? recommendationActionsFor(actionTarget) : [];
+  const selectedActionItem = actionOptions.find((item) => item.key === selectedActionKey) ?? null;
+  const selectedActionType = actionTypeFor(selectedActionItem);
+  const selectedActionSeverity = actionSeverityFor(selectedActionItem);
+  const requiredConfirmationText =
+    selectedActionKey === "delete_volume" || selectedActionKey === "snapshot_then_delete_volume"
+      ? "DELETE VOLUME"
+      : selectedActionKey === "delete_snapshot"
+        ? "DELETE SNAPSHOT"
+        : selectedActionKey === "release_eip"
+          ? "RELEASE EIP"
+          : "";
+  const canExecuteAction =
+    Boolean(selectedActionKey)
+    && !selectedActionItem?.disabled
+    && Boolean(actionPrecheck?.allowed)
+    && (selectedActionKey !== "stop_instance" || actionConfirmed)
+    && (selectedActionKey !== "resize_instance" || (Boolean(actionTargetInstanceType.trim()) && actionDowntimeAck))
+    && (requiredConfirmationText.length === 0 || actionConfirmationText.trim() === requiredConfirmationText);
 
   return (
     <div className="dashboard-page optimization-page" ref={rootRef}>
@@ -1387,6 +1675,120 @@ export default function EC2OptimizationPage() {
             </button>
             <button type="button" className="optimization-drawer-action optimization-drawer-action--primary" onClick={submitSnooze}>
               Snooze
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(actionTarget)} onOpenChange={(open) => {
+        if (!open) closeActionModal();
+      }}>
+        <DialogContent className="optimization-snooze-dialog">
+          <DialogHeader className="space-y-1">
+            <div className="optimization-action-modal__header">
+              <DialogTitle className="text-base font-semibold text-text-primary">Recommendation Action Safety Mode</DialogTitle>
+              <span className={`optimization-action-badge optimization-action-badge--${selectedActionType}`}>
+                {selectedActionType === "executable" ? "Executable" : "Advisory Only"}
+              </span>
+            </div>
+          </DialogHeader>
+          {actionTarget ? (
+            <div className="optimization-snooze-dialog__body">
+              <p className="optimization-snooze-dialog__text">
+                This action will make changes in your AWS account. Review the resource, region, account, and action carefully. This platform will perform a safety precheck before execution. Destructive actions cannot be undone.
+              </p>
+              <div className="optimization-drawer-evidence">
+                <div className="optimization-drawer-evidence__row"><dt>Resource</dt><dd>{actionTarget.resourceId}</dd></div>
+                <div className="optimization-drawer-evidence__row"><dt>Type</dt><dd>{typeLabel(actionTarget.type)}</dd></div>
+                <div className="optimization-drawer-evidence__row"><dt>Account</dt><dd>{actionTarget.accountId ?? "-"}</dd></div>
+                <div className="optimization-drawer-evidence__row"><dt>Region</dt><dd>{withUnknownRegion(actionTarget.region)}</dd></div>
+              </div>
+
+              <div className="optimization-drawer-evidence">
+                <div className="optimization-drawer-evidence__row"><dt>Selected Action</dt><dd>{selectedActionItem?.label ?? "-"}</dd></div>
+                <div className="optimization-drawer-evidence__row"><dt>Execution Mode</dt><dd>Safe Execution (Dry Run First)</dd></div>
+                <div className="optimization-drawer-evidence__row"><dt>Estimated Monthly Savings</dt><dd>{formatCurrency(actionTarget.estimatedMonthlySaving)}</dd></div>
+                <div className="optimization-drawer-evidence__row"><dt>Expected Impact</dt><dd>{expectedImpactFor(actionTarget)}</dd></div>
+              </div>
+              <p className="optimization-snooze-dialog__text optimization-action-execution-note">
+                This action will first perform validation and AWS safety prechecks before execution.
+              </p>
+
+              {selectedActionItem?.disabledReason ? (
+                <p className="dashboard-note">{selectedActionItem.disabledReason}</p>
+              ) : null}
+
+              {selectedActionKey === "resize_instance" ? (
+                <>
+                  <label className="optimization-snooze-date">
+                    <span>Target Instance Type</span>
+                    <input
+                      type="text"
+                      placeholder="e.g. t3.medium"
+                      value={actionTargetInstanceType}
+                      onChange={(event) => setActionTargetInstanceType(event.target.value)}
+                    />
+                  </label>
+                  <label className="optimization-snooze-date">
+                    <span>
+                      <input type="checkbox" checked={actionDowntimeAck} onChange={(event) => setActionDowntimeAck(event.target.checked)} /> Acknowledge downtime risk during resize
+                    </span>
+                  </label>
+                </>
+              ) : null}
+
+              {selectedActionKey === "stop_instance" ? (
+                <label className="optimization-snooze-date">
+                  <span>
+                    <input type="checkbox" checked={actionConfirmed} onChange={(event) => setActionConfirmed(event.target.checked)} /> Confirm stop instance action
+                  </span>
+                </label>
+              ) : null}
+
+              {requiredConfirmationText ? (
+                <label className="optimization-snooze-date">
+                  <span>Type {requiredConfirmationText} to confirm</span>
+                  <input
+                    type="text"
+                    value={actionConfirmationText}
+                    onChange={(event) => setActionConfirmationText(event.target.value)}
+                  />
+                </label>
+              ) : null}
+
+              <div className="optimization-snooze-dialog__actions">
+                <button type="button" className="optimization-drawer-action" onClick={runActionPrecheck} disabled={actionLoading !== null || !selectedActionKey || Boolean(selectedActionItem?.disabled)}>
+                  {actionLoading === "precheck" ? "Running Precheck..." : "Run Precheck"}
+                </button>
+              </div>
+
+              {actionPrecheck ? (
+                <div className="optimization-drawer-section optimization-precheck-panel">
+                  <h3>Precheck Result</h3>
+                  <ul className="optimization-precheck-list">
+                    <li className={`optimization-precheck-item ${actionPrecheck.allowed ? "is-ok" : "is-fail"}`}>{actionPrecheck.allowed ? "✓" : "✖"} Action allowed</li>
+                    <li className={`optimization-precheck-item ${actionPrecheck.dryRunPassed !== false ? "is-ok" : "is-fail"}`}>{actionPrecheck.dryRunPassed === false ? "✖" : "✓"} Dry-run validation {actionPrecheck.dryRunSupported ? "completed" : "not required"}</li>
+                    <li className="optimization-precheck-item is-ok">✓ Resource context loaded</li>
+                    <li className="optimization-precheck-item is-ok">✓ Safety policy checked</li>
+                  </ul>
+                  {actionPrecheck.warnings.length > 0 ? (
+                    <div className="optimization-precheck-notes is-warning">
+                      {actionPrecheck.warnings.map((warning) => <p key={warning}>⚠ {warning}</p>)}
+                    </div>
+                  ) : null}
+                  {actionPrecheck.blockers.length > 0 ? (
+                    <div className="optimization-precheck-notes is-blocker">
+                      {actionPrecheck.blockers.map((blocker) => <p key={blocker}>✖ {blocker}</p>)}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+          <div className="optimization-snooze-dialog__actions">
+            <button type="button" className="optimization-drawer-action" onClick={closeActionModal}>Cancel</button>
+            <button type="button" className={`optimization-drawer-action optimization-drawer-action--primary optimization-drawer-action--${selectedActionSeverity}`} disabled={!canExecuteAction || actionLoading !== null} onClick={executeAction}>
+              {actionLoading === "execute" ? "Executing..." : "Execute Action"}
             </button>
           </div>
         </DialogContent>

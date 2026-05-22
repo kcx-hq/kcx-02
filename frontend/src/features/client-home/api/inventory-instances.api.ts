@@ -48,6 +48,7 @@ export type InventoryEc2InstanceRow = {
   regionId: string | null
   regionName: string | null
   attachedVolumeCount: number
+  attachedVolumeCost: number
   attachedVolumeTotalSizeGb: number | null
   attachedVolumeIds: string[]
   tags: Record<string, unknown> | null
@@ -407,6 +408,7 @@ const normalizeInstanceRow = (value: unknown): InventoryEc2InstanceRow | null =>
     regionId: toStringOrNull(value.regionId),
     regionName: toStringOrNull(value.regionName),
     attachedVolumeCount: toNumberOrNull(value.attachedVolumeCount) ?? 0,
+    attachedVolumeCost: toNumberOrNull(value.attachedVolumeCost) ?? 0,
     attachedVolumeTotalSizeGb: toNumberOrNull(value.attachedVolumeTotalSizeGb),
     attachedVolumeIds: toStringArray(value.attachedVolumeIds),
     tags: toRecordOrNull(value.tags),

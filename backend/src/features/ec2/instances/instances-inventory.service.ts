@@ -80,6 +80,7 @@ type AttachedVolumeSummaryRow = {
   cloudConnectionKey: string;
   instanceId: string;
   attachedVolumeCount: number | string;
+  attachedVolumeCost: number | string | null;
   attachedVolumeTotalSizeGb: number | string | null;
   attachedVolumeIds: string[];
 };
@@ -326,6 +327,35 @@ export class InstancesInventoryService {
     if (!instance) {
       throw new NotFoundError("Instance not found");
     }
+    const sharedRows: InventoryRow[] = [instance];
+    const sharedMetricsLookup = await this.loadFactMetricsLookup({
+      tenantId: input.tenantId,
+      rows: sharedRows,
+      dateRange,
+    });
+    const sharedAttachedVolumesLookup = await this.loadAttachedVolumeLookup({
+      tenantId: input.tenantId,
+      rows: sharedRows,
+      dateRange,
+    });
+    const sharedMetrics =
+      sharedMetricsLookup.byConnectionInstance.get(
+        toConnectionInstanceKey(instance.cloudConnectionId, instance.instanceId),
+      ) ??
+      sharedMetricsLookup.byConnectionInstance.get(
+        toConnectionInstanceKey(instance.cloudConnectionId, instance.instanceId.trim().toLowerCase()),
+      ) ??
+      sharedMetricsLookup.byInstance.get(instance.instanceId) ??
+      sharedMetricsLookup.byInstance.get(instance.instanceId.trim().toLowerCase());
+    const sharedVolumes =
+      sharedAttachedVolumesLookup.byConnectionInstance.get(
+        toConnectionInstanceKey(instance.cloudConnectionId, instance.instanceId),
+      ) ??
+      sharedAttachedVolumesLookup.byConnectionInstance.get(
+        toConnectionInstanceKey(instance.cloudConnectionId, instance.instanceId.trim().toLowerCase()),
+      ) ??
+      sharedAttachedVolumesLookup.byInstance.get(instance.instanceId) ??
+      sharedAttachedVolumesLookup.byInstance.get(instance.instanceId.trim().toLowerCase());
 
     const costUsageRows = await sequelize.query<{
       usageDate: string;
@@ -390,7 +420,15 @@ export class InstancesInventoryService {
         inv.volume_id AS "volumeId",
         inv.size_gb::double precision AS "sizeGb",
         inv.volume_type AS "volumeType",
-        COALESCE(SUM(fvd.total_cost), 0)::double precision AS cost,
+        COALESCE(SUM(
+          CASE
+            WHEN fvd.total_cost IS NULL THEN
+              GREATEST(COALESCE(fvd.storage_cost, 0), 0)
+              + GREATEST(COALESCE(fvd.io_cost, 0), 0)
+              + GREATEST(COALESCE(fvd.throughput_cost, 0), 0)
+            ELSE GREATEST(COALESCE(fvd.total_cost, 0), 0)
+          END
+        ), 0)::double precision AS cost,
         inv.state AS state,
         inv.iops::double precision AS iops,
         inv.throughput::double precision AS throughput,
@@ -462,17 +500,20 @@ export class InstancesInventoryService {
     );
 
     const totalCost = costUsageRows.reduce((sum, row) => sum + toNumberOrZero(row.totalCost), 0);
-    const computeCost = costUsageRows.reduce((sum, row) => sum + toNumberOrZero(row.computeCost), 0);
+    const computeCost = toNumberOrZero(sharedMetrics?.computeCost);
     const ebsCostFromFact = costUsageRows.reduce((sum, row) => sum + toNumberOrZero(row.ebsCost), 0);
-    const ebsCost = ebsCostFromFact > 0 ? ebsCostFromFact : volumeRows.reduce((sum, row) => sum + toNumberOrZero(row.cost), 0);
+    const ebsCostFromShared = toNumberOrZero(sharedVolumes?.attachedVolumeCost);
+    const ebsCost = ebsCostFromShared > 0
+      ? ebsCostFromShared
+      : (ebsCostFromFact > 0 ? ebsCostFromFact : volumeRows.reduce((sum, row) => sum + toNumberOrZero(row.cost), 0));
 
     const avgCpuValues = costUsageRows.map((row) => toNullableNumber(row.cpuAvg)).filter((v): v is number => v !== null);
     const maxCpuValues = costUsageRows.map((row) => toNullableNumber(row.cpuMax)).filter((v): v is number => v !== null);
     const networkInBytes = costUsageRows.reduce((sum, row) => sum + toNumberOrZero(row.networkInBytes), 0);
     const networkOutBytes = costUsageRows.reduce((sum, row) => sum + toNumberOrZero(row.networkOutBytes), 0);
-    const coveredHours = costUsageRows.reduce((sum, row) => sum + toNumberOrZero(row.coveredHours), 0);
-    const uncoveredHours = costUsageRows.reduce((sum, row) => sum + toNumberOrZero(row.uncoveredHours), 0);
-    const totalHours = costUsageRows.reduce((sum, row) => sum + toNumberOrZero(row.totalHours), 0);
+    const coveredHours = toNumberOrZero(sharedMetrics?.coveredHours);
+    const uncoveredHours = toNumberOrZero(sharedMetrics?.uncoveredHours);
+    const totalHours = toNumberOrZero(sharedMetrics?.totalHours);
     const coveragePercent = totalHours > 0 ? (coveredHours / totalHours) * 100 : 0;
     const latestPricingType =
       [...costUsageRows].reverse().map((row) => row.pricingType).find((value) => value && value.length > 0) ?? null;
@@ -660,6 +701,19 @@ export class InstancesInventoryService {
       };
     });
 
+    logger.debug("ec2.instances.inventory.joined-row", {
+      tenantId: input.tenantId,
+      source_endpoint: "instance_detail",
+      date_range: { startDate: dateRange.startDate, endDate: dateRange.endDate },
+      instance_id: instance.instanceId,
+      compute_cost: computeCost,
+      network_usage_gb: toNumberOrZero(sharedMetrics?.networkUsageBytes) / BYTES_TO_GB_DIVISOR,
+      volume_count: toNumberOrZero(sharedVolumes?.attachedVolumeCount),
+      attached_volume_size_gb: toNullableNumber(sharedVolumes?.attachedVolumeTotalSizeGb),
+      volume_cost: ebsCost,
+      matched_volume_ids: Array.isArray(sharedVolumes?.attachedVolumeIds) ? sharedVolumes.attachedVolumeIds : [],
+    });
+
     return {
       identity: {
         instanceId: instance.instanceId,
@@ -679,7 +733,7 @@ export class InstancesInventoryService {
         maxCpu: maxCpuValues.length > 0 ? Math.max(...maxCpuValues) : null,
         networkInBytes,
         networkOutBytes,
-        networkUsageBytes: networkInBytes + networkOutBytes,
+        networkUsageBytes: toNumberOrZero(sharedMetrics?.networkUsageBytes),
         networkCost,
       },
       pricingSummary: {
@@ -766,6 +820,7 @@ export class InstancesInventoryService {
     const attachedVolumesLookup = await this.loadAttachedVolumeLookup({
       tenantId: input.tenantId,
       rows,
+      dateRange,
     });
     const dataTransferLookup = await this.loadDataTransferBreakdownLookup({
       tenantId: input.tenantId,
@@ -782,6 +837,12 @@ export class InstancesInventoryService {
         attachedVolumesLookup.byConnectionInstance.get(
           toConnectionInstanceKey(row.cloudConnectionId, row.instanceId),
         ) ?? attachedVolumesLookup.byInstance.get(row.instanceId);
+      const attachedVolumesResolved =
+        attachedVolumes ??
+        attachedVolumesLookup.byConnectionInstance.get(
+          toConnectionInstanceKey(row.cloudConnectionId, row.instanceId.trim().toLowerCase()),
+        ) ??
+        attachedVolumesLookup.byInstance.get(row.instanceId.trim().toLowerCase());
       const dataTransfer =
         dataTransferLookup.byConnectionInstance.get(
           toConnectionInstanceKey(row.cloudConnectionId, row.instanceId),
@@ -870,10 +931,11 @@ export class InstancesInventoryService {
         instanceLifecycle: row.instanceLifecycle,
         resourceKey: row.resourceKey,
         cloudConnectionId: row.cloudConnectionId,
-        attachedVolumeCount: toNumberOrZero(attachedVolumes?.attachedVolumeCount),
-        attachedVolumeTotalSizeGb: toNullableNumber(attachedVolumes?.attachedVolumeTotalSizeGb),
-        attachedVolumeIds: Array.isArray(attachedVolumes?.attachedVolumeIds)
-          ? attachedVolumes.attachedVolumeIds.filter(
+        attachedVolumeCount: toNumberOrZero(attachedVolumesResolved?.attachedVolumeCount),
+        attachedVolumeCost: toNumberOrZero(attachedVolumesResolved?.attachedVolumeCost),
+        attachedVolumeTotalSizeGb: toNullableNumber(attachedVolumesResolved?.attachedVolumeTotalSizeGb),
+        attachedVolumeIds: Array.isArray(attachedVolumesResolved?.attachedVolumeIds)
+          ? attachedVolumesResolved.attachedVolumeIds.filter(
               (volumeId): volumeId is string =>
                 typeof volumeId === "string" && volumeId.trim().length > 0,
             )
@@ -881,6 +943,30 @@ export class InstancesInventoryService {
         tags: row.tagsJson,
       };
     });
+
+    for (const item of items) {
+      logger.debug("ec2.instances.inventory.joined-row", {
+        tenantId: input.tenantId,
+        source_endpoint: "instances_list",
+        date_range: { startDate: dateRange.startDate, endDate: dateRange.endDate },
+        instance_id: item.instanceId,
+        compute_cost: item.computeCost,
+        network_usage_gb: item.networkUsageBytes / BYTES_TO_GB_DIVISOR,
+        volume_cost: item.attachedVolumeCost,
+        volume_count: item.attachedVolumeCount,
+        matched_volume_ids: item.attachedVolumeIds,
+        attached_volume_size_gb: item.attachedVolumeTotalSizeGb,
+        joined_row_output: {
+          instanceId: item.instanceId,
+          instanceName: item.instanceName,
+          computeCost: item.computeCost,
+          attachedVolumeCost: item.attachedVolumeCost,
+          attachedVolumeCount: item.attachedVolumeCount,
+          attachedVolumeSizeGb: item.attachedVolumeTotalSizeGb,
+          attachedVolumeIds: item.attachedVolumeIds,
+        },
+      });
+    }
 
     return {
       items,
@@ -1527,7 +1613,6 @@ export class InstancesInventoryService {
             COALESCE(fed.compute_cost, 0)::double precision AS compute_cost,
             COALESCE(fed.total_effective_cost, fed.total_billed_cost, 0)::double precision AS total_cost,
             COALESCE(fed.data_transfer_cost, 0)::double precision AS data_transfer_cost,
-            (COALESCE(fed.network_in_bytes, 0) + COALESCE(fed.network_out_bytes, 0))::double precision AS network_usage_bytes,
             COALESCE(fed.covered_hours, 0)::double precision AS covered_hours,
             COALESCE(fed.uncovered_hours, 0)::double precision AS uncovered_hours,
             fed.cpu_avg::double precision AS cpu_avg,
@@ -1543,6 +1628,40 @@ export class InstancesInventoryService {
             AND fed.instance_id = ANY($2::text[])
             AND fed.usage_date >= $3::date
             AND fed.usage_date <= $4::date
+        ),
+        compute_costs AS (
+          SELECT
+            COALESCE(echd.cloud_connection_id::text, '') AS cloud_connection_key,
+            echd.instance_id AS instance_id,
+            SUM(
+              CASE
+                WHEN echd.charge_category = 'compute' AND COALESCE(echd.billed_cost, 0) > 0
+                  THEN echd.billed_cost
+                ELSE 0
+              END
+            )::double precision AS compute_cost
+          FROM ec2_cost_history_daily echd
+          WHERE echd.tenant_id = $1
+            AND echd.instance_id = ANY($2::text[])
+            AND echd.usage_date >= $3::date
+            AND echd.usage_date <= $4::date
+          GROUP BY
+            COALESCE(echd.cloud_connection_id::text, ''),
+            echd.instance_id
+        ),
+        utilization_network AS (
+          SELECT
+            COALESCE(u.cloud_connection_id::text, '') AS cloud_connection_key,
+            u.instance_id AS instance_id,
+            SUM(COALESCE(u.network_in_bytes, 0) + COALESCE(u.network_out_bytes, 0))::double precision AS network_usage_bytes
+          FROM ec2_instance_utilization_daily u
+          WHERE u.tenant_id = $1
+            AND u.instance_id = ANY($2::text[])
+            AND u.usage_date >= $3::date
+            AND u.usage_date <= $4::date
+          GROUP BY
+            COALESCE(u.cloud_connection_id::text, ''),
+            u.instance_id
         ),
         latest_daily AS (
           SELECT
@@ -1578,10 +1697,10 @@ export class InstancesInventoryService {
             )
           ) AS "pricingType",
           SUM(scoped.total_hours)::double precision AS "totalHours",
-          SUM(scoped.compute_cost)::double precision AS "computeCost",
+          COALESCE(compute_costs.compute_cost, 0)::double precision AS "computeCost",
           SUM(scoped.total_cost)::double precision AS "monthToDateCost",
           SUM(scoped.data_transfer_cost)::double precision AS "dataTransferCost",
-          SUM(scoped.network_usage_bytes)::double precision AS "networkUsageBytes",
+          COALESCE(utilization_network.network_usage_bytes, 0)::double precision AS "networkUsageBytes",
           SUM(scoped.covered_hours)::double precision AS "coveredHours",
           SUM(scoped.uncovered_hours)::double precision AS "uncoveredHours",
           COALESCE(
@@ -1600,13 +1719,21 @@ export class InstancesInventoryService {
         LEFT JOIN latest_attrs
           ON latest_attrs.cloud_connection_key = scoped.cloud_connection_key
           AND latest_attrs.instance_id = scoped.instance_id
+        LEFT JOIN compute_costs
+          ON compute_costs.cloud_connection_key = scoped.cloud_connection_key
+          AND compute_costs.instance_id = scoped.instance_id
+        LEFT JOIN utilization_network
+          ON utilization_network.cloud_connection_key = scoped.cloud_connection_key
+          AND utilization_network.instance_id = scoped.instance_id
         GROUP BY
           scoped.cloud_connection_key,
           scoped.instance_id,
           latest_attrs.reservation_type,
           latest_attrs.pricing_model,
           latest_attrs.is_spot,
-          latest_daily.latest_usage_date;
+          latest_daily.latest_usage_date,
+          compute_costs.compute_cost,
+          utilization_network.network_usage_bytes;
       `,
       {
         bind: [input.tenantId, instanceIds, input.dateRange.startDate, input.dateRange.endDate],
@@ -1633,11 +1760,18 @@ export class InstancesInventoryService {
   private async loadAttachedVolumeLookup(input: {
     tenantId: string;
     rows: InventoryRow[];
+    dateRange: DateRange;
   }): Promise<{
     byConnectionInstance: Map<string, AttachedVolumeSummaryRow>;
     byInstance: Map<string, AttachedVolumeSummaryRow>;
   }> {
-    const instanceIds = Array.from(new Set(input.rows.map((row) => row.instanceId)));
+    const instanceIds = Array.from(
+      new Set(
+        input.rows
+          .map((row) => row.instanceId.trim().toLowerCase())
+          .filter((instanceId) => instanceId.length > 0),
+      ),
+    );
     if (instanceIds.length === 0) {
       return {
         byConnectionInstance: new Map(),
@@ -1647,24 +1781,80 @@ export class InstancesInventoryService {
 
     const rows = await sequelize.query<AttachedVolumeSummaryRow>(
       `
+        WITH scoped AS (
+          SELECT
+            COALESCE(f.cloud_connection_id::text, '') AS cloud_connection_key,
+            LOWER(TRIM(f.attached_instance_id)) AS instance_id_norm,
+            f.volume_id,
+            LOWER(TRIM(f.volume_id)) AS volume_id_norm,
+            f.usage_date,
+            COALESCE(f.size_gb, 0)::double precision AS size_gb,
+            CASE
+              WHEN f.total_cost IS NULL THEN
+                GREATEST(COALESCE(f.storage_cost, 0), 0)
+                + GREATEST(COALESCE(f.io_cost, 0), 0)
+                + GREATEST(COALESCE(f.throughput_cost, 0), 0)
+              ELSE GREATEST(COALESCE(f.total_cost, 0), 0)
+            END::double precision AS positive_total_cost
+          FROM fact_ebs_volume_daily f
+          WHERE f.tenant_id = $1
+            AND LOWER(TRIM(f.attached_instance_id)) = ANY($2::text[])
+            AND f.usage_date >= $3::date
+            AND f.usage_date <= $4::date
+            AND COALESCE(f.is_attached, FALSE) = TRUE
+            AND f.attached_instance_id IS NOT NULL
+            AND LENGTH(TRIM(f.attached_instance_id)) > 0
+            AND f.volume_id IS NOT NULL
+            AND LENGTH(TRIM(f.volume_id)) > 0
+            AND LOWER(TRIM(f.volume_id)) <> 'unknown'
+        ),
+        latest_volume_size AS (
+          SELECT DISTINCT ON (scoped.cloud_connection_key, scoped.instance_id_norm, scoped.volume_id_norm)
+            scoped.cloud_connection_key,
+            scoped.instance_id_norm,
+            scoped.volume_id_norm,
+            scoped.volume_id,
+            scoped.size_gb
+          FROM scoped
+          ORDER BY
+            scoped.cloud_connection_key,
+            scoped.instance_id_norm,
+            scoped.volume_id_norm,
+            scoped.usage_date DESC
+        ),
+        volume_inventory_by_instance AS (
+          SELECT
+            latest_volume_size.cloud_connection_key,
+            latest_volume_size.instance_id_norm,
+            COUNT(*)::int AS volume_count,
+            SUM(latest_volume_size.size_gb)::double precision AS total_size_gb,
+            ARRAY_AGG(latest_volume_size.volume_id ORDER BY latest_volume_size.volume_id) AS volume_ids
+          FROM latest_volume_size
+          GROUP BY latest_volume_size.cloud_connection_key, latest_volume_size.instance_id_norm
+        ),
+        volume_cost_by_instance AS (
+          SELECT
+            scoped.cloud_connection_key,
+            scoped.instance_id_norm,
+            SUM(scoped.positive_total_cost)::double precision AS volume_cost,
+            ARRAY_AGG(DISTINCT scoped.volume_id ORDER BY scoped.volume_id) AS cost_volume_ids
+          FROM scoped
+          GROUP BY scoped.cloud_connection_key, scoped.instance_id_norm
+        )
         SELECT
-          COALESCE(inv.cloud_connection_id::text, '') AS "cloudConnectionKey",
-          inv.attached_instance_id AS "instanceId",
-          COUNT(*)::int AS "attachedVolumeCount",
-          SUM(COALESCE(inv.size_gb, 0))::double precision AS "attachedVolumeTotalSizeGb",
-          ARRAY_AGG(DISTINCT inv.volume_id ORDER BY inv.volume_id) AS "attachedVolumeIds"
-        FROM ec2_volume_inventory_snapshots inv
-        WHERE inv.tenant_id = $1
-          AND inv.is_current = true
-          AND inv.deleted_at IS NULL
-          AND inv.is_attached = true
-          AND inv.attached_instance_id = ANY($2::text[])
-        GROUP BY
-          COALESCE(inv.cloud_connection_id::text, ''),
-          inv.attached_instance_id;
+          COALESCE(volume_inventory_by_instance.cloud_connection_key, volume_cost_by_instance.cloud_connection_key) AS "cloudConnectionKey",
+          COALESCE(volume_inventory_by_instance.instance_id_norm, volume_cost_by_instance.instance_id_norm) AS "instanceId",
+          COALESCE(volume_inventory_by_instance.volume_count, 0)::int AS "attachedVolumeCount",
+          COALESCE(volume_cost_by_instance.volume_cost, 0)::double precision AS "attachedVolumeCost",
+          COALESCE(volume_inventory_by_instance.total_size_gb, 0)::double precision AS "attachedVolumeTotalSizeGb",
+          COALESCE(volume_inventory_by_instance.volume_ids, volume_cost_by_instance.cost_volume_ids, ARRAY[]::text[]) AS "attachedVolumeIds"
+        FROM volume_inventory_by_instance
+        FULL OUTER JOIN volume_cost_by_instance
+          ON volume_cost_by_instance.cloud_connection_key = volume_inventory_by_instance.cloud_connection_key
+          AND volume_cost_by_instance.instance_id_norm = volume_inventory_by_instance.instance_id_norm;
       `,
       {
-        bind: [input.tenantId, instanceIds],
+        bind: [input.tenantId, instanceIds, input.dateRange.startDate, input.dateRange.endDate],
         type: QueryTypes.SELECT,
       },
     );
@@ -1677,8 +1867,15 @@ export class InstancesInventoryService {
         toConnectionInstanceKey(row.cloudConnectionKey || null, row.instanceId),
         row,
       );
+      byConnectionInstance.set(
+        toConnectionInstanceKey(row.cloudConnectionKey || null, row.instanceId.trim().toLowerCase()),
+        row,
+      );
       if (!byInstance.has(row.instanceId)) {
         byInstance.set(row.instanceId, row);
+      }
+      if (!byInstance.has(row.instanceId.trim().toLowerCase())) {
+        byInstance.set(row.instanceId.trim().toLowerCase(), row);
       }
     }
 

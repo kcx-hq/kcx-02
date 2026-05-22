@@ -24,7 +24,7 @@
     "backfill:ec2-cost-history": "npm run build && node dist/scripts/backfill-ec2-cost-history.js",
     "backfill:ec2-instance-cost-daily": "npm run build && node dist/scripts/backfill-ec2-instance-cost-daily.js",
     "backfill:ec2-instance-coverage-daily": "npm run build && node dist/scripts/backfill-ec2-instance-coverage-daily.js",
-    "backfill:ec2-instance-daily": "npm run build && node dist/scripts/backfill-ec2-instance-daily.js",
+    "backfill:ec2-instance-daily": "tsx scripts/backfill-ec2-instance-daily.ts",
     "demo:anomaly-data": "npm run build && node dist/scripts/generate-anomaly-demo-data.js",
     "recommendations:ec2:sync": "npm run build && node dist/scripts/generate-ec2-optimization-recommendations.js",
     "seed:cloud-connections:demo": "npm run build && node dist/scripts/seed-cloud-connections-demo.js",

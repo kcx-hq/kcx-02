@@ -3,8 +3,11 @@ import { Op, QueryTypes } from "sequelize";
 import { FactRecommendations, sequelize } from "../../../models/index.js";
 import { classifyExplorerCostCategory } from "../classification/cost-category-classifier.js";
 import type {
+  Ec2RecommendationCategory,
   Ec2RecommendationRecord,
+  Ec2RecommendationResourceType,
   Ec2RecommendationStatus,
+  Ec2RecommendationType,
   Ec2RecommendationsQuery,
   Ec2RefreshRecommendationsInput,
 } from "./ec2-recommendations.types.js";
@@ -653,7 +656,7 @@ export class Ec2RecommendationsRepository {
         fr.resource_id::text AS "resourceId",
         COALESCE(fr.resource_name, fr.resource_id)::text AS "resourceName",
         fr.aws_account_id::text AS "accountId",
-        COALESCE(fr.aws_region_code, dr.region_id, dr.region_name)::text AS region,
+        COALESCE(NULLIF(TRIM(fr.aws_region_code), ''), NULLIF(TRIM(dr.region_id), ''), NULLIF(TRIM(dr.region_name), ''), 'Unknown Region')::text AS region,
         COALESCE(fr.recommendation_title, '')::text AS problem,
         COALESCE(fr.recommendation_text, '')::text AS evidence,
         COALESCE(fr.idle_observation_value, '')::text AS action,
@@ -887,5 +890,73 @@ export class Ec2RecommendationsRepository {
       },
     );
     return affected > 0;
+  }
+
+  async getRecommendationById(input: {
+    tenantId: string;
+    id: number;
+  }): Promise<{
+    id: number;
+    type: Ec2RecommendationType;
+    category: Ec2RecommendationCategory;
+    resourceType: Ec2RecommendationResourceType;
+    resourceId: string;
+    resourceName: string;
+    region: string | null;
+    accountId: string | null;
+    cloudConnectionId: string | null;
+    billingSourceId: number | null;
+    status: Ec2RecommendationStatus;
+    metadata: Record<string, unknown> | null;
+  } | null> {
+    const row = await FactRecommendations.findOne({
+      where: {
+        id: input.id,
+        tenantId: input.tenantId,
+        sourceSystem: { [Op.in]: [...SOURCE_SYSTEMS] },
+      },
+      attributes: [
+        "id",
+        "recommendationType",
+        "category",
+        "resourceType",
+        "resourceId",
+        "resourceName",
+        "awsRegionCode",
+        "awsAccountId",
+        "cloudConnectionId",
+        "billingSourceId",
+        "status",
+        "metadataJson",
+      ],
+    });
+    if (!row) return null;
+
+    const normalizedResourceType = (() => {
+      const raw = String(row.resourceType ?? "").trim().toLowerCase();
+      if (raw === "ec2_instance") return "instance";
+      if (raw === "ebs_volume") return "volume";
+      if (raw === "elastic_ip") return "elastic_ip";
+      if (raw === "load_balancer") return "load_balancer";
+      if (raw === "snapshot" || raw === "ec2_snapshot") return "snapshot";
+      return "snapshot";
+    })() as Ec2RecommendationResourceType;
+
+    return {
+      id: Number(row.id),
+      type: String(row.recommendationType).trim().toLowerCase() as Ec2RecommendationType,
+      category: String(row.category).trim().toLowerCase() as Ec2RecommendationCategory,
+      resourceType: normalizedResourceType,
+      resourceId: String(row.resourceId ?? "").trim(),
+      resourceName: String(row.resourceName ?? row.resourceId ?? "").trim(),
+      region: row.awsRegionCode ? String(row.awsRegionCode).trim() : null,
+      accountId: row.awsAccountId ? String(row.awsAccountId).trim() : null,
+      cloudConnectionId: row.cloudConnectionId ? String(row.cloudConnectionId).trim() : null,
+      billingSourceId: row.billingSourceId === null || typeof row.billingSourceId === "undefined"
+        ? null
+        : Number(row.billingSourceId),
+      status: toLowerStatus(row.status),
+      metadata: (row.metadataJson as Record<string, unknown> | null) ?? null,
+    };
   }
 }

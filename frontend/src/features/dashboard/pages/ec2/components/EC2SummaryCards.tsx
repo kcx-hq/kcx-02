@@ -47,12 +47,13 @@ export function EC2SummaryCards({ summary, loading = false, metric = "cost" }: E
         ]
       : metric === "volumes"
       ? [
-          ...baseCards,
           { label: "Volumes", value: (summary.volumeCount ?? 0).toLocaleString() },
-          { label: "Attached Instances", value: (summary.attachedInstanceCount ?? summary.instanceCount).toLocaleString() },
+          {
+            label: "Attached Volumes",
+            value: Math.max(0, (summary.volumeCount ?? 0) - (summary.unattachedVolumeCount ?? 0)).toLocaleString(),
+          },
           { label: "Unattached Volumes", value: (summary.unattachedVolumeCount ?? 0).toLocaleString() },
           { label: "Storage GB", value: `${(summary.storageGb ?? 0).toLocaleString()} GB` },
-          { label: "Storage GB-Hours", value: `${(summary.storageGbHours ?? 0).toLocaleString()} GB-Hrs` },
         ]
       : [
           ...baseCards,

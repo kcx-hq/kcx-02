@@ -38,6 +38,18 @@ export const classifyExplorerCostCategory = (lineItem: NetworkCostClassifierInpu
     fromLocation,
     toLocation,
   ].join(" ");
+  const infraNetworkingExclusions = [
+    "elasticloadbalancing",
+    "loadbalancer",
+    "load balancer",
+    "loadbalancing",
+    "transitgateway",
+    "transit gateway",
+    "cloudfront",
+    "vpce",
+    "vpc endpoint",
+    "privatelink",
+  ];
 
   // Priority order:
   // 1 NAT 2 EIP 3 Data Transfer 4 Snapshot 5 EBS 6 Compute 7 Other
@@ -59,9 +71,11 @@ export const classifyExplorerCostCategory = (lineItem: NetworkCostClassifierInpu
     "region-to-region",
     "aws-out-bytes",
     "aws-in-bytes",
-    "bytes",
+    "regional-bytes",
+    "out-bytes",
+    "in-bytes",
   ]) || includesAny(fromLocation, ["internet", "external"]) || includesAny(toLocation, ["internet", "external"]);
-  if (hasDataTransfer) return "data_transfer";
+  if (hasDataTransfer && !includesAny(blob, infraNetworkingExclusions)) return "data_transfer";
 
   const hasSnapshot = includesAny(blob, ["snapshot", "ebssnapshot", "ec2_snapshot"]);
   if (hasSnapshot) return "snapshot";

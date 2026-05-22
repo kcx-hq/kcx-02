@@ -29,10 +29,19 @@ import type {
   Ec2OptimizationSummaryResponse,
   Ec2OptimizationInstancesResponse,
   Ec2RecommendationsFiltersQuery,
+  Ec2RecommendationActionExecuteResponse,
+  Ec2RecommendationActionPrecheckResponse,
+  Ec2RecommendationActionRequest,
   Ec2RecommendationsResponse,
   Ec2RecommendationStatus,
   Ec2ExplorerFiltersQuery,
   Ec2ExplorerResponse,
+  Ec2CostExplorerV2FiltersQuery,
+  Ec2CostExplorerV2Response,
+  Ec2UsageExplorerV2FiltersQuery,
+  Ec2UsageExplorerV2Response,
+  Ec2DataTransferExplorerV2FiltersQuery,
+  Ec2DataTransferExplorerV2Response,
   Ec2NetworkBreakdownResponse,
   Ec2DataTransferFiltersQuery,
   Ec2DataTransferResponse,
@@ -480,6 +489,15 @@ function withEc2ExplorerFilters(
     params.set("debugDataTransfer", String(filters.debugDataTransfer));
   }
 
+  const query = params.toString();
+  return query.length > 0 ? `${path}?${query}` : path;
+}
+
+function withEc2CostExplorerV2Path(
+  path: string,
+  scope: DashboardResolvedScope,
+): string {
+  const params = new URLSearchParams(buildDashboardQueryParams(scope));
   const query = params.toString();
   return query.length > 0 ? `${path}?${query}` : path;
 }
@@ -959,8 +977,86 @@ export const dashboardApi = {
       payload,
     );
   },
+  precheckEc2RecommendationAction(
+    scope: DashboardResolvedScope,
+    recommendationId: number,
+    payload: Ec2RecommendationActionRequest,
+  ) {
+    return apiPost<Ec2RecommendationActionPrecheckResponse>(
+      withDashboardQuery(`/dashboard/ec2/recommendations/${recommendationId}/actions/precheck`, scope),
+      payload,
+    );
+  },
+  executeEc2RecommendationAction(
+    scope: DashboardResolvedScope,
+    recommendationId: number,
+    payload: Ec2RecommendationActionRequest,
+  ) {
+    return apiPost<Ec2RecommendationActionExecuteResponse>(
+      withDashboardQuery(`/dashboard/ec2/recommendations/${recommendationId}/actions/execute`, scope),
+      payload,
+    );
+  },
   getEc2Explorer(scope: DashboardResolvedScope, filters: Ec2ExplorerFiltersQuery) {
     return apiGet<Ec2ExplorerResponse>(withEc2ExplorerFilters("/dashboard/ec2/explorer", scope, filters));
+  },
+  getEc2CostExplorerV2(scope: DashboardResolvedScope, filters: Ec2CostExplorerV2FiltersQuery) {
+    return apiPost<Ec2CostExplorerV2Response>(
+      withEc2CostExplorerV2Path("/ec2/explorer/cost", scope),
+      {
+        startDate: filters.startDate,
+        endDate: filters.endDate,
+        granularity: filters.granularity ?? "daily",
+        costBasis: filters.costBasis ?? "gross_cost",
+        groupBy: filters.groupBy ?? "none",
+        tagKey: filters.tagKey ?? null,
+        compare: filters.compare ?? "none",
+        accountIds: filters.accountIds ?? [],
+        regions: filters.regions ?? [],
+        instanceTypes: filters.instanceTypes ?? [],
+        reservationTypes: filters.reservationTypes ?? [],
+        costTypes: filters.costTypes ?? [],
+        tags: filters.tags ?? [],
+      },
+    );
+  },
+  getEc2UsageExplorerV2(scope: DashboardResolvedScope, filters: Ec2UsageExplorerV2FiltersQuery) {
+    return apiPost<Ec2UsageExplorerV2Response>(
+      withEc2CostExplorerV2Path("/ec2/explorer/usage", scope),
+      {
+        startDate: filters.startDate,
+        endDate: filters.endDate,
+        granularity: filters.granularity ?? "daily",
+        usageMetric: filters.usageMetric ?? "cpu",
+        aggregation: filters.aggregation ?? "avg",
+        groupBy: filters.groupBy ?? "none",
+        tagKey: filters.tagKey ?? null,
+        compare: filters.compare ?? "none",
+        accountIds: filters.accountIds ?? [],
+        regions: filters.regions ?? [],
+        instanceTypes: filters.instanceTypes ?? [],
+        tags: filters.tags ?? [],
+      },
+    );
+  },
+  getEc2DataTransferExplorerV2(scope: DashboardResolvedScope, filters: Ec2DataTransferExplorerV2FiltersQuery) {
+    return apiPost<Ec2DataTransferExplorerV2Response>(
+      withEc2CostExplorerV2Path("/ec2/explorer/data-transfer", scope),
+      {
+        startDate: filters.startDate,
+        endDate: filters.endDate,
+        granularity: filters.granularity ?? "daily",
+        yAxis: filters.yAxis ?? "transfer_cost",
+        groupBy: filters.groupBy ?? "none",
+        tagKey: filters.tagKey ?? null,
+        compare: filters.compare ?? "none",
+        accountIds: filters.accountIds ?? [],
+        regions: filters.regions ?? [],
+        instanceTypes: filters.instanceTypes ?? [],
+        transferTypes: filters.transferTypes ?? [],
+        tags: filters.tags ?? [],
+      },
+    );
   },
   getEc2ExplorerNetworkBreakdown(scope: DashboardResolvedScope, filters: Ec2ExplorerFiltersQuery) {
     return apiGet<Ec2NetworkBreakdownResponse>(withEc2ExplorerFilters("/dashboard/ec2/explorer/network-breakdown", scope, filters));
@@ -1123,6 +1219,21 @@ export type {
   Ec2ExplorerCondition,
   Ec2ExplorerFiltersQuery,
   Ec2ExplorerResponse,
+  Ec2CostExplorerV2Granularity,
+  Ec2CostExplorerV2CostBasis,
+  Ec2CostExplorerV2GroupBy,
+  Ec2CostExplorerV2Compare,
+  Ec2CostExplorerV2FiltersQuery,
+  Ec2CostExplorerV2Response,
+  Ec2UsageExplorerV2Granularity,
+  Ec2UsageExplorerV2UsageMetric,
+  Ec2UsageExplorerV2Aggregation,
+  Ec2UsageExplorerV2GroupBy,
+  Ec2UsageExplorerV2Compare,
+  Ec2UsageExplorerV2FiltersQuery,
+  Ec2UsageExplorerV2Response,
+  Ec2DataTransferExplorerV2FiltersQuery,
+  Ec2DataTransferExplorerV2Response,
   Ec2NetworkBreakdownResponse,
   Ec2DataTransferFiltersQuery,
   Ec2DataTransferResponse,

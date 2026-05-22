@@ -1,4 +1,4 @@
-import { Settings2, ChevronDown, Check } from "lucide-react";
+import { Settings2, ChevronDown, Check, Search } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
@@ -22,6 +22,7 @@ import {
   type EC2State,
   type EC2UsageType,
 } from "../ec2ExplorerControls.types";
+import { EC2_INSTANCES_RESERVATION_OPTIONS, type EC2InstancesReservationType } from "./ec2Instances.types";
 import { EC2ExplorerGroupByPopover } from "./EC2ExplorerGroupByPopover";
 import { EC2ExplorerThresholdsPopover } from "./EC2ExplorerThresholdsPopover";
 
@@ -31,7 +32,9 @@ type PopoverKey =
   | "instancesState"
   | "granularity"
   | "compare"
-  | "thresholds";
+  | "thresholds"
+  | "instanceType"
+  | "reservationType";
 
 type Option<T extends string> = {
   key: T;
@@ -51,6 +54,21 @@ type EC2ExplorerTopControlsProps = {
   children?: ReactNode;
   showMetricTabs?: boolean;
   showThresholdButton?: boolean;
+  instancesListControls?: {
+    instanceType: string;
+    reservationType: EC2InstancesReservationType;
+    search: string;
+    instanceTypeOptions: Array<{ key: string; label: string }>;
+    showInstanceType?: boolean;
+    showReservationType?: boolean;
+    onChange: (patch: {
+      instanceType?: string;
+      reservationType?: EC2InstancesReservationType;
+      search?: string;
+    }) => void;
+  };
+  compactInstancesMode?: boolean;
+  onClearInstancesFilters?: () => void;
 };
 
 export function EC2ExplorerTopControls({
@@ -60,6 +78,9 @@ export function EC2ExplorerTopControls({
   children,
   showMetricTabs = true,
   showThresholdButton = true,
+  instancesListControls,
+  compactInstancesMode = false,
+  onClearInstancesFilters,
 }: EC2ExplorerTopControlsProps) {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const [activePopover, setActivePopover] = useState<PopoverKey | null>(null);
@@ -123,7 +144,7 @@ export function EC2ExplorerTopControls({
             : "Condition";
   const groupByLabel = GROUP_BY_OPTIONS.find((item) => item.key === value.groupBy)?.label ?? "None";
   const compareLabel = COMPARE_OPTIONS.find((item) => item.key === value.compare)?.label ?? "None";
-  const stateLabel = STATE_OPTIONS.find((item) => item.key === value.instancesState)?.label ?? "Running";
+  const stateLabel = STATE_OPTIONS.find((item) => item.key === value.instancesState)?.label ?? "All States";
   const hasActiveThresholds = useMemo(
     () => Object.values(value.thresholds).some((entry) => entry.trim().length > 0),
     [value.thresholds],
@@ -320,7 +341,8 @@ export function EC2ExplorerTopControls({
               : null}
           </div>
 
-          <div className="cost-explorer-toolbar-item">
+          {compactInstancesMode ? null : (
+            <div className="cost-explorer-toolbar-item">
             <button
               type="button"
               className={`cost-explorer-toolbar-trigger${activePopover === "granularity" ? " is-active" : ""}`}
@@ -346,8 +368,10 @@ export function EC2ExplorerTopControls({
                 })
               : null}
           </div>
+          )}
 
-          <div className="cost-explorer-toolbar-item">
+          {compactInstancesMode ? null : (
+            <div className="cost-explorer-toolbar-item">
             <button
               type="button"
               className={`cost-explorer-toolbar-trigger${activePopover === "compare" ? " is-active" : ""}`}
@@ -371,32 +395,129 @@ export function EC2ExplorerTopControls({
                 })
               : null}
           </div>
+          )}
 
           {value.metric === "instances" ? (
-            <div className="cost-explorer-toolbar-item">
-              <button
-                type="button"
-                className={`cost-explorer-toolbar-trigger${activePopover === "instancesState" ? " is-active" : ""}`}
-                onClick={() => !loading && togglePopover("instancesState")}
-                aria-expanded={activePopover === "instancesState"}
-                aria-haspopup="dialog"
-                disabled={loading}
-              >
-                <span className="cost-explorer-toolbar-trigger__label">State</span>
-                <span className="cost-explorer-toolbar-trigger__row">
-                  <span className="cost-explorer-toolbar-trigger__value">{stateLabel}</span>
-                  <ChevronDown className="cost-explorer-toolbar-trigger__caret" size={14} aria-hidden="true" />
-                </span>
-              </button>
-              {activePopover === "instancesState"
-                ? renderOptionList({
-                    title: "State",
-                    options: STATE_OPTIONS,
-                    selected: value.instancesState,
-                    onSelect: (nextState: EC2State) => update({ instancesState: nextState }),
-                  })
-                : null}
-            </div>
+            <>
+              <div className="cost-explorer-toolbar-item">
+                <button
+                  type="button"
+                  className={`cost-explorer-toolbar-trigger${activePopover === "instancesState" ? " is-active" : ""}`}
+                  onClick={() => !loading && togglePopover("instancesState")}
+                  aria-expanded={activePopover === "instancesState"}
+                  aria-haspopup="dialog"
+                  disabled={loading}
+                >
+                  <span className="cost-explorer-toolbar-trigger__label">State</span>
+                  <span className="cost-explorer-toolbar-trigger__row">
+                    <span className="cost-explorer-toolbar-trigger__value">{stateLabel}</span>
+                    <ChevronDown className="cost-explorer-toolbar-trigger__caret" size={14} aria-hidden="true" />
+                  </span>
+                </button>
+                {activePopover === "instancesState"
+                  ? renderOptionList({
+                      title: "State",
+                      options: STATE_OPTIONS,
+                      selected: value.instancesState,
+                      onSelect: (nextState: EC2State) => update({ instancesState: nextState }),
+                    })
+                  : null}
+              </div>
+              {instancesListControls ? (
+                instancesListControls.showInstanceType === false ? null : (
+                <div className="cost-explorer-toolbar-item">
+                  <button
+                    type="button"
+                    className={`cost-explorer-toolbar-trigger${activePopover === "instanceType" ? " is-active" : ""}`}
+                    onClick={() => !loading && togglePopover("instanceType")}
+                    aria-expanded={activePopover === "instanceType"}
+                    aria-haspopup="dialog"
+                    disabled={loading}
+                  >
+                    <span className="cost-explorer-toolbar-trigger__label">Instance Type</span>
+                    <span className="cost-explorer-toolbar-trigger__row">
+                      <span className="cost-explorer-toolbar-trigger__value">
+                        {instancesListControls.instanceTypeOptions.find((item) => item.key === instancesListControls.instanceType)?.label ?? "All"}
+                      </span>
+                      <ChevronDown className="cost-explorer-toolbar-trigger__caret" size={14} aria-hidden="true" />
+                    </span>
+                  </button>
+                  {activePopover === "instanceType"
+                    ? renderOptionList({
+                        title: "Instance Type",
+                        options: instancesListControls.instanceTypeOptions,
+                        selected: instancesListControls.instanceType,
+                        onSelect: (nextInstanceType: string) => {
+                          instancesListControls.onChange({ instanceType: nextInstanceType });
+                        },
+                      })
+                    : null}
+                </div>
+              )) : null}
+              {instancesListControls ? (
+                instancesListControls.showReservationType === false ? null : (
+                <div className="cost-explorer-toolbar-item">
+                  <button
+                    type="button"
+                    className={`cost-explorer-toolbar-trigger${activePopover === "reservationType" ? " is-active" : ""}`}
+                    onClick={() => !loading && togglePopover("reservationType")}
+                    aria-expanded={activePopover === "reservationType"}
+                    aria-haspopup="dialog"
+                    disabled={loading}
+                  >
+                    <span className="cost-explorer-toolbar-trigger__label">Reservation Type</span>
+                    <span className="cost-explorer-toolbar-trigger__row">
+                      <span className="cost-explorer-toolbar-trigger__value">
+                        {EC2_INSTANCES_RESERVATION_OPTIONS.find((item) => item.key === instancesListControls.reservationType)?.label ?? "All"}
+                      </span>
+                      <ChevronDown className="cost-explorer-toolbar-trigger__caret" size={14} aria-hidden="true" />
+                    </span>
+                  </button>
+                  {activePopover === "reservationType"
+                    ? renderOptionList({
+                        title: "Reservation Type",
+                        options: EC2_INSTANCES_RESERVATION_OPTIONS,
+                        selected: instancesListControls.reservationType,
+                        onSelect: (nextReservationType: EC2InstancesReservationType) => {
+                          instancesListControls.onChange({ reservationType: nextReservationType });
+                        },
+                      })
+                    : null}
+                </div>
+              )) : null}
+              {instancesListControls ? (
+                <div className="cost-explorer-toolbar-item ec2-instances-toolbar-item--search">
+                  <label className="cost-explorer-toolbar-trigger ec2-instances-search-trigger">
+                    <span className="ec2-instances-search-trigger__icon-wrap" aria-hidden="true">
+                      <Search size={14} />
+                    </span>
+                    <input
+                      type="search"
+                      value={instancesListControls.search}
+                      onChange={(event) => instancesListControls.onChange({ search: event.target.value })}
+                      placeholder="Search"
+                      aria-label="Search instances"
+                      className="ec2-instances-search-trigger__input"
+                    />
+                  </label>
+                </div>
+              ) : null}
+              {onClearInstancesFilters ? (
+                <div className="cost-explorer-toolbar-item">
+                  <button
+                    type="button"
+                    className="cost-explorer-toolbar-trigger"
+                    onClick={onClearInstancesFilters}
+                    disabled={loading}
+                  >
+                    <span className="cost-explorer-toolbar-trigger__label">Clear</span>
+                    <span className="cost-explorer-toolbar-trigger__row">
+                      <span className="cost-explorer-toolbar-trigger__value">All</span>
+                    </span>
+                  </button>
+                </div>
+              ) : null}
+            </>
           ) : null}
         </div>
 

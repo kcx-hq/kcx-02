@@ -71,6 +71,7 @@ export type InventoryEc2InstancesListItem = {
   resourceKey: string | null;
   cloudConnectionId: string | null;
   attachedVolumeCount: number;
+  attachedVolumeCost: number;
   attachedVolumeTotalSizeGb: number | null;
   attachedVolumeIds: string[];
   tags: Record<string, unknown> | null;
