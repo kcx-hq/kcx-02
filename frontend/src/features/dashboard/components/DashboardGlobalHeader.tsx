@@ -516,7 +516,7 @@ export function DashboardGlobalHeader() {
         { label: rootCrumb, path: "/dashboard/overview" },
         { label: "Services", path: "/dashboard/inventory" },
         { label: "Database", path: "/dashboard/services/database" },
-        { label: "Recommendations" },
+        { label: "Optimization" },
       ];
     }
     if (path.startsWith("/dashboard/services/database/assets/")) {

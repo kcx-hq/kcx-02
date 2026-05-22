@@ -45,6 +45,8 @@ import type {
   DatabaseAssetsFilters,
   DatabaseAssetsResponse,
   DatabaseAssetDetail,
+  DatabaseOptimizationActionsFilters,
+  DatabaseOptimizationActionsResponse,
   DatabaseRecommendationFilters,
   DatabaseRecommendationListResponse,
   DatabaseRecommendationSummary,
@@ -310,6 +312,30 @@ function withDatabaseAssetDetailQuery(
   query.set("end_date", params.endDate ?? scope.to);
   const queryString = query.toString();
   return queryString.length > 0 ? `${path}?${queryString}` : path;
+}
+
+function withDatabaseOptimizationActionsFilters(
+  path: string,
+  scope: DashboardResolvedScope,
+  filters?: DatabaseOptimizationActionsFilters,
+): string {
+  const params = new URLSearchParams();
+  if (scope.from) params.set("start_date", scope.from);
+  if (scope.to) params.set("end_date", scope.to);
+  if (typeof filters?.search === "string" && filters.search.trim().length > 0) params.set("search", filters.search.trim());
+  if (typeof filters?.regionKey === "string" && filters.regionKey.trim().length > 0) params.set("region_key", filters.regionKey.trim());
+  if (typeof filters?.dbService === "string" && filters.dbService.trim().length > 0) params.set("db_service", filters.dbService.trim());
+  if (typeof filters?.dbEngine === "string" && filters.dbEngine.trim().length > 0) params.set("db_engine", filters.dbEngine.trim());
+  if (typeof filters?.resourceType === "string" && filters.resourceType.trim().length > 0) params.set("resource_type", filters.resourceType.trim());
+  if (typeof filters?.status === "string" && filters.status.trim().length > 0) params.set("status", filters.status.trim());
+  if (typeof filters?.hasActions === "boolean") params.set("has_actions", String(filters.hasActions));
+  if (typeof filters?.recommendationType === "string" && filters.recommendationType.trim().length > 0) {
+    params.set("recommendation_type", filters.recommendationType.trim());
+  }
+  if (typeof filters?.page === "number") params.set("page", String(filters.page));
+  if (typeof filters?.pageSize === "number") params.set("page_size", String(filters.pageSize));
+  const query = params.toString();
+  return query.length > 0 ? `${path}?${query}` : path;
 }
 
 function withDatabaseRecommendationsFilters(path: string, filters?: DatabaseRecommendationFilters): string {
@@ -731,6 +757,11 @@ export const dashboardApi = {
       withDatabaseAssetDetailQuery(`/services/database/assets/${encodeURIComponent(resourceId)}/details`, scope, params),
     );
   },
+  getDatabaseOptimizationActions(scope: DashboardResolvedScope, filters?: DatabaseOptimizationActionsFilters) {
+    return apiGet<DatabaseOptimizationActionsResponse>(
+      withDatabaseOptimizationActionsFilters("/services/database/optimization/actions", scope, filters),
+    );
+  },
   listDatabaseRecommendations(_scope: DashboardResolvedScope, filters?: DatabaseRecommendationFilters) {
     return apiGet<DatabaseRecommendationListResponse>(withDatabaseRecommendationsFilters("/services/database/recommendations", filters));
   },
@@ -1053,6 +1084,9 @@ export type {
   DatabaseAssetsFilters,
   DatabaseAssetDetail,
   DatabaseAssetsResponse,
+  DatabaseOptimizationActionsFilters,
+  DatabaseOptimizationActionsResponse,
+  DatabaseOptimizationActionRow,
   DatabaseRecommendationFilters,
   DatabaseRecommendationType,
   DatabaseRecommendationConfidence,

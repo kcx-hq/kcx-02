@@ -19,8 +19,8 @@ type DatabaseRecommendationFamilyTabProps = {
   showError: boolean;
   isRefreshing: boolean;
   isGenerating: boolean;
-  actionLabel: "View details" | "Review evidence" | "View";
-  tablePreset: DatabaseRecommendationType;
+  actionLabel: "View details" | "Review evidence" | "View" | "Open action";
+  tablePreset: DatabaseRecommendationType | "generic";
   emptyStateMessage: string;
   onFiltersChange: (next: DatabaseRecommendationsFiltersValue) => void;
   onClearFilters: () => void;
@@ -40,7 +40,7 @@ const isEvidenceBacked = (value: string | null | undefined): boolean => {
   return normalized === "inventory_backed" || normalized === "telemetry_backed";
 };
 
-function buildFamilySummaryCards(rows: DatabaseRecommendationListItem[], tablePreset: DatabaseRecommendationType) {
+function buildFamilySummaryCards(rows: DatabaseRecommendationListItem[], tablePreset: DatabaseRecommendationType | "generic") {
   const total = rows.length;
   const openReviews = rows.filter((row) => ACTIVE_STATUSES.has(toUpper(row.status))).length;
   const evidenceBacked = rows.filter((row) => isEvidenceBacked(row.evidence_level)).length;
@@ -71,6 +71,12 @@ function buildFamilySummaryCards(rows: DatabaseRecommendationListItem[], tablePr
     const countLabel = total === 1 ? "1 HA review" : `${formatInteger(total)} HA reviews`;
     const postureLabel = "topology review only";
     return [countLabel, `${formatInteger(openReviews)} open reviews`, primaryEvidence, warningLabel, postureLabel];
+  }
+
+  if (tablePreset === "generic") {
+    const countLabel = total === 1 ? "1 action signal" : `${formatInteger(total)} action signals`;
+    const savingsLabel = savingsVisibility === "Not estimated" ? "savings not estimated" : `estimated savings ${savingsVisibility}`;
+    return [countLabel, `${formatInteger(openReviews)} open actions`, primaryEvidence, warningLabel, savingsLabel];
   }
 
   const countLabel = total === 1 ? "1 engine/deployment review" : `${formatInteger(total)} engine/deployment reviews`;
@@ -121,16 +127,16 @@ export function DatabaseRecommendationFamilyTab({
         </section>
       ) : null}
 
-      {pageLoading ? <p className="dashboard-note">Loading database recommendations...</p> : null}
-      {showError ? <p className="dashboard-note">Unable to load database recommendations.</p> : null}
+      {pageLoading ? <p className="dashboard-note">Loading database optimization actions...</p> : null}
+      {showError ? <p className="dashboard-note">Unable to load database optimization actions.</p> : null}
 
       {!showError && !pageLoading && rows.length === 0 ? (
         <EmptyStateBlock
-          title={`No ${tabLabel.toLowerCase()} recommendations`}
+          title={tabLabel.toLowerCase() === "actions" ? "No optimization actions" : `No ${tabLabel.toLowerCase()} recommendations`}
           message={emptyStateMessage}
           actions={(
             <button type="button" className="cost-explorer-state-btn" onClick={onRefresh} disabled={isGenerating}>
-              {isGenerating ? "Refreshing..." : "Refresh recommendations"}
+              {isGenerating ? "Refreshing..." : "Refresh actions"}
             </button>
           )}
         />

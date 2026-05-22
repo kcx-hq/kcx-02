@@ -420,6 +420,80 @@ export type DatabaseAssetsResponse = {
   pagination: DatabaseAssetsPagination;
 };
 
+export type DatabaseOptimizationActionsFilters = {
+  search?: string;
+  regionKey?: string;
+  dbService?: string;
+  dbEngine?: string;
+  resourceType?: string;
+  status?: string;
+  hasActions?: boolean;
+  recommendationType?: string;
+  page?: number;
+  pageSize?: number;
+};
+
+export type DatabaseOptimizationTopAction = {
+  id: string;
+  title: string;
+  recommendationType: string;
+  status: string;
+  estimatedMonthlySavings: number;
+  evidenceLevel: string | null;
+  confidence: string | null;
+};
+
+export type DatabaseOptimizationActionSummary = {
+  activeCount: number;
+  openCount: number;
+  warningCount: number;
+  types: string[];
+  evidenceLevels: string[];
+  maxConfidence: "high" | "medium" | "low" | null;
+  estimatedMonthlySavingsTotal: number;
+  topActions: DatabaseOptimizationTopAction[];
+};
+
+export type DatabaseOptimizationActionRow = {
+  resourceId: string;
+  cloudConnectionId: string | null;
+  dbIdentifier: string;
+  resourceName: string | null;
+  resourceArn: string | null;
+  dbService: string;
+  dbEngine: string | null;
+  dbEngineVersion: string | null;
+  resourceType: string | null;
+  instanceClass: string | null;
+  regionId: string | null;
+  regionName: string | null;
+  subAccountId: string | null;
+  subAccountName: string | null;
+  clusterId: string | null;
+  status: string | null;
+  totalCost: number;
+  currencyCode: string | null;
+  avgCpu: number | null;
+  maxCpu: number | null;
+  avgConnections: number | null;
+  maxConnections: number | null;
+  avgIops: number | null;
+  avgThroughputBytes: number | null;
+  allocatedStorageGb: number | null;
+  storageUsedGb: number | null;
+  hasLiveInventory: boolean;
+  inventorySource: "aws_sdk" | "billing_only" | "mixed";
+  inventoryObservedAt: string | null;
+  actionSummary: DatabaseOptimizationActionSummary;
+};
+
+export type DatabaseOptimizationActionsResponse = {
+  items: DatabaseOptimizationActionRow[];
+  total: number;
+  page: number;
+  pageSize: number;
+};
+
 export type DatabaseAssetDetailIdentity = {
   resourceId: string;
   resourceArn: string | null;

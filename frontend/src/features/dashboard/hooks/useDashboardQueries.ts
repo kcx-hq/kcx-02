@@ -30,6 +30,8 @@ import {
   type DatabaseAssetsFilters,
   type DatabaseAssetsResponse,
   type DatabaseAssetDetail,
+  type DatabaseOptimizationActionsFilters,
+  type DatabaseOptimizationActionsResponse,
   type DatabaseRecommendationFilters,
   type DatabaseRecommendationListResponse,
   type DatabaseRecommendationSummary,
@@ -188,6 +190,17 @@ export function useDatabaseAssetDetailQuery(
       endDate: params.endDate ?? undefined,
     }),
     enabled: Boolean(scope?.from && scope?.to && resourceId && params.cloudConnectionId),
+    placeholderData: (previousData) => previousData,
+    staleTime: 30_000,
+  });
+}
+
+export function useDatabaseOptimizationActionsQuery(filters?: DatabaseOptimizationActionsFilters) {
+  const { scope } = useDashboardScope();
+  return useQuery<DatabaseOptimizationActionsResponse, Error>({
+    queryKey: ["dashboard", "services", "database", "optimization-actions", scope, filters],
+    queryFn: () => dashboardApi.getDatabaseOptimizationActions(assertScope(scope), filters),
+    enabled: Boolean(scope?.from && scope?.to),
     placeholderData: (previousData) => previousData,
     staleTime: 30_000,
   });

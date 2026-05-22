@@ -2,13 +2,10 @@ import type { DatabaseRecommendationType } from "../../../api/dashboardTypes";
 
 export type DatabaseRecommendationsTabKey =
   | "overview"
-  | "storage-optimization"
-  | "idle-candidates"
-  | "ha-cost-review"
-  | "engine-deployment-review";
+  | "actions";
 
 export type DatabaseRecommendationFamilyTab = {
-  key: Exclude<DatabaseRecommendationsTabKey, "overview">;
+  key: "storage-optimization" | "idle-candidates" | "ha-cost-review" | "engine-deployment-review";
   label: string;
   recommendationType: DatabaseRecommendationType;
   actionLabel: "View details" | "Review evidence" | "View";
@@ -62,7 +59,7 @@ type DatabaseRecommendationsHeaderTabsProps = {
 
 export function DatabaseRecommendationsHeaderTabs({ activeTab, onChange }: DatabaseRecommendationsHeaderTabsProps) {
   return (
-    <div className="optimization-header-tabs" role="tablist" aria-label="Database recommendation sections">
+    <div className="optimization-header-tabs" role="tablist" aria-label="Database optimization sections">
       <button
         type="button"
         role="tab"
@@ -72,18 +69,15 @@ export function DatabaseRecommendationsHeaderTabs({ activeTab, onChange }: Datab
       >
         Overview
       </button>
-      {DATABASE_RECOMMENDATION_FAMILY_TABS.map((tab) => (
-        <button
-          key={tab.key}
-          type="button"
-          role="tab"
-          aria-selected={activeTab === tab.key}
-          className={`optimization-header-tab ${activeTab === tab.key ? "is-active" : ""}`}
-          onClick={() => onChange(tab.key)}
-        >
-          {tab.label}
-        </button>
-      ))}
+      <button
+        type="button"
+        role="tab"
+        aria-selected={activeTab === "actions"}
+        className={`optimization-header-tab ${activeTab === "actions" ? "is-active" : ""}`}
+        onClick={() => onChange("actions")}
+      >
+        Actions
+      </button>
     </div>
   );
 }
