@@ -105,6 +105,9 @@ type CostCategoryGroupedRow = {
   groupKey: string | null;
   groupLabel: string | null;
   totalCost: string | number | null;
+  costSharePct?: string | number | null;
+  topService?: string | null;
+  topEngine?: string | null;
   computeCost?: string | number | null;
   storageCost?: string | number | null;
   ioCost?: string | number | null;
@@ -827,6 +830,13 @@ SELECT EXISTS (
       }),
     );
     const filters = buildFilterOptionsFilters(filterPreviewParams);
+    const costCategoryPreviewParams = buildExplorerReplacements(
+      buildTrendQueryParams({
+        ...params,
+        groupValues: undefined,
+        costCategoryValues: undefined,
+      }),
+    );
 
     const discoveryParams = buildExplorerReplacements(
       buildTrendQueryParams({
@@ -835,6 +845,15 @@ SELECT EXISTS (
       }),
     );
     const discoveryFilters = buildScopeDiscoveryFilters(discoveryParams);
+    const databaseSelectorParams = buildExplorerReplacements(
+      buildTrendQueryParams({
+        ...params,
+        databaseScope: "all",
+        dbService: undefined,
+        dbEngine: undefined,
+      }),
+    );
+    const databaseSelectorFilters = buildScopeDiscoveryFilters(databaseSelectorParams);
 
     const [discoveryServiceRows, serviceRows, engineRows, regionRows, resourceTypeRows, instanceClassRows, clusterRows, costCategoryRows, dbServicePreviewRows] = await Promise.all([
       sequelize.query<FilterOptionValueRow>(
@@ -854,12 +873,12 @@ ORDER BY value ASC;
         `
 SELECT DISTINCT ${buildDbServiceDisplaySql("f")} AS value
 FROM fact_db_resource_daily f
-WHERE ${filters}
+WHERE ${databaseSelectorFilters}
   AND ${buildDbServiceDisplaySql("f")} <> 'Unknown service'
 ORDER BY value ASC;
 `,
         {
-          replacements: filterPreviewParams,
+          replacements: databaseSelectorParams,
           type: QueryTypes.SELECT,
         },
       ),
@@ -872,7 +891,7 @@ SELECT DISTINCT
     NULLIF(LOWER(BTRIM(li.db_engine)), '')
   ) AS value
 ${fromFactBaseSql({ withInventory: true, withRegion: false })}
-WHERE ${buildTrendFilters(filterPreviewParams, "f")}
+WHERE ${buildTrendFilters(databaseSelectorParams, "f")}
   AND COALESCE(
     NULLIF(NULLIF(LOWER(BTRIM(f.db_engine)), 'unknown'), ''),
     NULLIF(LOWER(BTRIM(li.db_engine)), '')
@@ -880,7 +899,7 @@ WHERE ${buildTrendFilters(filterPreviewParams, "f")}
 ORDER BY value ASC;
 `,
         {
-          replacements: filterPreviewParams,
+          replacements: databaseSelectorParams,
           type: QueryTypes.SELECT,
         },
       ),
@@ -932,22 +951,22 @@ ORDER BY value ASC;
         `
 SELECT DISTINCT ${COST_CATEGORY_LABEL_CASE} AS value
 FROM db_cost_history_daily ch
-WHERE ${buildCostHistoryDrilldownFilters(filterPreviewParams, "ch")}
+WHERE ${buildCostHistoryDrilldownFilters(costCategoryPreviewParams, "ch")}
   AND LOWER(BTRIM(COALESCE(ch.cost_category, ''))) <> 'other'
 ORDER BY value ASC;
 `,
-        { replacements: filterPreviewParams, type: QueryTypes.SELECT },
+        { replacements: costCategoryPreviewParams, type: QueryTypes.SELECT },
       ),
       sequelize.query<FilterOptionValueRow>(
         `
 SELECT DISTINCT
   ${buildDbServiceDisplaySql("f")} AS value
 FROM fact_db_resource_daily f
-WHERE ${buildTrendFilters(filterPreviewParams, "f")}
+WHERE ${databaseSelectorFilters}
   AND ${buildDbServiceDisplaySql("f")} <> 'Unknown service'
 ORDER BY value ASC;
 `,
-        { replacements: filterPreviewParams, type: QueryTypes.SELECT },
+        { replacements: databaseSelectorParams, type: QueryTypes.SELECT },
       ),
     ]);
 
@@ -1508,19 +1527,87 @@ ORDER BY ch.usage_date ASC;
       const drilldownFilters = buildCostHistoryDrilldownFilters(queryParams, "ch");
       const rows = await sequelize.query<CostCategoryGroupedRow>(
         `
+WITH base AS (
+  SELECT
+    LOWER(BTRIM(COALESCE(ch.cost_category, ''))) AS category_key,
+    ${COST_CATEGORY_LABEL_CASE} AS category_label,
+    ch.resource_id AS resource_id,
+    ${costHistoryBaseExpression("ch", queryParams.costBasis)} AS cost_value,
+    ${buildDbServiceDisplaySql("f")} AS service_label,
+    COALESCE(NULLIF(NULLIF(LOWER(BTRIM(COALESCE(f.db_engine, ''))), 'unknown'), ''), 'n/a') AS engine_label
+  FROM db_cost_history_daily ch
+  LEFT JOIN fact_db_resource_daily f
+    ON f.tenant_id = ch.tenant_id
+   AND f.usage_date = ch.usage_date
+   AND f.resource_id = ch.resource_id
+   AND f.cloud_connection_id IS NOT DISTINCT FROM ch.cloud_connection_id
+  WHERE ${drilldownFilters}
+),
+category_agg AS (
+  SELECT
+    category_key,
+    category_label,
+    COALESCE(SUM(cost_value), 0) AS "totalCost",
+    COALESCE(SUM(CASE WHEN category_key = 'compute' THEN cost_value ELSE 0 END), 0) AS "computeCost",
+    COALESCE(SUM(CASE WHEN category_key = 'storage' THEN cost_value ELSE 0 END), 0) AS "storageCost",
+    COALESCE(SUM(CASE WHEN category_key = 'io' THEN cost_value ELSE 0 END), 0) AS "ioCost",
+    COALESCE(SUM(CASE WHEN category_key = 'backup' THEN cost_value ELSE 0 END), 0) AS "backupCost",
+    COUNT(DISTINCT resource_id) AS "resourceCount"
+  FROM base
+  GROUP BY category_key, category_label
+),
+top_service_ranked AS (
+  SELECT
+    category_key,
+    service_label AS top_service,
+    ROW_NUMBER() OVER (
+      PARTITION BY category_key
+      ORDER BY SUM(cost_value) DESC, service_label ASC
+    ) AS rn
+  FROM base
+  WHERE service_label IS NOT NULL
+    AND BTRIM(service_label) <> ''
+    AND service_label <> 'Unknown service'
+  GROUP BY category_key, service_label
+),
+top_engine_ranked AS (
+  SELECT
+    category_key,
+    engine_label AS top_engine,
+    ROW_NUMBER() OVER (
+      PARTITION BY category_key
+      ORDER BY SUM(cost_value) DESC, engine_label ASC
+    ) AS rn
+  FROM base
+  WHERE engine_label IS NOT NULL
+    AND BTRIM(engine_label) <> ''
+    AND engine_label <> 'n/a'
+  GROUP BY category_key, engine_label
+)
 SELECT
-  LOWER(BTRIM(COALESCE(ch.cost_category, ''))) AS "groupKey",
-  ${COST_CATEGORY_LABEL_CASE} AS "group",
-  COALESCE(SUM(${costHistoryBaseExpression("ch", queryParams.costBasis)}), 0) AS "totalCost",
-  COALESCE(SUM(CASE WHEN LOWER(BTRIM(COALESCE(ch.cost_category, ''))) = 'compute' THEN ${costHistoryBaseExpression("ch", queryParams.costBasis)} ELSE 0 END), 0) AS "computeCost",
-  COALESCE(SUM(CASE WHEN LOWER(BTRIM(COALESCE(ch.cost_category, ''))) = 'storage' THEN ${costHistoryBaseExpression("ch", queryParams.costBasis)} ELSE 0 END), 0) AS "storageCost",
-  COALESCE(SUM(CASE WHEN LOWER(BTRIM(COALESCE(ch.cost_category, ''))) = 'io' THEN ${costHistoryBaseExpression("ch", queryParams.costBasis)} ELSE 0 END), 0) AS "ioCost",
-  COALESCE(SUM(CASE WHEN LOWER(BTRIM(COALESCE(ch.cost_category, ''))) = 'backup' THEN ${costHistoryBaseExpression("ch", queryParams.costBasis)} ELSE 0 END), 0) AS "backupCost",
-  COUNT(DISTINCT ch.resource_id) AS "resourceCount"
-FROM db_cost_history_daily ch
-WHERE ${drilldownFilters}
-GROUP BY LOWER(BTRIM(COALESCE(ch.cost_category, ''))), ${COST_CATEGORY_LABEL_CASE}
-ORDER BY "totalCost" DESC;
+  a.category_key AS "groupKey",
+  a.category_label AS "group",
+  a."totalCost",
+  CASE
+    WHEN COALESCE(SUM(a."totalCost") OVER (), 0) > 0
+      THEN a."totalCost" / SUM(a."totalCost") OVER ()
+    ELSE 0
+  END AS "costSharePct",
+  COALESCE(ts.top_service, 'N/A') AS "topService",
+  COALESCE(te.top_engine, 'N/A') AS "topEngine",
+  a."computeCost",
+  a."storageCost",
+  a."ioCost",
+  a."backupCost",
+  a."resourceCount"
+FROM category_agg a
+LEFT JOIN top_service_ranked ts
+  ON ts.category_key = a.category_key
+ AND ts.rn = 1
+LEFT JOIN top_engine_ranked te
+  ON te.category_key = a.category_key
+ AND te.rn = 1
+ORDER BY a."totalCost" DESC, a.category_label ASC;
 `,
         {
           replacements: queryParams,
@@ -1529,6 +1616,9 @@ ORDER BY "totalCost" DESC;
       );
       return rows.map((row) => ({
         group: String(row.group ?? row.groupLabel ?? row.groupKey ?? "Other"),
+        costSharePct: toNullableNumber(row.costSharePct),
+        topService: typeof row.topService === "string" && row.topService.trim().length > 0 ? row.topService.trim() : "N/A",
+        topEngine: typeof row.topEngine === "string" && row.topEngine.trim().length > 0 ? row.topEngine.trim() : "N/A",
         totalCost: toNumber(row.totalCost),
         computeCost: toNumber(row.computeCost),
         storageCost: toNumber(row.storageCost),

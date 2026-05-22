@@ -459,7 +459,7 @@ export function DatabaseExplorerFilters({
                     >
                       <button
                         type="button"
-                        className={`cost-explorer-filter-option${selectedService && !dbEngine.trim() ? " is-active" : ""}`}
+                        className={`cost-explorer-filter-option${selectedService ? " is-active" : ""}`}
                         onFocus={(event) => {
                           clearFlyoutHideTimer();
                           setHoveredServiceScope(entry.scope);
@@ -475,7 +475,7 @@ export function DatabaseExplorerFilters({
                         }}
                       >
                         <span className="cost-explorer-filter-option__label">{matchedService}</span>
-                        {selectedService && !dbEngine.trim() ? <Check className="cost-explorer-filter-option__check" size={15} aria-hidden="true" /> : null}
+                        {selectedService ? <Check className="cost-explorer-filter-option__check" size={15} aria-hidden="true" /> : null}
                       </button>
                       {showEngines && engineFlyoutPosition
                         ? createPortal(

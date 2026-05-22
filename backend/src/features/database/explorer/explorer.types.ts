@@ -137,6 +137,9 @@ export type ExplorerTableRow = {
   groupKey?: string;
   groupLabel?: string;
   totalCost: number;
+  costSharePct?: number | null;
+  topService?: string | null;
+  topEngine?: string | null;
   computeCost: number;
   storageCost: number;
   ioCost: number;

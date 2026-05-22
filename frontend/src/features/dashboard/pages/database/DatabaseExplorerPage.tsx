@@ -426,6 +426,7 @@ export default function DatabaseExplorerPage() {
           />
           <DatabaseExplorerGroupedTable
             metric={metric}
+            groupBy={effectiveGroupBy}
             capabilityFamily={capabilityFamily}
             rows={displayTableRows}
             isLoading={pageLoading}

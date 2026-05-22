@@ -4,6 +4,7 @@ import type { ColDef, ValueFormatterParams } from "ag-grid-community";
 import { BaseDataTable } from "../../../common/tables/BaseDataTable";
 import { TableShell } from "../../../common/tables/TableShell";
 import type {
+  DatabaseExplorerGroupBy,
   DatabaseExplorerMetric,
   DatabaseExplorerTableRow,
   DatabaseUsageCapabilityFamily,
@@ -12,6 +13,7 @@ import { formatCurrency, formatInteger, formatNumber } from "./databaseExplorer.
 
 type DatabaseExplorerGroupedTableProps = {
   metric: DatabaseExplorerMetric;
+  groupBy: DatabaseExplorerGroupBy;
   capabilityFamily?: DatabaseUsageCapabilityFamily;
   rows: DatabaseExplorerTableRow[];
   isLoading?: boolean;
@@ -20,6 +22,7 @@ type DatabaseExplorerGroupedTableProps = {
 
 export function DatabaseExplorerGroupedTable({
   metric,
+  groupBy,
   capabilityFamily,
   rows,
   isLoading = false,
@@ -60,6 +63,44 @@ export function DatabaseExplorerGroupedTable({
           { headerName: "Group", field: "group", minWidth: 180, sort: undefined },
           ...usageColumns,
           ...(capabilityColumns[capabilityFamily ?? "compute_pressure"] ?? []),
+        ];
+      }
+      if (groupBy === "cost_category") {
+        return [
+          { headerName: "Cost Category", field: "group", minWidth: 180, sort: undefined },
+          {
+            headerName: "Total Cost",
+            field: "totalCost",
+            sort: "desc",
+            type: "numericColumn",
+            valueFormatter: (params: ValueFormatterParams<DatabaseExplorerTableRow>) => formatCurrency(params.value),
+          },
+          {
+            headerName: "% of Total",
+            field: "costSharePct",
+            type: "numericColumn",
+            valueFormatter: (params: ValueFormatterParams<DatabaseExplorerTableRow>) => {
+              const raw = Number(params.value);
+              if (!Number.isFinite(raw)) return "—";
+              return formatNumber(raw * 100, "%");
+            },
+          },
+          {
+            headerName: "Resource Count",
+            field: "resourceCount",
+            type: "numericColumn",
+            valueFormatter: (params: ValueFormatterParams<DatabaseExplorerTableRow>) => formatInteger(params.value),
+          },
+          {
+            headerName: "Top Service",
+            field: "topService",
+            minWidth: 170,
+          },
+          {
+            headerName: "Top Engine",
+            field: "topEngine",
+            minWidth: 170,
+          },
         ];
       }
       return [
@@ -103,7 +144,7 @@ export function DatabaseExplorerGroupedTable({
         },
       ];
     },
-    [capabilityFamily, metric],
+    [capabilityFamily, groupBy, metric],
   );
 
   return (
