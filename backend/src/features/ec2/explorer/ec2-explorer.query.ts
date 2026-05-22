@@ -1,6 +1,7 @@
 import { QueryTypes } from "sequelize";
 
 import { sequelize } from "../../../models/index.js";
+import { logger } from "../../../utils/logger.js";
 import type {
   Ec2ExplorerAdditionalDailyCosts,
   Ec2ExplorerFactRow,
@@ -11,6 +12,7 @@ import type {
 } from "./ec2-explorer.types.js";
 import { classifyNetworkCostType } from "./network-cost-classifier.js";
 import { classifyExplorerCostCategory } from "../classification/cost-category-classifier.js";
+import { classifyDataTransferSignals } from "../classification/data-transfer-classifier.js";
 
 const toTagValueFilterSql = (input: { keyParam: string; valueParam: string }): string =>
   `LOWER(COALESCE(NULLIF(TRIM(lt.tags_json ->> :${input.keyParam}), ''), '')) = LOWER(:${input.valueParam})`;
@@ -139,6 +141,36 @@ const isLoadBalancerLineItem = (row: {
     "applicationloadbalancer",
     "networkloadbalancer",
     "classicloadbalancer",
+  ].some((token) => blob.includes(token));
+};
+
+const isExcludedNetworkingInfraLineItem = (row: {
+  usageType?: string | null;
+  productUsageType?: string | null;
+  productFamily?: string | null;
+  operation?: string | null;
+  lineItemDescription?: string | null;
+  serviceName?: string | null;
+}): boolean => {
+  const blob = [
+    row.usageType ?? "",
+    row.productUsageType ?? "",
+    row.productFamily ?? "",
+    row.operation ?? "",
+    row.lineItemDescription ?? "",
+    row.serviceName ?? "",
+  ].join(" ").toLowerCase();
+  return [
+    "elasticloadbalancing",
+    "loadbalancer",
+    "load balancer",
+    "loadbalancing",
+    "transitgateway",
+    "transit gateway",
+    "cloudfront",
+    "vpce",
+    "vpc endpoint",
+    "privatelink",
   ].some((token) => blob.includes(token));
 };
 const toNullableNumber = (value: number | string | null | undefined): number | null => {
@@ -419,6 +451,7 @@ export class Ec2ExplorerQuery {
       fromRegionCode: string | null;
       toRegionCode: string | null;
       cost: number | string | null;
+      billedCost: number | string | null;
       usageQuantity: number | string | null;
       region: string | null;
       account: string | null;
@@ -462,6 +495,7 @@ export class Ec2ExplorerQuery {
           fcli.from_region_code AS "fromRegionCode",
           fcli.to_region_code AS "toRegionCode",
           SUM(${costExpression})::double precision AS cost,
+          SUM(COALESCE(fcli.billed_cost, 0))::double precision AS "billedCost",
           SUM(COALESCE(fcli.consumed_quantity, fcli.pricing_quantity, 0))::double precision AS "usageQuantity",
           COALESCE(dr.region_id, dr.region_name, fcli.from_region_code, fcli.to_region_code, 'Unknown')::text AS region,
           COALESCE(dsa.sub_account_name, CAST(fcli.sub_account_key AS text), 'Unknown')::text AS account,
@@ -517,6 +551,16 @@ export class Ec2ExplorerQuery {
             OR LOWER(COALESCE(fcli.usage_type, '')) LIKE '%elasticip%'
             OR LOWER(COALESCE(fcli.usage_type, '')) LIKE '%loadbalancer%'
             OR LOWER(COALESCE(fcli.usage_type, '')) LIKE '%datatransfer%'
+            OR LOWER(COALESCE(fcli.usage_type, '')) LIKE '%aws-out-bytes%'
+            OR LOWER(COALESCE(fcli.usage_type, '')) LIKE '%aws-in-bytes%'
+            OR LOWER(COALESCE(fcli.usage_type, '')) LIKE '%regional-bytes%'
+            OR LOWER(COALESCE(fcli.usage_type, '')) LIKE '%interzone%'
+            OR LOWER(COALESCE(fcli.usage_type, '')) LIKE '%interregion%'
+            OR LOWER(COALESCE(fcli.product_usage_type, '')) LIKE '%aws-out-bytes%'
+            OR LOWER(COALESCE(fcli.product_usage_type, '')) LIKE '%aws-in-bytes%'
+            OR LOWER(COALESCE(fcli.product_usage_type, '')) LIKE '%regional-bytes%'
+            OR LOWER(COALESCE(fcli.product_usage_type, '')) LIKE '%interzone%'
+            OR LOWER(COALESCE(fcli.product_usage_type, '')) LIKE '%interregion%'
           )
           ${input.scope.scopeType === "global" && typeof input.scope.providerId === "number" ? "AND fcli.provider_id = :scopeProviderId" : ""}
           ${input.scope.scopeType === "global" && Array.isArray(input.scope.billingSourceIds) && input.scope.billingSourceIds.length > 0 ? "AND fcli.billing_source_id IN (:scopeBillingSourceIds)" : ""}
@@ -551,13 +595,35 @@ export class Ec2ExplorerQuery {
       { replacements: scoped.replacements, type: QueryTypes.SELECT },
     );
 
-    return rows
+    const transferDebugEnabled = process.env.EC2_EXPLORER_TRANSFER_DEBUG === "true";
+    const transferTypeTotals = new Map<string, number>();
+    let excludedInfraRows = 0;
+    let transferRowsCount = 0;
+    let transferCostTotal = 0;
+
+    const mapped = rows
       .filter((row) => !isLoadBalancerLineItem(row))
-      .map((row) => ({
+      .filter((row) => {
+        const excluded = isExcludedNetworkingInfraLineItem(row);
+        if (excluded) excludedInfraRows += 1;
+        return !excluded;
+      })
+      .map((row) => {
+        const selectedCost = Math.max(0, toNumber(row.cost));
+        const billedCost = Math.max(0, toNumber(row.billedCost));
+        const category = classifyExplorerCostCategory(row);
+        const cost = category === "data_transfer" ? billedCost : selectedCost;
+        if (category === "data_transfer" && cost > 0) {
+          const transferType = classifyDataTransferSignals(row).transferType;
+          transferRowsCount += 1;
+          transferCostTotal += cost;
+          transferTypeTotals.set(transferType, (transferTypeTotals.get(transferType) ?? 0) + cost);
+        }
+        return {
       rawCost: toNumber(row.cost),
       date: row.date,
-      category: classifyExplorerCostCategory(row),
-      cost: Math.max(0, toNumber(row.cost)),
+      category,
+      cost,
       usageQuantity: Math.max(0, toNumber(row.usageQuantity)),
       usageType: row.usageType,
       productUsageType: row.productUsageType,
@@ -581,7 +647,22 @@ export class Ec2ExplorerQuery {
       instanceId: row.instanceId ? row.instanceId.trim() : null,
       attachedInstanceId: row.attachedInstanceId ? row.attachedInstanceId.trim() : null,
       tagsJson: row.tagsJson,
-      }));
+      };
+      });
+
+    if (transferDebugEnabled) {
+      logger.info("EC2 explorer transfer aggregation debug", {
+        tenantId: input.scope.tenantId,
+        transferRowsCount,
+        transferCostTotal: Number(transferCostTotal.toFixed(6)),
+        groupedTransferTypes: Object.fromEntries(
+          [...transferTypeTotals.entries()].map(([type, total]) => [type, Number(total.toFixed(6))]),
+        ),
+        excludedNetworkingInfraRows: excludedInfraRows,
+      });
+    }
+
+    return mapped;
   }
 
   async getNetworkBreakdown(input: Ec2ExplorerInput): Promise<{
@@ -687,6 +768,7 @@ export class Ec2ExplorerQuery {
     let totalUsageBytes = 0;
     for (const row of rows) {
       if (isLoadBalancerLineItem(row)) continue;
+      if (isExcludedNetworkingInfraLineItem(row)) continue;
       const category = classifyNetworkCostType(row);
       const cost = Math.max(0, toNumber(row.cost));
       const usage = Math.max(0, toNumber(row.usageQuantity));

@@ -15,6 +15,7 @@ export const EC2_COST_EXPLORER_GROUP_BY = [
   "none",
   "account",
   "region",
+  "instance",
   "instance_type",
   "cost_type",
   "reservation_type",
@@ -51,7 +52,7 @@ export type Ec2CostExplorerInput = {
   filters: Ec2CostExplorerFilters;
 };
 
-export type CostTypeKey = "compute" | "ebs" | "snapshot" | "data_transfer" | "eip" | "other";
+export type CostTypeKey = "compute" | "volume" | "snapshot" | "data_transfer" | "elastic_ip" | "other";
 
 export type Ec2CostExplorerRawRow = {
   date: string;
@@ -64,6 +65,7 @@ export type Ec2CostExplorerRawRow = {
   instanceType: string;
   reservationType: string;
   instanceId: string | null;
+  instanceName: string | null;
   attachedInstanceId: string | null;
   tagsJson: Record<string, unknown> | null;
   grossCost: number;
@@ -92,14 +94,14 @@ export type Ec2CostExplorerTableRow = {
   netCost: number;
   effectiveCost: number;
   computeCost: number;
-  ebsCost: number;
+  volumeCost: number;
   snapshotCost: number;
   dataTransferCost: number;
-  eipCost: number;
+  elasticIpCost: number;
   otherCost: number;
   instanceCount: number;
   percentOfTotal: number;
-  mainCostDriver: "Compute" | "EBS" | "Snapshot" | "Data Transfer" | "EIP" | "Other";
+  mainCostDriver: "Compute" | "Volume" | "Snapshot" | "Data Transfer" | "Elastic IP" | "Other";
 };
 
 export type Ec2CostExplorerResponse = {

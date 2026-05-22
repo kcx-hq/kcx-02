@@ -59,7 +59,7 @@ export type Ec2DataTransferExplorerRawRow = {
 export type Ec2DataTransferExplorerChartSeries = {
   groupKey: string;
   groupLabel: string;
-  points: Array<{ date: string; value: number }>;
+  points: Array<{ date: string; value: number; transferCost?: number; usageGb?: number }>;
 };
 
 export type Ec2DataTransferExplorerTableRow = {
@@ -81,12 +81,14 @@ export type Ec2DataTransferExplorerResponse = {
     transferCost: number;
     usageGb: number;
     internetTransferCost: number;
+    regionalTransferCost: number;
     interRegionInterAzTransferCost: number;
   };
   chart: {
     granularity: Ec2DataTransferExplorerGranularity;
     xAxis: "date";
     yAxis: Ec2DataTransferExplorerYAxis;
+    unit: "currency" | "gb";
     series: Ec2DataTransferExplorerChartSeries[];
   };
   table: {
@@ -99,6 +101,8 @@ export type Ec2DataTransferExplorerResponse = {
     compare: Ec2DataTransferExplorerCompare;
     currency: "USD";
     normalized: true;
+    source: "data_transfer_explorer";
+    hasTransferUsage: boolean;
+    hasTransferCost: boolean;
   };
 };
-

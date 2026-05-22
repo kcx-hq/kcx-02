@@ -1,24 +1,22 @@
-﻿import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { EChartsOption } from "echarts";
+import { Copy, ExternalLink, HardDrive, MoreVertical, Network, Server, TrendingDown } from "lucide-react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 
 import { useInventoryEc2InstanceDetail } from "@/features/client-home/hooks/useInventoryEc2Instances";
+import { BaseEChart } from "@/features/dashboard/common/charts/BaseEChart";
 import { EmptyStateBlock } from "@/features/dashboard/common/components/EmptyStateBlock";
 
 import {
   CostDriversSection,
-  DecisionSummaryCard,
   KeySignalsGrid,
   MetadataSection,
   NetworkDetailsSection,
   PerformanceSection,
-  RecommendationCard,
-  StickySectionNav,
   StorageSection,
   networkBreakdownColorAt,
   splitBullets,
   volumeColumnsFactory,
-  type DecisionStatus,
 } from "./components/EC2InstanceDetailDecisionLayout";
 import { formatRecommendationEvidence } from "./components/recommendationEvidence";
 import { dashboardApi, type Ec2RecommendationStatus } from "../../api/dashboardApi";
@@ -110,6 +108,7 @@ export default function EC2InstanceDetailPage() {
   const [statusOverrides, setStatusOverrides] = useState<Record<number, string>>({});
   const [pendingStatusId, setPendingStatusId] = useState<number | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [instanceIdCopied, setInstanceIdCopied] = useState(false);
 
   const detailQuery = useInventoryEc2InstanceDetail({ instanceId: instanceId ?? "", cloudConnectionId, startDate, endDate });
 
@@ -251,7 +250,6 @@ export default function EC2InstanceDetailPage() {
   const primaryRecommendation = sortedRecommendations[0];
   const hasRecommendations = sortedRecommendations.length > 0;
   const totalSavings = sortedRecommendations.reduce((sum, rec) => sum + (rec.saving ?? 0), 0);
-  const status: DecisionStatus = sortedRecommendations.some((rec) => rankRisk(rec.risk) >= 3) ? "Risk Detected" : hasRecommendations ? "Optimization Opportunity" : "Healthy";
 
   const selectedIssueType = issueParam || primaryRecommendation?.type || "";
   const issueFamily = getIssueFamily(selectedIssueType || primaryRecommendation?.type || "");
@@ -291,32 +289,6 @@ export default function EC2InstanceDetailPage() {
       data: normalizedNetworkRows.map((row, index) => ({ name: row.type, value: row.cost, itemStyle: { color: networkBreakdownColorAt(index) } })),
     }],
   };
-
-  const issueDescription = (() => {
-    const type = selectedIssueType || primaryRecommendation?.type;
-    if (type === "high_internet_data_transfer") return "This instance sends most of its network traffic to the internet, increasing data transfer cost.";
-    if (type === "high_inter_az_data_transfer") return "This instance has high cross-AZ traffic, which can inflate transfer charges.";
-    if (type === "high_inter_region_data_transfer") return "This instance has high cross-region traffic, increasing network transfer cost.";
-    if (type === "high_nat_gateway_cost") return "NAT Gateway transfer processing is a significant cost component for this instance.";
-    return primaryRecommendation?.problem ?? "No active optimization opportunity found for this instance.";
-  })();
-  const primaryEvidence = formatRecommendationEvidence(primaryRecommendation?.evidence);
-  const primaryAction = primaryRecommendation?.action ?? "No action required.";
-  const riskLevel = primaryRecommendation ? toTitle(primaryRecommendation.risk) : "Low";
-
-  const heroMetrics = hasRecommendations ? [
-    { label: "Total Cost", value: formatCurrency(totalCost) },
-    { label: "Network Cost", value: formatCurrency(canonicalNetworkCost) },
-    { label: "Internet Data Transfer Cost", value: formatCurrency(internetRow?.cost ?? 0) },
-    { label: "Internet Data Transfer Usage", value: toUsageUnit(internetRow?.usageGb ?? 0) },
-    { label: "Potential Savings", value: `${formatCurrency(totalSavings)}/month` },
-    { label: "Risk Level", value: riskLevel },
-  ] : [
-    { label: "Total Cost", value: formatCurrency(totalCost) },
-    { label: "Network Cost", value: formatCurrency(canonicalNetworkCost) },
-    { label: "Potential Savings", value: "$0.00/month" },
-    { label: "Risk Level", value: "Low" },
-  ];
 
   const dominantRow = [...costRows].sort((a, b) => b.cost - a.cost)[0] ?? { type: "Other", cost: 0, pct: 0 };
   const showNetworkSection = issueFamily === "network" || canonicalNetworkCost > 0 || hasNetworkBreakdown;
@@ -376,6 +348,18 @@ export default function EC2InstanceDetailPage() {
 
   const storageColumns = volumeColumnsFactory(formatSize, formatCurrency, formatNumber, toTitle);
   const metadataRows = Object.entries(tags).map(([key, value]) => ({ key, value: String(value) }));
+  const costTrendOption = buildLineOption({
+    labels: detail.trends.costTrend.map((d) => d.date),
+    yAxisName: "$",
+    legend: ["Total", "Compute", "Network", "EBS", "Other"],
+    series: [
+      { name: "Total", data: detail.trends.costTrend.map((d) => d.totalCost) },
+      { name: "Compute", data: detail.trends.costTrend.map((d) => d.computeCost) },
+      { name: "Network", data: detail.trends.costTrend.map((d) => d.networkCost) },
+      { name: "EBS", data: detail.trends.costTrend.map((d) => d.ebsCost) },
+      { name: "Other", data: detail.trends.costTrend.map((d) => d.otherCost) },
+    ],
+  });
 
   const highlightedRecommendation = recommendationIdParam
     ? sortedRecommendations.find((rec) => String(rec.id) === recommendationIdParam)
@@ -384,24 +368,6 @@ export default function EC2InstanceDetailPage() {
     ? [highlightedRecommendation, ...sortedRecommendations.filter((rec) => rec.id !== highlightedRecommendation.id).slice(0, 2)]
     : sortedRecommendations.slice(0, 3);
   const showViewAll = sortedRecommendations.length > 3;
-
-  const sections = [
-    { id: "summary", label: "Summary" },
-    { id: "actions", label: "Actions" },
-    { id: "signals", label: "Key Signals" },
-    { id: "cost-drivers", label: "Cost Drivers" },
-    ...(showNetworkSection ? [{ id: "network", label: "Network Evidence" }] : []),
-    { id: "performance", label: "Performance" },
-    { id: "storage", label: "Storage" },
-    { id: "metadata", label: "Metadata" },
-  ];
-
-
-  const investigateLabel =
-    issueFamily === "network" ? "Investigate Network"
-      : issueFamily === "compute" ? "Investigate Performance"
-        : issueFamily === "storage" ? "Investigate Storage"
-          : "Investigate";
 
   const openActionCenter = (params?: { category?: string; issueType?: string; recommendationId?: number }) => {
     if (!instanceId) return;
@@ -413,27 +379,88 @@ export default function EC2InstanceDetailPage() {
     navigate({ pathname: OPTIMIZATION_PAGE_PATH, search: next.toString() });
   };
 
-  const evidenceFirstSection = issueFamily === "network" ? "network" : issueFamily === "storage" ? "storage" : "performance";
+  const instanceDisplayName = detail.identity.name || detail.identity.instanceId;
+  const reservationType = toPricingLabel(detail.pricingSummary.pricingType);
+  const potentialSavingsText = `${formatCurrency(totalSavings)}/mo`;
+  const attachedVolumeCount = detail.attachedVolumes.length;
+  const attachedVolumeGb = detail.attachedVolumes.reduce((sum, volume) => sum + (Number.isFinite(volume.sizeGb) ? Number(volume.sizeGb) : 0), 0);
 
   return (
     <div className="dashboard-page">
-      <section className="ec2-instance-detail" aria-label="EC2 instance detail">
-        <div className="ec2-instance-detail__layout">
-          <div className="ec2-instance-detail__content">
-            <DecisionSummaryCard
-              status={status}
-              issueTitle={hasRecommendations ? recommendationTypeLabel(selectedIssueType || primaryRecommendation.type) : "No Active Optimization Opportunity"}
-              issueDescription={issueDescription}
-              riskLevel={riskLevel}
-              metrics={heroMetrics}
-              primaryEvidence={primaryEvidence.length > 0 ? primaryEvidence : [{ label: "Evidence", value: "Needs backend source" }]}
-              primaryAction={primaryAction}
-              showOpportunity={hasRecommendations}
-              onViewActions={() => openAndScroll("actions")}
-              investigateLabel={investigateLabel}
-              onInvestigate={() => openAndScroll(evidenceFirstSection)}
-              onOpenActionCenter={() => primaryRecommendation ? openActionCenter({ category: primaryRecommendation.category, issueType: primaryRecommendation.type, recommendationId: primaryRecommendation.id }) : openActionCenter()}
-            />
+      <section className="ec2-instance-detail s3-bucket-reference" aria-label="EC2 instance detail">
+        <div className="s3-bucket-reference__shell">
+          <header className="s3-bucket-reference__header">
+            <div className="s3-bucket-reference__title-wrap">
+              <div className="s3-bucket-reference__title-row">
+                <h1 className="s3-bucket-reference__title">{instanceDisplayName}</h1>
+                <button
+                  type="button"
+                  aria-label="Copy instance id"
+                  className={`s3-bucket-reference__icon-btn s3-bucket-reference__copy-btn${instanceIdCopied ? " is-copied" : ""}`}
+                  onClick={async () => {
+                    await navigator.clipboard.writeText(detail.identity.instanceId ?? "");
+                    setInstanceIdCopied(true);
+                    window.setTimeout(() => setInstanceIdCopied(false), 1400);
+                  }}
+                >
+                  <Copy size={12} />
+                </button>
+              </div>
+              <div className="s3-bucket-reference__meta-line">
+                <strong>{detail.identity.instanceId}</strong>
+                <span>Account: {detail.identity.account ?? "—"}</span>
+                <span>Region: {detail.identity.region ?? "—"}</span>
+                <span>Instance Type: {detail.identity.type ?? "—"}</span>
+                <span>State: {detail.identity.state ? toTitle(detail.identity.state.toLowerCase()) : "—"}</span>
+                <span>Reservation: {reservationType}</span>
+                <span>Environment: {getTagValue(tags, "Environment")}</span>
+                <span>Owner: {getTagValue(tags, "Owner")}</span>
+              </div>
+            </div>
+            <div className="s3-bucket-reference__header-actions">
+              <button type="button" className="s3-bucket-reference__ghost-btn">
+                <ExternalLink size={12} />
+                View in AWS
+              </button>
+              <button type="button" className="s3-bucket-reference__icon-btn" aria-label="More actions">
+                <MoreVertical size={12} />
+              </button>
+            </div>
+          </header>
+
+          <section className="s3-bucket-reference__kpi-row" aria-label="KPI cards">
+            <article className="s3-bucket-reference__kpi-card"><p>Compute Cost</p><h3>{formatCurrency(computeCost)}</h3><span>Direct EC2 compute charges</span><em><Server size={16} /></em></article>
+            <article className="s3-bucket-reference__kpi-card"><p>Network Usage</p><h3>{toUsageUnit(bytesToGb(detail.usageSummary.networkUsageBytes))}</h3><span>{formatCurrency(canonicalNetworkCost)} network cost</span><em><Network size={16} /></em></article>
+            <article className="s3-bucket-reference__kpi-card"><p>Volume Cost</p><h3>{formatCurrency(ebsCost)}</h3><span>{`${attachedVolumeCount} attached volume${attachedVolumeCount === 1 ? "" : "s"} • ${formatNumber(attachedVolumeGb)} GB`}</span><em><HardDrive size={16} /></em></article>
+            <article className="s3-bucket-reference__kpi-card"><p>Potential Savings</p><h3>{potentialSavingsText}</h3><span>{`${sortedRecommendations.length} optimization recommendation${sortedRecommendations.length === 1 ? "" : "s"}`}</span><em><TrendingDown size={16} /></em></article>
+          </section>
+
+          <section className="s3-bucket-reference__main-row" aria-label="Main analysis">
+            <div className="s3-bucket-reference__trend-card">
+              <div className="s3-bucket-reference__card-head">
+                <div><h3>Cost Trend</h3><p>Daily cost by cost type</p></div>
+                <div className="s3-bucket-reference__toolbar"><button type="button">Granularity: Daily</button></div>
+              </div>
+              {detail.trends.costTrend.length > 0 ? <BaseEChart option={costTrendOption} height={280} /> : <p className="dashboard-note">No cost trend points available.</p>}
+            </div>
+            <aside className="s3-bucket-reference__insights">
+              <div className="s3-bucket-reference__card-head">
+                <h3>Top Insights</h3>
+                <button type="button" className="s3-bucket-reference__text-btn" onClick={() => openActionCenter({ issueType: selectedIssueType })}>View all insights</button>
+              </div>
+              {sortedRecommendations.slice(0, 3).map((rec) => (
+                <div key={rec.id} className="s3-bucket-reference__insight-item is-clickable" onClick={() => openActionCenter({ category: rec.category, issueType: rec.type, recommendationId: rec.id })} role="button" tabIndex={0}>
+                  <div className="s3-bucket-reference__insight-main">
+                    <div className="s3-bucket-reference__insight-title-row"><h4>{recommendationTypeLabel(rec.type)}</h4></div>
+                    <div className="s3-bucket-reference__insight-empty">{toTitle(rec.category)} · {formatCurrency(rec.saving)}/mo</div>
+                  </div>
+                </div>
+              ))}
+              {sortedRecommendations.length === 0 ? <p className="s3-bucket-reference__insight-empty">No optimization insights available.</p> : null}
+            </aside>
+          </section>
+
+          <section className="s3-bucket-reference__accordions" aria-label="Detail sections">
 
             <section id="actions" className="ec2-instance-detail__panel ec2-instance-detail__accordion">
               <button type="button" aria-expanded={isExpanded("actions")} className="ec2-instance-detail__accordion-head" onClick={() => setExpanded("actions", !isExpanded("actions"))}><h3>Recommended Actions</h3><span>{`Recommended Actions · ${sortedRecommendations.length} open · ${formatCurrency(totalSavings)}/mo savings`}</span></button>
@@ -441,19 +468,37 @@ export default function EC2InstanceDetailPage() {
                 <>
                   <div className="ec2-instance-detail__recommendation-grid">
                     {actionsToRender.map((rec) => (
-                      <RecommendationCard
-                        key={rec.id}
-                        recommendation={rec}
-                        isHighlighted={String(rec.id) === recommendationIdParam}
-                        formatCurrency={formatCurrency}
-                        toTitle={toTitle}
-                        recommendationTypeLabel={recommendationTypeLabel}
-                        evidenceBullets={formatRecommendationEvidence(rec.evidence)}
-                        actionBullets={splitBullets(rec.action)}
-                        onActionClick={(item) => openActionCenter({ category: item.category, issueType: item.type, recommendationId: item.id })}
-                        onStatusChange={handleStatusChange}
-                        isStatusUpdating={pendingStatusId === rec.id}
-                      />
+                      <article key={rec.id} className={`ec2-instance-detail__recommendation-card${String(rec.id) === recommendationIdParam ? " is-highlighted" : ""}`}>
+                        <header><h4>{recommendationTypeLabel(rec.type)}</h4><span>{toTitle(rec.category)}</span></header>
+                        <div className="ec2-instance-detail__recommendation-body">
+                          <p><strong>Evidence:</strong> {formatRecommendationEvidence(rec.evidence)[0]?.value ?? "Needs backend source"}</p>
+                          <p><strong>Recommended action:</strong> {splitBullets(rec.action)[0] ?? "Review in Action Center."}</p>
+                        </div>
+                        <div className="ec2-instance-detail__recommendation-meta">
+                          <span><strong>Savings:</strong> {formatCurrency(rec.saving)}/month</span>
+                          <span><strong>Risk:</strong> {toTitle(rec.risk)}</span>
+                          <span><strong>Status:</strong> {toTitle(rec.status)}</span>
+                        </div>
+                        <select
+                          data-stop-row-click="true"
+                          disabled={pendingStatusId === rec.id}
+                          defaultValue=""
+                          onChange={(event) => {
+                            const value = event.target.value as Ec2RecommendationStatus;
+                            if (!value) return;
+                            void handleStatusChange(rec, value);
+                            event.target.value = "";
+                          }}
+                        >
+                          <option value="">Update Status</option>
+                          <option value="in_progress">Mark In Progress</option>
+                          <option value="snoozed">Snooze</option>
+                          <option value="dismissed">Dismiss</option>
+                          <option value="completed">Mark Completed</option>
+                          <option value="open">Reopen</option>
+                        </select>
+                        <button type="button" className="cost-explorer-state-btn" onClick={() => openActionCenter({ category: rec.category, issueType: rec.type, recommendationId: rec.id })}>Open in Action Center</button>
+                      </article>
                     ))}
                   </div>
                   {actionMessage ? <p className="dashboard-note">{actionMessage}</p> : null}
@@ -488,9 +533,23 @@ export default function EC2InstanceDetailPage() {
               <button type="button" aria-expanded={isExpanded("metadata")} className="ec2-instance-detail__accordion-head" onClick={() => setExpanded("metadata", !isExpanded("metadata"))}><h3>Metadata</h3><span>{`Metadata · ${detail.identity.region ?? "—"} · ${detail.identity.type ?? "—"} · ${detail.identity.state ? toTitle(detail.identity.state.toLowerCase()) : "—"}`}</span></button>
               {isExpanded("metadata") ? <MetadataSection values={[{ label: "Instance ID", value: detail.identity.instanceId ?? "—" }, { label: "Region", value: detail.identity.region ?? "—" }, { label: "Account", value: detail.identity.account ?? "—" }, { label: "Availability Zone", value: detail.identity.availabilityZone ?? "—" }, { label: "Launch Time", value: detail.identity.launchTime ? new Date(detail.identity.launchTime).toLocaleString("en-US") : "—" }, { label: "Instance Type", value: detail.identity.type ?? "—" }, { label: "State", value: detail.identity.state ? toTitle(detail.identity.state.toLowerCase()) : "—" }, { label: "Team", value: getTagValue(tags, "Team") }, { label: "Product", value: getTagValue(tags, "Product") }, { label: "Environment", value: getTagValue(tags, "Environment") }, { label: "Owner", value: getTagValue(tags, "Owner") }]} metadataRows={metadataRows} /> : null}
             </section>
-          </div>
 
-          <StickySectionNav sections={sections} onNavigate={openAndScroll} />
+            <section id="configuration" className="ec2-instance-detail__panel ec2-instance-detail__accordion">
+              <button type="button" aria-expanded={isExpanded("configuration")} className="ec2-instance-detail__accordion-head" onClick={() => setExpanded("configuration", !isExpanded("configuration"))}><h3>Configuration</h3><span>{`Configuration · ${detail.identity.type ?? "—"} · ${reservationType} · AZ ${detail.identity.availabilityZone ?? "—"}`}</span></button>
+              {isExpanded("configuration") ? (
+                <MetadataSection
+                  showTitle={false}
+                  values={[
+                    { label: "Reservation Type", value: reservationType },
+                    { label: "Cloud Connection", value: detail.identity.cloudConnectionId ?? "—" },
+                    { label: "Runtime", value: detail.identity.launchTime ? new Date(detail.identity.launchTime).toLocaleString("en-US") : "—" },
+                    { label: "Pricing Coverage", value: `${formatNumber(detail.pricingSummary.coveragePercent)}%` },
+                  ]}
+                  metadataRows={[]}
+                />
+              ) : null}
+            </section>
+          </section>
         </div>
       </section>
     </div>

@@ -113,6 +113,7 @@ export class Ec2CostExplorerQuery {
           instanceType: row.instanceType,
           reservationType: row.reservationType,
           instanceId: row.instanceId,
+          instanceName: (row as { instanceName?: string | null }).instanceName ?? row.instanceId ?? null,
           attachedInstanceId: row.attachedInstanceId,
           tagsJson: row.tagsJson,
           grossCost: 0,

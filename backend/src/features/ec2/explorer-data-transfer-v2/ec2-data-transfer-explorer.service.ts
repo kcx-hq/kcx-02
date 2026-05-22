@@ -69,6 +69,8 @@ export class Ec2DataTransferExplorerService {
 
     const totalTransferCost = transferRows.reduce((sum, row) => sum + row.cost, 0);
     const totalUsageGb = transferRows.reduce((sum, row) => sum + row.usageGb, 0);
+    const hasTransferUsage = totalUsageGb > 0;
+    const hasTransferCost = totalTransferCost > 0;
     const internetTransferCost = transferRows.reduce((sum, row) => sum + row.internetCost, 0);
     const interRegionInterAzTransferCost = transferRows.reduce((sum, row) => sum + row.interRegionCost + row.interAzCost, 0);
     const internetUsageGb = transferRows
@@ -89,7 +91,8 @@ export class Ec2DataTransferExplorerService {
       interAzCost: number;
       regionalCost: number;
       unknownCost: number;
-      pointsByDate: Map<string, number>;
+      pointsByDateCost: Map<string, number>;
+      pointsByDateUsage: Map<string, number>;
       metricTotal: number;
     };
 
@@ -109,7 +112,8 @@ export class Ec2DataTransferExplorerService {
         interAzCost: 0,
         regionalCost: 0,
         unknownCost: 0,
-        pointsByDate: new Map<string, number>(),
+        pointsByDateCost: new Map<string, number>(),
+        pointsByDateUsage: new Map<string, number>(),
         metricTotal: 0,
       };
       current.transferCost += row.cost;
@@ -120,7 +124,8 @@ export class Ec2DataTransferExplorerService {
       current.regionalCost += row.regionalCost;
       current.unknownCost += row.unknownCost;
       current.metricTotal += metricValue;
-      current.pointsByDate.set(date, (current.pointsByDate.get(date) ?? 0) + metricValue);
+      current.pointsByDateCost.set(date, (current.pointsByDateCost.get(date) ?? 0) + row.cost);
+      current.pointsByDateUsage.set(date, (current.pointsByDateUsage.get(date) ?? 0) + row.usageGb);
       grouped.set(key, current);
     }
 
@@ -149,39 +154,60 @@ export class Ec2DataTransferExplorerService {
           mainDriver,
         };
       })
+      .filter((row) => row.usageGb > 0 || row.transferCost > 0)
       .sort((a, b) => {
         if (input.yAxis === "usage_gb") return b.usageGb - a.usageGb;
         return b.transferCost - a.transferCost;
       });
 
-    const allDates = [...new Set([...grouped.values()].flatMap((group) => [...group.pointsByDate.keys()]))].sort();
+    const allDates = [...new Set([...grouped.values()].flatMap((group) => [...group.pointsByDateCost.keys(), ...group.pointsByDateUsage.keys()]))].sort();
     const series = [...grouped.values()]
       .map((group) => ({
         groupKey: group.groupKey,
         groupLabel: group.groupLabel,
         points: allDates.map((date) => ({
           date,
-          value: round(group.pointsByDate.get(date) ?? 0),
+          value: round(input.yAxis === "usage_gb" ? (group.pointsByDateUsage.get(date) ?? 0) : (group.pointsByDateCost.get(date) ?? 0)),
+          transferCost: round(group.pointsByDateCost.get(date) ?? 0),
+          usageGb: round(group.pointsByDateUsage.get(date) ?? 0),
         })),
       }))
-      .filter((group) => group.points.some((point) => point.value > 0))
+      .filter((group) => group.points.some((point) => point.value > 0 || (point.usageGb ?? 0) > 0 || (point.transferCost ?? 0) > 0))
       .sort((a, b) => {
         const totalA = a.points.reduce((sum, point) => sum + point.value, 0);
         const totalB = b.points.reduce((sum, point) => sum + point.value, 0);
         return totalB - totalA;
       });
 
+    console.debug("[EC2 Data Transfer Explorer V2][Category Diagnostics]", {
+      hasTransferUsage,
+      hasTransferCost,
+      categories: (["internet", "inter_region", "inter_az", "regional", "unknown"] as const).map((category) => {
+        const scoped = transferRows.filter((row) => row.transferType === category);
+        return {
+          category,
+          usageGb: round(scoped.reduce((sum, row) => sum + row.usageGb, 0)),
+          billedCost: round(scoped.reduce((sum, row) => sum + row.cost, 0)),
+          effectiveCost: round(scoped.reduce((sum, row) => sum + row.cost, 0)),
+          matchedRowsCount: scoped.length,
+          filteredRowsCount: Math.max(0, rows.length - scoped.length),
+        };
+      }),
+    });
+
     return {
       kpis: {
         transferCost: round(totalTransferCost),
         usageGb: round(totalUsageGb),
         internetTransferCost: round(input.yAxis === "usage_gb" ? internetUsageGb : internetTransferCost),
+        regionalTransferCost: round(input.yAxis === "usage_gb" ? regionalUsageGb : interRegionInterAzTransferCost),
         interRegionInterAzTransferCost: round(input.yAxis === "usage_gb" ? regionalUsageGb : interRegionInterAzTransferCost),
       },
       chart: {
         granularity: input.granularity,
         xAxis: "date",
         yAxis: input.yAxis,
+        unit: input.yAxis === "usage_gb" ? "gb" : "currency",
         series,
       },
       table: {
@@ -194,6 +220,9 @@ export class Ec2DataTransferExplorerService {
         compare: input.compare,
         currency: "USD",
         normalized: true,
+        source: "data_transfer_explorer",
+        hasTransferUsage,
+        hasTransferCost,
       },
     };
   }

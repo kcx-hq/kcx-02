@@ -1,21 +1,10 @@
-import { X } from "lucide-react";
+import { Search } from "lucide-react";
 import { useMemo, useState } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
+import { useInventoryEc2Volumes } from "@/features/client-home/hooks/useInventoryEc2Volumes";
 
 import { useDashboardScope } from "../../hooks/useDashboardScope";
-import { useEc2ExplorerQuery } from "../../hooks/useDashboardQueries";
-import {
-  EC2_EXPLORER_DEFAULT_CONTROLS,
-  EC2ExplorerChart,
-  EC2ExplorerTable,
-  EC2ExplorerTopControls,
-  EC2SummaryCards,
-} from "./components";
-import {
-  METRIC_OPTIONS,
-  type EC2ExplorerControlsState,
-  getValidGroupByForMetric,
-} from "./ec2ExplorerControls.types";
+import { EC2_EXPLORER_DEFAULT_CONTROLS, EC2ExplorerTable, EC2SummaryCards } from "./components";
 
 const parseNumberOrNull = (value: string): number | null => {
   const normalized = value.trim();
@@ -38,54 +27,22 @@ const defaultSummary = {
   totalNetworkGb: 0,
 };
 
-const toApiGroupBy = (
-  groupBy: EC2ExplorerControlsState["groupBy"],
-):
-  | "none"
-  | "account"
-  | "region"
-  | "availability_zone"
-  | "instance_type"
-  | "reservation_type"
-  | "cost_category"
-  | "usage_type"
-  | "operation"
-  | "instance_state"
-  | "recommendation"
-  | "volume"
-  | "volume_type"
-  | "attachment_state"
-  | "instance"
-  | "storage_tier"
-  | "iops_tier"
-  | "size_bucket"
-  | "lifecycle_state"
-  | "transfer_type"
-  | "source_region"
-  | "destination_region"
-  | "tag" =>
-  groupBy === "instance-type"
-    ? "instance_type"
-    : groupBy === "reservation-type"
-      ? "reservation_type"
-      : groupBy === "cost-category"
-        ? "cost_category"
-        : groupBy === "availability-zone"
-          ? "availability_zone"
-          : groupBy === "usage-type"
-            ? "usage_type"
-            : groupBy === "transfer-type"
-              ? "transfer_type"
-              : groupBy === "source-region"
-                ? "source_region"
-                : groupBy === "destination-region"
-                  ? "destination_region"
-                  : groupBy === "instance-state"
-                    ? "instance_state"
-                    : groupBy;
+const VOLUME_DETAIL_BASE_PATH = "/dashboard/inventory/aws/ec2/volumes";
+
+const matchesSizeBucket = (sizeGb: number | null, bucket: string): boolean => {
+  if (bucket === "all") return true;
+  const value = typeof sizeGb === "number" && Number.isFinite(sizeGb) ? sizeGb : null;
+  if (value === null) return false;
+  if (bucket === "0-100 GB") return value >= 0 && value <= 100;
+  if (bucket === "101-500 GB") return value >= 101 && value <= 500;
+  if (bucket === "501 GB-1 TB") return value >= 501 && value <= 1024;
+  if (bucket === "1 TB+") return value > 1024;
+  return true;
+};
 
 export default function EC2VolumesPage() {
   const location = useLocation();
+  const navigate = useNavigate();
   const { scope } = useDashboardScope();
   const scopeParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
 
@@ -102,172 +59,195 @@ export default function EC2VolumesPage() {
     scopeParams.get("endDate") ??
     undefined;
 
-  const [controls, setControls] = useState<EC2ExplorerControlsState>({
+  const [controls] = useState({
     ...EC2_EXPLORER_DEFAULT_CONTROLS,
     metric: "volumes",
-    groupBy: getValidGroupByForMetric("volumes", "none"),
+    groupBy: "none" as const,
   });
+  const [attachmentState, setAttachmentState] = useState<"all" | "attached" | "unattached">("all");
+  const [volumeType, setVolumeType] = useState<string>("all");
+  const [sizeBucket, setSizeBucket] = useState<string>("all");
+  const [search, setSearch] = useState("");
 
-  const filters = useMemo(
+  const volumeFilters = useMemo(
     () => ({
-      startDate: scopeStartDate,
-      endDate: scopeEndDate,
-      metric: "volumes" as const,
-      granularity: controls.granularity,
-      volumeView: controls.volumeView,
-      groupBy: toApiGroupBy(controls.groupBy),
-      tagKey: controls.groupBy === "tag" ? controls.scopeFilters.tags[0] ?? "owner" : null,
-      regions: controls.scopeFilters.region,
-      tags: controls.scopeFilters.tags.map((tagValue) => `tag:${tagValue}`),
-      groupValues: controls.groupByValues,
+      page: 1,
+      pageSize: 500,
+      sortBy: "signal" as const,
+      sortDirection: "desc" as const,
+      attachmentState: attachmentState === "all" ? null : attachmentState,
+      volumeType: volumeType === "all" ? null : volumeType,
+      search: search.trim().length > 0 ? search.trim() : null,
+      startDate: scopeStartDate ?? null,
+      endDate: scopeEndDate ?? null,
       minCost: parseNumberOrNull(controls.thresholds.costMin),
       maxCost: parseNumberOrNull(controls.thresholds.costMax),
       minCpu: parseNumberOrNull(controls.thresholds.cpuMin),
       maxCpu: parseNumberOrNull(controls.thresholds.cpuMax),
       minNetwork: parseNumberOrNull(controls.thresholds.networkMin),
       maxNetwork: parseNumberOrNull(controls.thresholds.networkMax),
-      states: [],
-      instanceTypes: [],
     }),
-    [controls, scopeEndDate, scopeStartDate],
+    [attachmentState, controls, scopeEndDate, scopeStartDate, search, volumeType],
+  );
+  const volumesQuery = useInventoryEc2Volumes({
+    attachmentState: volumeFilters.attachmentState,
+    volumeType: volumeFilters.volumeType,
+    search: volumeFilters.search,
+    startDate: volumeFilters.startDate,
+    endDate: volumeFilters.endDate,
+    page: volumeFilters.page,
+    pageSize: volumeFilters.pageSize,
+    sortBy: volumeFilters.sortBy,
+    sortDirection: volumeFilters.sortDirection,
+  });
+  const rows = useMemo(
+    () =>
+      (volumesQuery.data?.items ?? [])
+        .filter((item) => item.volumeId.trim().length > 0 && item.volumeId.toLowerCase() !== "unknown")
+        .filter((item) => item.mtdCost >= 0 && item.storageCost >= 0)
+        .filter((item) => matchesSizeBucket(item.sizeGb, sizeBucket)),
+    [sizeBucket, volumesQuery.data?.items],
   );
 
-  const query = useEc2ExplorerQuery(filters, Boolean(scope));
-  const isSectionLoading = !scope || query.isFetching || !query.data;
+  const summary = useMemo(() => {
+    const volumeCount = rows.length;
+    const unattachedVolumeCount = rows.filter((row) => row.isAttached === false || row.isUnattached === true).length;
+    const storageGb = rows.reduce((sum, row) => sum + (row.sizeGb ?? 0), 0);
+    const totalCost = rows.reduce((sum, row) => sum + row.mtdCost, 0);
+    return {
+      ...defaultSummary,
+      volumeCount,
+      unattachedVolumeCount,
+      storageGb,
+      totalCost,
+    };
+  }, [rows]);
 
-  const metricLabel = METRIC_OPTIONS.find((option) => option.key === "volumes")?.label ?? "Volumes";
+  const table = useMemo(
+    () => ({
+      columns: [
+        { key: "volumeId", label: "Volume" },
+        { key: "cost", label: "Cost" },
+        { key: "size", label: "Size" },
+        { key: "volumeType", label: "Type" },
+        { key: "state", label: "State" },
+        { key: "attachment", label: "Attachment" },
+        { key: "attachedInstance", label: "Attached Instance" },
+        { key: "status", label: "Status" },
+        { key: "snapshotCount", label: "Snapshot Count" },
+        { key: "iops", label: "IOPS" },
+        { key: "throughput", label: "Throughput" },
+        { key: "region", label: "Region" },
+      ],
+      rows: rows.map((item) => ({
+        id: item.volumeId,
+        volumeId: item.volumeName || item.volumeId,
+        cost: item.mtdCost,
+        size: item.sizeGb ?? 0,
+        volumeType: item.volumeType ?? "-",
+        state: item.state ?? "-",
+        attachment: item.isAttached ? "Attached" : "Unattached",
+        attachedInstance: item.isAttached
+          ? item.attachedInstanceName || item.attachedInstanceId || "-"
+          : "-",
+        status: item.statusLabel ?? item.optimizationStatus ?? "Healthy",
+        snapshotCount: item.snapshotCount ?? 0,
+        iops: item.iops ?? 0,
+        throughput: item.throughput ?? 0,
+        region: item.regionName || item.regionId || "-",
+      })),
+    }),
+    [rows],
+  );
 
-  const resetControls = () => {
-    setControls({
-      ...EC2_EXPLORER_DEFAULT_CONTROLS,
-      metric: "volumes",
-      groupBy: getValidGroupByForMetric("volumes", "none"),
-    });
-  };
-
-  const chips = useMemo(() => {
-    const configLabel =
-      controls.volumeView === "storage_hours"
-        ? "Storage Hours"
-        : controls.volumeView === "cost"
-          ? "Cost"
-          : controls.volumeView === "count"
-            ? "Count"
-            : "Storage";
-    const groupByLabel = toApiGroupBy(controls.groupBy).replace(/_/g, " ");
-    const list: Array<{ id: string; label: string; value: string; onRemove: () => void }> = [
-      {
-        id: "metric",
-        label: "Metric",
-        value: "Volumes",
-        onRemove: resetControls,
-      },
-      {
-        id: "config",
-        label: "View",
-        value: configLabel,
-        onRemove: () =>
-          setControls((current) => ({
-            ...current,
-            volumeView: EC2_EXPLORER_DEFAULT_CONTROLS.volumeView,
-          })),
-      },
-      {
-        id: "groupBy",
-        label: "Group By",
-        value: groupByLabel.replace(/\b\w/g, (match) => match.toUpperCase()),
-        onRemove: () =>
-          setControls((current) => ({
-            ...current,
-            groupBy: getValidGroupByForMetric("volumes", EC2_EXPLORER_DEFAULT_CONTROLS.groupBy),
-            groupByValues: [],
-          })),
-      },
-    ];
-    return list;
-  }, [controls]);
+  const isSectionLoading = volumesQuery.isLoading || volumesQuery.isFetching;
 
   return (
     <div className="dashboard-page cost-explorer-page ec2-explorer-page">
-      <section className="ec2-explorer-head-stack" aria-label="EC2 volumes controls and summary">
-        <EC2ExplorerTopControls value={controls} onChange={setControls} loading={isSectionLoading} showMetricTabs={false}>
-          <div className="cost-explorer-chip-bar" aria-label="Selected filter summary">
-            <div className="cost-explorer-chip-row">
-              {isSectionLoading ? (
-                <>
-                  <span className="ec2-explorer-filter-skeleton-chip ec2-explorer-filter-skeleton-chip--lg" aria-hidden="true" />
-                  <span className="ec2-explorer-filter-skeleton-chip ec2-explorer-filter-skeleton-chip--md" aria-hidden="true" />
-                  <span className="ec2-explorer-filter-skeleton-chip ec2-explorer-filter-skeleton-chip--md2" aria-hidden="true" />
-                  <span className="ec2-explorer-filter-skeleton-chip ec2-explorer-filter-skeleton-chip--clear" aria-hidden="true" />
-                </>
-              ) : (
-                <>
-                  {chips.map((chip) => (
-                    <span key={chip.id} className="cost-explorer-chip">
-                      <span className="cost-explorer-chip__edit">
-                        {chip.label}: {chip.value}
-                      </span>
-                      <button type="button" className="cost-explorer-chip__remove" onClick={chip.onRemove} aria-label={`Remove ${chip.label}`}>
-                        <X size={13} aria-hidden="true" />
-                      </button>
-                    </span>
-                  ))}
-                  <button type="button" className="cost-explorer-chip-bar__clear cost-explorer-chip-bar__clear--inline" onClick={resetControls}>
-                    Clear all
-                  </button>
-                </>
-              )}
+      <section className="ec2-explorer-head-stack" aria-label="EC2 volumes inventory filters and summary">
+        <section className="cost-explorer-control-surface ec2-explorer-controls" aria-label="EC2 volumes filters">
+          <div className="cost-explorer-toolbar-row ec2-explorer-toolbar-row--primary">
+            <div className="ec2-instances-toolbar-main">
+              <div className="cost-explorer-toolbar-item">
+                <label className="cost-explorer-toolbar-trigger">
+                  <span className="cost-explorer-toolbar-trigger__label">Attachment State</span>
+                  <select className="ec2-instances-search-trigger__input" value={attachmentState} onChange={(event) => setAttachmentState(event.target.value as "all" | "attached" | "unattached")}>
+                    <option value="all">All</option>
+                    <option value="attached">Attached</option>
+                    <option value="unattached">Unattached</option>
+                  </select>
+                </label>
+              </div>
+
+              <div className="cost-explorer-toolbar-item">
+                <label className="cost-explorer-toolbar-trigger">
+                  <span className="cost-explorer-toolbar-trigger__label">Volume Type</span>
+                  <select className="ec2-instances-search-trigger__input" value={volumeType} onChange={(event) => setVolumeType(event.target.value)}>
+                    <option value="all">All</option>
+                    <option value="gp2">gp2</option>
+                    <option value="gp3">gp3</option>
+                    <option value="io1">io1</option>
+                    <option value="io2">io2</option>
+                    <option value="st1">st1</option>
+                    <option value="sc1">sc1</option>
+                  </select>
+                </label>
+              </div>
+
+              <div className="cost-explorer-toolbar-item">
+                <label className="cost-explorer-toolbar-trigger">
+                  <span className="cost-explorer-toolbar-trigger__label">Size Bucket</span>
+                  <select className="ec2-instances-search-trigger__input" value={sizeBucket} onChange={(event) => setSizeBucket(event.target.value)}>
+                    <option value="all">All</option>
+                    <option value="0-100 GB">0-100 GB</option>
+                    <option value="101-500 GB">101-500 GB</option>
+                    <option value="501 GB-1 TB">501 GB-1 TB</option>
+                    <option value="1 TB+">1 TB+</option>
+                  </select>
+                </label>
+              </div>
+
+              <div className="cost-explorer-toolbar-item">
+                <label className="cost-explorer-toolbar-trigger ec2-instances-search-trigger">
+                  <span className="ec2-instances-search-trigger__icon-wrap" aria-hidden="true">
+                    <Search size={14} />
+                  </span>
+                  <input
+                    type="search"
+                    value={search}
+                    onChange={(event) => setSearch(event.target.value)}
+                    placeholder="Search volume or instance"
+                    aria-label="Search volumes"
+                    className="ec2-instances-search-trigger__input"
+                  />
+                </label>
+              </div>
+
             </div>
           </div>
-        </EC2ExplorerTopControls>
+        </section>
 
-        <EC2SummaryCards summary={query.data?.summary ?? defaultSummary} loading={isSectionLoading} metric="volumes" />
+        <EC2SummaryCards summary={summary} loading={isSectionLoading} metric="volumes" />
       </section>
 
-      <section className="ec2-explorer-chart-panel" aria-label="EC2 volumes chart panel">
-        <EC2ExplorerChart
-          title={`${metricLabel} Breakdown`}
-          chartType={controls.chartType}
-          canUseStackedBar
-          showChartTypeSelector={false}
-          onChartTypeChange={(nextChartType) => {
-            setControls((current) => ({ ...current, chartType: nextChartType }));
-          }}
-          graph={
-            query.data?.graph
-              ? {
-                  ...query.data.graph,
-                  type: controls.chartType,
-                }
-              : {
-                  type: controls.chartType,
-                  xKey: "date",
-                  series: [],
-                }
-          }
-          loading={isSectionLoading}
-          error={query.isError ? query.error : null}
-          onRetry={() => {
-            void query.refetch();
-          }}
-          onPointClick={() => {
-            // no-op for volumes page
-          }}
-        />
-      </section>
-
-      <section className="ec2-explorer-table-panel" aria-label="EC2 volumes table panel">
+      <section className="ec2-explorer-table-panel" aria-label="EC2 volumes inventory table panel">
         <EC2ExplorerTable
           metric="volumes"
-          groupBy={controls.groupBy}
+          groupBy="none"
           loading={isSectionLoading}
-          error={query.isError ? query.error : null}
-          table={query.data?.table ?? null}
+          error={volumesQuery.isError ? volumesQuery.error : null}
+          table={table}
           onRetry={() => {
-            void query.refetch();
+            void volumesQuery.refetch();
           }}
-          onRowClick={() => {
-            // no-op for now
+          onRowClick={(row) => {
+            const volumeId = typeof row.id === "string" ? row.id : null;
+            if (!volumeId) return;
+            const params = new URLSearchParams(location.search);
+            navigate({
+              pathname: `${VOLUME_DETAIL_BASE_PATH}/${encodeURIComponent(volumeId)}`,
+              search: params.toString(),
+            });
           }}
         />
       </section>

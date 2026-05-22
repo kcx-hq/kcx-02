@@ -13,6 +13,10 @@ const normalizeInstanceId = (value: string | null | undefined): string | null =>
   if (normalized.toLowerCase() === "unknown") return null;
   return normalized;
 };
+const isInvalidGroupValue = (value: string | null | undefined): boolean => {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  return normalized.length === 0 || normalized === "unknown" || normalized === "null" || normalized === "undefined";
+};
 
 export const groupOfRow = (
   row: Ec2CostExplorerRawRow,
@@ -22,12 +26,18 @@ export const groupOfRow = (
   if (groupBy === "none") return { groupKey: "total", groupLabel: "Total" };
   if (groupBy === "account") return normalizeUnknown(row.account);
   if (groupBy === "region") return normalizeRegion(row.region);
+  if (groupBy === "instance") {
+    const label = String(row.instanceName ?? "").trim() || String(row.instanceId ?? "").trim();
+    if (!label || label.toLowerCase() === "unknown") return { groupKey: "unknown", groupLabel: "Unknown" };
+    const id = String(row.instanceId ?? label).trim() || label;
+    return { groupKey: id, groupLabel: label };
+  }
   if (groupBy === "instance_type") return normalizeUnknown(row.instanceType);
   if (groupBy === "cost_type") {
     const key = toCostTypeKey(row.category);
     if (key === "data_transfer") return { groupKey: "data_transfer", groupLabel: "Data Transfer" };
-    if (key === "eip") return { groupKey: "eip", groupLabel: "EIP" };
-    if (key === "ebs") return { groupKey: "ebs", groupLabel: "EBS" };
+    if (key === "elastic_ip") return { groupKey: "elastic_ip", groupLabel: "Elastic IP" };
+    if (key === "volume") return { groupKey: "volume", groupLabel: "Volume" };
     if (key === "snapshot") return { groupKey: "snapshot", groupLabel: "Snapshot" };
     if (key === "compute") return { groupKey: "compute", groupLabel: "Compute" };
     return { groupKey: "other", groupLabel: "Other" };
@@ -58,10 +68,10 @@ export const buildTableRows = (
       netCost: 0,
       effectiveCost: 0,
       computeCost: 0,
-      ebsCost: 0,
+      volumeCost: 0,
       snapshotCost: 0,
       dataTransferCost: 0,
-      eipCost: 0,
+      elasticIpCost: 0,
       otherCost: 0,
       instanceCount: 0,
       percentOfTotal: 0,
@@ -74,10 +84,10 @@ export const buildTableRows = (
 
     const category = toCostTypeKey(row.category);
     if (category === "compute") current.computeCost += row.grossCost;
-    else if (category === "ebs") current.ebsCost += row.grossCost;
+    else if (category === "volume") current.volumeCost += row.grossCost;
     else if (category === "snapshot") current.snapshotCost += row.grossCost;
     else if (category === "data_transfer") current.dataTransferCost += row.grossCost;
-    else if (category === "eip") current.eipCost += row.grossCost;
+    else if (category === "elastic_ip") current.elasticIpCost += row.grossCost;
     else current.otherCost += row.grossCost;
 
     bucket.set(key, current);
@@ -96,27 +106,31 @@ export const buildTableRows = (
     row.percentOfTotal = totalGrossCost > 0 ? round((row.grossCost / totalGrossCost) * 100) : 0;
     row.mainCostDriver = dominantCostDriver({
       computeCost: row.computeCost,
-      ebsCost: row.ebsCost,
+      volumeCost: row.volumeCost,
       snapshotCost: row.snapshotCost,
       dataTransferCost: row.dataTransferCost,
-      eipCost: row.eipCost,
+      elasticIpCost: row.elasticIpCost,
       otherCost: row.otherCost,
     });
     row.grossCost = round(row.grossCost);
     row.netCost = round(row.netCost);
     row.effectiveCost = round(row.effectiveCost);
     row.computeCost = round(row.computeCost);
-    row.ebsCost = round(row.ebsCost);
+    row.volumeCost = round(row.volumeCost);
     row.snapshotCost = round(row.snapshotCost);
     row.dataTransferCost = round(row.dataTransferCost);
-    row.eipCost = round(row.eipCost);
+    row.elasticIpCost = round(row.elasticIpCost);
     row.otherCost = round(row.otherCost);
     return row;
   });
 
+  const sanitized = out.filter((row) => {
+    if (groupBy === "none" || groupBy === "cost_type") return true;
+    return !isInvalidGroupValue(row.groupKey) && !isInvalidGroupValue(row.groupLabel);
+  });
   const filtered = compare === "none"
-    ? out.filter((row) => !(row.grossCost === 0 && row.instanceCount === 0))
-    : out;
+    ? sanitized.filter((row) => !(row.grossCost === 0 && row.instanceCount === 0))
+    : sanitized;
 
   return filtered.sort((a, b) => b.grossCost - a.grossCost);
 };

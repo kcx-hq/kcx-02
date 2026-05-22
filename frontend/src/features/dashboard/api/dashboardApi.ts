@@ -27,6 +27,9 @@ import type {
   Ec2OptimizationSummaryResponse,
   Ec2OptimizationInstancesResponse,
   Ec2RecommendationsFiltersQuery,
+  Ec2RecommendationActionExecuteResponse,
+  Ec2RecommendationActionPrecheckResponse,
+  Ec2RecommendationActionRequest,
   Ec2RecommendationsResponse,
   Ec2RecommendationStatus,
   Ec2ExplorerFiltersQuery,
@@ -961,6 +964,26 @@ export const dashboardApi = {
   ) {
     return apiPatch<{ id: number; status: Ec2RecommendationStatus; statusReason?: string | null; snoozedUntil?: string | null }>(
       withDashboardQuery(`/dashboard/ec2/recommendations/${recommendationId}/status`, scope),
+      payload,
+    );
+  },
+  precheckEc2RecommendationAction(
+    scope: DashboardResolvedScope,
+    recommendationId: number,
+    payload: Ec2RecommendationActionRequest,
+  ) {
+    return apiPost<Ec2RecommendationActionPrecheckResponse>(
+      withDashboardQuery(`/dashboard/ec2/recommendations/${recommendationId}/actions/precheck`, scope),
+      payload,
+    );
+  },
+  executeEc2RecommendationAction(
+    scope: DashboardResolvedScope,
+    recommendationId: number,
+    payload: Ec2RecommendationActionRequest,
+  ) {
+    return apiPost<Ec2RecommendationActionExecuteResponse>(
+      withDashboardQuery(`/dashboard/ec2/recommendations/${recommendationId}/actions/execute`, scope),
       payload,
     );
   },

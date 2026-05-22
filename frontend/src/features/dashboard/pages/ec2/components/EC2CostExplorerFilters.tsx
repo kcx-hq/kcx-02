@@ -1,7 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, ChevronDown, Search, X } from "lucide-react";
 
-import type { EC2ExplorerControlsState } from "../ec2ExplorerControls.types";
+import {
+  EC2_COST_TYPE_LABELS,
+  EC2_COST_TYPE_ORDER,
+  normalizeEc2CostTypeKey,
+  type EC2ExplorerControlsState,
+} from "../ec2ExplorerControls.types";
 
 type Props = {
   value: EC2ExplorerControlsState;
@@ -13,9 +18,9 @@ type Props = {
 type PopoverKey = "costBy" | "yAxis" | "xAxis" | "compare";
 
 const COST_BY_OPTIONS: Array<{ key: EC2ExplorerControlsState["groupBy"]; label: string }> = [
-  { key: "none", label: "None" },
   { key: "account", label: "Account" },
   { key: "region", label: "Region" },
+  { key: "instance", label: "Instance" },
   { key: "instance-type", label: "Instance Type" },
   { key: "cost-category", label: "Cost Type" },
   { key: "reservation-type", label: "Reservation Type" },
@@ -63,9 +68,22 @@ export function EC2CostExplorerFilters({ value, availableValues, loading = false
 
   const filteredValues = useMemo(() => {
     const q = valueSearch.trim().toLowerCase();
-    if (!q) return availableValues;
-    return availableValues.filter((item) => item.toLowerCase().includes(q));
-  }, [availableValues, valueSearch]);
+    const cleaned = availableValues.filter((item) => {
+      const normalized = item.trim().toLowerCase();
+      return normalized.length > 0 && normalized !== "unknown" && normalized !== "null" && normalized !== "undefined";
+    });
+    const values = draftGroupBy === "cost-category"
+      ? (() => {
+          const canonical = EC2_COST_TYPE_ORDER.map((key) => EC2_COST_TYPE_LABELS[key]);
+          const extras = cleaned
+            .filter((item) => normalizeEc2CostTypeKey(item) === null)
+            .sort((a, b) => a.localeCompare(b));
+          return [...canonical, ...extras];
+        })()
+      : cleaned;
+    if (!q) return values;
+    return values.filter((item) => item.toLowerCase().includes(q));
+  }, [availableValues, draftGroupBy, valueSearch]);
 
   const filteredYAxis = useMemo(() => {
     const q = yAxisSearch.trim().toLowerCase();
@@ -73,12 +91,12 @@ export function EC2CostExplorerFilters({ value, availableValues, loading = false
     return Y_AXIS_OPTIONS.filter((item) => item.label.toLowerCase().includes(q));
   }, [yAxisSearch]);
 
-  const costByLabel = COST_BY_OPTIONS.find((item) => item.key === value.groupBy)?.label ?? "None";
+  const costByLabel = COST_BY_OPTIONS.find((item) => item.key === value.groupBy)?.label ?? "Cost Type";
   const yAxisLabel = Y_AXIS_OPTIONS.find((item) => item.key === value.costBasis)?.label ?? "Gross Cost ($)";
   const compareLabel = value.compare === "previous-period" ? "Previous Period" : "None";
 
   const chips = [
-    { id: "costBy", label: "Cost By", value: costByLabel, onRemove: () => onChange({ ...value, groupBy: "none", groupByValues: [] }) },
+    { id: "costBy", label: "Cost By", value: costByLabel, onRemove: () => onChange({ ...value, groupBy: "cost-category", groupByValues: [] }) },
     { id: "yAxis", label: "Y-Axis", value: yAxisLabel, onRemove: () => onChange({ ...value, costBasis: "billed_cost" }) },
     { id: "xAxis", label: "X-Axis", value: "date", onRemove: () => undefined },
     { id: "compare", label: "Compare", value: compareLabel, onRemove: () => onChange({ ...value, compare: "none" }) },
@@ -110,7 +128,7 @@ export function EC2CostExplorerFilters({ value, availableValues, loading = false
         <div className="cost-explorer-toolbar-row">
           <div className="cost-explorer-toolbar-item ec2-explorer-filter-panel__item--cost-by">
             <button type="button" className={`cost-explorer-toolbar-trigger${activePopover === "costBy" ? " is-active" : ""}`} onClick={() => {
-              setDraftGroupBy(value.groupBy);
+              setDraftGroupBy(COST_BY_OPTIONS.some((option) => option.key === value.groupBy) ? value.groupBy : "cost-category");
               setDraftGroupValues(value.groupByValues);
               setActivePopover(activePopover === "costBy" ? null : "costBy");
             }} disabled={loading}>

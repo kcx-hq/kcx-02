@@ -903,6 +903,7 @@ export type Ec2CostExplorerV2GroupBy =
   | "none"
   | "account"
   | "region"
+  | "instance"
   | "instance_type"
   | "cost_type"
   | "reservation_type"
@@ -951,14 +952,14 @@ export type Ec2CostExplorerV2Response = {
       netCost: number;
       effectiveCost: number;
       computeCost: number;
-      ebsCost: number;
+      volumeCost: number;
       snapshotCost: number;
       dataTransferCost: number;
-      eipCost: number;
+      elasticIpCost: number;
       otherCost: number;
       instanceCount: number;
       percentOfTotal: number;
-      mainCostDriver: "Compute" | "EBS" | "Snapshot" | "Data Transfer" | "EIP" | "Other";
+      mainCostDriver: "Compute" | "Volume" | "Snapshot" | "Data Transfer" | "Elastic IP" | "Other";
     }>;
   };
   meta: {
@@ -968,6 +969,49 @@ export type Ec2CostExplorerV2Response = {
     currency: string;
     normalized: true;
   };
+};
+
+export type Ec2RecommendationActionKey =
+  | "stop_instance"
+  | "resize_instance"
+  | "delete_volume"
+  | "snapshot_then_delete_volume"
+  | "delete_snapshot"
+  | "release_eip"
+  | "review_ri_sp"
+  | "review_traffic"
+  | "review_load_balancer"
+  | "terminate_instance";
+
+export type Ec2RecommendationActionRequest = {
+  actionKey: Ec2RecommendationActionKey;
+  parameters?: {
+    targetInstanceType?: string;
+    createSnapshotBeforeDelete?: boolean;
+    confirmationText?: string;
+  };
+};
+
+export type Ec2RecommendationActionPrecheckResponse = {
+  allowed: boolean;
+  actionKey: Ec2RecommendationActionKey;
+  resourceId: string;
+  resourceType: Ec2RecommendationRecord["resourceType"];
+  region: string | null;
+  accountId: string | null;
+  warnings: string[];
+  blockers: string[];
+  dryRunSupported: boolean;
+  dryRunPassed?: boolean;
+};
+
+export type Ec2RecommendationActionExecuteResponse = {
+  success: boolean;
+  actionKey: Ec2RecommendationActionKey;
+  resourceId: string;
+  awsRequestId: string | null;
+  resultMessage: string;
+  updatedStatus: Ec2RecommendationStatus;
 };
 
 export type Ec2UsageExplorerV2Granularity = "daily" | "weekly" | "monthly";
@@ -1006,7 +1050,7 @@ export type Ec2UsageExplorerV2Response = {
     series: Array<{
       groupKey: string;
       groupLabel: string;
-      points: Array<{ date: string; value: number }>;
+      points: Array<{ date: string; value: number; transferCost?: number; usageGb?: number }>;
     }>;
   };
   table: {
@@ -1055,16 +1099,18 @@ export type Ec2DataTransferExplorerV2Response = {
     transferCost: number;
     usageGb: number;
     internetTransferCost: number;
+    regionalTransferCost: number;
     interRegionInterAzTransferCost: number;
   };
   chart: {
     granularity: Ec2DataTransferExplorerV2Granularity;
     xAxis: "date";
     yAxis: Ec2DataTransferExplorerV2YAxis;
+    unit: "currency" | "gb";
     series: Array<{
       groupKey: string;
       groupLabel: string;
-      points: Array<{ date: string; value: number }>;
+      points: Array<{ date: string; value: number; transferCost?: number; usageGb?: number }>;
     }>;
   };
   table: {
@@ -1089,6 +1135,9 @@ export type Ec2DataTransferExplorerV2Response = {
     compare: Ec2DataTransferExplorerV2Compare;
     currency: "USD";
     normalized: true;
+    source: "data_transfer_explorer";
+    hasTransferUsage: boolean;
+    hasTransferCost: boolean;
   };
 };
 

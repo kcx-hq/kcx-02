@@ -232,25 +232,26 @@ export class Ec2DataTransferExplorerQuery {
       },
     );
 
-    const rows = rawRows
-      .filter((row) => isEc2Service(row.serviceName))
-      .filter((row) => isTransferKeywordMatch(row))
-      .filter((row) => !isExcludedNonEc2NetworkLine(row))
-      .map((row) => {
-        const classification = classifyDataTransferSignals({
-          usageType: row.usageType,
-          productUsageType: row.productUsageType,
-          productFamily: row.productFamily,
-          operation: row.operation,
-          lineItemDescription: row.lineItemDescription,
-          fromLocation: row.fromLocation,
-          toLocation: row.toLocation,
-          fromRegionCode: row.fromRegionCode,
-          toRegionCode: row.toRegionCode,
-        });
-        return { row, classification };
-      })
-      .filter(({ classification }) => classification.isDataTransferCandidate && !classification.isNatGateway)
+    const excludedInfraRows = rawRows.filter((row) => isExcludedNonEc2NetworkLine(row));
+    const ec2Rows = rawRows.filter((row) => isEc2Service(row.serviceName));
+    const transferKeywordRows = ec2Rows.filter((row) => isTransferKeywordMatch(row));
+    const nonInfraRows = transferKeywordRows.filter((row) => !isExcludedNonEc2NetworkLine(row));
+    const classifiedRows = nonInfraRows.map((row) => {
+      const classification = classifyDataTransferSignals({
+        usageType: row.usageType,
+        productUsageType: row.productUsageType,
+        productFamily: row.productFamily,
+        operation: row.operation,
+        lineItemDescription: row.lineItemDescription,
+        fromLocation: row.fromLocation,
+        toLocation: row.toLocation,
+        fromRegionCode: row.fromRegionCode,
+        toRegionCode: row.toRegionCode,
+      });
+      return { row, classification };
+    });
+    const candidateRows = classifiedRows.filter(({ classification }) => classification.isDataTransferCandidate && !classification.isNatGateway);
+    const rows = candidateRows
       .filter(({ classification }) => {
         if (input.filters.transferTypes.length === 0) return true;
         return input.filters.transferTypes.includes(classification.transferType);
@@ -278,6 +279,8 @@ export class Ec2DataTransferExplorerQuery {
       .map(({ row, classification }) => {
         const transferType = classification.transferType;
         const billedCost = Math.max(0, toNumber(row.billedCost));
+        const effectiveCost = Math.max(0, toNumber(row.effectiveCost));
+        const resolvedTransferCost = billedCost > 0 ? billedCost : effectiveCost;
         const usageGb = isGbUnit(row.pricingUnit) ? Math.max(0, toNumber(row.usageQuantity)) : 0;
         return {
           date: row.date,
@@ -288,15 +291,58 @@ export class Ec2DataTransferExplorerQuery {
           instanceName: String(row.instanceName ?? row.instanceId ?? "Unknown"),
           tagsJson: row.tagsJson,
           transferType,
-          cost: billedCost,
+          cost: resolvedTransferCost,
           usageGb,
-          internetCost: transferType === "internet" ? billedCost : 0,
-          interRegionCost: transferType === "inter_region" ? billedCost : 0,
-          interAzCost: transferType === "inter_az" ? billedCost : 0,
-          regionalCost: transferType === "regional" ? billedCost : 0,
-          unknownCost: transferType === "unknown" ? billedCost : 0,
+          internetCost: transferType === "internet" ? resolvedTransferCost : 0,
+          interRegionCost: transferType === "inter_region" ? resolvedTransferCost : 0,
+          interAzCost: transferType === "inter_az" ? resolvedTransferCost : 0,
+          regionalCost: transferType === "regional" ? resolvedTransferCost : 0,
+          unknownCost: transferType === "unknown" ? resolvedTransferCost : 0,
         } satisfies Ec2DataTransferExplorerRawRow;
       });
+
+    const byType = new Map<string, { usageGb: number; billedCost: number; effectiveCost: number; matchedRows: number }>();
+    for (const item of candidateRows) {
+      const key = item.classification.transferType;
+      const current = byType.get(key) ?? { usageGb: 0, billedCost: 0, effectiveCost: 0, matchedRows: 0 };
+      const billedCost = Math.max(0, toNumber(item.row.billedCost));
+      const effectiveCost = Math.max(0, toNumber(item.row.effectiveCost));
+      const usageGb = isGbUnit(item.row.pricingUnit) ? Math.max(0, toNumber(item.row.usageQuantity)) : 0;
+      current.billedCost += billedCost;
+      current.effectiveCost += effectiveCost;
+      current.usageGb += usageGb;
+      current.matchedRows += 1;
+      byType.set(key, current);
+    }
+    const byTypeObj = Object.fromEntries(
+      [...byType.entries()].map(([key, value]) => [
+        key,
+        {
+          usageGb: Number(value.usageGb.toFixed(4)),
+          billedCost: Number(value.billedCost.toFixed(4)),
+          effectiveCost: Number(value.effectiveCost.toFixed(4)),
+          matchedRows: value.matchedRows,
+        },
+      ]),
+    );
+    const excludedInfraCost = excludedInfraRows.reduce((sum, row) => sum + Math.max(0, toNumber(row.billedCost)), 0);
+    console.debug("[EC2 Data Transfer Explorer V2][CUR Diagnostics]", {
+      totals: {
+        rawRows: rawRows.length,
+        ec2Rows: ec2Rows.length,
+        transferKeywordRows: transferKeywordRows.length,
+        nonInfraRows: nonInfraRows.length,
+        classifiedRows: classifiedRows.length,
+        transferCandidateRows: candidateRows.length,
+        finalRows: rows.length,
+      },
+      filteredRows: {
+        excludedNonEc2InfraRows: excludedInfraRows.length,
+        excludedNonEc2InfraCost: Number(excludedInfraCost.toFixed(4)),
+        removedByScopeFilters: candidateRows.length - rows.length,
+      },
+      transferCategories: byTypeObj,
+    });
 
     return rows;
   }

@@ -1,4 +1,5 @@
 import {
+  CreateSnapshotCommand,
   DeleteSnapshotCommand,
   DeleteVolumeCommand,
   DescribeAddressesCommand,
@@ -50,9 +51,10 @@ type Ec2InstanceChangeTypeResult = {
 
 type Ec2IdleActionResult = {
   success: true;
-  action: "delete-volume" | "release-address" | "delete-snapshot";
+  action: "stop-instance" | "delete-volume" | "release-address" | "delete-snapshot" | "create-snapshot";
   resourceId: string;
   message: string;
+  snapshotId?: string;
 };
 
 export class AwsEc2Error extends Error {
@@ -503,6 +505,83 @@ export async function deleteVolume(input: {
     action: "delete-volume",
     resourceId: normalizedVolumeId,
     message: `Volume ${normalizedVolumeId} deleted.`,
+  };
+}
+
+export async function stopInstance(input: {
+  tenantId: string;
+  connectionId: string;
+  instanceId: string;
+}): Promise<Ec2IdleActionResult> {
+  const normalizedInstanceId = normalizeRequired(input.instanceId, "instanceId");
+  const connectionContext = await resolveAwsConnectionContext(input.tenantId, input.connectionId);
+  const client = await buildAssumedEc2Client(connectionContext);
+  const instance = await getInstanceById({
+    client,
+    connectionId: connectionContext.connectionId,
+    instanceId: normalizedInstanceId,
+  });
+  const state = normalizeLower(instance.State?.Name ?? null);
+  if (state !== "running") {
+    throw new AwsEc2Error("EC2_INSTANCE_NOT_RUNNING", "Instance must be running to stop.", 409, {
+      connectionId: connectionContext.connectionId,
+      instanceId: normalizedInstanceId,
+      state,
+    });
+  }
+
+  try {
+    await client.send(new StopInstancesCommand({ InstanceIds: [normalizedInstanceId] }));
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    throw new AwsEc2Error("EC2_STOP_INSTANCE_FAILED", "Unable to stop EC2 instance.", 400, {
+      connectionId: connectionContext.connectionId,
+      instanceId: normalizedInstanceId,
+      reason,
+    });
+  }
+
+  return {
+    success: true,
+    action: "stop-instance",
+    resourceId: normalizedInstanceId,
+    message: `Stop initiated for instance ${normalizedInstanceId}.`,
+  };
+}
+
+export async function createSnapshot(input: {
+  tenantId: string;
+  connectionId: string;
+  volumeId: string;
+  description?: string | null;
+}): Promise<Ec2IdleActionResult> {
+  const normalizedVolumeId = normalizeRequired(input.volumeId, "volumeId");
+  const connectionContext = await resolveAwsConnectionContext(input.tenantId, input.connectionId);
+  const client = await buildAssumedEc2Client(connectionContext);
+
+  let output;
+  try {
+    output = await client.send(
+      new CreateSnapshotCommand({
+        VolumeId: normalizedVolumeId,
+        Description: input.description?.trim() || `KCX safety action snapshot for ${normalizedVolumeId}`,
+      }),
+    );
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    throw new AwsEc2Error("EC2_CREATE_SNAPSHOT_FAILED", "Unable to create snapshot for volume.", 400, {
+      connectionId: connectionContext.connectionId,
+      volumeId: normalizedVolumeId,
+      reason,
+    });
+  }
+
+  return {
+    success: true,
+    action: "create-snapshot",
+    resourceId: normalizedVolumeId,
+    snapshotId: output.SnapshotId,
+    message: `Snapshot ${output.SnapshotId ?? ""} created for volume ${normalizedVolumeId}.`.trim(),
   };
 }
 

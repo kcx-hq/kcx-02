@@ -11,21 +11,20 @@ export const includeInExplorerModel = (row: Ec2CostExplorerRawRow): boolean => {
 
 export const dominantCostDriver = (parts: {
   computeCost: number;
-  ebsCost: number;
+  volumeCost: number;
   snapshotCost: number;
   dataTransferCost: number;
-  eipCost: number;
+  elasticIpCost: number;
   otherCost: number;
-}): "Compute" | "EBS" | "Snapshot" | "Data Transfer" | "EIP" | "Other" => {
+}): "Compute" | "Volume" | "Snapshot" | "Data Transfer" | "Elastic IP" | "Other" => {
   const pairs: Array<[string, number]> = [
     ["Compute", parts.computeCost],
-    ["EBS", parts.ebsCost],
+    ["Volume", parts.volumeCost],
     ["Snapshot", parts.snapshotCost],
     ["Data Transfer", parts.dataTransferCost],
-    ["EIP", parts.eipCost],
+    ["Elastic IP", parts.elasticIpCost],
     ["Other", parts.otherCost],
   ];
   pairs.sort((a, b) => b[1] - a[1]);
   return (pairs[0]?.[0] as ReturnType<typeof dominantCostDriver>) ?? "Other";
 };
-

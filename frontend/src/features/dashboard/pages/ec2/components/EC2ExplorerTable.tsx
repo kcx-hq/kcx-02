@@ -58,6 +58,32 @@ export function EC2ExplorerTable({
 }: EC2ExplorerTableProps) {
   const columnDefs = useMemo<ColDef<EC2ExplorerTableRow>[]>(() => {
     if (!table) return [];
+    const resolvedColumns =
+      metric === "volumes"
+        ? (() => {
+            const preferredOrder = [
+              "group",
+              "volumeId",
+              "cost",
+              "sizeGb",
+              "size",
+              "volumeType",
+              "type",
+              "state",
+              "attachment",
+              "attachmentState",
+              "status",
+              "snapshotCount",
+            ];
+            const rank = new Map(preferredOrder.map((key, index) => [key.toLowerCase(), index]));
+            return [...table.columns].sort((a, b) => {
+              const aRank = rank.get(a.key.toLowerCase()) ?? rank.get(a.label.replace(/\s+/g, "").toLowerCase()) ?? 999;
+              const bRank = rank.get(b.key.toLowerCase()) ?? rank.get(b.label.replace(/\s+/g, "").toLowerCase()) ?? 999;
+              if (aRank !== bRank) return aRank - bRank;
+              return a.label.localeCompare(b.label);
+            });
+          })()
+        : table.columns;
     const isDataTransferMetric = metric === "data-transfer";
     const isTransferTypeGrouping = groupBy === "transfer-type" || groupBy === "transfer_type";
     const gbColumns = new Set(["internetGb", "interAzGb", "regionalGb", "totalGb", "usageGb"]);
@@ -68,14 +94,14 @@ export function EC2ExplorerTable({
       "dataTransferCost",
       "grossCost",
       "computeCost",
-      "ebsCost",
+      "volumeCost",
       "snapshotCost",
-      "eipCost",
+      "elasticIpCost",
       "otherCost",
     ]);
     const percentColumns = new Set(["pct", "percentOfTotal", "percentOfTransferCost"]);
     const countColumns = new Set(["instanceCount", "resourceCount"]);
-    const defs = table.columns.map((column) => {
+    const defs = resolvedColumns.map((column) => {
       const isRecommendationColumn = /recommendation/i.test(column.key) || /recommendation/i.test(column.label);
       return {
         headerName: column.label,
@@ -148,7 +174,7 @@ export function EC2ExplorerTable({
       } satisfies ColDef<EC2ExplorerTableRow>;
     });
     return defs.map((columnDef) => {
-      if (table.columns.some((column) => column.key === "dataTransferCost") && columnDef.field === "dataTransferCost") {
+      if (resolvedColumns.some((column) => column.key === "dataTransferCost") && columnDef.field === "dataTransferCost") {
         return { ...columnDef, sort: "desc" as const };
       }
       return columnDef;

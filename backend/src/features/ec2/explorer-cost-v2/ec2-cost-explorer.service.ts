@@ -52,7 +52,13 @@ export class Ec2CostExplorerService {
         }
         if (input.filters.costTypes.length > 0) {
           const costType = toCostTypeKey(row.category);
-          if (!input.filters.costTypes.map((v) => v.toLowerCase()).includes(costType)) return false;
+          const requested = input.filters.costTypes.map((v) => {
+            const normalized = String(v).trim().toLowerCase();
+            if (normalized === "ebs") return "volume";
+            if (normalized === "eip") return "elastic_ip";
+            return normalized;
+          });
+          if (!requested.includes(costType)) return false;
         }
         return true;
       });

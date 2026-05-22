@@ -4,7 +4,7 @@ import { Check, ChevronDown } from "lucide-react";
 
 import { BaseEChart } from "../../../common/charts/BaseEChart";
 import { EmptyStateBlock } from "../../../common/components/EmptyStateBlock";
-import type { EC2ChartType } from "../ec2ExplorerControls.types";
+import { normalizeEc2CostTypeKey, type EC2ChartType } from "../ec2ExplorerControls.types";
 
 type EC2ExplorerGraphSeries = {
   key: string;
@@ -25,12 +25,18 @@ type EC2ExplorerGraphSeries = {
 type EC2ExplorerChartProps = {
   title: string;
   explorerType?: "cost" | "usage";
-  unit?: "currency" | "percent" | "gb";
+  unit?: "currency" | "percent" | "gb" | "count";
   chartType: EC2ChartType;
   canUseStackedBar: boolean;
   showChartTypeSelector?: boolean;
   yAxisLabel?: string;
+  xAxisLabel?: string;
+  horizontalBars?: boolean;
+  fixedHeight?: number;
   valueMode?: "default" | "data-transfer-cost" | "data-transfer-usage" | "data-transfer-distribution";
+  seriesOrder?: string[];
+  seriesColorByKey?: Record<string, string>;
+  emptyStateMessage?: string;
   onChartTypeChange: (nextChartType: EC2ChartType) => void;
   graph: {
     type: "bar" | "stacked_bar" | "line" | "area" | "stacked_area";
@@ -70,7 +76,13 @@ export function EC2ExplorerChart({
   canUseStackedBar,
   showChartTypeSelector = true,
   yAxisLabel,
+  xAxisLabel = "Date",
+  horizontalBars = false,
+  fixedHeight,
   valueMode = "default",
+  seriesOrder,
+  seriesColorByKey,
+  emptyStateMessage,
   onChartTypeChange,
   graph,
   loading,
@@ -101,8 +113,9 @@ export function EC2ExplorerChart({
 
   const isLineChart = chartType === "line";
   const shouldShowLegend = graph.series.length > 1;
-  const chartHeight = graph.series.length > 8 ? 500 : graph.series.length > 5 ? 450 : 400;
   const xLabels = graph.series[0]?.data.map((item) => item.date) ?? [];
+  const horizontalBarHeight = Math.max(140, xLabels.length * 44 + 44);
+  const chartHeight = fixedHeight ?? (horizontalBars ? horizontalBarHeight : (graph.series.length > 8 ? 500 : graph.series.length > 5 ? 450 : 400));
   const displayLabels = xLabels.map((label) => {
     const parsed = new Date(`${label}T00:00:00.000Z`);
     return Number.isNaN(parsed.getTime()) ? label : xAxisFormatter.format(parsed);
@@ -110,11 +123,14 @@ export function EC2ExplorerChart({
 
   const option = useMemo<EChartsOption>(() => {
     const numberFormatter = new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 });
-    const currencyFormatter = new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "USD",
-      maximumFractionDigits: 2,
-    });
+    const currencyFormatter = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const microCurrencyFormatter = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 5 });
+    const formatCurrency = (rawValue: number): string => {
+      const numericValue = Number.isFinite(rawValue) ? rawValue : 0;
+      return numericValue > 0 && numericValue < 0.01
+        ? microCurrencyFormatter.format(numericValue)
+        : currencyFormatter.format(numericValue);
+    };
 
     const toNumericValue = (point: EC2ExplorerGraphSeries["data"][number]): number | null => {
       if (point.value === null || typeof point.value === "undefined") {
@@ -132,22 +148,46 @@ export function EC2ExplorerChart({
       return Number(point.value ?? 0);
     };
 
-    const resolvedUnit: "currency" | "percent" | "gb" = unit ?? (explorerType === "usage" ? "percent" : "currency");
+    const resolvedUnit: "currency" | "percent" | "gb" | "count" = unit ?? (explorerType === "usage" ? "percent" : "currency");
 
     const formatByUnit = (rawValue: number): string => {
       const numericValue = Number.isFinite(rawValue) ? rawValue : 0;
       if (resolvedUnit === "percent") return `${numberFormatter.format(numericValue)}%`;
       if (resolvedUnit === "gb") return `${numberFormatter.format(numericValue)} GB`;
-      return currencyFormatter.format(numericValue);
+      if (resolvedUnit === "count") return numberFormatter.format(numericValue);
+      return formatCurrency(numericValue);
     };
 
-    const seriesData = graph.series.map((series) => ({
+    const rawSeriesData = graph.series.map((series) => ({
       ...series,
       data: series.data.map((point) => toNumericValue(point)),
     }));
+    const seriesData = seriesOrder && seriesOrder.length > 0
+      ? [...rawSeriesData].sort((a, b) => {
+          const normalizeKey = (value: string): string => normalizeEc2CostTypeKey(value) ?? value.trim().toLowerCase();
+          const rank = (value: string): number => {
+            const normalized = normalizeKey(value);
+            const index = seriesOrder.findIndex((item) => item === normalized);
+            return index >= 0 ? index : Number.MAX_SAFE_INTEGER;
+          };
+          return rank(a.key) - rank(b.key);
+        })
+      : rawSeriesData;
+    const horizontalMaxValue = horizontalBars
+      ? Math.max(
+          0,
+          ...seriesData.flatMap((series) =>
+            series.data.map((value) => (typeof value === "number" && Number.isFinite(value) ? value : 0)),
+          ),
+        )
+      : 0;
+    const isCountHorizontalChart = horizontalBars && resolvedUnit === "count";
 
     return {
-      color: seriesData.map((_, index) => CHART_COLORS[index % CHART_COLORS.length]),
+      color: seriesData.map((series, index) => {
+        const normalizedKey = normalizeEc2CostTypeKey(series.key) ?? series.key.trim().toLowerCase();
+        return seriesColorByKey?.[normalizedKey] ?? CHART_COLORS[index % CHART_COLORS.length];
+      }),
       tooltip: {
         trigger: "item",
         axisPointer: { type: isLineChart ? "line" : "shadow" },
@@ -160,6 +200,12 @@ export function EC2ExplorerChart({
           "border-radius:10px; box-shadow:0 12px 28px rgba(2,10,24,0.48); padding:12px 14px;",
         formatter: (params: unknown) => {
           const point = params as { axisValueLabel?: string; name?: string; marker?: string; seriesName?: string; value?: unknown };
+          if (isCountHorizontalChart) {
+            const instanceLabel = String(point.name ?? point.axisValueLabel ?? "-");
+            const rawValue = Number(point.value ?? 0);
+            const countValue = Number.isFinite(rawValue) ? Math.round(rawValue) : 0;
+            return `Instance: ${instanceLabel}<br/>Count: ${countValue}`;
+          }
           const headerValue = String(point.axisValueLabel ?? point.name ?? "");
           const rawValue = point.value;
           if (rawValue === null || typeof rawValue === "undefined") {
@@ -169,7 +215,7 @@ export function EC2ExplorerChart({
           const valueText = valueMode === "default"
             ? formatByUnit(numericValue)
             : valueMode === "data-transfer-cost"
-              ? currencyFormatter.format(numericValue)
+              ? formatCurrency(numericValue)
               : valueMode === "data-transfer-distribution"
                 ? `${numberFormatter.format(numericValue)}%`
                 : `${numberFormatter.format(numericValue)} GB`;
@@ -186,39 +232,58 @@ export function EC2ExplorerChart({
             textStyle: { color: "#58706d", fontSize: 11 },
           }
         : { show: false },
-      grid: { left: 40, right: 12, top: 58, bottom: 36, containLabel: true },
+      grid: { left: horizontalBars ? 96 : 40, right: 12, top: horizontalBars ? 18 : 58, bottom: 30, containLabel: true },
       xAxis: {
-        type: "category",
-        name: "Date",
+        type: horizontalBars ? "value" : "category",
+        name: horizontalBars ? (yAxisLabel || "Value") : xAxisLabel,
         nameLocation: "middle",
         nameGap: 24,
         nameTextStyle: { color: "#6d837e", fontSize: 11 },
-        data: displayLabels,
+        data: horizontalBars ? undefined : displayLabels,
         axisLine: { lineStyle: { color: "#d7e4df" } },
-        axisLabel: { color: "#5c7370", fontSize: 11, hideOverlap: true, rotate: displayLabels.length > 24 ? 28 : 0 },
+        min: horizontalBars ? 0 : undefined,
+        max: isCountHorizontalChart ? Math.max(1, Math.ceil(horizontalMaxValue)) : undefined,
+        minInterval: isCountHorizontalChart ? 1 : undefined,
+        interval: isCountHorizontalChart ? 1 : undefined,
+        axisLabel: {
+          color: "#5c7370",
+          fontSize: 11,
+          hideOverlap: true,
+          rotate: displayLabels.length > 24 ? 28 : 0,
+          formatter: isCountHorizontalChart
+            ? (value: number) => String(Math.round(value))
+            : undefined,
+        },
       },
       yAxis: {
-        type: "value",
-        min: isLineChart ? undefined : 0,
-        name: yAxisLabel || "Cost ($)",
+        type: horizontalBars ? "category" : "value",
+        min: isLineChart || horizontalBars ? undefined : 0,
+        name: horizontalBars ? xAxisLabel : (yAxisLabel || "Cost ($)"),
         nameLocation: "middle",
         nameRotate: 90,
         nameGap: 64,
         nameTextStyle: { color: "#6d837e", fontSize: 11 },
         axisLine: { show: false },
         splitLine: { lineStyle: { color: "#e1eae7", type: "dashed" } },
-        axisLabel: {
-          color: "#6d837e",
-          fontSize: 11,
-          formatter: (value: number) =>
-            valueMode === "default"
-              ? formatByUnit(value)
-              : valueMode === "data-transfer-cost"
-                ? currencyFormatter.format(value)
-              : valueMode === "data-transfer-distribution"
-                ? `${numberFormatter.format(value)}%`
-                : `${numberFormatter.format(value)} GB`,
-        },
+        data: horizontalBars ? displayLabels : undefined,
+        axisLabel: horizontalBars
+          ? {
+              color: "#6d837e",
+              fontSize: 11,
+              formatter: (value: string | number) => String(value ?? ""),
+            }
+          : {
+              color: "#6d837e",
+              fontSize: 11,
+              formatter: (value: number) =>
+                valueMode === "default"
+                  ? formatByUnit(value)
+                  : valueMode === "data-transfer-cost"
+                    ? formatCurrency(value)
+                    : valueMode === "data-transfer-distribution"
+                      ? `${numberFormatter.format(value)}%`
+                      : `${numberFormatter.format(value)} GB`,
+            },
       },
       series: seriesData.map((series) => ({
         name: series.label,
@@ -233,10 +298,12 @@ export function EC2ExplorerChart({
         barGap: isLineChart ? undefined : "0%",
         lineStyle: isLineChart ? { width: 2.3 } : undefined,
         itemStyle: isLineChart ? undefined : { borderRadius: [0, 0, 0, 0] },
-        data: series.data,
+        data: horizontalBars
+          ? series.data.map((value, index) => ({ value, name: displayLabels[index] }))
+          : series.data,
       })),
     };
-  }, [displayLabels, explorerType, graph.series, isLineChart, unit, valueMode, yAxisLabel]);
+  }, [displayLabels, explorerType, graph.series, horizontalBars, isLineChart, seriesColorByKey, seriesOrder, unit, valueMode, xAxisLabel, yAxisLabel]);
 
   if (loading) {
     return (
@@ -268,7 +335,7 @@ export function EC2ExplorerChart({
     return (
       <EmptyStateBlock
         title="No data found"
-        message="No data found for current filters. Try removing thresholds or filters."
+        message={emptyStateMessage ?? "No data found for current filters. Try removing thresholds or filters."}
       />
     );
   }

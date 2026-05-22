@@ -25,10 +25,10 @@ export const normalizeRegion = (value: string | null | undefined): { groupKey: s
 export const normalizeCostType = (value: string | null | undefined): { groupKey: string; groupLabel: string } => {
   const key = toKey(value);
   if (key === "compute") return { groupKey: "compute", groupLabel: "Compute" };
-  if (key === "ebs") return { groupKey: "ebs", groupLabel: "EBS" };
+  if (key === "ebs" || key === "volume") return { groupKey: "volume", groupLabel: "Volume" };
   if (key === "snapshot") return { groupKey: "snapshot", groupLabel: "Snapshot" };
   if (key === "data_transfer") return { groupKey: "data_transfer", groupLabel: "Data Transfer" };
-  if (key === "eip" || key === "elastic_ip") return { groupKey: "eip", groupLabel: "EIP" };
+  if (key === "eip" || key === "elastic_ip") return { groupKey: "elastic_ip", groupLabel: "Elastic IP" };
   return { groupKey: "other", groupLabel: "Other" };
 };
 
@@ -46,4 +46,3 @@ export const toTagValue = (tags: Record<string, unknown> | null, key: string | n
   if (!fallback || typeof fallback[1] !== "string" || !fallback[1].trim()) return "Unknown";
   return fallback[1].trim();
 };
-
