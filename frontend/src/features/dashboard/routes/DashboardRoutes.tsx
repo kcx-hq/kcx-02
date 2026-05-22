@@ -183,6 +183,7 @@ export default function DashboardRoutes() {
         <Route path="policy/s3" element={<S3PolicyPage />} />
         <Route path="services/database" element={<DatabaseExplorerPage />} />
         <Route path="services/database/assets" element={<DatabaseAssetsPage />} />
+        <Route path="services/database/optimization" element={<DatabaseOptimizationPage />} />
         <Route path="services/database/recommendations" element={<DatabaseOptimizationPage />} />
         <Route path="services/database/assets/:resourceId" element={<DatabaseAssetDetailPage />} />
         <Route path="resources" element={<ResourcesPage />} />

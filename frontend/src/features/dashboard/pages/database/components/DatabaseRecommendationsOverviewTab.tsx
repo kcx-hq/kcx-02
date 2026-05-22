@@ -1,9 +1,6 @@
 import { EmptyStateBlock, KpiCard, KpiGrid } from "../../../common/components";
 import type { DatabaseRecommendationSummary } from "../../../api/dashboardTypes";
 import { formatInteger, recommendationTypeLabel } from "./db-recommendations.formatters";
-import {
-  DATABASE_RECOMMENDATION_FAMILY_TABS,
-} from "./DatabaseRecommendationsHeaderTabs";
 
 type DatabaseRecommendationsOverviewTabProps = {
   summary: DatabaseRecommendationSummary | undefined;
@@ -14,7 +11,7 @@ type DatabaseRecommendationsOverviewTabProps = {
 
 const ACTIVE_STATUSES = ["OPEN", "IN_PROGRESS", "SNOOZED"] as const;
 
-const FAMILY_DESCRIPTIONS: Record<string, string> = {
+const SIGNAL_DESCRIPTIONS: Record<string, string> = {
   DB_STORAGE_OPTIMIZATION: "Review storage, backup, and I/O cost composition.",
   DB_IDLE_CANDIDATE: "Review low-activity database resources with available evidence.",
   DB_HA_COST_OPTIMIZATION: "Review resilience-cost posture and topology-related signals.",
@@ -74,13 +71,13 @@ export function DatabaseRecommendationsOverviewTab({
         </header>
         <div className="dashboard-table-shell__body">
           <KpiGrid className="db-assets-summary-grid">
-            {DATABASE_RECOMMENDATION_FAMILY_TABS.map((tab) => (
-              <article key={tab.key} className="dashboard-kpi-card">
-                <p className="dashboard-kpi-card__label">{recommendationTypeLabel(tab.recommendationType)}</p>
-                <p className="dashboard-kpi-card__value">{formatInteger(summary?.byType?.[tab.recommendationType] ?? 0)}</p>
+            {Object.entries(summary?.byType ?? {}).map(([type, count]) => (
+              <article key={type} className="dashboard-kpi-card">
+                <p className="dashboard-kpi-card__label">{recommendationTypeLabel(type)}</p>
+                <p className="dashboard-kpi-card__value">{formatInteger(count)}</p>
                 <div className="dashboard-kpi-card__footer">
                   <span className="dashboard-kpi-card__meta">
-                    {FAMILY_DESCRIPTIONS[tab.recommendationType] ?? "Review evidence signals and context."}
+                    {SIGNAL_DESCRIPTIONS[type] ?? "Review evidence signals and context."}
                   </span>
                 </div>
                 <div className="dashboard-kpi-card__footer">

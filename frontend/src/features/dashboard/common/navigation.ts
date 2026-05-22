@@ -162,7 +162,7 @@ export const dashboardNav: DashboardNavNode[] = [
           {
             kind: "link",
             label: "Optimization",
-            path: "/dashboard/services/database/recommendations",
+            path: "/dashboard/services/database/optimization",
             icon: "databaseRecommendations",
           },
         ],

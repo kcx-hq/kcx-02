@@ -53,7 +53,6 @@ const parsePositiveInt = (value: string | null, fallback: number): number => {
 const parseTab = (search: string): DatabaseRecommendationsTabKey => {
   const raw = (new URLSearchParams(search).get("tab") ?? "overview").trim().toLowerCase();
   if (raw === "overview" || raw === "actions") return raw;
-  if (raw === "storage-optimization" || raw === "idle-candidates" || raw === "ha-cost-review" || raw === "engine-deployment-review") return "actions";
   return "overview";
 };
 
@@ -63,7 +62,10 @@ export default function DatabaseOptimizationPage() {
   const [filtersState, setFiltersState] = useState<OptimizationActionsFiltersState>(() => parseSearch(location.search));
   const [activeTab, setActiveTab] = useState<DatabaseRecommendationsTabKey>(() => parseTab(location.search));
   const [page, setPage] = useState<number>(() => parsePositiveInt(new URLSearchParams(location.search).get("page"), 1));
-  const [limit, setLimit] = useState<number>(() => parsePositiveInt(new URLSearchParams(location.search).get("limit"), DEFAULT_LIMIT));
+  const [limit, setLimit] = useState<number>(() => {
+    const params = new URLSearchParams(location.search);
+    return parsePositiveInt(params.get("limit") ?? params.get("pageSize"), DEFAULT_LIMIT);
+  });
   const [selectedRecommendationId, setSelectedRecommendationId] = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
 
@@ -72,8 +74,18 @@ export default function DatabaseOptimizationPage() {
     setActiveTab(parseTab(location.search));
     const params = new URLSearchParams(location.search);
     setPage(parsePositiveInt(params.get("page"), 1));
-    setLimit(parsePositiveInt(params.get("limit"), DEFAULT_LIMIT));
+    setLimit(parsePositiveInt(params.get("limit") ?? params.get("pageSize"), DEFAULT_LIMIT));
   }, [location.search]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const rawTab = (params.get("tab") ?? "").trim().toLowerCase();
+    if (rawTab.length === 0 || rawTab === "overview" || rawTab === "actions") {
+      return;
+    }
+    params.set("tab", "actions");
+    navigate({ pathname: location.pathname, search: params.toString() }, { replace: true });
+  }, [location.pathname, location.search, navigate]);
 
   const filters = useMemo<DatabaseOptimizationActionsFilters>(
     () => ({
@@ -127,6 +139,7 @@ export default function DatabaseOptimizationPage() {
     setOrDelete("recommendation_type", nextFilters.recommendationType);
     params.set("page", String(nextPage));
     params.set("limit", String(nextLimit));
+    params.set("pageSize", String(nextLimit));
     params.set("tab", nextTab);
 
     navigate({ pathname: location.pathname, search: params.toString() }, { replace: true });
@@ -260,7 +273,7 @@ export default function DatabaseOptimizationPage() {
               }}
               disabled={!hasTopAction}
             >
-              View evidence
+              View Evidence
             </button>
             <button
               type="button"
@@ -313,7 +326,7 @@ export default function DatabaseOptimizationPage() {
         }}
       />
 
-      {generateMutation.isError ? <p className="dashboard-note">Unable to refresh recommendations right now.</p> : null}
+      {generateMutation.isError ? <p className="dashboard-note">Unable to refresh optimization signals right now.</p> : null}
 
       {activeTab === "overview" ? (
         <DatabaseRecommendationsOverviewTab
@@ -407,7 +420,7 @@ export default function DatabaseOptimizationPage() {
                 </select>
               </label>
               <label className="cost-explorer-toolbar-item cost-explorer-field">
-                <span className="cost-explorer-field__label">Recommendation Type</span>
+                <span className="cost-explorer-field__label">Signal Type</span>
                 <select
                   className="cost-explorer-field__control"
                   value={filtersState.recommendationType}

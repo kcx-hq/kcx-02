@@ -511,7 +511,10 @@ export function DashboardGlobalHeader() {
         { label: "Assets" },
       ];
     }
-    if (path === "/dashboard/services/database/recommendations") {
+    if (
+      path === "/dashboard/services/database/recommendations"
+      || path === "/dashboard/services/database/optimization"
+    ) {
       return [
         { label: rootCrumb, path: "/dashboard/overview" },
         { label: "Services", path: "/dashboard/inventory" },
