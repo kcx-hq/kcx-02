@@ -33,6 +33,13 @@ This folder captures a structured summary of the full conversation and all major
 28. `28-database-assets-detail-drilldown-breadcrumbs-and-backend-dev-fix.md`
 29. `29-db-recommendations-phase2-orchestration-verification-and-dev-seeded-runtime-validation.md`
 30. `30-database-explorer-phase1a-drilldown-to-assets-chat.md`
+31. `31-database-explorer-db-service-groupby-ux-redesign-attempt-and-revert.md`
+32. `32-database-assets-backend-implementation-verification-and-frontend-structure-scan.md`
+33. `33-database-explorer-and-assets-chat-summary.md`
+34. `34-database-assets-v1-ux-filter-cleanup-and-regression-fixes.md`
+35. `35-sidebar-s3-bucket-icon-iterations-and-finalization.md`
+36. `36-database-explorer-database-type-parent-scope-and-drilldown-grouping.md`
+37. `37-database-explorer-backend-scan-demo-seeding-and-operational-cost-trend-cleanup.md`
 
 ## Scope Notes
 - This is a retrospective summary of requests, code changes, validations, and outcomes.
