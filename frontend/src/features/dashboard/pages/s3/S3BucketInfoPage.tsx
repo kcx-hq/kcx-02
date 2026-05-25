@@ -164,6 +164,83 @@ const deriveGovernanceStatus = (
   return "Needs Review";
 };
 
+const derivePrimaryUsagePattern = (input: {
+  storageCost: number;
+  requestCost: number;
+  transferCost: number;
+  retrievalCost: number;
+  otherCost: number;
+}): string => {
+  const entries = [
+    { label: "Storage heavy", value: input.storageCost },
+    { label: "Request heavy", value: input.requestCost },
+    { label: "Transfer heavy", value: input.transferCost },
+    { label: "Retrieval heavy", value: input.retrievalCost },
+    { label: "Other heavy", value: input.otherCost },
+  ].sort((a, b) => b.value - a.value);
+  return entries[0]?.label ?? "Balanced";
+};
+
+const deriveOptimizationSignal = (input: {
+  governanceStatus: string;
+  lifecycleStatus: string;
+  publicAccess: string;
+  accessCount: number | null;
+  monthlyGrowthPct: number | null;
+  optimizationScore: number | null;
+}): string => {
+  if (String(input.publicAccess).toLowerCase() === "public") return "At Risk";
+  if (String(input.governanceStatus).toLowerCase() === "at risk") return "At Risk";
+  if (String(input.lifecycleStatus).toLowerCase() === "missing") return "Needs Review";
+  if ((input.monthlyGrowthPct ?? 0) >= 20) return "Growth Watch";
+  if (input.accessCount != null && input.accessCount <= 0) return "Idle Candidate";
+  if (input.optimizationScore != null && input.optimizationScore >= 75) return "Optimized";
+  return "Needs Review";
+};
+
+function S3BucketInfoSkeleton() {
+  return (
+    <div className="s3-bucket-section s3-bucket-section--skeleton" aria-label="Loading S3 bucket insights">
+      <section className="cost-explorer-widget-shell s3-bucket-kpi-shell">
+        <div className="s3-bucket-kpi-row" aria-hidden="true">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <article key={`s3-bucket-kpi-skeleton-${index}`} className="s3-bucket-kpi-tile s3-bucket-kpi-tile--skeleton">
+              <div className="s3-bucket-skeleton-line s3-bucket-skeleton-line--label" />
+              <div className="s3-bucket-skeleton-line s3-bucket-skeleton-line--value" />
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="cost-explorer-widget-shell s3-bucket-table-shell">
+        <div className="s3-bucket-table-skeleton" aria-hidden="true">
+          <div className="s3-bucket-table-skeleton__header">
+            {Array.from({ length: 8 }).map((_, index) => (
+              <span key={`s3-bucket-head-${index}`} className="s3-bucket-skeleton-line s3-bucket-skeleton-line--cell" />
+            ))}
+          </div>
+          <div className="s3-bucket-table-skeleton__body">
+            {Array.from({ length: 11 }).map((_, rowIndex) => (
+              <div key={`s3-bucket-row-${rowIndex}`} className="s3-bucket-table-skeleton__row">
+                {Array.from({ length: 8 }).map((_, colIndex) => (
+                  <span
+                    key={`s3-bucket-cell-${rowIndex}-${colIndex}`}
+                    className="s3-bucket-skeleton-line s3-bucket-skeleton-line--cell"
+                  />
+                ))}
+              </div>
+            ))}
+          </div>
+          <div className="s3-bucket-table-skeleton__footer">
+            <span className="s3-bucket-skeleton-line s3-bucket-skeleton-line--pagination-left" />
+            <span className="s3-bucket-skeleton-line s3-bucket-skeleton-line--pagination-right" />
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 export default function S3BucketInfoPage() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -309,7 +386,10 @@ export default function S3BucketInfoPage() {
       const monthlyGrowthPct = toNumber(row.trendPct);
       const requestCost = Number(row.requests ?? 0);
       const transferCost = Number(row.transfer ?? 0);
-      const totalMonthlyCost = Number(row.cost ?? 0);
+      const storageCost = Number(row.storage ?? 0);
+      const retrievalCost = Number(row.retrieval ?? 0);
+      const otherCost = Number(row.other ?? 0);
+      const grossCost = Number(row.cost ?? 0);
 
       const accessCount = toNumber(storageLens?.accessCount);
       const lastAccess = computeLastAccess(accessCount, storageLens?.usageDate ?? null);
@@ -345,7 +425,7 @@ export default function S3BucketInfoPage() {
         null;
 
       const lifecycleMissing = lifecycleStatus.toLowerCase() === "missing" || lifecycleStatus.toLowerCase() === "not applied";
-      const idleRisk = accessCount != null && accessCount <= 0 && totalMonthlyCost > 0 ? 1 : 0;
+      const idleRisk = accessCount != null && accessCount <= 0 && grossCost > 0 ? 1 : 0;
       const publicRiskBase = publicAccess.toLowerCase() === "public" ? 3 : publicAccess.toLowerCase() === "private" ? 0 : 1;
       const publicRiskScore = publicRiskBase + (lifecycleMissing ? 1 : 0) + idleRisk;
 
@@ -353,12 +433,21 @@ export default function S3BucketInfoPage() {
         bucketName,
         account: String(row.account ?? "--"),
         region: String(row.region ?? "--"),
-        totalMonthlyCost,
+        grossCost,
         storageSizeBytes,
         objectCount,
         storageClassMix: formatStorageClassMix(storageLens?.storageClassDistribution, efficiency),
         requestCost,
         transferCost,
+        primaryUsagePattern:
+          String(row.primaryUsagePattern ?? "").trim() ||
+          derivePrimaryUsagePattern({
+            storageCost,
+            requestCost,
+            transferCost,
+            retrievalCost,
+            otherCost,
+          }),
         monthlyGrowthPct,
         lastAccessLabel: lastAccess.label,
         lifecycleStatus,
@@ -366,7 +455,16 @@ export default function S3BucketInfoPage() {
         publicAccess,
         versioning,
         encryption,
-        optimizationScore,
+        optimizationSignal:
+          String(row.optimizationSignal ?? "").trim() ||
+          deriveOptimizationSignal({
+            governanceStatus,
+            lifecycleStatus,
+            publicAccess,
+            accessCount,
+            monthlyGrowthPct,
+            optimizationScore,
+          }),
         potentialSavings,
         publicRiskScore,
         lastAccessOrder: lastAccess.order,
@@ -385,19 +483,19 @@ export default function S3BucketInfoPage() {
 
   const sortedRows = useMemo(() => {
     const next = [...combinedRows];
-    next.sort((a, b) => b.totalMonthlyCost - a.totalMonthlyCost);
+    next.sort((a, b) => b.grossCost - a.grossCost);
 
     return next;
   }, [combinedRows]);
 
   const kpis = useMemo(() => {
     const buckets = combinedRows.length;
-    const totalMonthlyCost = combinedRows.reduce((sum, row) => sum + row.totalMonthlyCost, 0);
+    const grossBucketCost = combinedRows.reduce((sum, row) => sum + row.grossCost, 0);
     const totalStorageBytes = combinedRows.reduce((sum, row) => sum + Number(row.storageSizeBytes ?? 0), 0);
     const totalPotentialSavings = combinedRows.reduce((sum, row) => sum + Number(row.potentialSavings ?? 0), 0);
     return {
       buckets,
-      totalMonthlyCost,
+      grossBucketCost,
       totalStorageBytes,
       totalPotentialSavings,
     };
@@ -405,7 +503,7 @@ export default function S3BucketInfoPage() {
 
   return (
     <div className="dashboard-page">
-      {overviewQuery.isLoading && !baseData ? <p className="dashboard-note">Loading S3 bucket insights...</p> : null}
+      {overviewQuery.isLoading && !baseData ? <S3BucketInfoSkeleton /> : null}
       {showSlowLoadingHint && !baseData ? (
         <p className="dashboard-note">Still loading bucket insights. This is taking longer than expected.</p>
       ) : null}
@@ -420,8 +518,8 @@ export default function S3BucketInfoPage() {
                 <p className="s3-bucket-kpi-tile__count">{integerFormatter.format(kpis.buckets)}</p>
               </article>
               <article className="s3-bucket-kpi-tile">
-                <p className="cost-explorer-insight-tile__label">Total Monthly Cost</p>
-                <p className="s3-bucket-kpi-tile__meta">{currencyFormatter.format(kpis.totalMonthlyCost)}</p>
+                <p className="cost-explorer-insight-tile__label">Gross Bucket Cost</p>
+                <p className="s3-bucket-kpi-tile__meta">{currencyFormatter.format(kpis.grossBucketCost)}</p>
               </article>
               <article className="s3-bucket-kpi-tile">
                 <p className="cost-explorer-insight-tile__label">Storage Size</p>
@@ -435,11 +533,6 @@ export default function S3BucketInfoPage() {
             {optimizationQuery.isError ? (
               <p className="dashboard-note" style={{ marginTop: 10 }}>
                 Lifecycle status is partially unavailable: {optimizationQuery.error.message}
-              </p>
-            ) : null}
-            {deepInsightsQuery.isFetching && !deepData ? (
-              <p className="dashboard-note" style={{ marginTop: 10 }}>
-                Loading optimization scores and savings in background...
               </p>
             ) : null}
             {deepInsightsQuery.isError ? (

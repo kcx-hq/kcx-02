@@ -4,7 +4,6 @@ export type S3OverviewFilterValue = {
   seriesBy: NonNullable<S3CostInsightsFiltersQuery["seriesBy"]>;
   seriesValues: string[];
   storageClass: string[];
-  region: string;
   costBy: NonNullable<S3CostInsightsFiltersQuery["costBy"]>;
   yAxisMetric: NonNullable<S3CostInsightsFiltersQuery["yAxisMetric"]>;
   chartType: "bar" | "line";

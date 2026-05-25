@@ -16,9 +16,16 @@ import {
   type EC2DataTransferControlsState,
 } from "./components/ec2DataTransfer.types";
 
-const currency = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 });
+const currency = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const microCurrency = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 5 });
 const numberFmt = new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 });
 const COLORS = ["#2f8f88", "#3f68c6", "#c27d2f", "#8a66cf"];
+const formatAdaptiveCurrency = (value: number): string => {
+  const numericValue = Number.isFinite(value) ? value : 0;
+  return numericValue > 0 && numericValue < 0.01
+    ? microCurrency.format(numericValue)
+    : currency.format(numericValue);
+};
 
 const summaryFallback: Ec2DataTransferResponse["summary"] = {
   totalCost: 0,
@@ -73,11 +80,19 @@ export default function EC2DataTransferPage() {
     const trend = query.data?.trend ?? [];
     return {
       color: COLORS,
-      tooltip: { trigger: "axis" },
+      tooltip: {
+        trigger: "axis",
+        valueFormatter: (value: string | number) => formatAdaptiveCurrency(Number(value ?? 0)),
+      },
       legend: { top: 4 },
       grid: { left: 60, right: 16, top: 44, bottom: 24 },
       xAxis: { type: "category", data: trend.map((item) => item.date) },
-      yAxis: { type: "value" },
+      yAxis: {
+        type: "value",
+        axisLabel: {
+          formatter: (value: number) => formatAdaptiveCurrency(Number(value ?? 0)),
+        },
+      },
       series: [
         { name: "Internet", type: "bar", stack: "total", data: trend.map((item) => item.internetCost) },
         { name: "Inter-Region", type: "bar", stack: "total", data: trend.map((item) => item.interRegionCost) },
@@ -90,7 +105,7 @@ export default function EC2DataTransferPage() {
   const breakdownCols = useMemo<ColDef<Ec2DataTransferResponse["breakdown"][number]>[]>(() => [
     { headerName: "Transfer Type", field: "label", minWidth: 220 },
     { headerName: "Billed Usage GB", field: "usageGb", valueFormatter: (p: ValueFormatterParams) => numberFmt.format(Number(p.value ?? 0)) },
-    { headerName: "Cost", field: "cost", valueFormatter: (p: ValueFormatterParams) => currency.format(Number(p.value ?? 0)) },
+    { headerName: "Cost", field: "cost", valueFormatter: (p: ValueFormatterParams) => formatAdaptiveCurrency(Number(p.value ?? 0)) },
     { headerName: "% of Data Transfer", field: "percentageOfDataTransferCost", valueFormatter: (p: ValueFormatterParams) => `${numberFmt.format(Number(p.value ?? 0))}%` },
     { headerName: "Resource Count", field: "resourceCount" },
     { headerName: "Recommendations", field: "recommendationCount" },
@@ -146,10 +161,10 @@ export default function EC2DataTransferPage() {
       <section className="ec2-explorer-head-stack" aria-label="EC2 data transfer summary">
         <div className="ec2-explorer-summary" aria-label="summary cards">
           {[
-            ["Total Data Transfer Cost", currency.format(summary.totalCost)],
+            ["Total Data Transfer Cost", formatAdaptiveCurrency(summary.totalCost)],
             ["Total Billed Usage GB", numberFmt.format(summary.totalUsageGb)],
             ["Resources", summary.resourceCount.toLocaleString()],
-            ["Potential Savings", currency.format(summary.potentialSavings)],
+            ["Potential Savings", formatAdaptiveCurrency(summary.potentialSavings)],
           ].map(([label, value]) => (
             <article key={label} className={`ec2-explorer-summary__card${query.isLoading ? " is-loading" : ""}`}>
               <p className="ec2-explorer-summary__label">{label}</p>

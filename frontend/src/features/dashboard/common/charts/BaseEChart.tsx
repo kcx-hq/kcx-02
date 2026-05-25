@@ -7,6 +7,8 @@ type BaseEChartProps = {
   height?: number;
   className?: string;
   onPointClick?: (params: unknown) => void;
+  onPointHover?: (params: unknown) => void;
+  onPointLeave?: () => void;
 };
 
 const sharedOption: EChartsOption = {
@@ -25,7 +27,7 @@ const sharedOption: EChartsOption = {
   },
 };
 
-export function BaseEChart({ option, height = 260, className, onPointClick }: BaseEChartProps) {
+export function BaseEChart({ option, height = 260, className, onPointClick, onPointHover, onPointLeave }: BaseEChartProps) {
   const chartContainerRef = useRef<HTMLDivElement | null>(null);
   const chartRef = useRef<echarts.EChartsType | null>(null);
 
@@ -80,6 +82,32 @@ export function BaseEChart({ option, height = 260, className, onPointClick }: Ba
       chartRef.current?.off("click", handler);
     };
   }, [onPointClick]);
+
+  useEffect(() => {
+    if (!chartRef.current) return;
+    if (!onPointHover && !onPointLeave) return;
+
+    const handleOver = (params: unknown) => {
+      onPointHover?.(params);
+    };
+    const handleOut = () => {
+      onPointLeave?.();
+    };
+
+    if (onPointHover) {
+      chartRef.current.on("mouseover", handleOver);
+    }
+    chartRef.current.on("mouseout", handleOut);
+    chartRef.current.on("globalout", handleOut);
+
+    return () => {
+      if (onPointHover) {
+        chartRef.current?.off("mouseover", handleOver);
+      }
+      chartRef.current?.off("mouseout", handleOut);
+      chartRef.current?.off("globalout", handleOut);
+    };
+  }, [onPointHover, onPointLeave]);
 
   const containerClassName = className ? `dashboard-echart ${className}` : "dashboard-echart";
 

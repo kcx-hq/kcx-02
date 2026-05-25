@@ -28,6 +28,7 @@ const DATE_TIME_FORMATTER = new Intl.DateTimeFormat("en-US", {
 
 const formatCurrency = (value: number | null | undefined): string => {
   if (value === null || typeof value === "undefined" || !Number.isFinite(value)) return "-";
+  if (value > 0 && value < 0.01) return "<$0.01";
   return CURRENCY_FORMATTER.format(value);
 };
 
@@ -103,16 +104,10 @@ export function EC2InstancesTable({
         },
       },
       {
-        headerName: "Total Cost",
-        field: "monthToDateCost",
-        minWidth: 132,
-        valueFormatter: (params: ValueFormatterParams<InventoryEc2InstanceRow, number | null | undefined>) =>
-          formatCurrency(params.value),
-      },
-      {
         headerName: "Compute Cost",
         field: "computeCost",
         minWidth: 132,
+        sort: "desc",
         valueFormatter: (params: ValueFormatterParams<InventoryEc2InstanceRow, number | null | undefined>) =>
           formatCurrency(params.value),
       },
@@ -234,7 +229,7 @@ export function EC2InstancesTable({
         valueGetter: (params) => params.data?.regionName ?? params.data?.regionId ?? params.data?.regionKey ?? "-",
       },
       {
-        headerName: "Launch Time",
+        headerName: "Last Seen",
         field: "launchTime",
         minWidth: 178,
         valueFormatter: (params: ValueFormatterParams<InventoryEc2InstanceRow, string | null | undefined>) =>

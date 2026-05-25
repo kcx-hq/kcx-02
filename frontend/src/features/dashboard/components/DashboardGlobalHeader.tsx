@@ -211,7 +211,6 @@ const S3_DEFAULT_FILTERS: S3OverviewFilterValue = {
   seriesBy: "bucket",
   seriesValues: [],
   storageClass: [],
-  region: "",
   costBy: "date",
   yAxisMetric: "billed_cost",
   chartType: "bar",
@@ -221,9 +220,8 @@ const S3_DEFAULT_FILTERS: S3OverviewFilterValue = {
 const S3_SERIES_BY_OPTIONS: Array<S3OverviewFilterValue["seriesBy"]> = [
   "none",
   "bucket",
-  "cost_category",
+  "usage_type",
   "operation",
-  "product_family",
   "storage_class",
 ];
 const S3_COST_BY_OPTIONS: Array<S3OverviewFilterValue["costBy"]> = ["date", "bucket", "region", "account"];
@@ -244,7 +242,6 @@ const parseS3FiltersFromSearch = (search: string): S3OverviewFilterValue => {
   const seriesBy = params.get("s3SeriesBy");
   const seriesValues = parseS3ListParam(params.get("s3SeriesValues"));
   const storageClass = parseS3ListParam(params.get("s3StorageClass"));
-  const region = (params.get("s3Region") ?? "").trim();
   const costBy = params.get("s3CostBy");
   const yAxisMetric = params.get("s3YAxisMetric");
   const chartType = params.get("s3ChartType");
@@ -256,7 +253,6 @@ const parseS3FiltersFromSearch = (search: string): S3OverviewFilterValue => {
       : S3_DEFAULT_FILTERS.seriesBy,
     seriesValues,
     storageClass,
-    region,
     costBy: S3_COST_BY_OPTIONS.includes(costBy as S3OverviewFilterValue["costBy"])
       ? (costBy as S3OverviewFilterValue["costBy"])
       : S3_DEFAULT_FILTERS.costBy,
@@ -279,8 +275,6 @@ const applyS3FiltersToParams = (params: URLSearchParams, filters: S3OverviewFilt
   else params.delete("s3SeriesValues");
   if (filters.storageClass.length > 0) params.set("s3StorageClass", filters.storageClass.join(","));
   else params.delete("s3StorageClass");
-  if (filters.region) params.set("s3Region", filters.region);
-  else params.delete("s3Region");
   if (filters.costBy !== S3_DEFAULT_FILTERS.costBy) params.set("s3CostBy", filters.costBy);
   else params.delete("s3CostBy");
   if (filters.yAxisMetric !== S3_DEFAULT_FILTERS.yAxisMetric) params.set("s3YAxisMetric", filters.yAxisMetric);
@@ -295,7 +289,6 @@ const applyS3FiltersToParams = (params: URLSearchParams, filters: S3OverviewFilt
 
 const areS3FiltersEqual = (left: S3OverviewFilterValue, right: S3OverviewFilterValue): boolean =>
   left.seriesBy === right.seriesBy &&
-  left.region === right.region &&
   left.costBy === right.costBy &&
   left.yAxisMetric === right.yAxisMetric &&
   left.chartType === right.chartType &&
@@ -542,6 +535,20 @@ export function DashboardGlobalHeader() {
         { label: "Services", path: "/dashboard/inventory" },
         { label: "Database" },
         { label: "Explorer" },
+      ];
+    }
+    if (path.startsWith("/dashboard/anomalies-alerts/")) {
+      return [
+        { label: rootCrumb, path: "/dashboard/overview" },
+        { label: "Anomalies", path: "/dashboard/anomalies-alerts" },
+        { label: "Anomaly Details" },
+      ];
+    }
+    if (path === "/dashboard/policy/lifecycle" || path === "/dashboard/policy/s3") {
+      return [
+        { label: rootCrumb, path: "/dashboard/overview" },
+        { label: "Policy", path: "/dashboard/policy" },
+        { label: "Lifecycle Policy Setup" },
       ];
     }
 

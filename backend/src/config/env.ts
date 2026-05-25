@@ -215,6 +215,8 @@ const env = {
     optionalEnv(process.env.STORAGE_LENS_DEFAULT_EXPORT_PREFIX) ?? "kcx/storage-lens",
   storageLensSchedulerMaxFilesPerRun:
     optionalPositiveInteger(process.env.STORAGE_LENS_SCHEDULER_MAX_FILES_PER_RUN) ?? 20,
+  enableEc2RealActions:
+    optionalBoolean(process.env.ENABLE_EC2_REAL_ACTIONS) ?? false,
 };
 
 export default env;

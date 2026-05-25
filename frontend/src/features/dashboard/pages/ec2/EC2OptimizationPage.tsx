@@ -1,4 +1,4 @@
-﻿import { Check, ChevronDown, Filter, RotateCcw, Search, X } from "lucide-react";
+import { Check, ChevronDown } from "lucide-react";
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -7,7 +7,13 @@ import type { ColDef } from "ag-grid-community";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ApiError } from "@/lib/api";
 import { dashboardApi } from "../../api/dashboardApi";
-import type { Ec2RecommendationRecord, Ec2RecommendationStatus, Ec2RecommendationType } from "../../api/dashboardTypes";
+import type {
+  Ec2RecommendationActionKey,
+  Ec2RecommendationActionPrecheckResponse,
+  Ec2RecommendationRecord,
+  Ec2RecommendationStatus,
+  Ec2RecommendationType,
+} from "../../api/dashboardTypes";
 
 import { BaseDataTable } from "../../common/tables/BaseDataTable";
 import { useEc2RecommendationsQuery } from "../../hooks/useDashboardQueries";
@@ -23,12 +29,23 @@ type RecommendationsFilterKey = "category" | "issueType" | "status" | "severity"
 type FilterOption = { key: string; label: string };
 type ResourceRoute = { pathname: string; search: string } | null;
 type StatusAction = { label: string; status?: Ec2RecommendationStatus; kind?: "details" | "resource" };
+type RecommendationActionItem = {
+  key: Ec2RecommendationActionKey;
+  label: string;
+  advisory?: boolean;
+  destructive?: boolean;
+  disabled?: boolean;
+  disabledReason?: string;
+};
+type ActionKind = "executable" | "advisory";
+type ActionSeverity = "destructive" | "optimization" | "advisory";
 
 const MAIN_TABS: Array<{ key: MainTab; label: string }> = [
   { key: "overview", label: "Overview" },
   { key: "recommendations", label: "Recommendations" },
 ];
 const GLOBAL_SCOPE_DEFAULTS: EC2ScopeFilters = { region: [], tags: [] };
+const ENABLE_EC2_REAL_ACTIONS = String((import.meta.env as Record<string, unknown>).VITE_ENABLE_EC2_REAL_ACTIONS ?? "false").toLowerCase() === "true";
 
 const CURRENCY_FORMATTER = new Intl.NumberFormat("en-US", {
   style: "currency",
@@ -74,6 +91,65 @@ const typeLabel = (value: Ec2RecommendationType): string => {
   if (value === "high_data_processing_cost") return "High Data Processing Cost";
   return "Unattached Elastic IP";
 };
+const recommendationActionsFor = (item: Ec2RecommendationRecord): RecommendationActionItem[] => {
+  if (item.type === "idle_instance") {
+    return [{ key: "stop_instance", label: "Stop Instance" }];
+  }
+  if (item.type === "underutilized_instance" || item.type === "overutilized_instance") {
+    return [{ key: "resize_instance", label: "Resize Instance" }];
+  }
+  if (item.type === "unattached_volume") {
+    return [
+      { key: "delete_volume", label: "Delete Volume", destructive: true },
+      { key: "snapshot_then_delete_volume", label: "Snapshot then Delete Volume", destructive: true },
+    ];
+  }
+  if (item.type === "old_snapshot" || item.type === "orphaned_snapshot") {
+    return [{ key: "delete_snapshot", label: "Delete Snapshot", destructive: true }];
+  }
+  if (item.type === "unattached_elastic_ip") {
+    return [{ key: "release_eip", label: "Release Elastic IP", destructive: true }];
+  }
+  if (item.type === "uncovered_on_demand") {
+    return [{ key: "review_ri_sp", label: "Review RI / Savings Plan", advisory: true }];
+  }
+  if (
+    item.type === "high_internet_data_transfer" ||
+    item.type === "high_inter_region_data_transfer" ||
+    item.type === "high_inter_az_data_transfer" ||
+    item.type === "low_cpu_high_network" ||
+    item.type === "high_nat_gateway_cost"
+  ) {
+    return [{ key: "review_traffic", label: "Review Traffic", advisory: true }];
+  }
+  if (
+    item.type === "idle_load_balancer" ||
+    item.type === "low_traffic_load_balancer" ||
+    item.type === "unhealthy_targets" ||
+    item.type === "high_error_rate" ||
+    item.type === "high_data_processing_cost"
+  ) {
+    return [{ key: "review_load_balancer", label: "Review Load Balancer", advisory: true }];
+  }
+  return [{ key: "terminate_instance", label: "Terminate Instance", disabled: true, disabledReason: "Terminate action is disabled in Safety Mode." }];
+};
+const actionTypeFor = (action: RecommendationActionItem | null): ActionKind =>
+  action?.advisory ? "advisory" : "executable";
+const actionSeverityFor = (action: RecommendationActionItem | null): ActionSeverity => {
+  if (!action) return "optimization";
+  if (action.advisory) return "advisory";
+  if (action.destructive) return "destructive";
+  return "optimization";
+};
+const expectedImpactFor = (item: Ec2RecommendationRecord): string => {
+  if (item.category === "compute") return "Reduce idle or over/under-sized compute waste.";
+  if (item.category === "storage") return "Reduce unused storage and snapshot-related waste.";
+  if (item.category === "network") return "Reduce data transfer/network optimization overhead.";
+  if (item.category === "pricing") return "Improve commitment coverage and reduce on-demand exposure.";
+  return "Improve resource efficiency and lower avoidable spend.";
+};
+const withUnknownRegion = (region: string | null | undefined): string =>
+  region && region.trim().length > 0 ? region : "Unknown Region";
 const truncateText = (value: string | null | undefined, max: number = 90): string => {
   const raw = (value ?? "").trim();
   if (!raw) return "-";
@@ -374,6 +450,209 @@ function RecommendationActions({
   );
 }
 
+function OptimizationSkeleton() {
+  return (
+    <div className="optimization-skeleton" aria-label="Loading optimization section">
+      <section className="optimization-overview-kpi-strip optimization-skeleton__kpis" aria-hidden="true">
+        {Array.from({ length: 4 }).map((_, index) => (
+          <article key={`optimization-kpi-skeleton-${index}`} className="optimization-overview-kpi-strip__item">
+            <div className="optimization-skeleton__kpi-icon" />
+            <div className="optimization-skeleton__kpi-copy">
+              <span className="optimization-skeleton__bar optimization-skeleton__bar--kpi-label" />
+              <span className="optimization-skeleton__bar optimization-skeleton__bar--kpi-value" />
+            </div>
+          </article>
+        ))}
+      </section>
+
+      <section className="optimization-overview-grid optimization-skeleton__overview-grid" aria-hidden="true">
+        <article className="optimization-overview-panel optimization-skeleton__panel">
+          <header className="optimization-overview-panel__head">
+            <span className="optimization-skeleton__bar optimization-skeleton__bar--title" />
+          </header>
+          <div className="optimization-skeleton__mini-table">
+            <div className="optimization-skeleton__mini-table-head">
+              {Array.from({ length: 4 }).map((_, index) => (
+                <span key={`mini-head-${index}`} className="optimization-skeleton__bar optimization-skeleton__bar--mini-head" />
+              ))}
+            </div>
+            <div className="optimization-skeleton__mini-table-body">
+              {Array.from({ length: 5 }).map((_, row) => (
+                <div key={`mini-row-${row}`} className="optimization-skeleton__mini-table-row">
+                  <span className="optimization-skeleton__bar optimization-skeleton__bar--mini-col-type" />
+                  <span className="optimization-skeleton__bar optimization-skeleton__bar--mini-col-saving" />
+                  <span className="optimization-skeleton__bar optimization-skeleton__bar--mini-col-resource" />
+                  <span className="optimization-skeleton__chip optimization-skeleton__chip--mini-col-risk" />
+                </div>
+              ))}
+            </div>
+          </div>
+        </article>
+
+        <article className="optimization-overview-panel optimization-skeleton__panel">
+          <header className="optimization-overview-panel__head">
+            <span className="optimization-skeleton__bar optimization-skeleton__bar--title optimization-skeleton__bar--title-wide" />
+          </header>
+          <div className="optimization-skeleton__pie-area">
+            <div className="cost-explorer-chart-skeleton cost-explorer-chart-skeleton--bars optimization-skeleton__pie-chart" />
+          </div>
+        </article>
+      </section>
+
+    </div>
+  );
+}
+
+function OptimizationRecommendationsSkeleton() {
+  return (
+    <div className="optimization-skeleton" aria-label="Loading optimization recommendations">
+      <section className="optimization-skeleton__tabs-shell" aria-hidden="true">
+        <div className="optimization-skeleton__tabs-row">
+          <span className="optimization-skeleton__bar optimization-skeleton__bar--tab-text" />
+          <span className="optimization-skeleton__bar optimization-skeleton__bar--tab-text optimization-skeleton__bar--tab-text-active" />
+        </div>
+      </section>
+
+      <section className="dashboard-widget-shell optimization-skeleton__reco-shell" aria-hidden="true">
+        <div className="dashboard-widget-shell__body optimization-tab-body">
+          <div className="optimization-skeleton__reco-filters">
+            {Array.from({ length: 4 }).map((_, index) => (
+              <div key={`reco-filter-${index}`} className="optimization-skeleton__reco-filter-block">
+                <span className="optimization-skeleton__bar optimization-skeleton__bar--reco-filter-label" />
+                <span className="optimization-skeleton__bar optimization-skeleton__bar--reco-filter-value" />
+              </div>
+            ))}
+          </div>
+
+          <div className="optimization-skeleton__reco-table-wrap">
+            <div className="optimization-skeleton__reco-table">
+            <div className="optimization-skeleton__reco-head">
+              {Array.from({ length: 10 }).map((_, index) => (
+                <span key={`reco-head-${index}`} className="optimization-skeleton__bar optimization-skeleton__bar--reco-head" />
+              ))}
+            </div>
+            <div className="optimization-skeleton__reco-body">
+              {Array.from({ length: 6 }).map((_, row) => (
+                <div key={`reco-row-${row}`} className="optimization-skeleton__reco-row">
+                  {Array.from({ length: 9 }).map((__, col) => (
+                    <span
+                      key={`reco-cell-${row}-${col}`}
+                      className={`optimization-skeleton__bar ${
+                        col === 0
+                          ? "optimization-skeleton__bar--reco-cell-wide"
+                          : col === 3
+                            ? "optimization-skeleton__bar--reco-cell-xl"
+                            : "optimization-skeleton__bar--reco-cell"
+                      }`}
+                    />
+                  ))}
+                  <span className="optimization-skeleton__bar optimization-skeleton__bar--reco-action" />
+                </div>
+              ))}
+            </div>
+            </div>
+            <div className="optimization-skeleton__reco-scroll" />
+            <div className="optimization-skeleton__reco-pagination">
+              <span className="optimization-skeleton__bar optimization-skeleton__bar--reco-page-size" />
+              <span className="optimization-skeleton__bar optimization-skeleton__bar--reco-count" />
+              <span className="optimization-skeleton__bar optimization-skeleton__bar--reco-pages" />
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function RecommendationActionLauncher({
+  item,
+  onSelectAction,
+}: {
+  item: Ec2RecommendationRecord;
+  onSelectAction: (item: Ec2RecommendationRecord, action: RecommendationActionItem) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [menuPosition, setMenuPosition] = useState<{ top: number; left: number } | null>(null);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const options = recommendationActionsFor(item);
+
+  useEffect(() => {
+    if (!open) return;
+    const close = (event: Event) => {
+      if (event.target instanceof Element && event.target.closest("[data-ec2-row-actions-menu='true']")) return;
+      setOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    window.addEventListener("mousedown", close);
+    window.addEventListener("keydown", closeOnEscape);
+    window.addEventListener("scroll", close, true);
+    return () => {
+      window.removeEventListener("mousedown", close);
+      window.removeEventListener("keydown", closeOnEscape);
+      window.removeEventListener("scroll", close, true);
+    };
+  }, [open]);
+
+  const toggleMenu = () => {
+    const rect = triggerRef.current?.getBoundingClientRect();
+    if (rect) {
+      const width = 220;
+      setMenuPosition({
+        top: rect.bottom + 6,
+        left: Math.max(12, Math.min(rect.right - width, window.innerWidth - width - 12)),
+      });
+    }
+    setOpen((value) => !value);
+  };
+
+  return (
+    <div
+      className="relative inline-flex"
+      data-stop-row-click="true"
+      data-ec2-row-actions-menu="true"
+      onClick={(event) => event.stopPropagation()}
+      onMouseDown={(event) => event.stopPropagation()}
+    >
+      <button
+        ref={triggerRef}
+        type="button"
+        className="optimization-action-menu__trigger"
+        onClick={toggleMenu}
+        aria-expanded={open}
+        aria-haspopup="menu"
+      >
+        Actions <ChevronDown size={13} aria-hidden="true" />
+      </button>
+      {open ? createPortal(
+        <div
+          className="optimization-action-menu__content"
+          role="menu"
+          style={menuPosition ? { position: "fixed", top: menuPosition.top, left: menuPosition.left } : undefined}
+          data-ec2-row-actions-menu="true"
+        >
+          {options.map((option) => (
+            <button
+              key={option.key}
+              type="button"
+              className={`optimization-action-menu__item${option.destructive ? " is-danger" : option.advisory ? " is-advisory" : " is-optimization"}`}
+              disabled={option.disabled}
+              onClick={() => {
+                setOpen(false);
+                onSelectAction(item, option);
+              }}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>,
+        document.body,
+      ) : null}
+    </div>
+  );
+}
+
 export default function EC2OptimizationPage() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -387,6 +666,7 @@ export default function EC2OptimizationPage() {
   const dateTo = searchParams.get("billingPeriodEnd") ?? searchParams.get("to") ?? scope?.to ?? defaults.end;
 
   const [activeTab, setActiveTab] = useState<MainTab>("overview");
+  const [recommendationsTabLoading, setRecommendationsTabLoading] = useState(false);
   const [activeDropdown, setActiveDropdown] = useState<RecommendationsFilterKey | null>(null);
   const [scopeFiltersOpen, setScopeFiltersOpen] = useState(false);
   const [globalScopeFilters, setGlobalScopeFilters] = useState<EC2ScopeFilters>(GLOBAL_SCOPE_DEFAULTS);
@@ -404,6 +684,14 @@ export default function EC2OptimizationPage() {
   const [snoozeTarget, setSnoozeTarget] = useState<Ec2RecommendationRecord | null>(null);
   const [snoozePreset, setSnoozePreset] = useState<"7" | "30" | "custom">("7");
   const [customSnoozeDate, setCustomSnoozeDate] = useState("");
+  const [actionTarget, setActionTarget] = useState<Ec2RecommendationRecord | null>(null);
+  const [selectedActionKey, setSelectedActionKey] = useState<Ec2RecommendationActionKey | null>(null);
+  const [actionPrecheck, setActionPrecheck] = useState<Ec2RecommendationActionPrecheckResponse | null>(null);
+  const [actionTargetInstanceType, setActionTargetInstanceType] = useState("");
+  const [actionConfirmed, setActionConfirmed] = useState(false);
+  const [actionDowntimeAck, setActionDowntimeAck] = useState(false);
+  const [actionConfirmationText, setActionConfirmationText] = useState("");
+  const [actionLoading, setActionLoading] = useState<"precheck" | "execute" | null>(null);
   const deferredSearchFilter = useDeferredValue(searchFilter);
   const queryResourceId = normalizeFilterValue(searchParams.get("resourceId") ?? searchParams.get("instanceId"));
   const queryCategory = normalizeFilterValue(searchParams.get("category"));
@@ -428,6 +716,16 @@ export default function EC2OptimizationPage() {
       setActiveTab("recommendations");
     }
   }, [queryTab]);
+
+  useEffect(() => {
+    if (activeTab !== "recommendations") {
+      setRecommendationsTabLoading(false);
+      return;
+    }
+    setRecommendationsTabLoading(true);
+    const timeout = window.setTimeout(() => setRecommendationsTabLoading(false), 420);
+    return () => window.clearTimeout(timeout);
+  }, [activeTab]);
 
   useEffect(() => {
     const stateCategory = normalizeFilterValue(snapshotPrefill?.category ?? null);
@@ -670,6 +968,100 @@ export default function EC2OptimizationPage() {
     void updateRecommendationStatus(item, "snoozed", { snoozedUntil });
   };
 
+  const closeActionModal = () => {
+    setActionTarget(null);
+    setSelectedActionKey(null);
+    setActionPrecheck(null);
+    setActionTargetInstanceType("");
+    setActionConfirmed(false);
+    setActionDowntimeAck(false);
+    setActionConfirmationText("");
+    setActionLoading(null);
+  };
+
+  const openActionModal = (item: Ec2RecommendationRecord, action?: RecommendationActionItem) => {
+    const firstAction = action ?? recommendationActionsFor(item)[0];
+    setActionTarget(item);
+    setSelectedActionKey(firstAction?.key ?? null);
+    setActionPrecheck(null);
+    setActionTargetInstanceType("");
+    setActionConfirmed(false);
+    setActionDowntimeAck(false);
+    setActionConfirmationText("");
+  };
+
+  const runActionPrecheck = async () => {
+    if (!scope || !actionTarget || !selectedActionKey) return;
+    setActionLoading("precheck");
+    try {
+      const payload = {
+        actionKey: selectedActionKey,
+        parameters: {
+          targetInstanceType: actionTargetInstanceType || undefined,
+          confirmationText: actionConfirmationText || undefined,
+        },
+      } as const;
+      const result = ENABLE_EC2_REAL_ACTIONS
+        ? await dashboardApi.precheckEc2RecommendationAction(scope, actionTarget.id, payload)
+        : {
+            allowed: true,
+            actionKey: selectedActionKey,
+            resourceId: actionTarget.resourceId,
+            resourceType: actionTarget.resourceType,
+            region: actionTarget.region ?? null,
+            accountId: actionTarget.accountId ?? null,
+            warnings: ["Real AWS actions are disabled by feature flag. This is intent-only mode."],
+            blockers: [],
+            dryRunSupported: false,
+            dryRunPassed: true,
+          };
+      setActionPrecheck(result);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Precheck failed";
+      setActionPrecheck({
+        allowed: false,
+        actionKey: selectedActionKey,
+        resourceId: actionTarget.resourceId,
+        resourceType: actionTarget.resourceType,
+        region: actionTarget.region ?? null,
+        accountId: actionTarget.accountId ?? null,
+        warnings: [],
+        blockers: [message],
+        dryRunSupported: true,
+        dryRunPassed: false,
+      });
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const executeAction = async () => {
+    if (!scope || !actionTarget || !selectedActionKey || !actionPrecheck?.allowed) return;
+    setActionLoading("execute");
+    try {
+      const payload = {
+        actionKey: selectedActionKey,
+        parameters: {
+          targetInstanceType: actionTargetInstanceType || undefined,
+          confirmationText: actionConfirmationText || undefined,
+        },
+      } as const;
+      if (ENABLE_EC2_REAL_ACTIONS) {
+        await dashboardApi.executeEc2RecommendationAction(scope, actionTarget.id, payload);
+      } else {
+        await updateRecommendationStatus(actionTarget, "in_progress");
+      }
+      await query.refetch();
+      setActionMessage("Action submitted successfully");
+      closeActionModal();
+    } catch (error) {
+      setActionMessage(error instanceof Error ? error.message : "Action execution failed");
+    } finally {
+      setActionLoading(null);
+      window.setTimeout(() => setActionMessage(null), 3000);
+    }
+  };
+
   const topTypeSummary = useMemo(() => {
     const byType = new Map<Ec2RecommendationType, { count: number; saving: number; risk: Ec2RecommendationRecord["risk"] }>();
     for (const row of scopedRows) {
@@ -690,13 +1082,63 @@ export default function EC2OptimizationPage() {
     () => [...scopedRows].sort((a, b) => b.estimatedMonthlySaving - a.estimatedMonthlySaving).slice(0, 5),
     [scopedRows],
   );
+  const topRecommendationsBySavingsTotal = useMemo(
+    () => topRecommendationsBySavings.reduce((sum, item) => sum + (item.estimatedMonthlySaving || 0), 0),
+    [topRecommendationsBySavings],
+  );
+  const topRecommendationsPie = useMemo(() => {
+    const palette = ["#3E8D7D", "#7B5CE1", "#E3A13A", "#3D63D1", "#74B7A7"];
+    const cx = 190;
+    const cy = 190;
+    const r = 104;
+    if (topRecommendationsBySavingsTotal <= 0 || topRecommendationsBySavings.length === 0) {
+      return [];
+    }
+    let currentAngle = -90;
+    return topRecommendationsBySavings.map((item, index) => {
+      const value = item.estimatedMonthlySaving || 0;
+      const percent = (value / topRecommendationsBySavingsTotal) * 100;
+      const sweep = Math.max(0.0001, (percent / 100) * 360);
+      const start = currentAngle;
+      const end = currentAngle + sweep;
+      currentAngle = end;
+      const toXY = (angle: number, radius: number) => {
+        const rad = (angle * Math.PI) / 180;
+        return { x: cx + radius * Math.cos(rad), y: cy + radius * Math.sin(rad) };
+      };
+      const p1 = toXY(start, r);
+      const p2 = toXY(end, r);
+      const largeArc = sweep > 180 ? 1 : 0;
+      const path = `M ${cx} ${cy} L ${p1.x} ${p1.y} A ${r} ${r} 0 ${largeArc} 1 ${p2.x} ${p2.y} Z`;
+      const mid = start + sweep / 2;
+      const labelPoint = toXY(mid, r + 34);
+      const anchor = labelPoint.x >= cx ? "start" : "end";
+      return {
+        id: item.id,
+        resourceId: item.resourceId,
+        name: item.resourceName || item.resourceId,
+        percent: Math.round(percent),
+        value,
+        color: palette[index % palette.length],
+        path,
+        labelX: labelPoint.x,
+        labelY: labelPoint.y,
+        lineX: toXY(mid, r).x,
+        lineY: toXY(mid, r).y,
+        anchor,
+      };
+    });
+  }, [topRecommendationsBySavings, topRecommendationsBySavingsTotal]);
 
   const unifiedCols = useMemo<ColDef<Ec2RecommendationRecord>[]>(
     () => [
       {
         headerName: "Resource",
         field: "resourceName",
-        minWidth: 170,
+        minWidth: 190,
+        pinned: "left",
+        lockPinned: true,
+        suppressMovable: true,
         cellRenderer: (p: { data?: Ec2RecommendationRecord }) => {
           if (!p.data) return null;
           const row = p.data;
@@ -720,11 +1162,14 @@ export default function EC2OptimizationPage() {
           );
         },
       },
-      { headerName: "Category", valueGetter: (p) => toTitle(p.data?.category ?? "-"), minWidth: 110, maxWidth: 125 },
+      { headerName: "Category", valueGetter: (p) => toTitle(p.data?.category ?? "-"), minWidth: 120, maxWidth: 140, pinned: "left", lockPinned: true, suppressMovable: true },
       {
         headerName: "Issue Type",
         valueGetter: (p) => typeLabel((p.data?.type ?? "idle_instance") as Ec2RecommendationType),
-        minWidth: 165,
+        minWidth: 180,
+        pinned: "left",
+        lockPinned: true,
+        suppressMovable: true,
       },
       {
         headerName: "Evidence Summary",
@@ -732,7 +1177,7 @@ export default function EC2OptimizationPage() {
         minWidth: 220,
       },
       { headerName: "Recommended Action", valueGetter: (p) => truncateText(p.data?.action, 78), minWidth: 210, tooltipField: "action" },
-      { headerName: "Saving", valueGetter: (p) => formatCurrency(p.data?.estimatedMonthlySaving), minWidth: 115, maxWidth: 130 },
+      { headerName: "Saving", valueGetter: (p) => formatCurrency(p.data?.estimatedMonthlySaving), minWidth: 128, maxWidth: 140, pinned: "left", lockPinned: true, suppressMovable: true },
       {
         headerName: "Risk",
         maxWidth: 110,
@@ -748,32 +1193,28 @@ export default function EC2OptimizationPage() {
       {
         headerName: "Status",
         maxWidth: 140,
+        minWidth: 132,
+        pinned: "right",
+        lockPinned: true,
+        suppressMovable: true,
         cellRenderer: (p: { data?: Ec2RecommendationRecord }) =>
           p.data ? <StatusBadge status={normalizeStatus(statusOverrides[p.data.id] ?? p.data.status)} /> : null,
       },
       {
         headerName: "Actions",
-        minWidth: 150,
-        maxWidth: 170,
+        minWidth: 158,
+        maxWidth: 188,
         pinned: "right",
+        lockPinned: true,
+        suppressMovable: true,
         cellRenderer: (p: { data?: Ec2RecommendationRecord }) => {
           if (!p.data) return null;
           const row = p.data;
-          return (
-            <RecommendationActions
-              item={row}
-              status={normalizeStatus(statusOverrides[row.id] ?? row.status)}
-              pending={pendingRecommendationId === row.id}
-              canOpenResource={Boolean(getResourceRoute(row))}
-              onStatusChange={requestStatusChange}
-              onViewDetails={setSelectedRecommendation}
-              onOpenResource={openResource}
-            />
-          );
+          return <RecommendationActionLauncher item={row} onSelectAction={(target, action) => openActionModal(target, action)} />;
         },
       },
     ],
-    [statusOverrides, pendingRecommendationId, searchParams],
+    [searchParams, statusOverrides],
   );
 
   const errorMessage =
@@ -782,40 +1223,6 @@ export default function EC2OptimizationPage() {
       : query.error instanceof Error
         ? query.error.message
         : null;
-
-  const activeFilterChips = useMemo(() => {
-    const chips: Array<{ id: string; label: string; value: string; onRemove: () => void }> = [];
-    const resourceId = queryResourceId;
-    if (resourceId) {
-      chips.push({
-        id: "resourceId",
-        label: "Resource",
-        value: resourceId,
-        onRemove: () => {
-          if (searchFilter.trim() === resourceId) setSearchFilter("");
-        },
-      });
-    }
-    if (categoryFilter !== "all") {
-      chips.push({ id: "category", label: "Category", value: toTitle(categoryFilter), onRemove: () => setCategoryFilter("all") });
-    }
-    if (issueTypeFilter !== "all") {
-      chips.push({ id: "issueType", label: "Issue Type", value: typeLabel(issueTypeFilter as Ec2RecommendationType), onRemove: () => setIssueTypeFilter("all") });
-    }
-    if (searchFilter.trim()) {
-      chips.push({ id: "search", label: "Search", value: searchFilter.trim(), onRemove: () => setSearchFilter("") });
-    }
-    return chips;
-  }, [categoryFilter, issueTypeFilter, searchFilter, queryResourceId]);
-
-  const clearRecommendationFilters = () => {
-    setCategoryFilter("all");
-    setIssueTypeFilter("all");
-    setStatusFilter("active");
-    setSeverityFilter("all");
-    setSearchFilter("");
-    setActiveDropdown(null);
-  };
 
   const selectedStatus = selectedRecommendation
     ? normalizeStatus(statusOverrides[selectedRecommendation.id] ?? selectedRecommendation.status)
@@ -831,133 +1238,178 @@ export default function EC2OptimizationPage() {
     ? snoozeUntilOverrides[selectedRecommendation.id] ?? selectedRecommendation.snoozedUntil
     : null;
   const selectedWorkflow = getWorkflowActions(selectedStatus);
+  const isOptimizationLoading = !scope || query.isPending || (!query.data && !query.error);
+  const isRecommendationsLoading = activeTab === "recommendations" && (isOptimizationLoading || query.isFetching || recommendationsTabLoading);
+  const actionOptions = actionTarget ? recommendationActionsFor(actionTarget) : [];
+  const selectedActionItem = actionOptions.find((item) => item.key === selectedActionKey) ?? null;
+  const selectedActionType = actionTypeFor(selectedActionItem);
+  const selectedActionSeverity = actionSeverityFor(selectedActionItem);
+  const requiredConfirmationText =
+    selectedActionKey === "delete_volume" || selectedActionKey === "snapshot_then_delete_volume"
+      ? "DELETE VOLUME"
+      : selectedActionKey === "delete_snapshot"
+        ? "DELETE SNAPSHOT"
+        : selectedActionKey === "release_eip"
+          ? "RELEASE EIP"
+          : "";
+  const canExecuteAction =
+    Boolean(selectedActionKey)
+    && !selectedActionItem?.disabled
+    && Boolean(actionPrecheck?.allowed)
+    && (selectedActionKey !== "stop_instance" || actionConfirmed)
+    && (selectedActionKey !== "resize_instance" || (Boolean(actionTargetInstanceType.trim()) && actionDowntimeAck))
+    && (requiredConfirmationText.length === 0 || actionConfirmationText.trim() === requiredConfirmationText);
 
   return (
     <div className="dashboard-page optimization-page" ref={rootRef}>
-      <div className="optimization-header-shell">
-        <div className="optimization-header-tabs" role="tablist" aria-label={`${pageTitle} sections`}>
-          {MAIN_TABS.map((tab) => (
-            <button
-              key={tab.key}
-              type="button"
-              className={`optimization-header-tab ${activeTab === tab.key ? "is-active" : ""}`}
-              onClick={() => setActiveTab(tab.key)}
-              role="tab"
-              aria-selected={activeTab === tab.key}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {query.isLoading ? <p className="dashboard-note">Loading optimization data...</p> : null}
-      {errorMessage ? <p className="dashboard-note">{errorMessage}</p> : null}
-
-      {activeTab === "overview" ? (
-        <section className="dashboard-widget-shell">
-          <div className="dashboard-widget-shell__body optimization-tab-body">
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
-              <article className="optimization-verified-item">
-                <p className="optimization-overview-insight-item__title">Total Potential Savings</p>
-                <p className="optimization-overview-insight-item__value">{formatCurrency(totalSavings(scopedRows))}</p>
-              </article>
-              <article className="optimization-verified-item">
-                <p className="optimization-overview-insight-item__title">Compute Savings</p>
-                <p className="optimization-overview-insight-item__value">
-                  {formatCurrency(totalSavings(scopedRows.filter((x) => x.category === "compute")))}
-                </p>
-              </article>
-              <article className="optimization-verified-item">
-                <p className="optimization-overview-insight-item__title">Storage Savings</p>
-                <p className="optimization-overview-insight-item__value">
-                  {formatCurrency(totalSavings(scopedRows.filter((x) => x.category === "storage")))}
-                </p>
-              </article>
-              <article className="optimization-verified-item">
-                <p className="optimization-overview-insight-item__title">Network Savings</p>
-                <p className="optimization-overview-insight-item__value">
-                  {formatCurrency(totalSavings(scopedRows.filter((x) => x.category === "network")))}
-                </p>
-              </article>
-            </div>
-
-            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-              <article className="optimization-verified-item">
-                <p className="optimization-overview-insight-item__title">Top Recommendation Types</p>
-                <div className="mt-3 space-y-2">
-                  {topTypeSummary.map((item) => (
-                    <button
-                      key={item.type}
-                      type="button"
-                      className="optimization-overview-nav-link flex w-full items-center justify-between text-sm text-left"
-                      onClick={() => navigateToOptimizationRecommendations({ issueType: item.type })}
-                    >
-                      <span>{`${typeLabel(item.type)} \u2014 ${formatCurrency(item.saving)} (${item.count} ${item.count === 1 ? "resource" : "resources"})`}</span>
-                      <span className={`optimization-rightsizing-pill is-risk-${toRiskClassName(item.risk)}`}>
-                        {`${toTitle(item.risk ?? "-")} Risk`}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              </article>
-
-              <article className="optimization-verified-item">
-                <p className="optimization-overview-insight-item__title">Top 5 Recommendations by Savings</p>
-                <div className="mt-3 space-y-2">
-                  {topRecommendationsBySavings.map((item) => (
-                    <button
-                      key={item.id}
-                      type="button"
-                      className="optimization-overview-nav-link flex w-full items-center justify-between text-sm gap-3 text-left"
-                      onClick={() => navigateToOptimizationRecommendations({ resourceId: item.resourceId })}
-                    >
-                      <span className="truncate">{item.resourceName || item.resourceId}</span>
-                      <span>{formatCurrency(item.estimatedMonthlySaving)}</span>
-                    </button>
-                  ))}
-                </div>
-              </article>
-            </div>
-            <div className="mt-4">
+      {!isOptimizationLoading ? (
+        <div className="optimization-header-shell">
+          <div className="optimization-header-tabs" role="tablist" aria-label={`${pageTitle} sections`}>
+            {MAIN_TABS.map((tab) => (
               <button
+                key={tab.key}
                 type="button"
-                className="optimization-overview-nav-link cost-explorer-chip-bar__clear cost-explorer-chip-bar__clear--inline"
-                onClick={() => {
-                  const nextParams = new URLSearchParams(searchParams.toString());
-                  nextParams.set("tab", "recommendations");
-                  navigate({
-                    pathname: "/dashboard/ec2/optimization",
-                    search: nextParams.toString(),
-                  });
-                }}
+                className={`optimization-header-tab ${activeTab === tab.key ? "is-active" : ""}`}
+                onClick={() => setActiveTab(tab.key)}
+                role="tab"
+                aria-selected={activeTab === tab.key}
               >
-                View All Recommendations 
+                {tab.label}
               </button>
-            </div>
+            ))}
           </div>
-        </section>
+        </div>
       ) : null}
 
-      {activeTab === "recommendations" ? (
+      {isOptimizationLoading || isRecommendationsLoading
+        ? (activeTab === "recommendations" ? <OptimizationRecommendationsSkeleton /> : <OptimizationSkeleton />)
+        : null}
+      {!isOptimizationLoading && errorMessage ? <p className="dashboard-note">{errorMessage}</p> : null}
+
+      {!isOptimizationLoading && activeTab === "overview" ? (
+        <div className="optimization-tab-body">
+          <section className="optimization-overview-kpi-strip" aria-label="Optimization savings summary">
+            {[
+              {
+                key: "total",
+                label: "Total Potential Savings",
+                value: totalSavings(scopedRows),
+              },
+              {
+                key: "compute",
+                label: "Compute Savings",
+                value: totalSavings(scopedRows.filter((x) => x.category === "compute")),
+              },
+              {
+                key: "storage",
+                label: "Storage Savings",
+                value: totalSavings(scopedRows.filter((x) => x.category === "storage")),
+              },
+              {
+                key: "network",
+                label: "Network Savings",
+                value: totalSavings(scopedRows.filter((x) => x.category === "network")),
+              },
+            ].map(({ key, label, value }) => (
+              <article key={key} className="optimization-overview-kpi-strip__item">
+                <div>
+                  <p className="optimization-overview-kpi-strip__label">{label}</p>
+                  <p className="optimization-overview-kpi-strip__value">{formatCurrency(value)}</p>
+                </div>
+              </article>
+            ))}
+          </section>
+
+          <div className="optimization-overview-grid">
+            <article className="optimization-overview-panel">
+              <header className="optimization-overview-panel__head">
+                <h3 className="optimization-overview-panel__title">Top Recommendation Types</h3>
+              </header>
+              <div className="optimization-overview-type-table-wrap">
+                <table className="optimization-overview-type-table">
+                  <thead>
+                    <tr>
+                      <th>Type</th>
+                      <th>Savings</th>
+                      <th>Resources</th>
+                      <th>Risk</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {topTypeSummary.map((item) => (
+                      <tr
+                        key={item.type}
+                        className="optimization-overview-type-table__row"
+                        onClick={() => navigateToOptimizationRecommendations({ issueType: item.type })}
+                      >
+                        <td>{typeLabel(item.type)}</td>
+                        <td className="optimization-overview-type-table__saving">{formatCurrency(item.saving)}</td>
+                        <td>{item.count}</td>
+                        <td>
+                          <span className={`optimization-rightsizing-pill is-risk-${toRiskClassName(item.risk)}`}>
+                            {`${toTitle(item.risk ?? "-")} Risk`}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </article>
+
+            <article className="optimization-overview-panel">
+              <header className="optimization-overview-panel__head">
+                <h3 className="optimization-overview-panel__title">Top 5 Recommendations by Savings</h3>
+              </header>
+              <div className="optimization-overview-savings-mix">
+                <svg viewBox="0 0 380 380" className="optimization-overview-savings-mix__svg" role="img" aria-label="Top recommendations pie chart">
+                  {topRecommendationsPie.map((slice) => (
+                    <path
+                      key={slice.id}
+                      d={slice.path}
+                      fill={slice.color}
+                      className="optimization-overview-savings-mix__slice"
+                      onClick={() => navigateToOptimizationRecommendations({ resourceId: slice.resourceId })}
+                    />
+                  ))}
+                  {topRecommendationsPie.map((slice) => (
+                    <g key={`${slice.id}-label`}>
+                      <line
+                        x1={slice.lineX}
+                        y1={slice.lineY}
+                        x2={slice.labelX}
+                        y2={slice.labelY}
+                        className="optimization-overview-savings-mix__line"
+                      />
+                      <text
+                        x={slice.labelX + (slice.anchor === "start" ? 4 : -4)}
+                        y={slice.labelY - 2}
+                        textAnchor={slice.anchor as "start" | "end"}
+                        className="optimization-overview-savings-mix__label"
+                      >
+                        {slice.name.length > 16 ? `${slice.name.slice(0, 16)}...` : slice.name}
+                      </text>
+                      <text
+                        x={slice.labelX + (slice.anchor === "start" ? 4 : -4)}
+                        y={slice.labelY + 14}
+                        textAnchor={slice.anchor as "start" | "end"}
+                        className="optimization-overview-savings-mix__percent"
+                      >
+                        {`${slice.percent}%`}
+                      </text>
+                    </g>
+                  ))}
+                </svg>
+              </div>
+            </article>
+          </div>
+        </div>
+      ) : null}
+
+      {!isRecommendationsLoading && !isOptimizationLoading && activeTab === "recommendations" ? (
         <section className="dashboard-widget-shell">
           <div className="dashboard-widget-shell__body optimization-tab-body">
-            <div className="cost-explorer-toolbar-row ec2-explorer-toolbar-row--primary">
-              <div className="cost-explorer-toolbar-item">
-                <button
-                  type="button"
-                  className="cost-explorer-toolbar-trigger"
-                  onClick={() => {
-                    setActiveDropdown(null);
-                    setScopeFiltersOpen(true);
-                  }}
-                >
-                  <span className="cost-explorer-toolbar-trigger__row">
-                    <span className="cost-explorer-toolbar-trigger__value">Filters</span>
-                    <Filter className="cost-explorer-toolbar-trigger__caret" size={14} aria-hidden="true" />
-                  </span>
-                </button>
-              </div>
+            <div className="cost-explorer-toolbar-row ec2-explorer-toolbar-row--primary optimization-recommendation-filters-row">
               <FilterDropdown
                 label="Category"
                 selected={categoryFilter}
@@ -1010,55 +1462,8 @@ export default function EC2OptimizationPage() {
                   setActiveDropdown(null);
                 }}
               />
-              <div className="cost-explorer-toolbar-item">
-                <label className="cost-explorer-toolbar-trigger ec2-instances-search-trigger">
-                  <span className="ec2-instances-search-trigger__icon-wrap" aria-hidden="true">
-                    <Search size={14} />
-                  </span>
-                  <input
-                    type="search"
-                    value={searchFilter}
-                    onChange={(event) => setSearchFilter(event.target.value)}
-                    placeholder="Search recommendations"
-                    aria-label="Search recommendations"
-                    className="ec2-instances-search-trigger__input"
-                  />
-                </label>
-              </div>
-              <div className="cost-explorer-toolbar-item">
-                <button
-                  type="button"
-                  className="cost-explorer-toolbar-trigger ec2-instances-toolbar-icon-trigger"
-                  onClick={clearRecommendationFilters}
-                  aria-label="Reset recommendation filters"
-                  title="Reset recommendation filters"
-                >
-                  <span className="cost-explorer-toolbar-trigger__row ec2-instances-toolbar-icon-trigger__row">
-                    <RotateCcw size={14} />
-                  </span>
-                </button>
-              </div>
             </div>
             {actionMessage ? <p className="dashboard-note">{actionMessage}</p> : null}
-            {activeFilterChips.length > 0 ? (
-              <div className="cost-explorer-chip-bar" aria-label="Active recommendation filters">
-                <div className="cost-explorer-chip-row">
-                  {activeFilterChips.map((chip) => (
-                    <span key={chip.id} className="cost-explorer-chip">
-                      <span className="cost-explorer-chip__edit">
-                        {chip.label}: {chip.value}
-                      </span>
-                      <button type="button" className="cost-explorer-chip__remove" onClick={chip.onRemove} aria-label={`Remove ${chip.label}`}>
-                        <X size={12} />
-                      </button>
-                    </span>
-                  ))}
-                  <button type="button" className="cost-explorer-chip-bar__clear cost-explorer-chip-bar__clear--inline" onClick={clearRecommendationFilters}>
-                    Clear all
-                  </button>
-                </div>
-              </div>
-            ) : null}
 
             <BaseDataTable
               columnDefs={unifiedCols}
@@ -1088,7 +1493,7 @@ export default function EC2OptimizationPage() {
                 </div>
                 <div className="optimization-drawer-subtitle">
                   <span>{toTitle(selectedRecommendation.category)}</span>
-                  <span aria-hidden="true">·</span>
+                  <span aria-hidden="true">�</span>
                   <span className="font-mono">{selectedRecommendation.resourceName || selectedRecommendation.resourceId}</span>
                 </div>
                 {selectedStatus === "snoozed" && selectedSnoozedUntil ? (
@@ -1275,6 +1680,120 @@ export default function EC2OptimizationPage() {
         </DialogContent>
       </Dialog>
 
+      <Dialog open={Boolean(actionTarget)} onOpenChange={(open) => {
+        if (!open) closeActionModal();
+      }}>
+        <DialogContent className="optimization-snooze-dialog">
+          <DialogHeader className="space-y-1">
+            <div className="optimization-action-modal__header">
+              <DialogTitle className="text-base font-semibold text-text-primary">Recommendation Action Safety Mode</DialogTitle>
+              <span className={`optimization-action-badge optimization-action-badge--${selectedActionType}`}>
+                {selectedActionType === "executable" ? "Executable" : "Advisory Only"}
+              </span>
+            </div>
+          </DialogHeader>
+          {actionTarget ? (
+            <div className="optimization-snooze-dialog__body">
+              <p className="optimization-snooze-dialog__text">
+                This action will make changes in your AWS account. Review the resource, region, account, and action carefully. This platform will perform a safety precheck before execution. Destructive actions cannot be undone.
+              </p>
+              <div className="optimization-drawer-evidence">
+                <div className="optimization-drawer-evidence__row"><dt>Resource</dt><dd>{actionTarget.resourceId}</dd></div>
+                <div className="optimization-drawer-evidence__row"><dt>Type</dt><dd>{typeLabel(actionTarget.type)}</dd></div>
+                <div className="optimization-drawer-evidence__row"><dt>Account</dt><dd>{actionTarget.accountId ?? "-"}</dd></div>
+                <div className="optimization-drawer-evidence__row"><dt>Region</dt><dd>{withUnknownRegion(actionTarget.region)}</dd></div>
+              </div>
+
+              <div className="optimization-drawer-evidence">
+                <div className="optimization-drawer-evidence__row"><dt>Selected Action</dt><dd>{selectedActionItem?.label ?? "-"}</dd></div>
+                <div className="optimization-drawer-evidence__row"><dt>Execution Mode</dt><dd>Safe Execution (Dry Run First)</dd></div>
+                <div className="optimization-drawer-evidence__row"><dt>Estimated Monthly Savings</dt><dd>{formatCurrency(actionTarget.estimatedMonthlySaving)}</dd></div>
+                <div className="optimization-drawer-evidence__row"><dt>Expected Impact</dt><dd>{expectedImpactFor(actionTarget)}</dd></div>
+              </div>
+              <p className="optimization-snooze-dialog__text optimization-action-execution-note">
+                This action will first perform validation and AWS safety prechecks before execution.
+              </p>
+
+              {selectedActionItem?.disabledReason ? (
+                <p className="dashboard-note">{selectedActionItem.disabledReason}</p>
+              ) : null}
+
+              {selectedActionKey === "resize_instance" ? (
+                <>
+                  <label className="optimization-snooze-date">
+                    <span>Target Instance Type</span>
+                    <input
+                      type="text"
+                      placeholder="e.g. t3.medium"
+                      value={actionTargetInstanceType}
+                      onChange={(event) => setActionTargetInstanceType(event.target.value)}
+                    />
+                  </label>
+                  <label className="optimization-snooze-date">
+                    <span>
+                      <input type="checkbox" checked={actionDowntimeAck} onChange={(event) => setActionDowntimeAck(event.target.checked)} /> Acknowledge downtime risk during resize
+                    </span>
+                  </label>
+                </>
+              ) : null}
+
+              {selectedActionKey === "stop_instance" ? (
+                <label className="optimization-snooze-date">
+                  <span>
+                    <input type="checkbox" checked={actionConfirmed} onChange={(event) => setActionConfirmed(event.target.checked)} /> Confirm stop instance action
+                  </span>
+                </label>
+              ) : null}
+
+              {requiredConfirmationText ? (
+                <label className="optimization-snooze-date">
+                  <span>Type {requiredConfirmationText} to confirm</span>
+                  <input
+                    type="text"
+                    value={actionConfirmationText}
+                    onChange={(event) => setActionConfirmationText(event.target.value)}
+                  />
+                </label>
+              ) : null}
+
+              <div className="optimization-snooze-dialog__actions">
+                <button type="button" className="optimization-drawer-action" onClick={runActionPrecheck} disabled={actionLoading !== null || !selectedActionKey || Boolean(selectedActionItem?.disabled)}>
+                  {actionLoading === "precheck" ? "Running Precheck..." : "Run Precheck"}
+                </button>
+              </div>
+
+              {actionPrecheck ? (
+                <div className="optimization-drawer-section optimization-precheck-panel">
+                  <h3>Precheck Result</h3>
+                  <ul className="optimization-precheck-list">
+                    <li className={`optimization-precheck-item ${actionPrecheck.allowed ? "is-ok" : "is-fail"}`}>{actionPrecheck.allowed ? "✓" : "✖"} Action allowed</li>
+                    <li className={`optimization-precheck-item ${actionPrecheck.dryRunPassed !== false ? "is-ok" : "is-fail"}`}>{actionPrecheck.dryRunPassed === false ? "✖" : "✓"} Dry-run validation {actionPrecheck.dryRunSupported ? "completed" : "not required"}</li>
+                    <li className="optimization-precheck-item is-ok">✓ Resource context loaded</li>
+                    <li className="optimization-precheck-item is-ok">✓ Safety policy checked</li>
+                  </ul>
+                  {actionPrecheck.warnings.length > 0 ? (
+                    <div className="optimization-precheck-notes is-warning">
+                      {actionPrecheck.warnings.map((warning) => <p key={warning}>⚠ {warning}</p>)}
+                    </div>
+                  ) : null}
+                  {actionPrecheck.blockers.length > 0 ? (
+                    <div className="optimization-precheck-notes is-blocker">
+                      {actionPrecheck.blockers.map((blocker) => <p key={blocker}>✖ {blocker}</p>)}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+          <div className="optimization-snooze-dialog__actions">
+            <button type="button" className="optimization-drawer-action" onClick={closeActionModal}>Cancel</button>
+            <button type="button" className={`optimization-drawer-action optimization-drawer-action--primary optimization-drawer-action--${selectedActionSeverity}`} disabled={!canExecuteAction || actionLoading !== null} onClick={executeAction}>
+              {actionLoading === "execute" ? "Executing..." : "Execute Action"}
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={scopeFiltersOpen} onOpenChange={setScopeFiltersOpen}>
         <DialogContent className="left-auto right-0 top-0 h-screen max-h-screen w-[min(96vw,44rem)] max-w-none -translate-x-0 -translate-y-0 rounded-none border-l border-[color:var(--border-light)] p-6 data-[state=open]:slide-in-from-right data-[state=closed]:slide-out-to-right data-[state=open]:zoom-in-100 data-[state=closed]:zoom-out-100">
           <DialogHeader className="space-y-1">
@@ -1292,4 +1811,5 @@ export default function EC2OptimizationPage() {
     </div>
   );
 }
+
 

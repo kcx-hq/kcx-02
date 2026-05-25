@@ -20,7 +20,7 @@ const DRIVER_LABELS = new Set(["storage", "request", "retrieval", "transfer"]);
 
 type Props = {
   rows: S3BucketTableRow[];
-  totalS3Cost?: number;
+  totalGrossCost?: number;
   height?: number;
   emptyMessage?: string;
   onBucketClick?: (bucketName: string) => void;
@@ -59,7 +59,7 @@ function TrendCell(params: ICellRendererParams<S3BucketTableRow, number>) {
 
 export function S3BucketInsightsTable({
   rows,
-  totalS3Cost = 0,
+  totalGrossCost = 0,
   height = 520,
   emptyMessage = "No S3 bucket data available for the selected scope.",
   onBucketClick,
@@ -97,7 +97,7 @@ export function S3BucketInsightsTable({
         },
       },
       {
-        headerName: "Total Cost",
+        headerName: "Gross Cost",
         field: "cost",
         minWidth: 150,
         cellClass: "s3-analytics-number-cell",
@@ -118,13 +118,6 @@ export function S3BucketInsightsTable({
         valueFormatter: (params) => currencyFormatter.format(Number(params.value ?? 0)),
       },
       {
-        headerName: "Retrieval Cost",
-        field: "retrieval",
-        minWidth: 150,
-        cellClass: "s3-analytics-number-cell",
-        valueFormatter: (params) => currencyFormatter.format(Number(params.value ?? 0)),
-      },
-      {
         headerName: "Transfer Cost",
         field: "transfer",
         minWidth: 190,
@@ -132,14 +125,14 @@ export function S3BucketInsightsTable({
         cellRenderer: TransferCostCell,
       },
       {
-        headerName: "% of S3 Cost",
+        headerName: "% of Bucket Cost",
         colId: "shareOfS3Cost",
         minWidth: 140,
         cellClass: "s3-analytics-number-cell",
         valueGetter: (params) => {
           const rowCost = Number(params.data?.cost ?? 0);
-          if (totalS3Cost <= 0) return 0;
-          return (rowCost / totalS3Cost) * 100;
+          if (totalGrossCost <= 0) return 0;
+          return (rowCost / totalGrossCost) * 100;
         },
         valueFormatter: (params) => `${percentFormatter.format(Number(params.value ?? 0))}%`,
       },
@@ -157,7 +150,7 @@ export function S3BucketInsightsTable({
         cellRenderer: TrendCell,
       },
     ],
-    [onBucketClick, totalS3Cost],
+    [onBucketClick, totalGrossCost],
   );
 
   return (

@@ -1,22 +1,10 @@
 import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { SlidersHorizontal, X } from "lucide-react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 import type { InventoryEc2InstanceRow } from "@/features/client-home/api/inventory-instances.api";
-import type { Ec2ExplorerFiltersQuery } from "../../api/dashboardTypes";
 import { useInventoryEc2Instances } from "@/features/client-home/hooks/useInventoryEc2Instances";
-import { useInventoryEc2Volumes } from "@/features/client-home/hooks/useInventoryEc2Volumes";
-import { useEc2ExplorerQuery } from "../../hooks/useDashboardQueries";
-import { useDashboardScope } from "../../hooks/useDashboardScope";
-
-import { EC2InstancesContextChips } from "./components/EC2InstancesContextChips";
 import { EC2ExplorerChart } from "./components/EC2ExplorerChart";
-import { EC2ExplorerTable } from "./components/EC2ExplorerTable";
-import { EC2ExplorerThresholdsPopover } from "./components/EC2ExplorerThresholdsPopover";
 import { EC2InstancesTable } from "./components/EC2InstancesTable";
-import { EC2InstancesTopBar } from "./components/EC2InstancesTopBar";
-import { EC2SummaryCards } from "./components/EC2SummaryCards";
 import { EC2ExplorerTopControls, EC2_EXPLORER_DEFAULT_CONTROLS } from "./components";
 import type { EC2ExplorerControlsState } from "./ec2ExplorerControls.types";
 import {
@@ -67,27 +55,6 @@ const parseCsvParam = (value: string | null): string[] => {
     .filter((entry) => entry.length > 0);
 };
 
-const toApiGroupBy = (groupBy: EC2ExplorerControlsState["groupBy"]): Ec2ExplorerFiltersQuery["groupBy"] =>
-  groupBy === "instance-type"
-    ? "instance_type"
-    : groupBy === "reservation-type"
-      ? "reservation_type"
-      : groupBy === "cost-category"
-        ? "cost_category"
-        : groupBy === "availability-zone"
-          ? "availability_zone"
-          : groupBy === "usage-type"
-            ? "usage_type"
-            : groupBy === "transfer-type"
-              ? "transfer_type"
-              : groupBy === "source-region"
-                ? "source_region"
-                : groupBy === "destination-region"
-                  ? "destination_region"
-                  : groupBy === "instance-state"
-                    ? "instance_state"
-                    : groupBy;
-
 const isValidStatus = (value: string | null): value is EC2InstancesStatus =>
   Boolean(value) && EC2_INSTANCES_STATUS_OPTIONS.some((option) => option.key === value);
 
@@ -106,6 +73,16 @@ const toExplorerCondition = (
   if (status === "overutilized") return "overutilized";
   if (status === "uncovered") return "uncovered";
   return undefined;
+};
+
+const toInstancesStatus = (
+  condition: EC2ExplorerControlsState["instancesCondition"],
+): EC2InstancesStatus => {
+  if (condition === "idle") return "idle";
+  if (condition === "underutilized") return "underutilized";
+  if (condition === "overutilized") return "overutilized";
+  if (condition === "uncovered") return "uncovered";
+  return "all";
 };
 
 const matchesState = (instance: InventoryEc2InstanceRow, state: EC2InstancesControlsState["state"]): boolean => {
@@ -138,10 +115,59 @@ const matchesThresholds = (instance: InventoryEc2InstanceRow, thresholds: EC2Ins
   return true;
 };
 
+const toInstanceGroupKey = (
+  row: InventoryEc2InstanceRow,
+  groupBy: EC2ExplorerControlsState["groupBy"],
+): { key: string; label: string } => {
+  if (groupBy === "instance") {
+    const label = row.instanceName?.trim() || row.instanceId;
+    return { key: row.instanceId, label };
+  }
+  if (groupBy === "region") {
+    const label = row.regionName ?? row.regionId ?? row.regionKey ?? "Unknown";
+    return { key: label, label };
+  }
+  if (groupBy === "account") {
+    const label = row.subAccountName ?? row.subAccountKey ?? "Unknown";
+    return { key: label, label };
+  }
+  if (groupBy === "instance-type") {
+    const label = row.instanceType ?? "Unknown";
+    return { key: label, label };
+  }
+  if (groupBy === "reservation-type") {
+    const label =
+      row.pricingType === "on_demand"
+        ? "On-Demand"
+        : row.pricingType === "savings_plan"
+          ? "Savings Plan"
+          : row.pricingType === "reserved"
+            ? "Reserved"
+            : row.pricingType === "spot"
+              ? "Spot"
+              : "Unknown";
+    return { key: label, label };
+  }
+  if (groupBy === "instance-state") {
+    const label = toTitle(row.state ?? "unknown");
+    return { key: label, label };
+  }
+  if (groupBy === "recommendation") {
+    const label = row.statusLabel ?? "Healthy";
+    return { key: label, label };
+  }
+  if (groupBy === "tag") {
+    const tags = row.tags ?? {};
+    const firstTag = Object.entries(tags)[0];
+    const label = firstTag ? `${firstTag[0]}:${String(firstTag[1])}` : "Untagged";
+    return { key: label, label };
+  }
+  return { key: "all", label: "All Instances" };
+};
+
 export default function EC2InstancesPage() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { scope } = useDashboardScope();
   const queryParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
 
   const defaults = getDefaultDateRange();
@@ -149,6 +175,7 @@ export default function EC2InstancesPage() {
   const endDateFromParams = queryParams.get("endDate") ?? queryParams.get("to") ?? queryParams.get("billingPeriodEnd") ?? defaults.end;
   const source = queryParams.get("source");
   const isExplorerNavigation = source === "explorer-graph" || source === "explorer-table";
+  const isExplorerDrilldown = isExplorerNavigation || source === "explorer" || queryParams.get("drilldown") === "true";
   const querySearch = isExplorerNavigation ? queryParams.get("search") ?? "" : "";
 
   const explorerRegions = isExplorerNavigation ? parseCsvParam(queryParams.get("region")) : [];
@@ -180,7 +207,7 @@ export default function EC2InstancesPage() {
     metric: "instances",
     groupBy: "instance",
     instancesCondition: toExplorerCondition(initialControls.status) ?? "all",
-    instancesState: initialControls.state === "stopped" || initialControls.state === "terminated" ? initialControls.state : "running",
+    instancesState: initialControls.state,
     instanceType: initialControls.instanceType,
     scopeFilters: {
       region: [...initialControls.scopeFilters.region],
@@ -188,7 +215,6 @@ export default function EC2InstancesPage() {
     },
     thresholds: { ...initialControls.thresholds },
   });
-  const [insightsThresholdsOpen, setInsightsThresholdsOpen] = useState(false);
   const [page, setPage] = useState(1);
   const deferredSearch = useDeferredValue(controls.search.trim());
 
@@ -212,24 +238,7 @@ export default function EC2InstancesPage() {
     pageSize: PAGE_SIZE,
   });
 
-  const volumesQuery = useInventoryEc2Volumes({
-    attachedInstanceId: null,
-    startDate: startDateFromParams,
-    endDate: endDateFromParams,
-    page: 1,
-    pageSize: 500,
-  });
-
   const allItems = instancesQuery.data?.items ?? [];
-  const volumeCostByInstanceId = useMemo(() => {
-    const grouped = new Map<string, number>();
-    for (const volume of volumesQuery.data?.items ?? []) {
-      const instanceId = volume.attachedInstanceId;
-      if (!instanceId) continue;
-      grouped.set(instanceId, (grouped.get(instanceId) ?? 0) + volume.mtdCost);
-    }
-    return grouped;
-  }, [volumesQuery.data?.items]);
 
   const filteredRows = useMemo(
     () =>
@@ -241,28 +250,151 @@ export default function EC2InstancesPage() {
       }),
     [allItems, controls.scopeFilters.region, controls.state, controls.thresholds],
   );
+  const volumeCostByInstanceId = useMemo(() => {
+    const grouped = new Map<string, number>();
+    for (const row of filteredRows) {
+      grouped.set(row.instanceId, Number.isFinite(row.attachedVolumeCost) ? row.attachedVolumeCost : 0);
+    }
+    return grouped;
+  }, [filteredRows]);
 
-  const explorerInstancesQuery = useEc2ExplorerQuery(
-    {
-      startDate: startDateFromParams,
-      endDate: endDateFromParams,
-      metric: "instances",
-      granularity: insightsControls.granularity,
-      groupBy: toApiGroupBy(insightsControls.groupBy),
-      condition: insightsControls.instancesCondition,
-      regions: insightsControls.scopeFilters.region,
-      tags: insightsControls.scopeFilters.tags.map((tagValue) => `tag:${tagValue}`),
-      states: [insightsControls.instancesState],
-      instanceTypes: insightsControls.instanceType === "all" ? [] : [insightsControls.instanceType],
-      minCost: parseThreshold(insightsControls.thresholds.costMin),
-      maxCost: parseThreshold(insightsControls.thresholds.costMax),
-      minCpu: parseThreshold(insightsControls.thresholds.cpuMin),
-      maxCpu: parseThreshold(insightsControls.thresholds.cpuMax),
-    },
-    Boolean(scope),
-  );
-  const isInsightsLoading = explorerInstancesQuery.isFetching || !explorerInstancesQuery.data;
   const isListLoading = instancesQuery.isFetching || !instancesQuery.data;
+  const isInsightsLoading = isListLoading;
+
+  const instancesKpis = useMemo(() => {
+    const computeCost = filteredRows.reduce((sum, row) => sum + (Number.isFinite(row.computeCost) ? row.computeCost : 0), 0);
+    const totalNetworkBytes = filteredRows.reduce(
+      (sum, row) => sum + (Number.isFinite(row.networkUsageBytes) ? row.networkUsageBytes : 0),
+      0,
+    );
+    const totalNetworkGb = totalNetworkBytes / (1024 * 1024 * 1024);
+    const totalVolumeCount = filteredRows.reduce(
+      (sum, row) => sum + (Number.isFinite(row.attachedVolumeCount) ? Math.trunc(row.attachedVolumeCount ?? 0) : 0),
+      0,
+    );
+
+    return {
+      computeCost,
+      instances: filteredRows.length,
+      totalNetworkGb,
+      totalVolumeCount,
+    };
+  }, [filteredRows]);
+
+  const fleetChartModel = useMemo(() => {
+    const groupBy = insightsControls.groupBy;
+    if (groupBy === "instance") {
+      const topRows = filteredRows.slice(0, 20);
+
+      return {
+        title: "Instance Distribution",
+        unit: "count" as const,
+        yAxisLabel: "Instance Count",
+        xAxisLabel: "Instance",
+        horizontalBars: true,
+        graph: {
+          type: "bar" as const,
+          xKey: "date" as const,
+          series: [
+            {
+              key: "instance-count",
+              label: "Instance Count",
+              data: topRows.map((row) => ({
+                date: row.instanceName?.trim() || row.instanceId,
+                value: 1,
+              })),
+            },
+          ],
+        },
+      };
+    }
+
+    const grouped = new Map<string, { label: string; count: number }>();
+    for (const row of filteredRows) {
+      const group = toInstanceGroupKey(row, groupBy);
+      const current = grouped.get(group.key) ?? { label: group.label, count: 0 };
+      current.count += 1;
+      grouped.set(group.key, current);
+    }
+
+    const entries = [...grouped.values()].sort((a, b) => b.count - a.count).slice(0, 10);
+    const title =
+      groupBy === "instance-state"
+        ? "Instances by State"
+        : groupBy === "recommendation"
+          ? "Instances by Condition"
+          : groupBy === "instance-type"
+            ? "Instances by Type"
+            : groupBy === "reservation-type"
+              ? "Instances by Reservation Type"
+              : groupBy === "region"
+                ? "Instances by Region"
+                : "Fleet Distribution";
+
+    return {
+      title,
+      unit: "count" as const,
+      yAxisLabel: "Instance Count",
+      xAxisLabel: "Group",
+      horizontalBars: true,
+      graph: {
+        type: "bar" as const,
+        xKey: "date" as const,
+        series: [
+          {
+            key: "count",
+            label: "Instance Count",
+            data: entries.map((entry) => ({
+              date: entry.label,
+              value: entry.count,
+            })),
+          },
+        ],
+      },
+    };
+  }, [filteredRows, insightsControls.groupBy]);
+
+  const shouldHideInstanceCountChart = false;
+
+  useEffect(() => {
+    console.debug("[EC2 Instances][Summary Debug]", {
+      instanceRowsLength: filteredRows.length,
+      calculatedKpis: instancesKpis,
+      chartRowsLength: fleetChartModel.graph.series[0]?.data.length ?? 0,
+      filtersApplied: {
+        startDate: startDateFromParams,
+        endDate: endDateFromParams,
+        status: controls.status,
+        state: controls.state,
+        instanceType: controls.instanceType,
+        reservationType: controls.reservationType,
+        search: deferredSearch,
+        transferType: queryTransferType ?? null,
+        regions: controls.scopeFilters.region,
+        tags: controls.scopeFilters.tags,
+        thresholds: controls.thresholds,
+        chartGroupBy: insightsControls.groupBy,
+        chartHidden: shouldHideInstanceCountChart,
+      },
+    });
+  }, [
+    controls.instanceType,
+    controls.reservationType,
+    controls.scopeFilters.region,
+    controls.scopeFilters.tags,
+    controls.state,
+    controls.status,
+    controls.thresholds,
+    deferredSearch,
+    endDateFromParams,
+    filteredRows.length,
+    fleetChartModel.graph.series,
+    insightsControls.groupBy,
+    instancesKpis,
+    shouldHideInstanceCountChart,
+    queryTransferType,
+    startDateFromParams,
+  ]);
 
   useEffect(() => {
     const next = new URLSearchParams(location.search);
@@ -278,6 +410,23 @@ export default function EC2InstancesPage() {
       navigate({ pathname: location.pathname, search: next.toString() }, { replace: true });
     }
   }, [controls.status, location.pathname, location.search, navigate, queryParams]);
+
+  useEffect(() => {
+    const mappedStatus = toInstancesStatus(insightsControls.instancesCondition);
+    setControls((current) => {
+      const nextState = insightsControls.instancesState === "all" || insightsControls.instancesState === "running" || insightsControls.instancesState === "stopped" || insightsControls.instancesState === "terminated"
+        ? insightsControls.instancesState
+        : current.state;
+      if (current.status === mappedStatus && current.state === nextState) {
+        return current;
+      }
+      return {
+        ...current,
+        status: mappedStatus,
+        state: nextState,
+      };
+    });
+  }, [insightsControls.instancesCondition, insightsControls.instancesState]);
 
   const instanceTypeOptions = useMemo(() => {
     const unique = Array.from(
@@ -296,88 +445,6 @@ export default function EC2InstancesPage() {
     return [{ key: "all", label: "All" }, ...unique.map((entry) => ({ key: entry, label: entry }))];
   }, [allItems, controls.instanceType]);
 
-  const activeChips = useMemo(() => {
-    const chips: Array<{ id: string; label: string; onRemove?: () => void }> = [];
-
-    if (controls.scopeFilters.region.length > 0) {
-      controls.scopeFilters.region.forEach((region) => {
-        chips.push({
-          id: `region-${region}`,
-          label: `Region: ${region}`,
-          onRemove: () =>
-            setControls((current) => ({
-              ...current,
-              scopeFilters: {
-                ...current.scopeFilters,
-                region: current.scopeFilters.region.filter((item) => item !== region),
-              },
-            })),
-        });
-      });
-    }
-
-    if (controls.scopeFilters.tags.length > 0) {
-      controls.scopeFilters.tags.forEach((tag) => {
-        chips.push({
-          id: `tag-${tag}`,
-          label: `Tag: ${tag}`,
-          onRemove: () =>
-            setControls((current) => ({
-              ...current,
-              scopeFilters: {
-                ...current.scopeFilters,
-                tags: current.scopeFilters.tags.filter((item) => item !== tag),
-              },
-            })),
-        });
-      });
-    }
-
-    if (controls.state !== "all") {
-      chips.push({
-        id: "state",
-        label: `State: ${toTitle(controls.state)}`,
-        onRemove: () => setControls((current) => ({ ...current, state: "all" })),
-      });
-    }
-
-    if (controls.instanceType !== "all") {
-      chips.push({
-        id: "instance-type",
-        label: `Instance Type: ${controls.instanceType}`,
-        onRemove: () => setControls((current) => ({ ...current, instanceType: "all" })),
-      });
-    }
-
-    if (
-      queryTransferType === "internet" ||
-      queryTransferType === "inter_region" ||
-      queryTransferType === "inter_az" ||
-      queryTransferType === "regional" ||
-      queryTransferType === "unknown"
-    ) {
-      const transferLabel =
-        queryTransferType === "inter_region"
-          ? "Inter-Region"
-          : queryTransferType === "inter_az"
-            ? "Inter-AZ"
-            : queryTransferType === "regional"
-              ? "Regional"
-            : queryTransferType.charAt(0).toUpperCase() + queryTransferType.slice(1);
-      chips.push({
-        id: "transfer-type",
-        label: `Transfer Type: ${transferLabel}`,
-        onRemove: () => {
-          const next = new URLSearchParams(location.search);
-          next.delete("transferType");
-          navigate({ pathname: location.pathname, search: next.toString() }, { replace: true });
-        },
-      });
-    }
-
-    return chips;
-  }, [controls.instanceType, controls.scopeFilters.region, controls.scopeFilters.tags, controls.state, location.pathname, location.search, navigate, queryTransferType]);
-
   const openInstanceDetail = (instanceId: string) => {
     const next = new URLSearchParams(location.search);
     next.set("instanceId", instanceId);
@@ -387,195 +454,80 @@ export default function EC2InstancesPage() {
 
   return (
     <div className="dashboard-page cost-explorer-page ec2-instances-page-layout">
-      <section className="ec2-instances-panel ec2-instances-panel--filters" aria-label="EC2 instances insights filters">
+      <section className="ec2-instances-panel ec2-instances-panel--filters" aria-label="EC2 instances controls">
         <EC2ExplorerTopControls
           value={insightsControls}
           onChange={setInsightsControls}
           loading={isInsightsLoading}
           showMetricTabs={false}
           showThresholdButton={false}
-        >
-          <div className="cost-explorer-chip-bar" aria-label="Selected filter summary">
-            <div className="cost-explorer-chip-row">
-              {isInsightsLoading ? (
-                <>
-                  <span className="ec2-explorer-filter-skeleton-chip ec2-explorer-filter-skeleton-chip--lg" aria-hidden="true" />
-                  <span className="ec2-explorer-filter-skeleton-chip ec2-explorer-filter-skeleton-chip--md" aria-hidden="true" />
-                  <span className="ec2-explorer-filter-skeleton-chip ec2-explorer-filter-skeleton-chip--clear" aria-hidden="true" />
-                </>
-              ) : (
-                <>
-                  <span className="cost-explorer-chip">
-                    <span className="cost-explorer-chip__edit">
-                      Condition: {insightsControls.instancesCondition}
-                    </span>
-                    <button
-                      type="button"
-                      className="cost-explorer-chip__remove"
-                      onClick={() => setInsightsControls((current) => ({ ...current, instancesCondition: "all" }))}
-                      aria-label="Remove condition"
-                    >
-                      <X size={13} aria-hidden="true" />
-                    </button>
-                  </span>
-                  <span className="cost-explorer-chip">
-                    <span className="cost-explorer-chip__edit">
-                      Group By: {insightsControls.groupBy}
-                    </span>
-                    <button
-                      type="button"
-                      className="cost-explorer-chip__remove"
-                      onClick={() => setInsightsControls((current) => ({ ...current, groupBy: "instance", groupByValues: [] }))}
-                      aria-label="Remove group by"
-                    >
-                      <X size={13} aria-hidden="true" />
-                    </button>
-                  </span>
-                  <button
-                    type="button"
-                    className="cost-explorer-chip-bar__clear cost-explorer-chip-bar__clear--inline"
-                    onClick={() =>
-                      setInsightsControls((current) => ({
-                        ...EC2_EXPLORER_DEFAULT_CONTROLS,
-                        metric: "instances",
-                        groupBy: "instance",
-                        scopeFilters: { ...current.scopeFilters, region: [], tags: [] },
-                      }))
-                    }
-                  >
-                    Clear all
-                  </button>
-                  <button
-                    type="button"
-                    className="ec2-explorer-toolbar-action"
-                    aria-label="Thresholds"
-                    title="Thresholds"
-                    onClick={() => setInsightsThresholdsOpen(true)}
-                  >
-                    <SlidersHorizontal size={14} aria-hidden="true" />
-                  </button>
-                </>
-              )}
-            </div>
-          </div>
-        </EC2ExplorerTopControls>
+          compactInstancesMode
+          instancesListControls={{
+            instanceType: controls.instanceType,
+            reservationType: controls.reservationType,
+            search: controls.search,
+            instanceTypeOptions,
+            showInstanceType: false,
+            onChange: (patch) => {
+              setControls((current) => ({ ...current, ...patch }));
+              setPage(1);
+            },
+          }}
+        />
       </section>
 
       <section className="ec2-instances-panel ec2-instances-panel--kpis" aria-label="EC2 instances insights summary">
-        <EC2SummaryCards
-          summary={
-            explorerInstancesQuery.data?.summary ?? {
-              totalCost: 0,
-              previousCost: 0,
-              trendPercent: 0,
-              instanceCount: 0,
-              volumeCount: 0,
-              attachedInstanceCount: 0,
-              unattachedVolumeCount: 0,
-              storageGb: 0,
-              storageGbHours: 0,
-              avgCpu: 0,
-              totalNetworkGb: 0,
-            }
-          }
-          loading={isInsightsLoading}
-          metric="instances"
-        />
+        <section className="cost-explorer-kpi-surface s3-overview-kpi-surface" aria-label="EC2 instances summary cards">
+          <div className="cost-explorer-chart-insights s3-overview-kpi-row">
+            {[
+              { label: "Instances", value: instancesKpis.instances.toLocaleString() },
+              { label: "Compute Cost", value: `$${instancesKpis.computeCost.toFixed(2)}` },
+              { label: "Network Usage", value: `${instancesKpis.totalNetworkGb.toFixed(2)} GB` },
+              { label: "Volume Count", value: instancesKpis.totalVolumeCount.toLocaleString() },
+            ].map((card) => (
+              <article key={card.label} className={`cost-explorer-insight-tile s3-overview-kpi-tile${isInsightsLoading ? " is-loading" : ""}`}>
+                {isInsightsLoading ? (
+                  <div className="ec2-explorer-summary__skeleton" aria-hidden="true">
+                    <span className="ec2-explorer-summary__skeleton-line ec2-explorer-summary__skeleton-line--label" />
+                    <span className="ec2-explorer-summary__skeleton-line ec2-explorer-summary__skeleton-line--value" />
+                  </div>
+                ) : (
+                  <>
+                    <p className="cost-explorer-insight-tile__label">{card.label}</p>
+                    <p className="cost-explorer-insight-tile__value">{card.value}</p>
+                  </>
+                )}
+              </article>
+            ))}
+          </div>
+        </section>
       </section>
 
-      <section className="ec2-instances-panel ec2-instances-panel--chart" aria-label="EC2 instances insights chart">
-        <EC2ExplorerChart
-          title="Instances Breakdown"
-          chartType="stacked_bar"
-          canUseStackedBar
-          showChartTypeSelector={false}
-          graph={
-            explorerInstancesQuery.data?.graph
-              ? {
-                  ...explorerInstancesQuery.data.graph,
-                  type: "stacked_bar",
-                }
-              : {
-                  type: "stacked_bar",
-                  xKey: "date",
-                  series: [],
-                }
-          }
-          loading={isInsightsLoading}
-          error={explorerInstancesQuery.isError ? explorerInstancesQuery.error : null}
-          onRetry={() => {
-            void explorerInstancesQuery.refetch();
-          }}
-          onChartTypeChange={() => {}}
-          onPointClick={() => {}}
-        />
-      </section>
-
-      <section className="ec2-instances-panel ec2-instances-panel--insights-table" aria-label="EC2 instances insights table panel">
-        <EC2ExplorerTable
-          metric="instances"
-          groupBy={insightsControls.groupBy}
-          loading={isInsightsLoading}
-          error={explorerInstancesQuery.isError ? explorerInstancesQuery.error : null}
-          table={explorerInstancesQuery.data?.table ?? null}
-          onRetry={() => {
-            void explorerInstancesQuery.refetch();
-          }}
-          onRowClick={() => {}}
-        />
-      </section>
+      {insightsControls.groupBy === "instance" && filteredRows.length <= 1 ? null : (
+        <section className="ec2-instances-panel ec2-instances-panel--chart" aria-label="EC2 instances operational chart">
+          <EC2ExplorerChart
+            title={fleetChartModel.title}
+            explorerType="usage"
+            unit={fleetChartModel.unit}
+            chartType="stacked_bar"
+            canUseStackedBar
+            showChartTypeSelector={false}
+            yAxisLabel={fleetChartModel.yAxisLabel}
+            xAxisLabel={fleetChartModel.xAxisLabel}
+            horizontalBars={fleetChartModel.horizontalBars}
+            graph={fleetChartModel.graph}
+            loading={isInsightsLoading}
+            error={instancesQuery.isError ? instancesQuery.error : null}
+            onRetry={() => {
+              void instancesQuery.refetch();
+            }}
+            onChartTypeChange={() => {}}
+            onPointClick={() => {}}
+          />
+        </section>
+      )}
 
       <section className="ec2-instances-panel ec2-instances-panel--list" aria-label="EC2 instances list">
-        <EC2InstancesTopBar
-          value={controls}
-          instanceTypeOptions={instanceTypeOptions}
-          loading={isListLoading}
-          visibleControls={[
-            "filters",
-            "status",
-            "state",
-            "instanceType",
-            "reservationType",
-            "search",
-            "thresholds",
-            "reset",
-          ]}
-          onChange={(next) => {
-            setControls(next);
-            setPage(1);
-          }}
-          onReset={() => {
-            setControls({ ...EC2_INSTANCES_DEFAULT_CONTROLS });
-            setPage(1);
-          }}
-        >
-          <EC2InstancesContextChips
-            chips={activeChips}
-            onClearAll={() => {
-              const next = new URLSearchParams(location.search);
-              next.delete("transferType");
-              navigate({ pathname: location.pathname, search: next.toString() }, { replace: true });
-              setControls((current) => ({
-                ...current,
-                status: "all",
-                state: "all",
-                instanceType: "all",
-                reservationType: "all",
-                scopeFilters: { region: [], tags: [] },
-                thresholds: {
-                  cpuMin: "",
-                  cpuMax: "",
-                  costMin: "",
-                  costMax: "",
-                  networkMin: "",
-                  networkMax: "",
-                },
-              }));
-              setPage(1);
-            }}
-          />
-        </EC2InstancesTopBar>
-
         <EC2InstancesTable
           rows={filteredRows}
           volumeCostByInstanceId={volumeCostByInstanceId}
@@ -594,30 +546,6 @@ export default function EC2InstancesPage() {
           onOpenInstance={openInstanceDetail}
         />
       </section>
-      <Dialog open={insightsThresholdsOpen} onOpenChange={setInsightsThresholdsOpen}>
-        <DialogContent className="w-[min(92vw,46rem)] max-w-none border border-[color:var(--border-light)] rounded-none p-4">
-          <DialogHeader className="space-y-1 border-b border-[color:var(--border-light)] pb-4">
-            <DialogTitle className="text-2xl font-semibold text-text-primary">Thresholds</DialogTitle>
-          </DialogHeader>
-          <div className="mt-4">
-            <EC2ExplorerThresholdsPopover
-              value={insightsControls.thresholds}
-              onChange={(nextThresholds) =>
-                setInsightsControls((current) => ({
-                  ...current,
-                  thresholds: nextThresholds,
-                }))
-              }
-              onReset={() =>
-                setInsightsControls((current) => ({
-                  ...current,
-                  thresholds: { ...EC2_EXPLORER_DEFAULT_CONTROLS.thresholds },
-                }))
-              }
-            />
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

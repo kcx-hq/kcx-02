@@ -17,6 +17,12 @@ import {
 import {
   detectEc2InstanceCostSpikesForSource, type Ec2InstanceCostSpikeDetectionResult,
 } from "./ec2-instance-cost-spike.detector.js";
+import {
+  detectS3CostSpikesForSource, type S3CostSpikeDetectionResult,
+} from "../s3/anomalies/s3-cost-spike.detector.js";
+import {
+  applyS3CostSpikeLifecycle,
+} from "../s3/anomalies/s3-cost-spike.lifecycle.js";
 
 async function mergeRunMetadata(runId: string, patch: Record<string, unknown>): Promise<void> {
   const run = await AnomalyDetectionRun.findByPk(runId);
@@ -105,9 +111,26 @@ async function executeDailyTotalCostSpikeRun(runId: string): Promise<void> {
       candidates: ec2Result.candidates,
     });
 
-    const totalCreated = dailyTotalLifecycle.created + ec2Lifecycle.created;
-    const totalUpdated = dailyTotalLifecycle.updated + ec2Lifecycle.updated;
-    const totalResolved = dailyTotalLifecycle.resolved + ec2Lifecycle.resolved;
+    const s3Result: S3CostSpikeDetectionResult = await detectS3CostSpikesForSource({
+      billingSourceId,
+      tenantId: run.tenantId ?? null,
+      dateFrom: run.dateFrom ?? null,
+      dateTo: run.dateTo ?? null,
+    });
+
+    const s3Lifecycle = await applyS3CostSpikeLifecycle({
+      runId,
+      billingSourceId,
+      tenantId: run.tenantId ?? null,
+      cloudConnectionId,
+      effectiveDateFrom: s3Result.effectiveDateFrom,
+      effectiveDateTo: s3Result.effectiveDateTo,
+      candidates: s3Result.candidates,
+    });
+
+    const totalCreated = dailyTotalLifecycle.created + ec2Lifecycle.created + s3Lifecycle.created;
+    const totalUpdated = dailyTotalLifecycle.updated + ec2Lifecycle.updated + s3Lifecycle.updated;
+    const totalResolved = dailyTotalLifecycle.resolved + ec2Lifecycle.resolved + s3Lifecycle.resolved;
 
     await mergeRunMetadata(runId, {
       phase: "phase_6",
@@ -140,8 +163,22 @@ async function executeDailyTotalCostSpikeRun(runId: string): Promise<void> {
           persistedUpdated: ec2Lifecycle.updated,
           persistedResolved: ec2Lifecycle.resolved,
         },
+        s3_cost_spike: {
+          guardrails: s3Result.guardrails,
+          effectiveDateFrom: s3Result.effectiveDateFrom,
+          effectiveDateTo: s3Result.effectiveDateTo,
+          historyWindowStart: s3Result.historyWindowStart,
+          historyWindowEnd: s3Result.historyWindowEnd,
+          defaultedDateWindow: s3Result.defaultedDateWindow,
+          observedDaysInWindow: s3Result.observedDaysInWindow,
+          evaluatedDays: s3Result.evaluatedDays,
+          candidateCount: s3Result.candidates.length,
+          persistedCreated: s3Lifecycle.created,
+          persistedUpdated: s3Lifecycle.updated,
+          persistedResolved: s3Lifecycle.resolved,
+        },
       },
-      candidateCount: result.candidates.length + ec2Result.candidates.length,
+      candidateCount: result.candidates.length + ec2Result.candidates.length + s3Result.candidates.length,
       persistedCreated: totalCreated,
       persistedUpdated: totalUpdated,
       persistedResolved: totalResolved,
@@ -149,8 +186,8 @@ async function executeDailyTotalCostSpikeRun(runId: string): Promise<void> {
     });
 
     await markAnomalyDetectionRunCompleted(runId, {
-      statusMessage: `Anomaly detection completed (${result.candidates.length + ec2Result.candidates.length} candidate(s), ${totalCreated} created, ${totalUpdated} updated, ${totalResolved} resolved)`,
-      sourcesProcessed: 2,
+      statusMessage: `Anomaly detection completed (${result.candidates.length + ec2Result.candidates.length + s3Result.candidates.length} candidate(s), ${totalCreated} created, ${totalUpdated} updated, ${totalResolved} resolved)`,
+      sourcesProcessed: 3,
       anomaliesCreated: totalCreated,
       anomaliesUpdated: totalUpdated,
       anomaliesResolved: totalResolved,
@@ -161,6 +198,7 @@ async function executeDailyTotalCostSpikeRun(runId: string): Promise<void> {
       billingSourceId,
       dailyTotalCandidates: result.candidates.length,
       ec2ResourceCandidates: ec2Result.candidates.length,
+      s3Candidates: s3Result.candidates.length,
       created: totalCreated,
       updated: totalUpdated,
       resolved: totalResolved,

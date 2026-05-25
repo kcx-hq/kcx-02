@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import type { ColDef } from "ag-grid-community";
 
 import { BaseDataTable } from "../../../../common/tables/BaseDataTable";
@@ -18,6 +18,9 @@ const quantityFormatterPrecise = new Intl.NumberFormat("en-US", {
   minimumFractionDigits: 5,
   maximumFractionDigits: 5,
 });
+const quantityFormatterCount = new Intl.NumberFormat("en-US", {
+  maximumFractionDigits: 0,
+});
 
 export type S3UsageInsightsRow = {
   usageType: string;
@@ -33,36 +36,49 @@ export type S3BucketUsageRow = {
   storageGb?: number;
   transferGb?: number;
   requestCount?: number;
+  objectCount?: number;
   region: string;
-  usageInfo: string;
+  dominantUsageType: "Request Heavy" | "Storage Heavy" | "Transfer Heavy" | "Retrieval Heavy" | "Mixed Heavy";
+};
+
+export type S3OperationGroupUsageRow = {
+  operationGroup: string;
+  requestCount: number;
+  transferGb: number;
+  requestPct: number;
+  transferPct: number;
 };
 
 type Props = {
+  seriesBy?: "bucket" | "operation_group";
   rows: S3UsageInsightsRow[];
   bucketRows?: S3BucketUsageRow[];
-  bucketQuantityLabel?: string;
-  usageCategory?: "" | "storage" | "data_transfer" | "request";
-  showAllCategoryBreakdown?: boolean;
+  operationGroupRows?: S3OperationGroupUsageRow[];
+  usageCategory?: "" | "storage" | "data_transfer" | "request" | "object_count";
   onBucketClick?: (bucketName: string) => void;
 };
 
 export function S3UsageInsightsTable({
+  seriesBy = "bucket",
   rows,
   bucketRows,
-  bucketQuantityLabel = "Usage Quantity",
+  operationGroupRows,
   usageCategory = "",
-  showAllCategoryBreakdown = false,
   onBucketClick,
 }: Props) {
-  const [search, setSearch] = useState("");
-  const normalizedSearch = search.trim().toLowerCase();
-
   const usageColumnDefs = useMemo<ColDef<any>[]>(
     () => [
       { headerName: "Usage Type", field: "usageType", minWidth: 260 },
       { headerName: "Operation", field: "operation", minWidth: 220 },
       {
-        headerName: usageCategory === "storage" ? "Storage (GB)" : usageCategory === "request" ? "Requests (Count)" : "Usage Quantity",
+        headerName:
+          usageCategory === "storage"
+            ? "Storage (GB)"
+            : usageCategory === "request"
+              ? "Requests (Count)"
+              : usageCategory === "object_count"
+                ? "Object Count"
+                : "Usage Quantity",
         field: "quantity",
         minWidth: 170,
         valueFormatter: (params) => quantityFormatter.format(Number(params.value ?? 0)),
@@ -113,78 +129,74 @@ export function S3UsageInsightsTable({
           );
         },
       },
-      ...(showAllCategoryBreakdown
-        ? ([
-            {
-              headerName: "Storage (GB)",
-              field: "storageGb",
-              minWidth: 170,
-              valueFormatter: (params: { value: number }) => quantityFormatterPrecise.format(Number(params.value ?? 0)),
-            },
-            {
-              headerName: "Transfer (GB)",
-              field: "transferGb",
-              minWidth: 170,
-              valueFormatter: (params: { value: number }) => quantityFormatterPrecise.format(Number(params.value ?? 0)),
-            },
-            {
-              headerName: "Request (Count)",
-              field: "requestCount",
-              minWidth: 180,
-              valueFormatter: (params: { value: number }) => quantityFormatterPrecise.format(Number(params.value ?? 0)),
-            },
-          ] as ColDef<any>[])
-        : []),
+      {
+        headerName: "Storage (GB)",
+        field: "storageGb",
+        minWidth: 170,
+        valueFormatter: (params: { value: number }) => quantityFormatterPrecise.format(Number(params.value ?? 0)),
+      },
+      {
+        headerName: "Transfer (GB)",
+        field: "transferGb",
+        minWidth: 170,
+        valueFormatter: (params: { value: number }) => quantityFormatterPrecise.format(Number(params.value ?? 0)),
+      },
+      {
+        headerName: "Request Count",
+        field: "requestCount",
+        minWidth: 180,
+        valueFormatter: (params: { value: number }) => quantityFormatterCount.format(Number(params.value ?? 0)),
+      },
+      {
+        headerName: "Object Count",
+        field: "objectCount",
+        minWidth: 170,
+        valueFormatter: (params: { value: number }) => quantityFormatterCount.format(Number(params.value ?? 0)),
+      },
       { headerName: "Region", field: "region", minWidth: 150 },
-      { headerName: "Usage Info", field: "usageInfo", minWidth: 240 },
+      { headerName: "Dominant Usage Type", field: "dominantUsageType", minWidth: 240 },
     ],
-    [bucketQuantityLabel, onBucketClick, showAllCategoryBreakdown],
+    [onBucketClick],
+  );
+  const operationGroupColumnDefs = useMemo<ColDef<any>[]>(
+    () => [
+      { headerName: "Operation Group", field: "operationGroup", minWidth: 220 },
+      {
+        headerName: "Request Count",
+        field: "requestCount",
+        minWidth: 170,
+        valueFormatter: (params: { value: number }) => quantityFormatterCount.format(Number(params.value ?? 0)),
+      },
+      {
+        headerName: "Transfer (GB)",
+        field: "transferGb",
+        minWidth: 170,
+        valueFormatter: (params: { value: number }) => quantityFormatterPrecise.format(Number(params.value ?? 0)),
+      },
+      {
+        headerName: "% of Request",
+        field: "requestPct",
+        minWidth: 150,
+        valueFormatter: (params: { value: number }) => `${Number(params.value ?? 0).toFixed(2)}%`,
+      },
+      {
+        headerName: "% of Transfer",
+        field: "transferPct",
+        minWidth: 160,
+        valueFormatter: (params: { value: number }) => `${Number(params.value ?? 0).toFixed(2)}%`,
+      },
+    ],
+    [],
   );
 
   const showingBucketTable = Array.isArray(bucketRows) && bucketRows.length > 0;
-  const filteredBucketRows = useMemo(() => {
-    if (!showingBucketTable || normalizedSearch.length === 0) return bucketRows ?? [];
-    return (bucketRows ?? []).filter((row) => {
-      const bucketName = String(row.bucketName ?? "").toLowerCase();
-      const region = String(row.region ?? "").toLowerCase();
-      const usageInfo = String(row.usageInfo ?? "").toLowerCase();
-      return (
-        bucketName.includes(normalizedSearch) ||
-        region.includes(normalizedSearch) ||
-        usageInfo.includes(normalizedSearch)
-      );
-    });
-  }, [bucketRows, normalizedSearch, showingBucketTable]);
-
-  const filteredUsageRows = useMemo(() => {
-    if (showingBucketTable || normalizedSearch.length === 0) return rows;
-    return rows.filter((row) => {
-      const usageType = String(row.usageType ?? "").toLowerCase();
-      const operation = String(row.operation ?? "").toLowerCase();
-      const unit = String(row.unit ?? "").toLowerCase();
-      return (
-        usageType.includes(normalizedSearch) ||
-        operation.includes(normalizedSearch) ||
-        unit.includes(normalizedSearch)
-      );
-    });
-  }, [rows, normalizedSearch, showingBucketTable]);
+  const showingOperationGroupTable = seriesBy === "operation_group" && Array.isArray(operationGroupRows) && operationGroupRows.length > 0;
 
   return (
     <div className="s3-usage-table-shell">
-      <div className="s3-usage-table-shell__toolbar">
-        <input
-          type="search"
-          className="s3-usage-table-shell__search"
-          placeholder={showingBucketTable ? "Search bucket, region, usage info..." : "Search usage type, operation..."}
-          value={search}
-          onChange={(event) => setSearch(event.target.value)}
-          aria-label="Search S3 usage table"
-        />
-      </div>
       <BaseDataTable
-        columnDefs={showingBucketTable ? bucketColumnDefs : usageColumnDefs}
-        rowData={showingBucketTable ? (filteredBucketRows as any[]) : (filteredUsageRows as any[])}
+        columnDefs={showingOperationGroupTable ? operationGroupColumnDefs : showingBucketTable ? bucketColumnDefs : usageColumnDefs}
+        rowData={showingOperationGroupTable ? ((operationGroupRows ?? []) as any[]) : showingBucketTable ? ((bucketRows ?? []) as any[]) : (rows as any[])}
         emptyMessage="No usage rows available for the selected filters."
         pagination
         paginationPageSize={10}

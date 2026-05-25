@@ -14,7 +14,7 @@ export type EC2UsageType = "cpu" | "network" | "disk";
 export type EC2Aggregation = "avg" | "max" | "p95";
 export type EC2ChartType = "line" | "stacked_bar";
 export type EC2Condition = "all" | "idle" | "underutilized" | "overutilized" | "uncovered";
-export type EC2State = "running" | "stopped" | "terminated";
+export type EC2State = "all" | "running" | "stopped" | "terminated";
 export type EC2GroupBy =
   | "none"
   | "region"
@@ -39,6 +39,45 @@ export type EC2GroupBy =
   | "source-region"
   | "destination-region"
   | "tag";
+
+export const EC2_COST_TYPE_ORDER = [
+  "compute",
+  "volume",
+  "snapshot",
+  "data_transfer",
+  "elastic_ip",
+  "other",
+] as const;
+
+export type EC2CostTypeKey = (typeof EC2_COST_TYPE_ORDER)[number];
+
+export const EC2_COST_TYPE_LABELS: Record<EC2CostTypeKey, string> = {
+  compute: "Compute",
+  volume: "Volume",
+  snapshot: "Snapshot",
+  data_transfer: "Data Transfer",
+  elastic_ip: "Elastic IP",
+  other: "Other",
+};
+
+export const EC2_COST_TYPE_COLORS: Record<EC2CostTypeKey, string> = {
+  compute: "#1f77b4",
+  volume: "#2ca02c",
+  snapshot: "#ff7f0e",
+  data_transfer: "#d62728",
+  elastic_ip: "#9467bd",
+  other: "#17becf",
+};
+
+export const normalizeEc2CostTypeKey = (value: string): EC2CostTypeKey | null => {
+  const normalized = value.trim().toLowerCase().replaceAll("-", "_").replaceAll(" ", "_");
+  if (normalized === "ebs") return "volume";
+  if (normalized === "eip") return "elastic_ip";
+  if ((EC2_COST_TYPE_ORDER as readonly string[]).includes(normalized)) {
+    return normalized as EC2CostTypeKey;
+  }
+  return null;
+};
 
 export type EC2ScopeFilters = {
   region: string[];
@@ -131,6 +170,7 @@ export const CONDITION_OPTIONS: Array<{ key: EC2Condition; label: string }> = [
 ];
 
 export const STATE_OPTIONS: Array<{ key: EC2State; label: string }> = [
+  { key: "all", label: "All States" },
   { key: "running", label: "Running" },
   { key: "stopped", label: "Stopped" },
   { key: "terminated", label: "Terminated" },
@@ -165,9 +205,9 @@ export const GROUP_BY_OPTIONS: Array<{ key: EC2GroupBy; label: string }> = [
 export const GROUP_BY_OPTIONS_BY_METRIC: Record<EC2Metric, EC2GroupBy[]> = {
   cost: ["none", "account", "region", "instance-type", "cost-category", "tag", "reservation-type"],
   usage: ["none", "account", "region", "instance", "instance-type", "tag"],
-  instances: ["none", "account", "region", "instance", "instance-type", "instance-state", "recommendation", "tag"],
+  instances: ["none", "account", "region", "instance", "instance-type", "instance-state", "reservation-type", "recommendation", "tag"],
   volumes: ["none", "account", "region", "instance", "volume", "volume_type", "attachment_state", "size_bucket", "tag"],
-  "data-transfer": ["none", "account", "region", "instance", "transfer-type", "tag"],
+  "data-transfer": ["account", "region", "instance", "transfer-type", "tag"],
 };
 
 export const isGroupByAllowedForMetric = (groupBy: EC2GroupBy, metric: EC2Metric): boolean =>
@@ -181,7 +221,11 @@ export const getGroupByOptionsForMetric = (metric: EC2Metric): Array<{ key: EC2G
 export const getValidGroupByForMetric = (
   metric: EC2Metric,
   currentGroupBy: EC2GroupBy,
-): EC2GroupBy => (isGroupByAllowedForMetric(currentGroupBy, metric) ? currentGroupBy : "none");
+): EC2GroupBy => {
+  if (isGroupByAllowedForMetric(currentGroupBy, metric)) return currentGroupBy;
+  if (metric === "data-transfer") return "transfer-type";
+  return "none";
+};
 
 export const INSTANCE_TYPE_OPTIONS: Array<{ key: string; label: string }> = [
   { key: "all", label: "All types" },

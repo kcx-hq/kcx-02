@@ -7,6 +7,7 @@ import ResourcesPage from "../pages/resources/ResourcesPage";
 import AllocationPage from "../pages/allocation/AllocationPage";
 import OptimizationPage from "../pages/optimization/OptimizationPage";
 import AnomaliesAlertsPage from "../pages/anomalies-alerts/AnomaliesAlertsPage";
+import AnomalyAlertDetailPage from "../pages/anomalies-alerts/AnomalyAlertDetailPage";
 import BudgetPage from "../pages/budget/BudgetPage";
 import ReportPage from "../pages/report/ReportPage";
 import EC2SnapshotsPage from "../pages/ec2/EC2SnapshotsPage";
@@ -151,6 +152,20 @@ function DashboardS3BucketDetailRedirect() {
   );
 }
 
+function DashboardPolicyS3Redirect() {
+  const location = useLocation();
+
+  return (
+    <Navigate
+      to={{
+        pathname: "/dashboard/policy/lifecycle",
+        search: location.search,
+      }}
+      replace
+    />
+  );
+}
+
 export default function DashboardRoutes() {
   return (
     <Routes>
@@ -180,7 +195,8 @@ export default function DashboardRoutes() {
         <Route path="s3/usage/bucket/:bucketName" element={<DashboardS3BucketDetailRedirect />} />
         <Route path="s3/optimization" element={<S3OptimizationPage />} />
         <Route path="policy" element={<PolicyPage />} />
-        <Route path="policy/s3" element={<S3PolicyPage />} />
+        <Route path="policy/lifecycle" element={<S3PolicyPage />} />
+        <Route path="policy/s3" element={<DashboardPolicyS3Redirect />} />
         <Route path="services/database" element={<DatabaseExplorerPage />} />
         <Route path="services/database/assets" element={<DatabaseAssetsPage />} />
         <Route path="services/database/optimization" element={<DatabaseOptimizationPage />} />
@@ -190,6 +206,7 @@ export default function DashboardRoutes() {
         <Route path="allocation" element={<AllocationPage />} />
         <Route path="optimization" element={<OptimizationPage />} />
         <Route path="anomalies-alerts" element={<AnomaliesAlertsPage />} />
+        <Route path="anomalies-alerts/:anomalyId" element={<AnomalyAlertDetailPage />} />
         <Route path="budget" element={<BudgetPage />} />
         <Route path="report" element={<ReportPage />} />
         <Route path="inventory" element={<AwsInventoryPage />} />

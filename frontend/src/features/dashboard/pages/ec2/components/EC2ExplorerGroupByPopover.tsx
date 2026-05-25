@@ -50,11 +50,10 @@ const GROUP_VALUE_OPTIONS: Record<EC2GroupBy, GroupByValueOption[]> = {
   ],
   "cost-category": [
     { key: "compute", label: "Compute", count: 7540 },
-    { key: "ebs", label: "EBS", count: 4820 },
+    { key: "volume", label: "Volume", count: 4820 },
     { key: "snapshot", label: "Snapshot", count: 2110 },
     { key: "data_transfer", label: "Data Transfer", count: 1870 },
-    { key: "nat_gateway", label: "NAT Gateway", count: 520 },
-    { key: "eip", label: "EIP", count: 530 },
+    { key: "elastic_ip", label: "Elastic IP", count: 530 },
     { key: "other", label: "Other", count: 440 },
   ],
   "usage-type": [
@@ -313,7 +312,7 @@ export function EC2ExplorerGroupByPopover({
                       <span className="cost-explorer-filter-option__label">{option.label}</span>
                     </span>
                     <span className="cost-explorer-filter-option__meta">
-                      <span className="cost-explorer-filter-option__label">{option.count}</span>
+                      <span className="cost-explorer-filter-option__count">{option.count}</span>
                       {selected ? <Check className="cost-explorer-filter-option__check" size={15} aria-hidden="true" /> : null}
                     </span>
                   </button>

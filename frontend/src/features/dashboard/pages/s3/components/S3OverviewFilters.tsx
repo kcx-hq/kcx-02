@@ -11,7 +11,7 @@ type FilterChip = {
   onRemove: () => void;
 };
 
-type S3FilterPopoverKey = "region" | "seriesBy" | "costBy" | "yAxisMetric" | "compareMode";
+type S3FilterPopoverKey = "seriesBy" | "costBy" | "yAxisMetric" | "compareMode";
 
 type Props = {
   value: S3OverviewFilterValue;
@@ -35,25 +35,23 @@ export function S3OverviewFilters({
   const seriesByOptions: NonNullable<S3CostInsightsFiltersQuery["seriesBy"]>[] = [
     "none",
     "bucket",
-    "cost_category",
+    "usage_type",
     "operation",
-    "product_family",
     "storage_class",
   ];
 
   const getSeriesByLabel = (seriesBy: NonNullable<S3CostInsightsFiltersQuery["seriesBy"]>) => {
     if (seriesBy === "none") return "None";
+    if (seriesBy === "usage_type") return "Cost Type";
     if (seriesBy === "storage_class") return "Storage Type";
-    if (seriesBy === "operation") return "Operation";
-    if (seriesBy === "product_family") return "Product Family";
+    if (seriesBy === "operation") return "Operation Group";
     if (seriesBy === "bucket") return "Bucket";
-    return "Usage Type";
+    return "Cost Type";
   };
 
   const rootRef = useRef<HTMLDivElement | null>(null);
   const [activePopover, setActivePopover] = useState<S3FilterPopoverKey | null>(null);
   const [searchByPopover, setSearchByPopover] = useState<Record<S3FilterPopoverKey, string>>({
-    region: "",
     seriesBy: "",
     costBy: "",
     yAxisMetric: "",
@@ -83,19 +81,18 @@ export function S3OverviewFilters({
   const seriesByLabel = getSeriesByLabel(value.seriesBy);
   const draftSeriesByLabel = getSeriesByLabel(draftSeriesBy);
   const getYAxisLabel = useCallback((metric: NonNullable<S3CostInsightsFiltersQuery["yAxisMetric"]>) => {
+    if (metric === "gross_cost") return "Gross Cost ($)";
     if (metric === "effective_cost") return "Effective Cost ($)";
-    if (metric === "amortized_cost") return "Amortized Cost ($)";
-    return "Billed Cost ($)";
+    return "Gross Cost ($)";
   }, []);
 
   const draftSeriesValueOptions = useMemo(() => {
     if (draftSeriesBy === "none") return [];
     if (draftSeriesBy === "storage_class") return filterOptions?.storageClass ?? [];
     if (draftSeriesBy === "operation") return filterOptions?.operation ?? [];
-    if (draftSeriesBy === "product_family") return filterOptions?.productFamily ?? [];
     if (draftSeriesBy === "bucket") return filterOptions?.bucket ?? [];
     return filterOptions?.costCategory ?? [];
-  }, [draftSeriesBy, filterOptions?.bucket, filterOptions?.costCategory, filterOptions?.operation, filterOptions?.productFamily, filterOptions?.storageClass]);
+  }, [draftSeriesBy, filterOptions?.bucket, filterOptions?.costCategory, filterOptions?.operation, filterOptions?.storageClass]);
   const hasFilterOptions = Boolean(filterOptions) && !isLoading;
   const controlsDisabled = !hasFilterOptions;
 
@@ -115,14 +112,6 @@ export function S3OverviewFilters({
         onRemove: () => onChange({ ...value, seriesValues: [] }),
       });
     }
-    if (value.region) {
-      items.push({
-        id: "region",
-        label: "Region",
-        value: value.region,
-        onRemove: () => onChange({ ...value, region: "" }),
-      });
-    }
     items.push({
       id: "costBy",
       label: "X-Axis",
@@ -133,7 +122,7 @@ export function S3OverviewFilters({
       id: "yAxisMetric",
       label: "Y-Axis",
       value: getYAxisLabel(value.yAxisMetric),
-      onRemove: () => onChange({ ...value, yAxisMetric: "billed_cost" }),
+      onRemove: () => onChange({ ...value, yAxisMetric: "gross_cost" }),
     });
     items.push({
       id: "compareMode",
@@ -172,9 +161,8 @@ export function S3OverviewFilters({
       seriesBy: "bucket",
       seriesValues: [],
       storageClass: [],
-      region: "",
       costBy: "date",
-      yAxisMetric: "billed_cost",
+      yAxisMetric: "gross_cost",
       chartType: "bar",
       compareMode: "none",
     });
@@ -192,6 +180,28 @@ export function S3OverviewFilters({
       />
     </label>
   );
+
+  if (isLoading) {
+    return (
+      <section
+        className="cost-explorer-control-surface s3-overview-filter-panel s3-overview-filter-panel--loading"
+        aria-label="Loading S3 overview filters"
+        aria-hidden="true"
+      >
+        <div className="s3-overview-filter-skeleton__row">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <span key={`s3-filter-loading-control-${index}`} className="s3-overview-filter-skeleton__control" />
+          ))}
+        </div>
+        <div className="s3-overview-filter-skeleton__chips">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <span key={`s3-filter-loading-chip-${index}`} className="s3-overview-filter-skeleton__chip" />
+          ))}
+          <span className="s3-overview-filter-skeleton__chip s3-overview-filter-skeleton__chip--clear" />
+        </div>
+      </section>
+    );
+  }
 
   return (
     <section className="cost-explorer-control-surface s3-overview-filter-panel" aria-label="S3 overview filters" ref={rootRef}>
@@ -327,53 +337,6 @@ export function S3OverviewFilters({
           ) : null}
         </div>
 
-        <div className="cost-explorer-toolbar-item s3-overview-filter-panel__item--region">
-          <button
-            type="button"
-            className={`cost-explorer-toolbar-trigger${activePopover === "region" ? " is-active" : ""}`}
-            onClick={() => togglePopover("region")}
-            aria-expanded={activePopover === "region"}
-            aria-haspopup="dialog"
-            disabled={!hasFilterOptions}
-          >
-            <span className="cost-explorer-toolbar-trigger__label">Region</span>
-            <span className="cost-explorer-toolbar-trigger__row">
-              <span className="cost-explorer-toolbar-trigger__value">{value.region || "All"}</span>
-              <ChevronDown className="cost-explorer-toolbar-trigger__caret" size={14} aria-hidden="true" />
-            </span>
-          </button>
-          {activePopover === "region" ? (
-            <div className="cost-explorer-filter-popover s3-overview-filter-popover--region" role="dialog" aria-label="Region options">
-              <p className="cost-explorer-filter-popover__title">Region</p>
-              {renderPopoverSearch("region", "Search region...")}
-              <div className="cost-explorer-filter-popover__list" role="listbox">
-                {["All", ...filterOptionsBySearch(filterOptions?.region ?? [], searchByPopover.region)].map((option) => {
-                  const selected = (option === "All" && !value.region) || option === value.region;
-                  return (
-                    <button
-                      key={option}
-                      type="button"
-                      className={`cost-explorer-filter-option${selected ? " is-active" : ""}`}
-                      onClick={() => {
-                        onChange({ ...value, region: option === "All" ? "" : option });
-                        setActivePopover(null);
-                      }}
-                    >
-                      <span className="cost-explorer-filter-option__content">
-                        <span className="cost-explorer-filter-option__label">{option}</span>
-                      </span>
-                      {selected ? <Check className="cost-explorer-filter-option__check" size={15} aria-hidden="true" /> : null}
-                    </button>
-                  );
-                })}
-                {(filterOptions?.region ?? []).length === 0 ? (
-                  <p className="cost-explorer-filter-popover__empty">No regions available.</p>
-                ) : null}
-              </div>
-            </div>
-          ) : null}
-        </div>
-
         <div className="cost-explorer-toolbar-item s3-overview-filter-panel__item--x-axis">
           <button
             type="button"
@@ -440,10 +403,7 @@ export function S3OverviewFilters({
               <p className="cost-explorer-filter-popover__title">Y-Axis</p>
               {renderPopoverSearch("yAxisMetric", "Search metric...")}
               <div className="cost-explorer-filter-popover__list" role="listbox">
-                {filterOptionsBySearch(
-                  ["billed_cost", "effective_cost", "amortized_cost"],
-                  searchByPopover.yAxisMetric,
-                ).map((option) => {
+                {filterOptionsBySearch(["gross_cost", "effective_cost"], searchByPopover.yAxisMetric).map((option) => {
                   const selected = option === value.yAxisMetric;
                   const label = getYAxisLabel(option as NonNullable<S3CostInsightsFiltersQuery["yAxisMetric"]>);
                   return (

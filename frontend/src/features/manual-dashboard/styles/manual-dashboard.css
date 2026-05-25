@@ -1830,20 +1830,25 @@
   position: absolute;
   right: 0;
   top: calc(100% + 4px);
-  z-index: 1000;
+  z-index: 2147483000;
   min-width: 190px;
   border: 1px solid color-mix(in srgb, var(--dashboard-border-light) 78%, var(--dashboard-white-strong) 22%);
-  background: var(--dashboard-surface-card);
+  border-radius: 8px;
+  background: var(--dashboard-white-strong);
   box-shadow: 0 18px 38px -28px rgba(15, 23, 42, 0.5);
+  overflow: hidden;
+  isolation: isolate;
 }
 
 .optimization-action-menu__item {
   display: block;
   width: 100%;
   padding: 8px 10px;
+  background: var(--dashboard-white-strong);
   color: var(--dashboard-text-secondary);
   font-size: 0.72rem;
   font-weight: 650;
+  line-height: 1.35;
   text-align: left;
 }
 

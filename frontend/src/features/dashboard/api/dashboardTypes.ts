@@ -1108,6 +1108,250 @@ export type Ec2ExplorerResponse = {
   };
 };
 
+export type Ec2CostExplorerV2Granularity = "daily" | "weekly" | "monthly";
+export type Ec2CostExplorerV2CostBasis = "gross_cost" | "net_cost" | "effective_cost" | "amortized_cost";
+export type Ec2CostExplorerV2GroupBy =
+  | "none"
+  | "account"
+  | "region"
+  | "instance"
+  | "instance_type"
+  | "cost_type"
+  | "reservation_type"
+  | "tag";
+export type Ec2CostExplorerV2Compare = "none" | "previous_period";
+
+export type Ec2CostExplorerV2FiltersQuery = {
+  startDate?: string;
+  endDate?: string;
+  granularity?: Ec2CostExplorerV2Granularity;
+  costBasis?: Ec2CostExplorerV2CostBasis;
+  groupBy?: Ec2CostExplorerV2GroupBy;
+  tagKey?: string | null;
+  compare?: Ec2CostExplorerV2Compare;
+  accountIds?: string[];
+  regions?: string[];
+  instanceTypes?: string[];
+  reservationTypes?: string[];
+  costTypes?: string[];
+  tags?: string[];
+};
+
+export type Ec2CostExplorerV2Response = {
+  kpis: {
+    grossCost: number;
+    credits: number;
+    netCost: number;
+    computeCost: number;
+    instanceCount: number;
+  };
+  chart: {
+    granularity: Ec2CostExplorerV2Granularity;
+    xAxis: "date";
+    yAxis: string;
+    series: Array<{
+      groupKey: string;
+      groupLabel: string;
+      points: Array<{ date: string; value: number }>;
+    }>;
+  };
+  table: {
+    rows: Array<{
+      groupKey: string;
+      groupLabel: string;
+      grossCost: number;
+      netCost: number;
+      effectiveCost: number;
+      computeCost: number;
+      volumeCost: number;
+      snapshotCost: number;
+      dataTransferCost: number;
+      elasticIpCost: number;
+      otherCost: number;
+      instanceCount: number;
+      percentOfTotal: number;
+      mainCostDriver: "Compute" | "Volume" | "Snapshot" | "Data Transfer" | "Elastic IP" | "Other";
+    }>;
+  };
+  meta: {
+    costBasis: Ec2CostExplorerV2CostBasis;
+    groupBy: Ec2CostExplorerV2GroupBy;
+    granularity: Ec2CostExplorerV2Granularity;
+    currency: string;
+    normalized: true;
+  };
+};
+
+export type Ec2RecommendationActionKey =
+  | "stop_instance"
+  | "resize_instance"
+  | "delete_volume"
+  | "snapshot_then_delete_volume"
+  | "delete_snapshot"
+  | "release_eip"
+  | "review_ri_sp"
+  | "review_traffic"
+  | "review_load_balancer"
+  | "terminate_instance";
+
+export type Ec2RecommendationActionRequest = {
+  actionKey: Ec2RecommendationActionKey;
+  parameters?: {
+    targetInstanceType?: string;
+    createSnapshotBeforeDelete?: boolean;
+    confirmationText?: string;
+  };
+};
+
+export type Ec2RecommendationActionPrecheckResponse = {
+  allowed: boolean;
+  actionKey: Ec2RecommendationActionKey;
+  resourceId: string;
+  resourceType: Ec2RecommendationRecord["resourceType"];
+  region: string | null;
+  accountId: string | null;
+  warnings: string[];
+  blockers: string[];
+  dryRunSupported: boolean;
+  dryRunPassed?: boolean;
+};
+
+export type Ec2RecommendationActionExecuteResponse = {
+  success: boolean;
+  actionKey: Ec2RecommendationActionKey;
+  resourceId: string;
+  awsRequestId: string | null;
+  resultMessage: string;
+  updatedStatus: Ec2RecommendationStatus;
+};
+
+export type Ec2UsageExplorerV2Granularity = "daily" | "weekly" | "monthly";
+export type Ec2UsageExplorerV2UsageMetric = "cpu" | "network_in" | "network_out" | "network_total";
+export type Ec2UsageExplorerV2Aggregation = "avg" | "max" | "sum";
+export type Ec2UsageExplorerV2GroupBy = "none" | "account" | "region" | "instance" | "instance_type" | "tag";
+export type Ec2UsageExplorerV2Compare = "none" | "previous_period";
+
+export type Ec2UsageExplorerV2FiltersQuery = {
+  startDate?: string;
+  endDate?: string;
+  granularity?: Ec2UsageExplorerV2Granularity;
+  usageMetric?: Ec2UsageExplorerV2UsageMetric;
+  aggregation?: Ec2UsageExplorerV2Aggregation;
+  groupBy?: Ec2UsageExplorerV2GroupBy;
+  tagKey?: string | null;
+  compare?: Ec2UsageExplorerV2Compare;
+  accountIds?: string[];
+  regions?: string[];
+  instanceTypes?: string[];
+  tags?: string[];
+};
+
+export type Ec2UsageExplorerV2Response = {
+  kpis: {
+    avgCpu: number;
+    maxCpu: number;
+    totalNetworkInGb: number;
+    totalNetworkOutGb: number;
+    instanceCount: number;
+  };
+  chart: {
+    granularity: Ec2UsageExplorerV2Granularity;
+    xAxis: "date";
+    yAxis: string;
+    series: Array<{
+      groupKey: string;
+      groupLabel: string;
+      points: Array<{ date: string; value: number; transferCost?: number; usageGb?: number }>;
+    }>;
+  };
+  table: {
+    rows: Array<{
+      groupKey: string;
+      groupLabel: string;
+      avgCpu: number;
+      maxCpu: number;
+      networkInGb: number;
+      networkOutGb: number;
+      networkTotalGb: number;
+      instanceCount: number;
+    }>;
+  };
+  meta: {
+    usageMetric: Ec2UsageExplorerV2UsageMetric;
+    aggregation: Ec2UsageExplorerV2Aggregation;
+    groupBy: Ec2UsageExplorerV2GroupBy;
+    granularity: Ec2UsageExplorerV2Granularity;
+    normalized: true;
+  };
+};
+
+export type Ec2DataTransferExplorerV2Granularity = "daily" | "weekly" | "monthly";
+export type Ec2DataTransferExplorerV2YAxis = "transfer_cost" | "usage_gb";
+export type Ec2DataTransferExplorerV2GroupBy = "none" | "account" | "region" | "instance" | "transfer_type" | "tag";
+export type Ec2DataTransferExplorerV2Compare = "none" | "previous_period";
+
+export type Ec2DataTransferExplorerV2FiltersQuery = {
+  startDate?: string;
+  endDate?: string;
+  granularity?: Ec2DataTransferExplorerV2Granularity;
+  yAxis?: Ec2DataTransferExplorerV2YAxis;
+  groupBy?: Ec2DataTransferExplorerV2GroupBy;
+  tagKey?: string | null;
+  compare?: Ec2DataTransferExplorerV2Compare;
+  accountIds?: string[];
+  regions?: string[];
+  instanceTypes?: string[];
+  transferTypes?: Array<"internet" | "inter_region" | "inter_az" | "regional" | "unknown">;
+  tags?: string[];
+};
+
+export type Ec2DataTransferExplorerV2Response = {
+  kpis: {
+    transferCost: number;
+    usageGb: number;
+    internetTransferCost: number;
+    regionalTransferCost: number;
+    interRegionInterAzTransferCost: number;
+  };
+  chart: {
+    granularity: Ec2DataTransferExplorerV2Granularity;
+    xAxis: "date";
+    yAxis: Ec2DataTransferExplorerV2YAxis;
+    unit: "currency" | "gb";
+    series: Array<{
+      groupKey: string;
+      groupLabel: string;
+      points: Array<{ date: string; value: number; transferCost?: number; usageGb?: number }>;
+    }>;
+  };
+  table: {
+    rows: Array<{
+      groupKey: string;
+      groupLabel: string;
+      transferCost: number;
+      usageGb: number;
+      internetCost: number;
+      interRegionCost: number;
+      interAzCost: number;
+      regionalCost: number;
+      unknownCost: number;
+      percentOfTransferCost: number;
+      mainDriver: "Internet" | "Inter-Region" | "Inter-AZ" | "Regional" | "Unknown";
+    }>;
+  };
+  meta: {
+    yAxis: Ec2DataTransferExplorerV2YAxis;
+    groupBy: Ec2DataTransferExplorerV2GroupBy;
+    granularity: Ec2DataTransferExplorerV2Granularity;
+    compare: Ec2DataTransferExplorerV2Compare;
+    currency: "USD";
+    normalized: true;
+    source: "data_transfer_explorer";
+    hasTransferUsage: boolean;
+    hasTransferCost: boolean;
+  };
+};
+
 export type Ec2NetworkBreakdownType =
   | "Internet Data Transfer"
   | "Inter-Region Data Transfer"
@@ -1881,8 +2125,8 @@ export type S3CostInsightsResponse = {
       region: string[];
         account: string[];
         costBy: "date" | "bucket" | "region" | "account";
-        seriesBy: "none" | "cost_category" | "usage_type" | "operation" | "product_family" | "bucket" | "storage_class";
-        yAxisMetric: "billed_cost" | "effective_cost" | "amortized_cost" | "usage_quantity";
+        seriesBy: "none" | "cost_category" | "usage_type" | "operation" | "bucket" | "storage_class";
+        yAxisMetric: "gross_cost" | "billed_cost" | "effective_cost" | "amortized_cost" | "usage_quantity";
       };
   };
   columnsUsed: Array<
@@ -1895,7 +2139,6 @@ export type S3CostInsightsResponse = {
     | "product_usage_type"
     | "operation"
     | "line_item_description"
-    | "product_family"
     | "region_name"
     | "sub_account_name"
     | "tag_value"
@@ -1904,6 +2147,28 @@ export type S3CostInsightsResponse = {
     totalS3Cost: number;
     monthToDateCost: number;
     effectiveCost: number;
+    bucketCostKpis: {
+      grossBucketCost: number;
+      creditAdjustedCost: number;
+      netBucketCost: number;
+      totalBuckets: number;
+    };
+    usageTypeCostKpis: {
+      grossS3Cost: number;
+      credits: number;
+      netS3Cost: number;
+      topUsageDriver: {
+        category: "Request" | "Storage" | "Transfer" | "Retrieval" | "Replication" | "Lifecycle" | "Other";
+        cost: number;
+        percentOfTotal: number;
+      } | null;
+    };
+    usageSummaryKpis: {
+      totalStorageGb: number;
+      totalRequests: number;
+      totalTransferGb: number;
+      totalObjectCount: number;
+    };
   };
   storageCostDashboard: {
     currency: "USD";
@@ -1954,7 +2219,16 @@ export type S3CostInsightsResponse = {
     versioningStatus: string | null;
     encryptionStatus: string | null;
     publicAccessStatus: "Public" | "Private" | "Unknown";
+    primaryUsagePattern?: string;
+    optimizationSignal?: string;
     trendPct: number;
+    objectCount?: number | null;
+    storageGb?: number | null;
+    storageSizeGb?: number | null;
+    transferGb?: number | null;
+    requestCount?: number | null;
+    dominantUsageType?: "Request Heavy" | "Storage Heavy" | "Transfer Heavy" | "Retrieval Heavy" | "Mixed Heavy";
+    usageInfo?: string;
     storageLens?: {
       usageDate: string;
       objectCount: number | null;
@@ -1982,6 +2256,20 @@ export type S3CostInsightsResponse = {
     cost: number;
     quantity: number;
     unit: string;
+  }>;
+  usageTypeCostTable: Array<{
+    usageType: string;
+    grossCost: number;
+    trendPct: number;
+    topBucketName: string;
+  }>;
+  storageTypeCostTable: Array<{
+    storageType: string;
+    grossCost: number;
+    percentOfStorageCost: number;
+    trendPct: number;
+    topBucketName: string;
+    optimizationSignal: "Storage Heavy" | "Request Heavy" | "Transfer Heavy" | "Retrieval Heavy" | "Other Heavy" | "Balanced";
   }>;
   chart: {
     bucketCosts: Array<{
@@ -2011,20 +2299,25 @@ export type S3CostInsightsResponse = {
         name: string;
         values: number[];
       }>;
+      operationGroupTooltip?: Array<{
+        usageDate: string;
+        operationGroup: "Read" | "Write" | "List & Metadata" | "Other";
+        operation: string;
+        cost: number;
+      }>;
     };
   };
   filterOptions: {
     costCategory: string[];
     usageType: string[];
     operation: string[];
-    productFamily: string[];
     bucket: string[];
     storageClass: string[];
     region: string[];
       account: string[];
       costBy: Array<"date" | "bucket" | "region" | "account">;
-      seriesBy: Array<"none" | "cost_category" | "usage_type" | "operation" | "product_family" | "bucket" | "storage_class">;
-      yAxisMetric: Array<"billed_cost" | "effective_cost" | "amortized_cost" | "usage_quantity">;
+      seriesBy: Array<"none" | "cost_category" | "usage_type" | "operation" | "bucket" | "storage_class">;
+      yAxisMetric: Array<"gross_cost" | "billed_cost" | "effective_cost" | "amortized_cost" | "usage_quantity">;
     };
   storageAnomalies: {
     items: Array<{
@@ -2202,6 +2495,7 @@ export type S3CostInsightsResponse = {
   };
 
 export type S3CostInsightsFiltersQuery = {
+  usageBy?: "bucket" | "operation" | "storage_class";
   costCategory?: string[];
   seriesValues?: string[];
   bucket?: string | null;
@@ -2210,8 +2504,178 @@ export type S3CostInsightsFiltersQuery = {
   account?: string[];
   responseMode?: "full" | "core" | "quick" | "overview";
   costBy?: "date" | "bucket" | "region" | "account";
-  seriesBy?: "none" | "cost_category" | "usage_type" | "operation" | "product_family" | "bucket" | "storage_class";
-  yAxisMetric?: "billed_cost" | "effective_cost" | "amortized_cost" | "usage_quantity";
+  seriesBy?: "none" | "cost_category" | "usage_type" | "operation" | "bucket" | "storage_class";
+  yAxisMetric?: "gross_cost" | "billed_cost" | "effective_cost" | "amortized_cost" | "usage_quantity";
+  usageYAxis?:
+    | "storage_gb"
+    | "request_count"
+    | "transfer_gb"
+    | "object_count"
+    | "storage_gb_mo"
+    | "retrieval_gb";
+};
+
+export type S3UsageInsightsFiltersQuery = {
+  xAxis?: "date" | "bucket" | "region" | "account";
+  usageBy?: "bucket" | "operation_group";
+  seriesValues?: string[];
+  yAxis?:
+    | "storage_gb"
+    | "request_count"
+    | "transfer_gb"
+    | "object_count";
+  compareBy?: "none" | "previous_period";
+  bucket?: string | null;
+  region?: string[];
+  account?: string[];
+};
+
+export type S3BucketDetailResponse = {
+  section: "s3-bucket-detail";
+  title: "S3 Bucket Detail";
+  message: string;
+  bucketName: string;
+  metadata: {
+    accountId: string | null;
+    region: string | null;
+    owner: string | null;
+    environment: string | null;
+    encryption: string | null;
+    versioning: string | null;
+    publicAccess: string | null;
+  };
+  objectInsights: {
+    objectCount: number | null;
+    avgObjectSize: number | null;
+    currentVersionBytes: number | null;
+    currentVersionBytesEstimated: boolean;
+    requestsPerObject: number | null;
+  };
+  lifecycleInsight: {
+    rulesCount: number;
+    enabledRules: number;
+    transitionCoverage: number;
+    lastScan: string | null;
+    status: string;
+  };
+  replicationInsight: {
+    rulesCount: number;
+    destinationBucket: string | null;
+    destinationRegion: string | null;
+    lastChecked: string | null;
+    status: string;
+  };
+  usageMetrics: {
+    storageGb: number | null;
+    requestCount: number | null;
+    transferGb: number | null;
+    objectCount: number | null;
+  };
+  costBreakdown: {
+    totalCost: number;
+    storageCost: number;
+    requestCost: number;
+    transferCost: number;
+    retrievalCost: number;
+    otherCost: number;
+    costTrendPct: number;
+  };
+  charts: {
+    storageUsage: Array<{ date: string; value: number | null }>;
+    requestUsage: Array<{ date: string; value: number | null }>;
+    transferUsage: Array<{ date: string; value: number | null }>;
+    costTrend: Array<{
+      date: string;
+      storageCost: number;
+      requestCost: number;
+      transferCost: number;
+      otherCost: number;
+    }>;
+  };
+  storageClassBreakdown: Array<{
+    storageClass: string;
+    bytes: number;
+    objectCount: number | null;
+  }>;
+  activityUsage: {
+    totalRequests: number;
+    transferBytes: number | null;
+    objectCount: number | null;
+    averageObjectSizeBytes: number | null;
+    requestBreakdown: Array<{
+      operation: "GET" | "PUT" | "LIST" | "DELETE" | "HEAD" | "COPY" | "Other";
+      count: number;
+      percentage: number;
+    }>;
+    requestBreakdownAvailable: boolean;
+    transferBreakdown: Array<{
+      type: "Upload" | "Download" | "Internal" | "Other";
+      bytes: number;
+      percentage: number;
+    }>;
+    transferBreakdownAvailable: boolean;
+    trends: {
+      requests: "up" | "down" | "flat" | "unknown";
+      transfer: "up" | "down" | "flat" | "unknown";
+      storage: "up" | "down" | "flat" | "unknown";
+    };
+    insight: string | null;
+    hasUsageData: boolean;
+  };
+  optimization: {
+    opportunities: Array<{
+      id: string;
+      title: string;
+      severity: "high" | "medium" | "low" | "info";
+      category: "lifecycle" | "storage" | "activity" | "governance" | "replication" | "configuration";
+      description: string;
+      recommendation: string;
+      estimatedSavings: number | null;
+      source: string;
+      evidence: Record<string, unknown>;
+      action?: {
+        type: "navigate";
+        route: string;
+        query: Record<string, string>;
+        label: string;
+      };
+    }>;
+    totalCount: number;
+  };
+  configuration: {
+    versioning: {
+      status: "enabled" | "suspended" | "disabled" | "unknown";
+    };
+    encryption: {
+      status: "enabled" | "disabled" | "unknown";
+      type: "SSE-S3" | "SSE-KMS" | "Unknown" | null;
+    };
+    lifecycle: {
+      enabled: boolean;
+      ruleCount: number;
+    };
+    replication: {
+      enabled: boolean;
+      destinationRegion: string | null;
+    };
+    publicAccess: {
+      status: "blocked" | "partial" | "public" | "unknown";
+    };
+    ownershipMetadata: {
+      ownerAssigned: boolean;
+      environmentAssigned: boolean;
+    };
+    bestPractices: {
+      passed: number;
+      total: number;
+    };
+    notes: string[];
+  };
+  filtersApplied: {
+    from: string;
+    to: string;
+    scopeType: DashboardResolvedScope["scopeType"];
+  };
 };
 
 export type S3PolicyAppliedStatus = "APPLIED" | "NOT_APPLIED" | "FAILED" | "EXTERNAL";
@@ -2482,6 +2946,33 @@ export type AnomaliesListResponse = {
     offset: number;
     total: number;
   };
+  summary?: {
+    totalAnomalies: number;
+    criticalAnomalies: number;
+    totalCostImpact: number;
+    potentialSavings: number;
+  };
+};
+
+export type AnomalyTimelinePoint = {
+  date: string;
+  cost: number;
+  is_anomaly: boolean;
+  cost_impact?: number;
+  cost_impact_percentage?: number;
+};
+
+export type AnomalyTimelineResponse = {
+  anomaly: AnomalyRecord;
+  timeline: AnomalyTimelinePoint[];
+  related_anomalies: Array<{
+    id: string;
+    date: string;
+    anomaly_type: string | null;
+    status: string;
+    cost_impact: number;
+    cost_impact_percentage: number;
+  }>;
 };
 
 export type OverviewFiltersResponse = {

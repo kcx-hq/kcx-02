@@ -20,12 +20,13 @@ class S3CostDaily extends Model<
   declare regionKey: CreationOptional<number | null>;
   declare accountId: CreationOptional<string | null>;
   declare region: CreationOptional<string | null>;
-  declare bucketName: string;
+  declare bucketName: CreationOptional<string | null>;
   declare usageDate: string;
   declare costCategory: string;
-  declare storageClass: string;
+  declare storageClass: CreationOptional<string | null>;
   declare usageType: string;
   declare operation: string;
+  declare operationGroup: CreationOptional<string | null>;
   declare productFamily: string;
   declare pricingUnit: CreationOptional<string>;
   declare totalCost: CreationOptional<string>;
@@ -48,12 +49,13 @@ const createS3CostDailyModel = (sequelize: Sequelize): typeof S3CostDaily => {
       regionKey: { type: DataTypes.BIGINT, allowNull: true, field: "region_key" },
       accountId: { type: DataTypes.STRING(20), allowNull: true, field: "account_id" },
       region: { type: DataTypes.STRING(64), allowNull: true, field: "region" },
-      bucketName: { type: DataTypes.TEXT, allowNull: false, field: "bucket_name" },
+      bucketName: { type: DataTypes.TEXT, allowNull: true, field: "bucket_name" },
       usageDate: { type: DataTypes.DATEONLY, allowNull: false, field: "usage_date" },
       costCategory: { type: DataTypes.STRING(32), allowNull: false, field: "cost_category" },
-      storageClass: { type: DataTypes.STRING(64), allowNull: false, field: "storage_class" },
+      storageClass: { type: DataTypes.STRING(64), allowNull: true, field: "storage_class" },
       usageType: { type: DataTypes.TEXT, allowNull: false, field: "usage_type" },
       operation: { type: DataTypes.TEXT, allowNull: false, field: "operation" },
+      operationGroup: { type: DataTypes.TEXT, allowNull: true, field: "operation_group" },
       productFamily: { type: DataTypes.TEXT, allowNull: false, field: "product_family" },
       pricingUnit: { type: DataTypes.STRING(64), allowNull: false, defaultValue: "Units", field: "pricing_unit" },
       totalCost: { type: DataTypes.DECIMAL(20, 12), allowNull: false, defaultValue: 0, field: "total_cost" },

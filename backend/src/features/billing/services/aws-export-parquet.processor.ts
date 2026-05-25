@@ -38,6 +38,7 @@ import { assertTagDimensionSchemaReady } from "./ingestion-schema-guard.service.
 import { Ec2RecommendationsService } from "../../ec2/optimization/ec2-recommendations.service.js";
 import { LoadBalancerRecommendationsService } from "../../load-balancer/recommendations/load-balancer-recommendations.service.js";
 import { syncStorageLensFromClientAccount } from "./s3-storage-lens-sync.service.js";
+import { syncS3CostDaily } from "./s3-cost-daily.service.js";
 import { buildSourceRowHash } from "./source-row-hash.service.js";
 
 const STAGE_MESSAGE = {
@@ -66,6 +67,31 @@ const PROGRESS_BY_STAGE = {
 const now = () => new Date();
 const ec2RecommendationsService = new Ec2RecommendationsService();
 const loadBalancerRecommendationsService = new LoadBalancerRecommendationsService();
+
+function logAwsParquetStage({
+  stage,
+  status,
+  ingestionRunId,
+  billingSourceId = null,
+  cloudConnectionId = null,
+  dateFrom = null,
+  dateTo = null,
+  durationMs = null,
+  counts = null,
+  error = null,
+}) {
+  logger.info(stage, {
+    ingestionRunId: String(ingestionRunId),
+    billingSourceId: billingSourceId == null ? null : String(billingSourceId),
+    cloudConnectionId: cloudConnectionId == null ? null : String(cloudConnectionId),
+    dateFrom,
+    dateTo,
+    durationMs,
+    status,
+    counts,
+    error,
+  });
+}
 
 function scheduleStorageLensSyncAfterIngestion({ tenantId, billingSourceId, ingestionRunId }) {
   const normalizedTenantId = String(tenantId ?? "").trim();
@@ -267,6 +293,14 @@ export async function processAwsExportParquetRun({ run }) {
     const schemaValidationResults = [];
     const canonicalHeaderMapsByRawFileId = new Map();
     const parquetBuffersByRawFileId = new Map();
+
+    logAwsParquetStage({
+      stage: "aws_parquet_staging_started",
+      status: "started",
+      ingestionRunId: runId,
+      billingSourceId: source.id,
+      cloudConnectionId: source.cloudConnectionId ?? null,
+    });
 
     for (const dataLink of dataLinks) {
       const rawFile = dataLink.RawBillingFile;
@@ -668,6 +702,18 @@ export async function processAwsExportParquetRun({ run }) {
       });
       throw validationError;
     }
+    logAwsParquetStage({
+      stage: "aws_parquet_staging_completed",
+      status: "completed",
+      ingestionRunId: runId,
+      billingSourceId: source.id,
+      cloudConnectionId: source.cloudConnectionId ?? null,
+      counts: {
+        rowsRead,
+        rowsLoaded,
+        rowsFailed,
+      },
+    });
 
     await setRunState(runId, {
       status: "finalizing",
@@ -690,12 +736,239 @@ export async function processAwsExportParquetRun({ run }) {
       .map(([reason, count]) => `${reason} (${count})`)
       .join(", ");
 
-    if (rowsLoaded > 0) {
-      await syncEc2CostHistoryForIngestionRun({
+    const warningMessage = rowsFailed > 0 ? `Rows failed: ${rowsFailed}${topReasons ? `. Top reasons: ${topReasons}` : ""}` : null;
+    let replacementSummary;
+    const factReplacementStartedAt = Date.now();
+    logAwsParquetStage({
+      stage: "aws_parquet_fact_replacement_started",
+      status: "started",
+      ingestionRunId: runId,
+      billingSourceId: source.id,
+      cloudConnectionId: source.cloudConnectionId ?? null,
+      counts: {
+        rowsRead,
+        rowsLoaded,
+        rowsFailed,
+      },
+    });
+    try {
+      replacementSummary = await replaceFactRowsFromStagingInTransaction({
         ingestionRunId: runId,
-        tenantId: source.tenantId,
-        providerId: source.cloudProviderId,
         billingSourceId: source.id,
+        rowsRead,
+        rowsFailed,
+        warningMessage,
+      });
+    } catch (replacementError) {
+      logger.error("AWS parquet staging-to-fact replacement failed", {
+        ingestionRunId: runId,
+        billingSourceId: String(source.id),
+        reason: toErrorMessage(replacementError),
+      });
+      throw replacementError;
+    }
+    rowsLoaded = replacementSummary.rowsInserted;
+    logger.info("AWS parquet fact replacement committed", {
+      ingestionRunId: runId,
+      billingSourceId: String(source.id),
+      affectedUsageDates: replacementSummary.affectedUsageDates ?? [],
+      factRowsInserted: replacementSummary.rowsInserted ?? 0,
+      factRowsWithCurrentIngestionRunId: replacementSummary.factRowsWithCurrentIngestionRunId ?? 0,
+    });
+    const affectedUsageDates = Array.isArray(replacementSummary.affectedUsageDates)
+      ? [...replacementSummary.affectedUsageDates].map((value) => String(value)).sort()
+      : [];
+    const dateFrom = affectedUsageDates.length > 0 ? affectedUsageDates[0] : null;
+    const dateTo = affectedUsageDates.length > 0 ? affectedUsageDates[affectedUsageDates.length - 1] : null;
+    logAwsParquetStage({
+      stage: "aws_parquet_fact_replacement_committed",
+      status: "completed",
+      ingestionRunId: runId,
+      billingSourceId: source.id,
+      cloudConnectionId: source.cloudConnectionId ?? null,
+      dateFrom,
+      dateTo,
+      durationMs: Date.now() - factReplacementStartedAt,
+      counts: {
+        rowsInserted: replacementSummary.rowsInserted ?? 0,
+        factRowsWithCurrentIngestionRunId: replacementSummary.factRowsWithCurrentIngestionRunId ?? 0,
+      },
+    });
+
+    if (rowsLoaded > 0) {
+      logAwsParquetStage({
+        stage: "post_fact_processors_started",
+        status: "started",
+        ingestionRunId: runId,
+        billingSourceId: source.id,
+        cloudConnectionId: source.cloudConnectionId ?? null,
+        dateFrom,
+        dateTo,
+      });
+
+      const s3SyncStartedAt = Date.now();
+      let s3StartDate = dateFrom;
+      let s3EndDate = dateTo;
+      let usedFallbackDateWindow = false;
+      if (!s3StartDate || !s3EndDate) {
+        const today = new Date();
+        const fallbackEndDate = today.toISOString().slice(0, 10);
+        const fallbackStartDateObj = new Date(today);
+        fallbackStartDateObj.setUTCDate(fallbackStartDateObj.getUTCDate() - 45);
+        const fallbackStartDate = fallbackStartDateObj.toISOString().slice(0, 10);
+        s3StartDate = fallbackStartDate;
+        s3EndDate = fallbackEndDate;
+        usedFallbackDateWindow = true;
+        logAwsParquetStage({
+          stage: "s3_cost_daily_sync_skipped_no_date_range",
+          status: "skipped",
+          ingestionRunId: runId,
+          billingSourceId: source.id,
+          cloudConnectionId: source.cloudConnectionId ?? null,
+          dateFrom: s3StartDate,
+          dateTo: s3EndDate,
+          counts: {
+            fallbackDays: 45,
+          },
+          error: "affected usage dates missing; falling back to last 45 days",
+        });
+      }
+
+      logAwsParquetStage({
+        stage: "s3_cost_daily_sync_started",
+        status: "started",
+        ingestionRunId: runId,
+        billingSourceId: source.id,
+        cloudConnectionId: source.cloudConnectionId ?? null,
+        dateFrom: s3StartDate,
+        dateTo: s3EndDate,
+        counts: {
+          rebuildRange: true,
+          usedFallbackDateWindow,
+        },
+      });
+      try {
+        const s3SyncResult = await syncS3CostDaily({
+          tenantId: String(source.tenantId),
+          startDate: s3StartDate,
+          endDate: s3EndDate,
+          cloudConnectionId: source.cloudConnectionId ? String(source.cloudConnectionId) : null,
+          billingSourceId: String(source.id),
+          providerId: source.cloudProviderId,
+          rebuildRange: true,
+        });
+        logAwsParquetStage({
+          stage: "s3_cost_daily_sync_completed",
+          status: "completed",
+          ingestionRunId: runId,
+          billingSourceId: source.id,
+          cloudConnectionId: source.cloudConnectionId ?? null,
+          dateFrom: s3StartDate,
+          dateTo: s3EndDate,
+          durationMs: Date.now() - s3SyncStartedAt,
+          counts: {
+            rebuildRange: true,
+            usedFallbackDateWindow,
+            rowsDeleted: s3SyncResult.rowsDeleted ?? 0,
+            rowsInserted: s3SyncResult.rowsInserted ?? 0,
+          },
+        });
+      } catch (s3SyncError) {
+        logAwsParquetStage({
+          stage: "s3_cost_daily_sync_failed",
+          status: "failed",
+          ingestionRunId: runId,
+          billingSourceId: source.id,
+          cloudConnectionId: source.cloudConnectionId ?? null,
+          dateFrom: s3StartDate,
+          dateTo: s3EndDate,
+          durationMs: Date.now() - s3SyncStartedAt,
+          counts: {
+            rebuildRange: true,
+            usedFallbackDateWindow,
+          },
+          error: {
+            message: toErrorMessage(s3SyncError),
+            stack: s3SyncError instanceof Error ? s3SyncError.stack : null,
+          },
+        });
+        await setRunState(runId, {
+          status: "completed_with_warnings",
+          current_step: "completed_with_warnings",
+          status_message: "Billing data is ready with warnings (s3_cost_daily sync failed)",
+          error_message: `s3_cost_daily sync failed: ${toErrorMessage(s3SyncError)}`,
+          last_heartbeat_at: now(),
+        });
+      }
+
+      const ec2CostHistoryStartedAt = Date.now();
+      logAwsParquetStage({
+        stage: "ec2_cost_history_sync_started",
+        status: "started",
+        ingestionRunId: runId,
+        billingSourceId: source.id,
+        cloudConnectionId: source.cloudConnectionId ?? null,
+        dateFrom,
+        dateTo,
+      });
+      try {
+        await syncEc2CostHistoryForIngestionRun({
+          ingestionRunId: runId,
+          tenantId: source.tenantId,
+          providerId: source.cloudProviderId,
+          billingSourceId: source.id,
+        });
+        logAwsParquetStage({
+          stage: "ec2_cost_history_sync_completed",
+          status: "completed",
+          ingestionRunId: runId,
+          billingSourceId: source.id,
+          cloudConnectionId: source.cloudConnectionId ?? null,
+          dateFrom,
+          dateTo,
+          durationMs: Date.now() - ec2CostHistoryStartedAt,
+        });
+      } catch (ec2CostHistoryError) {
+        logger.warn("EC2 cost history sync failed after AWS parquet ingestion", {
+          ingestionRunId: runId,
+          tenantId: source.tenantId ?? null,
+          billingSourceId: source.id ?? null,
+          cloudConnectionId: source.cloudConnectionId ?? null,
+          reason: toErrorMessage(ec2CostHistoryError),
+          ...buildNestedErrorDetails(ec2CostHistoryError),
+        });
+        logAwsParquetStage({
+          stage: "ec2_cost_history_sync_failed",
+          status: "failed",
+          ingestionRunId: runId,
+          billingSourceId: source.id,
+          cloudConnectionId: source.cloudConnectionId ?? null,
+          dateFrom,
+          dateTo,
+          durationMs: Date.now() - ec2CostHistoryStartedAt,
+          error: {
+            message: toErrorMessage(ec2CostHistoryError),
+            stack: ec2CostHistoryError instanceof Error ? ec2CostHistoryError.stack : null,
+          },
+        });
+        await setRunState(runId, {
+          status: "completed_with_warnings",
+          current_step: "completed_with_warnings",
+          status_message: "Billing data is ready with warnings (EC2 post-processor sync failed)",
+          error_message: `EC2 cost history sync failed: ${toErrorMessage(ec2CostHistoryError)}`,
+          last_heartbeat_at: now(),
+        });
+      }
+
+      const dbProcessorStartedAt = Date.now();
+      logAwsParquetStage({
+        stage: "db_processor_started",
+        status: "started",
+        ingestionRunId: runId,
+        billingSourceId: source.id,
+        cloudConnectionId: source.cloudConnectionId ?? null,
+        dateFrom,
+        dateTo,
       });
       logger.info("AWS parquet processor: step=db_sync:start", {
         runId,
@@ -723,6 +996,16 @@ export async function processAwsExportParquetRun({ run }) {
         });
         throw dbSyncError;
       }
+      logAwsParquetStage({
+        stage: "db_processor_completed",
+        status: "completed",
+        ingestionRunId: runId,
+        billingSourceId: source.id,
+        cloudConnectionId: source.cloudConnectionId ?? null,
+        dateFrom,
+        dateTo,
+        durationMs: Date.now() - dbProcessorStartedAt,
+      });
       logger.info("AWS parquet processor: step=db_sync:done", {
         runId,
         tenantId: source.tenantId,
@@ -730,18 +1013,91 @@ export async function processAwsExportParquetRun({ run }) {
         billingSourceId: source.id,
         rowsLoaded,
       });
-      scheduleLoadBalancerCostAggregationAfterIngestion({
+
+      const loadBalancerStartedAt = Date.now();
+      logAwsParquetStage({
+        stage: "lb_processor_started",
+        status: "started",
         ingestionRunId: runId,
-        cloudConnectionId: source.cloudConnectionId ? String(source.cloudConnectionId) : null,
+        billingSourceId: source.id,
+        cloudConnectionId: source.cloudConnectionId ?? null,
+        dateFrom,
+        dateTo,
+      });
+      try {
+        const lbCostResult = await syncLoadBalancerCostDailyForIngestionRun({
+          ingestionRunId: runId,
+          cloudConnectionId: source.cloudConnectionId ? String(source.cloudConnectionId) : null,
+        });
+        logger.info("Load balancer cost aggregation completed after AWS parquet ingestion", {
+          triggerSource: "ingestion",
+          ingestionRunId: runId,
+          cloudConnectionId: source.cloudConnectionId ? String(source.cloudConnectionId) : null,
+          skipped: lbCostResult.skipped,
+          reason: lbCostResult.reason ?? null,
+          rowsScanned: lbCostResult.rowsScanned ?? 0,
+          lbRowsMatched:
+            typeof lbCostResult.rowsClassified === "number" && typeof lbCostResult.rowsUnmatched === "number"
+              ? Math.max(lbCostResult.rowsClassified - lbCostResult.rowsUnmatched, 0)
+              : 0,
+          unmatchedRows: lbCostResult.rowsUnmatched ?? 0,
+          dailyRowsWritten: lbCostResult.rowsUpserted ?? 0,
+          rowsDeleted: lbCostResult.rowsDeleted ?? 0,
+        });
+      } catch (lbCostError) {
+        logger.warn("Load balancer cost aggregation failed after AWS parquet ingestion", {
+          triggerSource: "ingestion",
+          ingestionRunId: String(runId),
+          cloudConnectionId: source.cloudConnectionId ? String(source.cloudConnectionId) : null,
+          reason: lbCostError instanceof Error ? lbCostError.message : String(lbCostError),
+        });
+      }
+
+      try {
+        await loadBalancerRecommendationsService.refreshRecommendations({
+          tenantId: String(source.tenantId),
+          billingSourceId: Number(source.id),
+          cloudConnectionId: source.cloudConnectionId ? String(source.cloudConnectionId) : null,
+          dateFrom,
+          dateTo,
+        });
+      } catch (loadBalancerRecError) {
+        logger.warn("Load balancer recommendation refresh failed after AWS parquet ingestion", {
+          ingestionRunId: runId,
+          tenantId: source.tenantId ?? null,
+          billingSourceId: source.id ?? null,
+          cloudConnectionId: source.cloudConnectionId ?? null,
+          reason: toErrorMessage(loadBalancerRecError),
+        });
+      }
+      logAwsParquetStage({
+        stage: "lb_processor_completed",
+        status: "completed",
+        ingestionRunId: runId,
+        billingSourceId: source.id,
+        cloudConnectionId: source.cloudConnectionId ?? null,
+        dateFrom,
+        dateTo,
+        durationMs: Date.now() - loadBalancerStartedAt,
       });
 
+      const ec2RecStartedAt = Date.now();
+      logAwsParquetStage({
+        stage: "ec2_recommendation_refresh_started",
+        status: "started",
+        ingestionRunId: runId,
+        billingSourceId: source.id,
+        cloudConnectionId: source.cloudConnectionId ?? null,
+        dateFrom,
+        dateTo,
+      });
       try {
         await ec2RecommendationsService.refreshRecommendations({
           tenantId: String(source.tenantId),
           billingSourceId: Number(source.id),
           cloudConnectionId: source.cloudConnectionId ? String(source.cloudConnectionId) : null,
-          dateFrom: String(run.periodStartDate).slice(0, 10),
-          dateTo: String(run.periodEndDate).slice(0, 10),
+          dateFrom,
+          dateTo,
         });
       } catch (ec2V1Error) {
         logger.warn("EC2 V1 recommendation refresh failed after AWS parquet ingestion", {
@@ -751,22 +1107,70 @@ export async function processAwsExportParquetRun({ run }) {
           reason: toErrorMessage(ec2V1Error),
         });
       }
+      logAwsParquetStage({
+        stage: "ec2_recommendation_refresh_completed",
+        status: "completed",
+        ingestionRunId: runId,
+        billingSourceId: source.id,
+        cloudConnectionId: source.cloudConnectionId ?? null,
+        dateFrom,
+        dateTo,
+        durationMs: Date.now() - ec2RecStartedAt,
+      });
 
+      const aggregationStartedAt = Date.now();
+      logAwsParquetStage({
+        stage: "cost_aggregation_started",
+        status: "started",
+        ingestionRunId: runId,
+        billingSourceId: source.id,
+        cloudConnectionId: source.cloudConnectionId ?? null,
+        dateFrom,
+        dateTo,
+      });
       try {
-        await loadBalancerRecommendationsService.refreshRecommendations({
-          tenantId: String(source.tenantId),
-          billingSourceId: Number(source.id),
-          cloudConnectionId: source.cloudConnectionId ? String(source.cloudConnectionId) : null,
-          dateFrom: String(run.periodStartDate).slice(0, 10),
-          dateTo: String(run.periodEndDate).slice(0, 10),
-        });
-      } catch (loadBalancerRecError) {
-        logger.warn("Load balancer recommendation refresh failed after AWS parquet ingestion", {
+        await upsertCostAggregationsForRun({
           ingestionRunId: runId,
-          tenantId: source.tenantId ?? null,
-          billingSourceId: source.id ?? null,
+          tenantId: source.tenantId,
+          providerId: source.cloudProviderId,
+          billingSourceId: source.id,
+          uploadedBy: connection.createdBy ?? null,
+          affectedUsageDates,
+        });
+        logAwsParquetStage({
+          stage: "cost_aggregation_completed",
+          status: "completed",
+          ingestionRunId: runId,
+          billingSourceId: source.id,
           cloudConnectionId: source.cloudConnectionId ?? null,
-          reason: toErrorMessage(loadBalancerRecError),
+          dateFrom,
+          dateTo,
+          durationMs: Date.now() - aggregationStartedAt,
+        });
+      } catch (aggregationError) {
+        logger.error("AWS parquet aggregation refresh failed after fact commit", {
+          ingestionRunId: runId,
+          billingSourceId: String(source.id),
+          affectedUsageDates: replacementSummary.affectedUsageDates ?? [],
+          reason: toErrorMessage(aggregationError),
+        });
+        logAwsParquetStage({
+          stage: "cost_aggregation_completed",
+          status: "failed",
+          ingestionRunId: runId,
+          billingSourceId: source.id,
+          cloudConnectionId: source.cloudConnectionId ?? null,
+          dateFrom,
+          dateTo,
+          durationMs: Date.now() - aggregationStartedAt,
+          error: toErrorMessage(aggregationError),
+        });
+        await setRunState(runId, {
+          status: "completed_with_warnings",
+          current_step: "completed_with_warnings",
+          status_message: "Billing data is ready with warnings (aggregation refresh failed)",
+          error_message: `Aggregation refresh failed: ${toErrorMessage(aggregationError)}`,
+          last_heartbeat_at: now(),
         });
       }
 
@@ -797,62 +1201,6 @@ export async function processAwsExportParquetRun({ run }) {
           tenantId: source.tenantId ?? null,
           billingSourceId: source.id ?? null,
           reason: toErrorMessage(idleSyncError),
-        });
-      }
-    }
-
-    const warningMessage = rowsFailed > 0 ? `Rows failed: ${rowsFailed}${topReasons ? `. Top reasons: ${topReasons}` : ""}` : null;
-    let replacementSummary;
-    try {
-      replacementSummary = await replaceFactRowsFromStagingInTransaction({
-        ingestionRunId: runId,
-        billingSourceId: source.id,
-        rowsRead,
-        rowsFailed,
-        warningMessage,
-      });
-    } catch (replacementError) {
-      logger.error("AWS parquet staging-to-fact replacement failed", {
-        ingestionRunId: runId,
-        billingSourceId: String(source.id),
-        reason: toErrorMessage(replacementError),
-      });
-      throw replacementError;
-    }
-    rowsLoaded = replacementSummary.rowsInserted;
-    logger.info("AWS parquet fact replacement committed", {
-      ingestionRunId: runId,
-      billingSourceId: String(source.id),
-      affectedUsageDates: replacementSummary.affectedUsageDates ?? [],
-      factRowsInserted: replacementSummary.rowsInserted ?? 0,
-      factRowsWithCurrentIngestionRunId: replacementSummary.factRowsWithCurrentIngestionRunId ?? 0,
-    });
-
-    if (rowsLoaded > 0) {
-      try {
-        await upsertCostAggregationsForRun({
-          ingestionRunId: runId,
-          tenantId: source.tenantId,
-          providerId: source.cloudProviderId,
-          billingSourceId: source.id,
-          uploadedBy: connection.createdBy ?? null,
-          affectedUsageDates: Array.isArray(replacementSummary.affectedUsageDates)
-            ? replacementSummary.affectedUsageDates
-            : [],
-        });
-      } catch (aggregationError) {
-        logger.error("AWS parquet aggregation refresh failed after fact commit", {
-          ingestionRunId: runId,
-          billingSourceId: String(source.id),
-          affectedUsageDates: replacementSummary.affectedUsageDates ?? [],
-          reason: toErrorMessage(aggregationError),
-        });
-        await setRunState(runId, {
-          status: "completed_with_warnings",
-          current_step: "completed_with_warnings",
-          status_message: "Billing data is ready with warnings (aggregation refresh failed)",
-          error_message: `Aggregation refresh failed: ${toErrorMessage(aggregationError)}`,
-          last_heartbeat_at: now(),
         });
       }
     }

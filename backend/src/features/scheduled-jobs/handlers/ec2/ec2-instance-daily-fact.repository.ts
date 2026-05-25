@@ -201,7 +201,7 @@ util AS (
     ub.tenant_id,
     ub.instance_id,
     ub.usage_date,
-    MIN(ub.cloud_connection_id::text)::uuid AS cloud_connection_id,
+    (ARRAY_AGG(ub.cloud_connection_id ORDER BY ub.cloud_connection_id) FILTER (WHERE ub.cloud_connection_id IS NOT NULL))[1] AS cloud_connection_id,
     MAX(ub.provider_id) AS provider_id,
     MAX(ub.resource_key) AS resource_key,
     MAX(ub.region_key) AS region_key,
@@ -258,7 +258,7 @@ cost AS (
     cb.tenant_id,
     cb.instance_id,
     cb.usage_date,
-    MIN(cb.cloud_connection_id::text)::uuid AS cloud_connection_id,
+    (ARRAY_AGG(cb.cloud_connection_id ORDER BY cb.cloud_connection_id) FILTER (WHERE cb.cloud_connection_id IS NOT NULL))[1] AS cloud_connection_id,
     MAX(cb.billing_source_id) AS billing_source_id,
     MAX(cb.provider_id) AS provider_id,
     MAX(cb.resource_key) AS resource_key,
@@ -313,7 +313,7 @@ coverage AS (
     cb.tenant_id,
     cb.instance_id,
     cb.usage_date,
-    MIN(cb.cloud_connection_id::text)::uuid AS cloud_connection_id,
+    (ARRAY_AGG(cb.cloud_connection_id ORDER BY cb.cloud_connection_id) FILTER (WHERE cb.cloud_connection_id IS NOT NULL))[1] AS cloud_connection_id,
     MAX(cb.billing_source_id) AS billing_source_id,
     MAX(cb.provider_id) AS provider_id,
     MAX(cb.resource_key) AS resource_key,
@@ -333,10 +333,22 @@ coverage AS (
 ),
 final_rows AS (
   SELECT
-    a.tenant_id,
-    COALESCE(inv.cloud_connection_id, util.cloud_connection_id, cost.cloud_connection_id, coverage.cloud_connection_id) AS cloud_connection_id,
+    COALESCE(a.tenant_id, CAST(:tenantId AS uuid)) AS tenant_id,
+    COALESCE(
+      inv.cloud_connection_id,
+      util.cloud_connection_id,
+      cost.cloud_connection_id,
+      coverage.cloud_connection_id,
+      CAST(:cloudConnectionId AS uuid)
+    ) AS cloud_connection_id,
     COALESCE(cost.billing_source_id, coverage.billing_source_id) AS billing_source_id,
-    COALESCE(inv.provider_id, util.provider_id, cost.provider_id, coverage.provider_id) AS provider_id,
+    COALESCE(
+      inv.provider_id,
+      util.provider_id,
+      cost.provider_id,
+      coverage.provider_id,
+      CAST(:providerId AS bigint)
+    ) AS provider_id,
     a.usage_date,
     a.instance_id,
     COALESCE(inv.resource_key, util.resource_key, cost.resource_key, coverage.resource_key) AS resource_key,
@@ -418,6 +430,7 @@ final_rows AS (
     ON coverage.tenant_id = a.tenant_id
    AND coverage.instance_id = a.instance_id
    AND coverage.usage_date = a.usage_date
+  WHERE COALESCE(a.tenant_id, CAST(:tenantId AS uuid)) IS NOT NULL
 ),
 upserted AS (
   DELETE FROM fact_ec2_instance_daily t

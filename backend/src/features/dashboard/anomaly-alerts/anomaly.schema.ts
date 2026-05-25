@@ -70,6 +70,14 @@ const anomalyCreateJobSchema = z
 const anomalyJobIdParamsSchema = z.object({
   jobId: z.string().uuid("jobId must be a valid UUID"),
 });
+const anomalyIdParamsSchema = z.object({
+  anomalyId: z.string().uuid("anomalyId must be a valid UUID"),
+});
+const anomalyTimelineQuerySchema = z.object({
+  period: z.coerce.number().int().refine((value) => [3, 7, 14, 30, 90].includes(value), {
+    message: "period must be one of 3, 7, 14, 30, 90",
+  }).optional().default(14),
+});
 
 const anomalyListQuerySchema = z
   .object({
@@ -101,6 +109,14 @@ export function parseCreateAnomalyJobPayload(value: unknown): CreateAnomalyJobPa
 
 export function parseAnomalyJobIdParams(value: unknown): { jobId: string } {
   return parseWithSchema(anomalyJobIdParamsSchema, value);
+}
+
+export function parseAnomalyIdParams(value: unknown): { anomalyId: string } {
+  return parseWithSchema(anomalyIdParamsSchema, value);
+}
+
+export function parseAnomalyTimelineQuery(value: unknown): { period: 3 | 7 | 14 | 30 | 90 } {
+  return parseWithSchema(anomalyTimelineQuerySchema, value) as { period: 3 | 7 | 14 | 30 | 90 };
 }
 
 export function parseAnomalyListQuery(value: unknown): AnomalyListQuery {

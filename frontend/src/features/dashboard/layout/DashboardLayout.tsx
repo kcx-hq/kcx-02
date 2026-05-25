@@ -8,6 +8,51 @@ import { OverviewDashboardSkeleton } from "../pages/overview/components";
 import { CostExplorerSkeleton } from "../pages/cost-explorer/components";
 import { HistorySectionSkeleton } from "../pages/cost/history/components/HistorySectionSkeleton";
 import { EC2ExplorerUnifiedSkeleton } from "../pages/ec2/components";
+import { CostExplorerSkeleton as S3CostExplorerSkeleton } from "../pages/s3/components/CostExplorerSkeleton";
+
+function S3BucketLoadingSkeleton() {
+  return (
+    <div className="dashboard-page">
+      <div className="s3-bucket-section s3-bucket-section--skeleton" aria-label="Loading S3 bucket insights">
+        <section className="cost-explorer-widget-shell s3-bucket-kpi-shell">
+          <div className="s3-bucket-kpi-row" aria-hidden="true">
+            {Array.from({ length: 4 }).map((_, index) => (
+              <article key={`s3-bucket-kpi-skeleton-${index}`} className="s3-bucket-kpi-tile s3-bucket-kpi-tile--skeleton">
+                <div className="s3-bucket-skeleton-line s3-bucket-skeleton-line--label" />
+                <div className="s3-bucket-skeleton-line s3-bucket-skeleton-line--value" />
+              </article>
+            ))}
+          </div>
+        </section>
+        <section className="cost-explorer-widget-shell s3-bucket-table-shell">
+          <div className="s3-bucket-table-skeleton" aria-hidden="true">
+            <div className="s3-bucket-table-skeleton__header">
+              {Array.from({ length: 8 }).map((_, index) => (
+                <span key={`s3-bucket-head-${index}`} className="s3-bucket-skeleton-line s3-bucket-skeleton-line--cell" />
+              ))}
+            </div>
+            <div className="s3-bucket-table-skeleton__body">
+              {Array.from({ length: 11 }).map((_, rowIndex) => (
+                <div key={`s3-bucket-row-${rowIndex}`} className="s3-bucket-table-skeleton__row">
+                  {Array.from({ length: 8 }).map((_, colIndex) => (
+                    <span
+                      key={`s3-bucket-cell-${rowIndex}-${colIndex}`}
+                      className="s3-bucket-skeleton-line s3-bucket-skeleton-line--cell"
+                    />
+                  ))}
+                </div>
+              ))}
+            </div>
+            <div className="s3-bucket-table-skeleton__footer">
+              <span className="s3-bucket-skeleton-line s3-bucket-skeleton-line--pagination-left" />
+              <span className="s3-bucket-skeleton-line s3-bucket-skeleton-line--pagination-right" />
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+  );
+}
 
 function S3ExplorerLoadingSkeleton() {
   return (
@@ -22,69 +67,7 @@ function S3ExplorerLoadingSkeleton() {
       </div>
 
       <div className="dashboard-page s3-overview-page" aria-hidden="true">
-        <section className="cost-explorer-control-surface s3-overview-filter-panel s3-overview-filter-panel--loading">
-          <div className="cost-explorer-toolbar-row">
-            <div className="cost-explorer-toolbar-item s3-overview-filter-panel__item--cost-by">
-              <button type="button" className="cost-explorer-toolbar-trigger" disabled>
-                <span className="cost-explorer-toolbar-trigger__label">Cost by</span>
-                <span className="cost-explorer-toolbar-trigger__row">
-                  <span className="cost-explorer-toolbar-trigger__value">Bucket</span>
-                </span>
-              </button>
-            </div>
-            <div className="cost-explorer-toolbar-item s3-overview-filter-panel__item--y-axis">
-              <button type="button" className="cost-explorer-toolbar-trigger" disabled>
-                <span className="cost-explorer-toolbar-trigger__label">Y-Axis</span>
-                <span className="cost-explorer-toolbar-trigger__row">
-                  <span className="cost-explorer-toolbar-trigger__value">Billed Cost ($)</span>
-                </span>
-              </button>
-            </div>
-            <div className="cost-explorer-toolbar-item s3-overview-filter-panel__item--x-axis">
-              <button type="button" className="cost-explorer-toolbar-trigger" disabled>
-                <span className="cost-explorer-toolbar-trigger__label">X-Axis</span>
-                <span className="cost-explorer-toolbar-trigger__row">
-                  <span className="cost-explorer-toolbar-trigger__value">date</span>
-                </span>
-              </button>
-            </div>
-            <div className="cost-explorer-toolbar-item s3-overview-filter-panel__item--region">
-              <button type="button" className="cost-explorer-toolbar-trigger" disabled>
-                <span className="cost-explorer-toolbar-trigger__label">Region</span>
-                <span className="cost-explorer-toolbar-trigger__row">
-                  <span className="cost-explorer-toolbar-trigger__value">All</span>
-                </span>
-              </button>
-            </div>
-          </div>
-          <div className="cost-explorer-chip-bar">
-            <div className="cost-explorer-chip-row">
-              <span className="cost-explorer-chip">
-                <span className="cost-explorer-chip__edit">Cost By: Bucket</span>
-              </span>
-              <span className="cost-explorer-chip">
-                <span className="cost-explorer-chip__edit">X-Axis: date</span>
-              </span>
-            </div>
-          </div>
-        </section>
-        <section className="cost-explorer-chart-panel s3-overview-chart-panel">
-          <div className="cost-explorer-chart-panel__body">
-            <div className="cost-explorer-chart-skeleton cost-explorer-chart-skeleton--bars" style={{ minHeight: "420px" }} />
-          </div>
-        </section>
-        <section className="s3-overview-table-panel">
-          <div className="s3-usage-table-skeleton">
-            <div className="s3-usage-table-skeleton__toolbar" />
-            <div className="s3-usage-table-skeleton__header" />
-            <div className="s3-usage-table-skeleton__row" />
-            <div className="s3-usage-table-skeleton__row" />
-            <div className="s3-usage-table-skeleton__row" />
-            <div className="s3-usage-table-skeleton__row" />
-            <div className="s3-usage-table-skeleton__row" />
-            <div className="s3-usage-table-skeleton__row" />
-          </div>
-        </section>
+        <S3CostExplorerSkeleton />
       </div>
     </div>
   );
@@ -132,6 +115,8 @@ function DashboardScopeGate() {
     location.pathname.startsWith("/dashboard/cost/explorer") || location.pathname.startsWith("/dashboard/cost-explorer");
   const isCostHistoryRoute = location.pathname.startsWith("/dashboard/cost/history");
   const isEc2ExplorerRoute = location.pathname.startsWith("/dashboard/ec2/explorer");
+  const isAnomaliesRoute = location.pathname.startsWith("/dashboard/anomalies-alerts");
+  const isS3BucketRoute = location.pathname.startsWith("/dashboard/s3/bucket");
   const isS3ExplorerLikeRoute =
     location.pathname.startsWith("/dashboard/s3/cost") ||
     location.pathname.startsWith("/dashboard/s3/usage") ||
@@ -139,6 +124,9 @@ function DashboardScopeGate() {
 
   if (isLoading && !scope) {
     if (isEc2Route) {
+      return <Outlet />;
+    }
+    if (isAnomaliesRoute) {
       return <Outlet />;
     }
     if (isOverviewRoute) {
@@ -164,6 +152,9 @@ function DashboardScopeGate() {
           <EC2ExplorerUnifiedSkeleton />
         </div>
       );
+    }
+    if (isS3BucketRoute) {
+      return <S3BucketLoadingSkeleton />;
     }
     if (isS3ExplorerLikeRoute) {
       return <S3ExplorerLoadingSkeleton />;

@@ -80,6 +80,26 @@ const statusSchema = z.object({
   snoozed_until: z.string().regex(DATE_ONLY_REGEX).nullable().optional(),
 });
 
+const actionSchema = z.object({
+  actionKey: z.enum([
+    "stop_instance",
+    "resize_instance",
+    "delete_volume",
+    "snapshot_then_delete_volume",
+    "delete_snapshot",
+    "release_eip",
+    "review_ri_sp",
+    "review_traffic",
+    "review_load_balancer",
+    "terminate_instance",
+  ]),
+  parameters: z.object({
+    targetInstanceType: z.string().trim().min(1).max(64).optional(),
+    createSnapshotBeforeDelete: z.boolean().optional(),
+    confirmationText: z.string().trim().max(128).optional(),
+  }).optional(),
+});
+
 const parseTags = (value: string | undefined): string[] =>
   (value ?? "")
     .split(",")
@@ -145,4 +165,33 @@ export function buildEc2RecommendationStatusPatch(req: Request): {
     throw new Error("snoozed_until is only allowed when status is snoozed");
   }
   return { id, status: parsed.status, reason, snoozedUntil };
+}
+
+export function buildEc2RecommendationActionRequest(req: Request): {
+  id: number;
+  actionKey:
+    | "stop_instance"
+    | "resize_instance"
+    | "delete_volume"
+    | "snapshot_then_delete_volume"
+    | "delete_snapshot"
+    | "release_eip"
+    | "review_ri_sp"
+    | "review_traffic"
+    | "review_load_balancer"
+    | "terminate_instance";
+  parameters?: {
+    targetInstanceType?: string;
+    createSnapshotBeforeDelete?: boolean;
+    confirmationText?: string;
+  };
+} {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) throw new Error("Invalid recommendation id");
+  const parsed = parseWithSchema(actionSchema, req.body ?? {});
+  return {
+    id,
+    actionKey: parsed.actionKey,
+    parameters: parsed.parameters,
+  };
 }

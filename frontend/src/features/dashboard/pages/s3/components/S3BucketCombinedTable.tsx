@@ -31,12 +31,13 @@ export type S3BucketCombinedRow = {
   bucketName: string;
   account: string;
   region: string;
-  totalMonthlyCost: number;
+  grossCost: number;
   storageSizeBytes: number | null;
   objectCount: number | null;
   storageClassMix: string;
   requestCost: number;
   transferCost: number;
+  primaryUsagePattern: string;
   monthlyGrowthPct: number | null;
   lastAccessLabel: string;
   lifecycleStatus: string;
@@ -44,7 +45,7 @@ export type S3BucketCombinedRow = {
   publicAccess: string;
   versioning: string;
   encryption: string;
-  optimizationScore: number | null;
+  optimizationSignal: string;
   potentialSavings: number;
   publicRiskScore: number;
   lastAccessOrder: number;
@@ -84,8 +85,8 @@ export function S3BucketCombinedTable({ rows, height = 520, onBucketClick }: Pro
         },
       },
       {
-        headerName: "Total Monthly Cost",
-        field: "totalMonthlyCost",
+        headerName: "Gross Cost",
+        field: "grossCost",
         minWidth: 165,
         valueFormatter: (params) => currencyFormatter.format(Number(params.value ?? 0)),
       },
@@ -107,19 +108,10 @@ export function S3BucketCombinedTable({ rows, height = 520, onBucketClick }: Pro
           return `${sign}${percentFormatter.format(numeric)}%`;
         },
       },
+      { headerName: "Primary Usage Pattern", field: "primaryUsagePattern", minWidth: 190 },
       { headerName: "Last Access", field: "lastAccessLabel", minWidth: 220 },
       { headerName: "Lifecycle Status", field: "lifecycleStatus", minWidth: 150 },
       { headerName: "Governance Status", field: "governanceStatus", minWidth: 170 },
-      {
-        headerName: "Optimization Score",
-        field: "optimizationScore",
-        minWidth: 155,
-        valueFormatter: (params) => {
-          const value = params.value;
-          if (value === null || typeof value === "undefined") return "--";
-          return decimalFormatter.format(Number(value));
-        },
-      },
       {
         headerName: "Potential Savings",
         field: "potentialSavings",
@@ -137,7 +129,7 @@ export function S3BucketCombinedTable({ rows, height = 520, onBucketClick }: Pro
       height={height}
       emptyMessage="No S3 bucket rows available for the selected scope."
       pagination
-      paginationPageSize={10}
+      paginationPageSize={15}
       autoHeight
     />
   );

@@ -2,6 +2,8 @@ import { apiGet, apiPatch, apiPost } from "@/lib/api";
 import type {
   AnomaliesFiltersQuery,
   AnomaliesListResponse,
+  AnomalyRecord,
+  AnomalyTimelineResponse,
   BudgetDashboardResponse,
   BudgetUpsertPayload,
   BudgetActualForecastPoint,
@@ -27,10 +29,19 @@ import type {
   Ec2OptimizationSummaryResponse,
   Ec2OptimizationInstancesResponse,
   Ec2RecommendationsFiltersQuery,
+  Ec2RecommendationActionExecuteResponse,
+  Ec2RecommendationActionPrecheckResponse,
+  Ec2RecommendationActionRequest,
   Ec2RecommendationsResponse,
   Ec2RecommendationStatus,
   Ec2ExplorerFiltersQuery,
   Ec2ExplorerResponse,
+  Ec2CostExplorerV2FiltersQuery,
+  Ec2CostExplorerV2Response,
+  Ec2UsageExplorerV2FiltersQuery,
+  Ec2UsageExplorerV2Response,
+  Ec2DataTransferExplorerV2FiltersQuery,
+  Ec2DataTransferExplorerV2Response,
   Ec2NetworkBreakdownResponse,
   Ec2DataTransferFiltersQuery,
   Ec2DataTransferResponse,
@@ -54,7 +65,9 @@ import type {
   GenerateDatabaseRecommendationsResult,
 
   S3CostInsightsFiltersQuery,
+  S3UsageInsightsFiltersQuery,
   S3CostInsightsResponse,
+  S3BucketDetailResponse,
   S3BucketLifecycleInsightResponse,
   S3LifecyclePolicyApplyRequest,
   S3LifecyclePolicyApplyResponse,
@@ -530,6 +543,15 @@ function withEc2ExplorerFilters(
   return query.length > 0 ? `${path}?${query}` : path;
 }
 
+function withEc2CostExplorerV2Path(
+  path: string,
+  scope: DashboardResolvedScope,
+): string {
+  const params = new URLSearchParams(buildDashboardQueryParams(scope));
+  const query = params.toString();
+  return query.length > 0 ? `${path}?${query}` : path;
+}
+
 function withEc2RecommendationsFilters(
   path: string,
   scope: DashboardResolvedScope,
@@ -658,12 +680,44 @@ function withS3CostInsightsFilters(
   if (filters?.seriesBy) {
     params.set("seriesBy", filters.seriesBy);
   }
+  if (filters?.usageBy) {
+    params.set("usageBy", filters.usageBy);
+  }
   if (filters?.yAxisMetric) {
     params.set("yAxisMetric", filters.yAxisMetric);
+  }
+  if (filters?.usageYAxis) {
+    params.set("usageYAxis", filters.usageYAxis);
   }
   if (filters?.responseMode) {
     params.set("responseMode", filters.responseMode);
   }
+
+  const query = params.toString();
+  return query.length > 0 ? `${path}?${query}` : path;
+}
+
+function withS3UsageInsightsFilters(
+  path: string,
+  scope: DashboardResolvedScope,
+  filters?: S3UsageInsightsFiltersQuery,
+): string {
+  const params = new URLSearchParams(buildDashboardQueryParams(scope));
+  const appendArray = (key: string, values?: string[]) => {
+    if (!Array.isArray(values) || values.length === 0) return;
+    params.set(key, values.join(","));
+  };
+
+  appendArray("region", filters?.region);
+  appendArray("account", filters?.account);
+  appendArray("seriesValues", filters?.seriesValues);
+  if (typeof filters?.bucket === "string" && filters.bucket.trim().length > 0) {
+    params.set("bucket", filters.bucket.trim());
+  }
+  if (filters?.xAxis) params.set("xAxis", filters.xAxis);
+  if (filters?.usageBy) params.set("usageBy", filters.usageBy);
+  if (filters?.yAxis) params.set("yAxis", filters.yAxis);
+  if (filters?.compareBy) params.set("compareBy", filters.compareBy);
 
   const query = params.toString();
   return query.length > 0 ? `${path}?${query}` : path;
@@ -912,6 +966,14 @@ export const dashboardApi = {
   getAnomaliesAlerts(scope: DashboardResolvedScope, filters?: AnomaliesFiltersQuery) {
     return apiGet<AnomaliesListResponse>(withAnomaliesAlertsFilters("/dashboard/anomalies-alerts", scope, filters));
   },
+  getAnomalyAlertById(scope: DashboardResolvedScope, anomalyId: string) {
+    return apiGet<AnomalyRecord>(withDashboardQuery(`/dashboard/anomalies-alerts/${encodeURIComponent(anomalyId)}`, scope));
+  },
+  getAnomalyTimeline(scope: DashboardResolvedScope, anomalyId: string, period: 3 | 7 | 14 | 30 | 90) {
+    const basePath = withDashboardQuery(`/dashboard/anomalies-alerts/${encodeURIComponent(anomalyId)}/timeline`, scope);
+    const separator = basePath.includes("?") ? "&" : "?";
+    return apiGet<AnomalyTimelineResponse>(`${basePath}${separator}period=${period}`);
+  },
 
   getBudget(scope: DashboardResolvedScope) {
     return apiGet<BudgetDashboardResponse>(withDashboardQuery("/dashboard/budget", scope));
@@ -970,8 +1032,86 @@ export const dashboardApi = {
       payload,
     );
   },
+  precheckEc2RecommendationAction(
+    scope: DashboardResolvedScope,
+    recommendationId: number,
+    payload: Ec2RecommendationActionRequest,
+  ) {
+    return apiPost<Ec2RecommendationActionPrecheckResponse>(
+      withDashboardQuery(`/dashboard/ec2/recommendations/${recommendationId}/actions/precheck`, scope),
+      payload,
+    );
+  },
+  executeEc2RecommendationAction(
+    scope: DashboardResolvedScope,
+    recommendationId: number,
+    payload: Ec2RecommendationActionRequest,
+  ) {
+    return apiPost<Ec2RecommendationActionExecuteResponse>(
+      withDashboardQuery(`/dashboard/ec2/recommendations/${recommendationId}/actions/execute`, scope),
+      payload,
+    );
+  },
   getEc2Explorer(scope: DashboardResolvedScope, filters: Ec2ExplorerFiltersQuery) {
     return apiGet<Ec2ExplorerResponse>(withEc2ExplorerFilters("/dashboard/ec2/explorer", scope, filters));
+  },
+  getEc2CostExplorerV2(scope: DashboardResolvedScope, filters: Ec2CostExplorerV2FiltersQuery) {
+    return apiPost<Ec2CostExplorerV2Response>(
+      withEc2CostExplorerV2Path("/ec2/explorer/cost", scope),
+      {
+        startDate: filters.startDate,
+        endDate: filters.endDate,
+        granularity: filters.granularity ?? "daily",
+        costBasis: filters.costBasis ?? "gross_cost",
+        groupBy: filters.groupBy ?? "none",
+        tagKey: filters.tagKey ?? null,
+        compare: filters.compare ?? "none",
+        accountIds: filters.accountIds ?? [],
+        regions: filters.regions ?? [],
+        instanceTypes: filters.instanceTypes ?? [],
+        reservationTypes: filters.reservationTypes ?? [],
+        costTypes: filters.costTypes ?? [],
+        tags: filters.tags ?? [],
+      },
+    );
+  },
+  getEc2UsageExplorerV2(scope: DashboardResolvedScope, filters: Ec2UsageExplorerV2FiltersQuery) {
+    return apiPost<Ec2UsageExplorerV2Response>(
+      withEc2CostExplorerV2Path("/ec2/explorer/usage", scope),
+      {
+        startDate: filters.startDate,
+        endDate: filters.endDate,
+        granularity: filters.granularity ?? "daily",
+        usageMetric: filters.usageMetric ?? "cpu",
+        aggregation: filters.aggregation ?? "avg",
+        groupBy: filters.groupBy ?? "none",
+        tagKey: filters.tagKey ?? null,
+        compare: filters.compare ?? "none",
+        accountIds: filters.accountIds ?? [],
+        regions: filters.regions ?? [],
+        instanceTypes: filters.instanceTypes ?? [],
+        tags: filters.tags ?? [],
+      },
+    );
+  },
+  getEc2DataTransferExplorerV2(scope: DashboardResolvedScope, filters: Ec2DataTransferExplorerV2FiltersQuery) {
+    return apiPost<Ec2DataTransferExplorerV2Response>(
+      withEc2CostExplorerV2Path("/ec2/explorer/data-transfer", scope),
+      {
+        startDate: filters.startDate,
+        endDate: filters.endDate,
+        granularity: filters.granularity ?? "daily",
+        yAxis: filters.yAxis ?? "transfer_cost",
+        groupBy: filters.groupBy ?? "none",
+        tagKey: filters.tagKey ?? null,
+        compare: filters.compare ?? "none",
+        accountIds: filters.accountIds ?? [],
+        regions: filters.regions ?? [],
+        instanceTypes: filters.instanceTypes ?? [],
+        transferTypes: filters.transferTypes ?? [],
+        tags: filters.tags ?? [],
+      },
+    );
   },
   getEc2ExplorerNetworkBreakdown(scope: DashboardResolvedScope, filters: Ec2ExplorerFiltersQuery) {
     return apiGet<Ec2NetworkBreakdownResponse>(withEc2ExplorerFilters("/dashboard/ec2/explorer/network-breakdown", scope, filters));
@@ -999,6 +1139,18 @@ export const dashboardApi = {
   },
   getS3CostInsights(scope: DashboardResolvedScope, filters?: S3CostInsightsFiltersQuery, init?: RequestInit) {
     return apiGet<S3CostInsightsResponse>(withS3CostInsightsFilters("/dashboard/s3/cost-insights", scope, filters), init);
+  },
+  getS3UsageInsights(scope: DashboardResolvedScope, filters?: S3UsageInsightsFiltersQuery, init?: RequestInit) {
+    return apiGet<S3CostInsightsResponse>(withS3UsageInsightsFilters("/dashboard/s3/usage-insights", scope, filters), init);
+  },
+  getS3BucketDetail(scope: DashboardResolvedScope, bucketName: string, init?: RequestInit) {
+    return apiGet<S3BucketDetailResponse>(
+      withDashboardQuery(`/dashboard/s3/buckets/${encodeURIComponent(bucketName)}/detail`, scope),
+      init,
+    ).then((response) => {
+      console.log("NEW BUCKET DETAIL RESPONSE", response);
+      return response;
+    });
   },
   getS3Optimization(scope: DashboardResolvedScope) {
     return apiGet<S3OptimizationResponse>(withDashboardQuery("/dashboard/s3/optimization", scope));
@@ -1050,6 +1202,7 @@ export const dashboardApi = {
 export type {
   BudgetActualForecastPoint,
   AnomalyRecord,
+  AnomalyTimelineResponse,
   AnomaliesFiltersQuery,
   AnomaliesListResponse,
   BudgetDashboardResponse,
@@ -1124,6 +1277,21 @@ export type {
   Ec2ExplorerCondition,
   Ec2ExplorerFiltersQuery,
   Ec2ExplorerResponse,
+  Ec2CostExplorerV2Granularity,
+  Ec2CostExplorerV2CostBasis,
+  Ec2CostExplorerV2GroupBy,
+  Ec2CostExplorerV2Compare,
+  Ec2CostExplorerV2FiltersQuery,
+  Ec2CostExplorerV2Response,
+  Ec2UsageExplorerV2Granularity,
+  Ec2UsageExplorerV2UsageMetric,
+  Ec2UsageExplorerV2Aggregation,
+  Ec2UsageExplorerV2GroupBy,
+  Ec2UsageExplorerV2Compare,
+  Ec2UsageExplorerV2FiltersQuery,
+  Ec2UsageExplorerV2Response,
+  Ec2DataTransferExplorerV2FiltersQuery,
+  Ec2DataTransferExplorerV2Response,
   Ec2NetworkBreakdownResponse,
   Ec2DataTransferFiltersQuery,
   Ec2DataTransferResponse,
@@ -1137,7 +1305,9 @@ export type {
   LoadBalancerExplorerTrendResponse,
   LoadBalancerExplorerGroupByResponse,
   S3CostInsightsFiltersQuery,
+  S3UsageInsightsFiltersQuery,
   S3CostInsightsResponse,
+  S3BucketDetailResponse,
   S3BucketLifecycleInsightResponse,
   S3OptimizationResponse,
   S3ReplicationDestinationBucketsResponse,

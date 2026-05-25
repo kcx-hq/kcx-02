@@ -3,6 +3,8 @@ import {
   dashboardApi,
   type AnomaliesFiltersQuery,
   type AnomaliesListResponse,
+  type AnomalyRecord,
+  type AnomalyTimelineResponse,
   type CostExplorerFiltersQuery,
   type CostHistoryFilterOptionsResponse,
   type CostHistoryFiltersQuery,
@@ -16,6 +18,12 @@ import {
   type Ec2RecommendationsResponse,
   type Ec2ExplorerFiltersQuery,
   type Ec2ExplorerResponse,
+  type Ec2CostExplorerV2FiltersQuery,
+  type Ec2CostExplorerV2Response,
+  type Ec2UsageExplorerV2FiltersQuery,
+  type Ec2UsageExplorerV2Response,
+  type Ec2DataTransferExplorerV2FiltersQuery,
+  type Ec2DataTransferExplorerV2Response,
   type Ec2NetworkBreakdownResponse,
   type Ec2DataTransferFiltersQuery,
   type Ec2DataTransferResponse,
@@ -39,7 +47,9 @@ import {
   type GenerateDatabaseRecommendationsResult,
 
   type S3CostInsightsFiltersQuery,
+  type S3UsageInsightsFiltersQuery,
   type S3CostInsightsResponse,
+  type S3BucketDetailResponse,
   type S3BucketLifecycleInsightResponse,
   type S3LifecyclePolicyApplyRequest,
   type S3LifecyclePolicyApplyResponse,
@@ -418,6 +428,24 @@ export function useAnomaliesAlertsQuery(filters?: AnomaliesFiltersQuery) {
   });
 }
 
+export function useAnomalyAlertDetailQuery(anomalyId: string | null) {
+  const { scope } = useDashboardScope();
+  return useQuery<AnomalyRecord, Error>({
+    queryKey: ["dashboard", "anomalies-alerts", "detail", scope, anomalyId],
+    queryFn: () => dashboardApi.getAnomalyAlertById(assertScope(scope), anomalyId as string),
+    enabled: Boolean(scope) && Boolean(anomalyId),
+  });
+}
+
+export function useAnomalyTimelineQuery(anomalyId: string | null, period: 3 | 7 | 14 | 30 | 90) {
+  const { scope } = useDashboardScope();
+  return useQuery<AnomalyTimelineResponse, Error>({
+    queryKey: ["dashboard", "anomalies-alerts", "timeline", scope, anomalyId, period],
+    queryFn: () => dashboardApi.getAnomalyTimeline(assertScope(scope), anomalyId as string, period),
+    enabled: Boolean(scope) && Boolean(anomalyId),
+  });
+}
+
 export function useBudgetQuery() {
   const { scope } = useDashboardScope();
   return useQuery({
@@ -575,6 +603,78 @@ export function useS3CostInsightsQuery(
     staleTime: options?.staleTime ?? 90_000,
     refetchOnWindowFocus: false,
     refetchInterval: options?.refetchInterval ?? false,
+  });
+}
+
+export function useEc2CostExplorerV2Query(filters: Ec2CostExplorerV2FiltersQuery, enabledOverride: boolean = true) {
+  const { scope } = useDashboardScope();
+  return useQuery<Ec2CostExplorerV2Response, Error>({
+    queryKey: ["dashboard", "ec2", "explorer", "cost-v2", scope, filters],
+    queryFn: () => dashboardApi.getEc2CostExplorerV2(assertScope(scope), filters),
+    enabled: Boolean(scope) && enabledOverride,
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
+  });
+}
+
+export function useEc2UsageExplorerV2Query(filters: Ec2UsageExplorerV2FiltersQuery, enabledOverride: boolean = true) {
+  const { scope } = useDashboardScope();
+  return useQuery<Ec2UsageExplorerV2Response, Error>({
+    queryKey: ["dashboard", "ec2", "explorer", "usage-v2", scope, filters],
+    queryFn: () => dashboardApi.getEc2UsageExplorerV2(assertScope(scope), filters),
+    enabled: Boolean(scope) && enabledOverride,
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
+  });
+}
+
+export function useEc2DataTransferExplorerV2Query(filters: Ec2DataTransferExplorerV2FiltersQuery, enabledOverride: boolean = true) {
+  const { scope } = useDashboardScope();
+  return useQuery<Ec2DataTransferExplorerV2Response, Error>({
+    queryKey: ["dashboard", "ec2", "explorer", "data-transfer-v2", scope, filters],
+    queryFn: () => dashboardApi.getEc2DataTransferExplorerV2(assertScope(scope), filters),
+    enabled: Boolean(scope) && enabledOverride,
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
+  });
+}
+
+export function useS3UsageInsightsQuery(
+  filters?: S3UsageInsightsFiltersQuery,
+  options?: {
+    enabled?: boolean;
+    staleTime?: number;
+    refetchInterval?: number | false;
+  },
+) {
+  const { scope } = useDashboardScope();
+  return useQuery<S3CostInsightsResponse, Error>({
+    queryKey: ["dashboard", "s3", "usage-insights", scope, filters],
+    queryFn: ({ signal }) => dashboardApi.getS3UsageInsights(assertScope(scope), filters, { signal }),
+    enabled: Boolean(scope) && (options?.enabled ?? true),
+    placeholderData: (previous) => previous,
+    staleTime: options?.staleTime ?? 90_000,
+    refetchOnWindowFocus: false,
+    refetchInterval: options?.refetchInterval ?? false,
+  });
+}
+
+export function useS3BucketDetailQuery(
+  bucketName: string | null,
+  options?: {
+    enabled?: boolean;
+    staleTime?: number;
+  },
+) {
+  const { scope } = useDashboardScope();
+  const normalizedBucketName = String(bucketName ?? "").trim();
+  return useQuery<S3BucketDetailResponse, Error>({
+    queryKey: ["dashboard", "s3", "bucket-detail", scope, normalizedBucketName],
+    queryFn: ({ signal }) => dashboardApi.getS3BucketDetail(assertScope(scope), normalizedBucketName, { signal }),
+    enabled: Boolean(scope) && Boolean(normalizedBucketName) && (options?.enabled ?? true),
+    placeholderData: (previous) => previous,
+    staleTime: options?.staleTime ?? 90_000,
+    refetchOnWindowFocus: false,
   });
 }
 
