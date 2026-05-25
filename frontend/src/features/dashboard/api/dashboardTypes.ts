@@ -76,6 +76,30 @@ export type Ec2OptimizationSummaryFiltersQuery = {
 };
 
 export type DatabaseExplorerMetric = "cost" | "usage";
+export type DatabaseUsageCapabilityFamily =
+  | "compute_pressure"
+  | "connection_pressure"
+  | "io_activity"
+  | "throughput_activity"
+  | "storage_pressure";
+export type DatabaseUsageMetric =
+  | "avg_cpu"
+  | "peak_cpu"
+  | "avg_connections"
+  | "peak_connections"
+  | "read_iops"
+  | "write_iops"
+  | "total_iops"
+  | "read_throughput"
+  | "write_throughput"
+  | "total_throughput"
+  | "storage_used_gb"
+  | "allocated_storage_gb";
+export type DatabaseExplorerCostBasis =
+  | "billed_cost"
+  | "effective_cost"
+  | "amortized_cost"
+  | "net_amortized_cost";
 
 /** Must stay aligned with backend `database_scope` query param. */
 export const DATABASE_EXPLORER_SCOPES = [
@@ -97,7 +121,6 @@ export const DATABASE_EXPLORER_SCOPES = [
 export type DatabaseExplorerScopeValue = (typeof DATABASE_EXPLORER_SCOPES)[number];
 
 export type DatabaseExplorerGroupBy =
-  | "db_type"
   | "db_service"
   | "db_engine"
   | "region"
@@ -106,9 +129,17 @@ export type DatabaseExplorerGroupBy =
   | "cluster"
   | "cost_category";
 
+export type DatabaseExplorerAllowedGroupByByMetric = Record<DatabaseExplorerMetric, DatabaseExplorerGroupBy[]>;
+
 export type DatabaseExplorerFilters = {
   metric: DatabaseExplorerMetric;
+  capabilityFamily?: DatabaseUsageCapabilityFamily;
+  usageMetric?: DatabaseUsageMetric;
+  costBasis?: DatabaseExplorerCostBasis;
   groupBy: DatabaseExplorerGroupBy;
+  groupValues?: string[];
+  resourceTypeValues?: string[];
+  costCategoryValues?: string[];
   /** Filters which db_service rows are included (independent from `groupBy`). */
   databaseScope?: DatabaseExplorerScopeValue;
   regionKey?: number | string;
@@ -126,18 +157,32 @@ export type DatabaseExplorerAppliedFilters = {
   databaseScope?: DatabaseExplorerScopeValue;
   dbService?: string;
   dbEngine?: string;
+  costBasis: DatabaseExplorerCostBasis;
   metric: DatabaseExplorerMetric;
+  capabilityFamily?: DatabaseUsageCapabilityFamily;
+  usageMetric?: DatabaseUsageMetric;
   groupBy: DatabaseExplorerGroupBy;
+  groupValues?: string[];
+  resourceTypeValues?: string[];
+  costCategoryValues?: string[];
 };
 
-export type DatabaseExplorerCards = {
-  totalCost: number;
-  costTrendPct: number | null;
-  activeResources: number;
-  dataFootprintGb: number;
-  avgLoad: number | null;
-  connections: number | null;
+export type DatabaseExplorerKpiState = "normal" | "empty" | "partial" | "unavailable" | "warning";
+
+export type DatabaseExplorerKpiTrend = {
+  value: number | null;
+  direction: "up" | "down" | "flat" | "unknown";
 };
+
+export type DatabaseExplorerCards = Array<{
+  id: string;
+  title: string;
+  value: string;
+  subValue: string | null;
+  trend?: DatabaseExplorerKpiTrend | null;
+  state: DatabaseExplorerKpiState;
+  note?: string | null;
+}>;
 
 export type DatabaseExplorerCostTrendItem = {
   date: string;
@@ -150,18 +195,53 @@ export type DatabaseExplorerCostTrendItem = {
 
 export type DatabaseExplorerUsageTrendItem = {
   date: string;
+  capabilityFamily?: DatabaseUsageCapabilityFamily;
+  usageMetric?: DatabaseUsageMetric;
+  unit?: string | null;
+  value?: number | null;
+  coverageRate?: number | null;
+  confidence?: DatabaseUsageConfidence;
+  deprecatedLoadAlias?: boolean;
   load: number | null;
   connections: number | null;
 };
 
 export type DatabaseExplorerTableRow = {
   group: string;
+  groupKey?: string;
+  groupLabel?: string;
   totalCost: number;
+  costSharePct?: number | null;
+  topService?: string | null;
+  topEngine?: string | null;
   computeCost: number;
   storageCost: number;
   ioCost: number;
   backupCost: number;
   resourceCount: number;
+  inScopeResources?: number;
+  telemetryCoveredResources?: number;
+  coverageRate?: number | null;
+  confidence?: DatabaseUsageConfidence;
+  state?: DatabaseUsageState;
+  reasons?: string[];
+  warnings?: string[];
+  primaryMetricValue?: number | null;
+  primaryMetricUnit?: string | null;
+  rankingValue?: number | null;
+  rank?: number | null;
+  avgCpu?: number | null;
+  peakCpu?: number | null;
+  avgConnections?: number | null;
+  peakConnections?: number | null;
+  readIops?: number | null;
+  writeIops?: number | null;
+  totalIops?: number | null;
+  readThroughputBytes?: number | null;
+  writeThroughputBytes?: number | null;
+  totalThroughputBytes?: number | null;
+  storageUsedGb?: number | null;
+  allocatedStorageGb?: number | null;
   avgLoad: number | null;
   connections: number | null;
 };
@@ -176,7 +256,7 @@ export type DatabaseExplorerFilterOptions = {
 
 export type DatabaseExplorerTrendGroupedPoint = {
   date: string;
-  value: number;
+  value: number | null;
 };
 
 export type DatabaseExplorerTrendGroupedSeries = {
@@ -191,14 +271,69 @@ export type DatabaseExplorerTrendGrouped = {
   groupBy: DatabaseExplorerGroupBy;
   chartType: "stacked_bar" | "line";
   xKey: "date";
-  usageMetric?: "load_avg";
+  capabilityFamily?: DatabaseUsageCapabilityFamily;
+  usageMetric?: DatabaseUsageMetric;
+  unit?: string | null;
+  coverageSummary?: DatabaseUsageCoverageSummary;
+  warnings?: string[];
   series: DatabaseExplorerTrendGroupedSeries[];
+};
+
+export type DatabaseUsageConfidence = "high" | "medium" | "low" | "degraded" | "unsupported" | "unavailable";
+export type DatabaseUsageState = "normal" | "degraded" | "informational" | "unavailable" | "unsupported";
+export type DatabaseExplorerWarningState = "informational" | "degraded" | "unsupported" | "unavailable";
+
+export type DatabaseUsageCoverageSummary = {
+  eligibleResources: number;
+  coveredResources: number;
+  coverageRate: number | null;
+  confidence: DatabaseUsageConfidence;
+  degraded: boolean;
+  unavailable: boolean;
+  unsupported: boolean;
+};
+
+export type DatabaseUsageKpi = {
+  id: string;
+  title: string;
+  capabilityFamily: DatabaseUsageCapabilityFamily;
+  metricId: DatabaseUsageMetric;
+  value: number | null;
+  unit: string | null;
+  coverage: DatabaseUsageCoverageSummary;
+  confidence: DatabaseUsageConfidence;
+  maturity: "high" | "medium" | "low";
+  state: DatabaseUsageState;
+  reasons: string[];
+  warnings: string[];
+  sourceFields: string[];
+};
+
+export type DatabaseCapabilityAvailability = {
+  capabilityFamily: DatabaseUsageCapabilityFamily;
+  label: string;
+  maturity: "high" | "medium" | "low";
+  supportedServices: string[];
+  supportedMetrics: DatabaseUsageMetric[];
+  selectable: boolean;
+  disabled: boolean;
+  warnings: string[];
+  coverageSummary: DatabaseUsageCoverageSummary;
+};
+
+export type DatabaseExplorerWarning = {
+  code: string;
+  message: string;
+  state: DatabaseExplorerWarningState;
 };
 
 export type DatabaseExplorerResponse = {
   filters: DatabaseExplorerAppliedFilters;
+  allowedGroupBy: DatabaseExplorerGroupBy[];
+  allowedGroupByByMetric: DatabaseExplorerAllowedGroupByByMetric;
   filterOptions: DatabaseExplorerFilterOptions;
   cards: DatabaseExplorerCards;
+  capabilityAvailability?: DatabaseCapabilityAvailability[];
   trend: Array<DatabaseExplorerCostTrendItem | DatabaseExplorerUsageTrendItem>;
   trendGrouped?: DatabaseExplorerTrendGrouped;
   table: DatabaseExplorerTableRow[];
@@ -283,6 +418,80 @@ export type DatabaseAssetsResponse = {
   filterOptions: DatabaseAssetsFilterOptions;
   assets: DatabaseAssetRow[];
   pagination: DatabaseAssetsPagination;
+};
+
+export type DatabaseOptimizationActionsFilters = {
+  search?: string;
+  regionKey?: string;
+  dbService?: string;
+  dbEngine?: string;
+  resourceType?: string;
+  status?: string;
+  hasActions?: boolean;
+  recommendationType?: string;
+  page?: number;
+  pageSize?: number;
+};
+
+export type DatabaseOptimizationTopAction = {
+  id: string;
+  title: string;
+  recommendationType: string;
+  status: string;
+  estimatedMonthlySavings: number;
+  evidenceLevel: string | null;
+  confidence: string | null;
+};
+
+export type DatabaseOptimizationActionSummary = {
+  activeCount: number;
+  openCount: number;
+  warningCount: number;
+  types: string[];
+  evidenceLevels: string[];
+  maxConfidence: "high" | "medium" | "low" | null;
+  estimatedMonthlySavingsTotal: number;
+  topActions: DatabaseOptimizationTopAction[];
+};
+
+export type DatabaseOptimizationActionRow = {
+  resourceId: string;
+  cloudConnectionId: string | null;
+  dbIdentifier: string;
+  resourceName: string | null;
+  resourceArn: string | null;
+  dbService: string;
+  dbEngine: string | null;
+  dbEngineVersion: string | null;
+  resourceType: string | null;
+  instanceClass: string | null;
+  regionId: string | null;
+  regionName: string | null;
+  subAccountId: string | null;
+  subAccountName: string | null;
+  clusterId: string | null;
+  status: string | null;
+  totalCost: number;
+  currencyCode: string | null;
+  avgCpu: number | null;
+  maxCpu: number | null;
+  avgConnections: number | null;
+  maxConnections: number | null;
+  avgIops: number | null;
+  avgThroughputBytes: number | null;
+  allocatedStorageGb: number | null;
+  storageUsedGb: number | null;
+  hasLiveInventory: boolean;
+  inventorySource: "aws_sdk" | "billing_only" | "mixed";
+  inventoryObservedAt: string | null;
+  actionSummary: DatabaseOptimizationActionSummary;
+};
+
+export type DatabaseOptimizationActionsResponse = {
+  items: DatabaseOptimizationActionRow[];
+  total: number;
+  page: number;
+  pageSize: number;
 };
 
 export type DatabaseAssetDetailIdentity = {
@@ -444,7 +653,9 @@ export type DatabaseAssetsFilters = {
   subAccountKey?: string;
   dbService?: string;
   dbEngine?: string;
+  resourceType?: string;
   instanceClass?: string;
+  cluster?: string;
   status?: string;
   search?: string;
   page?: number;
@@ -786,6 +997,7 @@ export type Ec2ExplorerFiltersQuery = {
   granularity?: Ec2ExplorerGranularity;
   volumeView?: Ec2ExplorerVolumeView;
   groupBy: Ec2ExplorerGroupBy;
+  groupValues?: string[];
   tagKey?: string | null;
   regions?: string[];
   tags?: string[];
@@ -794,7 +1006,6 @@ export type Ec2ExplorerFiltersQuery = {
   usageType?: Ec2ExplorerUsageType;
   aggregation?: Ec2ExplorerAggregation;
   condition?: Ec2ExplorerCondition;
-  groupValues?: string[];
   minCost?: number | null;
   maxCost?: number | null;
   minCpu?: number | null;
@@ -1285,6 +1496,7 @@ export type LoadBalancerExplorerFiltersQuery = {
     | "errors";
   granularity?: LoadBalancerExplorerGranularity;
   groupBy: LoadBalancerExplorerGroupBy;
+  groupValues?: string[];
   tagKey?: string | null;
   loadBalancerArn?: string | null;
   accountId?: string | null;
@@ -1296,7 +1508,6 @@ export type LoadBalancerExplorerFiltersQuery = {
   products?: string[];
   environments?: string[];
   tags?: string[];
-  groupValues?: string[];
 };
 
 export type LoadBalancerExplorerSummaryResponse = {
@@ -2878,7 +3089,6 @@ export type CostExplorerResponse = {
     compareKey: CostExplorerCompareKey | null;
     tagKey?: string | null;
     tagValue?: string | null;
-    groupValues?: string[];
     scopeType: DashboardResolvedScope["scopeType"];
   };
   kpis: {
@@ -2956,4 +3166,5 @@ export type CostHistoryResponse = {
     costExplorerGranularity: CostExplorerGranularity;
   };
 };
+
 

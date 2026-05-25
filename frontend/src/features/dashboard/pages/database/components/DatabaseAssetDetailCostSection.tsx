@@ -5,7 +5,7 @@ import type { DatabaseAssetDetail } from "../../../api/dashboardTypes";
 import { BaseEChart } from "../../../common/charts/BaseEChart";
 import { WidgetShell } from "../../../common/components";
 import { BaseDataTable } from "../../../common/tables/BaseDataTable";
-import { formatCurrency } from "./database-asset-detail.formatters";
+import { DETAIL_SECTION_EMPTY_NOTE, formatCurrency } from "./database-asset-detail.formatters";
 
 type DatabaseAssetDetailCostSectionProps = {
   detail: DatabaseAssetDetail;
@@ -60,7 +60,7 @@ export function DatabaseAssetDetailCostSection({ detail }: DatabaseAssetDetailCo
         {detail.trends.cost.length > 0 ? (
           <BaseEChart option={chartOption} height={300} />
         ) : (
-          <p className="dashboard-note">Not available from current billing/inventory data</p>
+          <p className="dashboard-note">{DETAIL_SECTION_EMPTY_NOTE}</p>
         )}
       </WidgetShell>
       <WidgetShell title="Cost Breakdown" subtitle="Category drivers behind the selected resource cost">

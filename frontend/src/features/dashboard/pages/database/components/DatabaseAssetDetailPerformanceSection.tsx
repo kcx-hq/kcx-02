@@ -5,10 +5,12 @@ import type { DatabaseAssetDetail } from "../../../api/dashboardTypes";
 import { BaseEChart } from "../../../common/charts/BaseEChart";
 import { WidgetShell } from "../../../common/components";
 import {
-  DETAIL_EMPTY_NOTE,
+  DETAIL_SECTION_EMPTY_NOTE,
   formatBytes,
   formatNumber,
   formatPercent,
+  hasMetricValue,
+  isRdsAuroraService,
 } from "./database-asset-detail.formatters";
 
 type DatabaseAssetDetailPerformanceSectionProps = {
@@ -16,6 +18,27 @@ type DatabaseAssetDetailPerformanceSectionProps = {
 };
 
 export function DatabaseAssetDetailPerformanceSection({ detail }: DatabaseAssetDetailPerformanceSectionProps) {
+  const isRelationalDepth = isRdsAuroraService(detail.identity.dbService, detail.identity.dbEngine);
+  const hasPerformanceSummary = hasMetricValue(
+    detail.usageSummary.avgCpu,
+    detail.usageSummary.maxCpu,
+    detail.performanceSummary.avgIops,
+    detail.performanceSummary.maxIops,
+    detail.performanceSummary.avgThroughputBytes,
+    detail.performanceSummary.maxThroughputBytes,
+  );
+  const hasPerformanceTrend = detail.trends.performance.some((point) =>
+    hasMetricValue(
+      point.readIops,
+      point.writeIops,
+      point.totalIops,
+      point.readThroughputBytes,
+      point.writeThroughputBytes,
+      point.totalThroughputBytes,
+    ),
+  );
+  const showPerformanceData = hasPerformanceSummary || hasPerformanceTrend;
+
   const chartOption = useMemo<EChartsOption>(
     () => ({
       tooltip: { trigger: "axis", confine: true },
@@ -37,6 +60,15 @@ export function DatabaseAssetDetailPerformanceSection({ detail }: DatabaseAssetD
 
   return (
     <WidgetShell title="Performance Signals" subtitle="CPU, IOPS, throughput, load, and connection posture">
+      {!showPerformanceData ? (
+        <p className="dashboard-note">
+          {isRelationalDepth
+            ? "No performance telemetry available for this resource in the selected range."
+            : "Performance telemetry is limited for this service/resource in the selected range."}
+        </p>
+      ) : null}
+      {showPerformanceData ? (
+        <>
       <div className="database-asset-detail__mini-kpis">
         <div className="database-asset-detail__mini-kpi">
           <span>Avg CPU</span>
@@ -63,11 +95,13 @@ export function DatabaseAssetDetailPerformanceSection({ detail }: DatabaseAssetD
           <strong>{formatBytes(detail.performanceSummary.maxThroughputBytes)}</strong>
         </div>
       </div>
-      {detail.trends.performance.length > 0 ? (
+      {hasPerformanceTrend ? (
         <BaseEChart option={chartOption} height={300} />
       ) : (
-        <p className="dashboard-note">{DETAIL_EMPTY_NOTE}</p>
+        <p className="dashboard-note">{DETAIL_SECTION_EMPTY_NOTE}</p>
       )}
+        </>
+      ) : null}
     </WidgetShell>
   );
 }

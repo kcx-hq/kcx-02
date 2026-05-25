@@ -1,4 +1,5 @@
-export const DETAIL_EMPTY_NOTE = "Not available from current billing/inventory data";
+﻿export const DETAIL_EMPTY_NOTE = "—";
+export const DETAIL_SECTION_EMPTY_NOTE = "Data is not available for the selected range.";
 
 const currencyFormatter = new Intl.NumberFormat("en-US", {
   style: "currency",
@@ -102,12 +103,7 @@ export const getActivitySignal = (params: {
   requestCount: number | null;
 }): string => {
   const { avgLoad, avgCpu, avgConnections, requestCount } = params;
-  if (
-    avgLoad === null
-    && avgCpu === null
-    && avgConnections === null
-    && requestCount === null
-  ) {
+  if (avgLoad === null && avgCpu === null && avgConnections === null && requestCount === null) {
     return DETAIL_EMPTY_NOTE;
   }
   if ((avgLoad ?? 0) > 5 || (avgCpu ?? 0) > 60 || (avgConnections ?? 0) > 100) {
@@ -149,3 +145,13 @@ export const getWorkloadLabel = (params: {
   if ((avgLoad ?? 0) < 1 && (avgConnections ?? 0) < 10) return "Light background workload";
   return "Balanced operational workload";
 };
+
+export const hasMetricValue = (...values: Array<number | null | undefined>): boolean =>
+  values.some((value) => value !== null && typeof value !== "undefined" && Number.isFinite(value));
+
+export const isRdsAuroraService = (dbService: string | null | undefined, dbEngine: string | null | undefined): boolean => {
+  const service = (dbService ?? "").toLowerCase();
+  const engine = (dbEngine ?? "").toLowerCase();
+  return service.includes("rds") || service.includes("aurora") || engine.includes("aurora");
+};
+

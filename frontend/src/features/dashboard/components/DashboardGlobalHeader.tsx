@@ -14,6 +14,20 @@ type BreadcrumbItem = {
   path?: string;
 };
 
+const toAssetBreadcrumbLabel = (value: string): string => {
+  const trimmed = value.trim();
+  if (!trimmed) return "Asset Detail";
+  if (!trimmed.toLowerCase().startsWith("arn:")) return trimmed;
+  const parts = trimmed.split(":");
+  const resourcePart = (parts.length >= 6 ? parts.slice(5).join(":") : trimmed).trim();
+  if (!resourcePart) return "Asset Detail";
+  const slashIdx = resourcePart.lastIndexOf("/");
+  const colonIdx = resourcePart.lastIndexOf(":");
+  const idx = Math.max(slashIdx, colonIdx);
+  const tail = idx >= 0 ? resourcePart.slice(idx + 1).trim() : resourcePart;
+  return tail || "Asset Detail";
+};
+
 const parseDateValue = (value: string | null): string => {
   if (!value) return "";
   return /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : "";
@@ -490,26 +504,29 @@ export function DashboardGlobalHeader() {
         { label: "Assets" },
       ];
     }
-    if (path === "/dashboard/services/database/recommendations") {
+    if (
+      path === "/dashboard/services/database/recommendations"
+      || path === "/dashboard/services/database/optimization"
+    ) {
       return [
         { label: rootCrumb, path: "/dashboard/overview" },
         { label: "Services", path: "/dashboard/inventory" },
         { label: "Database", path: "/dashboard/services/database" },
-        { label: "Recommendations" },
+        { label: "Optimization" },
       ];
     }
     if (path.startsWith("/dashboard/services/database/assets/")) {
       const match = path.match(/^\/dashboard\/services\/database\/assets\/([^/]+)$/);
       const resourceLabel =
-        searchParams.get("resourceId")?.trim()
-        || (match?.[1] ? decodeURIComponent(match[1]) : "")
-        || "Asset Detail";
+        searchParams.get("assetLabel")?.trim()
+        || searchParams.get("resourceId")?.trim()
+        || (match?.[1] ? decodeURIComponent(match[1]) : "");
       return [
         { label: rootCrumb, path: "/dashboard/overview" },
         { label: "Services", path: "/dashboard/inventory" },
         { label: "Database", path: "/dashboard/services/database" },
         { label: "Assets", path: "/dashboard/services/database/assets" },
-        { label: resourceLabel },
+        { label: toAssetBreadcrumbLabel(resourceLabel || "Asset Detail") },
       ];
     }
     if (path === "/dashboard/services/database") {

@@ -2,11 +2,13 @@ import { DbUtilizationDaily } from "../../../../../models/index.js";
 import { normalizeDbAwsError } from "../../errors/db-aws-error-normalizer.js";
 import { DbAwsValidationError } from "../../errors/db-aws.errors.js";
 import type { RdsAuroraNormalizedMetricsResource } from "./rds-aurora-metrics.types.js";
+import { mergeDbUtilizationIntoFacts } from "./rds-aurora-fact-utilization-merge.service.js";
 
 export type PersistRdsAuroraUtilizationResult = {
   insertedOrUpdated: number;
   skippedInvalid: number;
   sampleResourceIds: string[];
+  mergedFactRows: number;
 };
 
 const toRequiredString = (value: unknown, field: string): string => {
@@ -121,9 +123,23 @@ export const persistRdsAuroraUtilizationDaily = async (input: {
     });
   }
 
+  let mergedFactRows = 0;
+  if (rows.length > 0) {
+    const usageDates = Array.from(new Set(rows.map((row) => row.usageDate)));
+    const resourceIds = Array.from(new Set(rows.map((row) => row.resourceId)));
+    const mergeResult = await mergeDbUtilizationIntoFacts({
+      tenantId,
+      cloudConnectionId,
+      usageDates,
+      resourceIds,
+    });
+    mergedFactRows = mergeResult.updatedRows;
+  }
+
   return {
     insertedOrUpdated: rows.length,
     skippedInvalid: input.resources.length - rows.length,
     sampleResourceIds: rows.slice(0, 10).map((row) => row.resourceId),
+    mergedFactRows,
   };
 };

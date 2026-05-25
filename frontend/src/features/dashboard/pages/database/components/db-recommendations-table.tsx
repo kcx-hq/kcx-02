@@ -19,7 +19,7 @@ type DatabaseRecommendationsTableProps = {
   rows: DatabaseRecommendationListItem[];
   isLoading?: boolean;
   onRowClick?: (row: DatabaseRecommendationListItem) => void;
-  actionLabel?: "View details" | "Review evidence" | "View";
+  actionLabel?: "View details" | "Review evidence" | "View" | "Open action";
   preset?: DatabaseRecommendationTablePreset;
 };
 
@@ -222,12 +222,12 @@ export function DatabaseRecommendationsTable({
   );
 
   return (
-    <TableShell title="Recommendations" subtitle="Database recommendations for the selected scope and filters">
-      {isLoading ? <p className="dashboard-note">Loading recommendations...</p> : null}
+    <TableShell title="Actions" subtitle="Database optimization action signals for the selected scope and filters">
+      {isLoading ? <p className="dashboard-note">Loading actions...</p> : null}
       <BaseDataTable
         columnDefs={columnDefs}
         rowData={rows}
-        emptyMessage="No database recommendations found for current filters."
+        emptyMessage="No database optimization actions found for current filters."
         onRowClick={onRowClick}
       />
     </TableShell>

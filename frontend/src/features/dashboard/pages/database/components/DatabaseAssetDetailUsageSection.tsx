@@ -5,10 +5,12 @@ import type { DatabaseAssetDetail } from "../../../api/dashboardTypes";
 import { BaseEChart } from "../../../common/charts/BaseEChart";
 import { WidgetShell } from "../../../common/components";
 import {
-  DETAIL_EMPTY_NOTE,
+  DETAIL_SECTION_EMPTY_NOTE,
   formatInteger,
   formatNumber,
   getWorkloadLabel,
+  hasMetricValue,
+  isRdsAuroraService,
 } from "./database-asset-detail.formatters";
 
 type DatabaseAssetDetailUsageSectionProps = {
@@ -16,6 +18,19 @@ type DatabaseAssetDetailUsageSectionProps = {
 };
 
 export function DatabaseAssetDetailUsageSection({ detail }: DatabaseAssetDetailUsageSectionProps) {
+  const isRelationalDepth = isRdsAuroraService(detail.identity.dbService, detail.identity.dbEngine);
+  const hasUsageSummary = hasMetricValue(
+    detail.usageSummary.avgLoad,
+    detail.usageSummary.maxLoad,
+    detail.usageSummary.avgConnections,
+    detail.usageSummary.maxConnections,
+    detail.usageSummary.requestCount,
+  );
+  const hasUsageTrend = detail.trends.usage.some((point) =>
+    hasMetricValue(point.avgLoad, point.maxLoad, point.avgConnections, point.maxConnections, point.requestCount, point.avgCpu),
+  );
+  const showUsageData = hasUsageSummary || hasUsageTrend;
+
   const chartOption = useMemo<EChartsOption>(
     () => ({
       tooltip: { trigger: "axis", confine: true },
@@ -38,6 +53,15 @@ export function DatabaseAssetDetailUsageSection({ detail }: DatabaseAssetDetailU
   return (
     <div className="database-asset-detail__stack">
       <WidgetShell title="Usage & Workload Behavior" subtitle="Load, concurrency, and request signals">
+        {!showUsageData ? (
+          <p className="dashboard-note">
+            {isRelationalDepth
+              ? "No usage telemetry available for this resource in the selected range."
+              : "Usage telemetry is limited for this service/resource in the selected range."}
+          </p>
+        ) : null}
+        {showUsageData ? (
+          <>
         <div className="database-asset-detail__mini-kpis">
           <div className="database-asset-detail__mini-kpi">
             <span>Avg Load</span>
@@ -70,11 +94,13 @@ export function DatabaseAssetDetailUsageSection({ detail }: DatabaseAssetDetailU
             </strong>
           </div>
         </div>
-        {detail.trends.usage.length > 0 ? (
+        {hasUsageTrend ? (
           <BaseEChart option={chartOption} height={300} />
         ) : (
-          <p className="dashboard-note">{DETAIL_EMPTY_NOTE}</p>
+          <p className="dashboard-note">{DETAIL_SECTION_EMPTY_NOTE}</p>
         )}
+          </>
+        ) : null}
       </WidgetShell>
     </div>
   );

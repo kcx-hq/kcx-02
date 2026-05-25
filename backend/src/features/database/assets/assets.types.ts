@@ -6,7 +6,9 @@ export type DatabaseAssetsQueryParams = {
   regionKey?: string;
   dbService?: string;
   dbEngine?: string;
+  resourceType?: string;
   instanceClass?: string;
+  cluster?: string;
   status?: string;
   subAccountKey?: string;
   search?: string;

@@ -1,21 +1,17 @@
 import { EmptyStateBlock, KpiCard, KpiGrid } from "../../../common/components";
 import type { DatabaseRecommendationSummary } from "../../../api/dashboardTypes";
 import { formatInteger, recommendationTypeLabel } from "./db-recommendations.formatters";
-import {
-  DATABASE_RECOMMENDATION_FAMILY_TABS,
-  type DatabaseRecommendationsTabKey,
-} from "./DatabaseRecommendationsHeaderTabs";
 
 type DatabaseRecommendationsOverviewTabProps = {
   summary: DatabaseRecommendationSummary | undefined;
   isLoading: boolean;
   isError: boolean;
-  onOpenSection: (tab: Exclude<DatabaseRecommendationsTabKey, "overview">) => void;
+  onOpenSection: () => void;
 };
 
 const ACTIVE_STATUSES = ["OPEN", "IN_PROGRESS", "SNOOZED"] as const;
 
-const FAMILY_DESCRIPTIONS: Record<string, string> = {
+const SIGNAL_DESCRIPTIONS: Record<string, string> = {
   DB_STORAGE_OPTIMIZATION: "Review storage, backup, and I/O cost composition.",
   DB_IDLE_CANDIDATE: "Review low-activity database resources with available evidence.",
   DB_HA_COST_OPTIMIZATION: "Review resilience-cost posture and topology-related signals.",
@@ -29,11 +25,11 @@ export function DatabaseRecommendationsOverviewTab({
   onOpenSection,
 }: DatabaseRecommendationsOverviewTabProps) {
   if (isLoading && !summary) {
-    return <p className="dashboard-note">Loading recommendation overview...</p>;
+    return <p className="dashboard-note">Loading optimization overview...</p>;
   }
 
   if (isError && !summary) {
-    return <p className="dashboard-note">Unable to load recommendation overview.</p>;
+    return <p className="dashboard-note">Unable to load optimization overview.</p>;
   }
 
   const totalRecommendations = summary?.total ?? 0;
@@ -47,8 +43,8 @@ export function DatabaseRecommendationsOverviewTab({
   if (totalRecommendations === 0) {
     return (
       <EmptyStateBlock
-        title="No database recommendations are available yet"
-        message="Recommendations will appear after database billing, inventory, and optional telemetry signals are processed."
+        title="No database optimization actions are available yet"
+        message="Action signals will appear after database billing, inventory, and optional telemetry signals are processed."
       />
     );
   }
@@ -56,10 +52,10 @@ export function DatabaseRecommendationsOverviewTab({
   return (
     <div className="optimization-layout">
       <KpiGrid>
-        <KpiCard label="Total DB recommendations" value={formatInteger(totalRecommendations)} />
-        <KpiCard label="Open reviews" value={formatInteger(openReviews)} />
+        <KpiCard label="Total optimization signals" value={formatInteger(totalRecommendations)} />
+        <KpiCard label="Open actions" value={formatInteger(openReviews)} />
         <KpiCard
-          label="Evidence-backed reviews"
+          label="Evidence-backed actions"
           value={formatInteger(evidenceBackedReviews)}
           meta={`Inventory-backed: ${formatInteger(summary?.byEvidenceLevel?.inventory_backed ?? 0)} | Telemetry-backed: ${formatInteger(summary?.byEvidenceLevel?.telemetry_backed ?? 0)}`}
         />
@@ -71,28 +67,26 @@ export function DatabaseRecommendationsOverviewTab({
 
       <section className="dashboard-table-shell">
         <header className="dashboard-table-shell__header">
-          <h3 className="dashboard-table-shell__title">Recommendation Families</h3>
+          <h3 className="dashboard-table-shell__title">Action Signal Families</h3>
         </header>
         <div className="dashboard-table-shell__body">
           <KpiGrid className="db-assets-summary-grid">
-            {DATABASE_RECOMMENDATION_FAMILY_TABS.map((tab) => (
-              <article key={tab.key} className="dashboard-kpi-card">
-                <p className="dashboard-kpi-card__label">{recommendationTypeLabel(tab.recommendationType)}</p>
-                <p className="dashboard-kpi-card__value">{formatInteger(summary?.byType?.[tab.recommendationType] ?? 0)}</p>
+            {Object.entries(summary?.byType ?? {}).map(([type, count]) => (
+              <article key={type} className="dashboard-kpi-card">
+                <p className="dashboard-kpi-card__label">{recommendationTypeLabel(type)}</p>
+                <p className="dashboard-kpi-card__value">{formatInteger(count)}</p>
                 <div className="dashboard-kpi-card__footer">
                   <span className="dashboard-kpi-card__meta">
-                    {FAMILY_DESCRIPTIONS[tab.recommendationType] ?? "Review evidence signals and context."}
+                    {SIGNAL_DESCRIPTIONS[type] ?? "Review evidence signals and context."}
                   </span>
                 </div>
                 <div className="dashboard-kpi-card__footer">
                   <button
                     type="button"
                     className="cost-explorer-state-btn"
-                    onClick={() => onOpenSection(tab.key)}
+                    onClick={onOpenSection}
                   >
-                    {tab.recommendationType === "DB_STORAGE_OPTIMIZATION" || tab.recommendationType === "DB_HA_COST_OPTIMIZATION"
-                      ? "View section"
-                      : "Review section"}
+                    View actions
                   </button>
                 </div>
               </article>

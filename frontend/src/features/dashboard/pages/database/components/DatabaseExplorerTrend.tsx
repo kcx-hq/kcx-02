@@ -22,6 +22,13 @@ type DatabaseExplorerTrendProps = {
   onDrilldown?: (payload: { rawValue: string; clickedLabel: string }) => void;
 };
 
+type EChartClickEvent = {
+  componentType?: string;
+  seriesId?: string | number;
+  seriesIndex?: number;
+  seriesName?: string;
+};
+
 const dateFormatter = new Intl.DateTimeFormat("en-US", {
   month: "short",
   day: "2-digit",
@@ -40,7 +47,6 @@ const isUsageTrendItem = (item: DatabaseExplorerResponse["trend"][number]): item
   "load" in item;
 
 const toGroupByLabel = (groupBy: DatabaseExplorerGroupBy): string => {
-  if (groupBy === "db_type") return "Database Type";
   if (groupBy === "db_service") return "DB Service";
   if (groupBy === "db_engine") return "DB Engine";
   if (groupBy === "resource_type") return "Resource Type";
@@ -65,9 +71,48 @@ export function DatabaseExplorerTrend({
   const activeGrouped = useMemo(() => {
     if (!trendGrouped) return null;
     if (trendGrouped.metric !== metric) return null;
+    if (trendGrouped.groupBy !== groupBy) return null;
     if (!Array.isArray(trendGrouped.series) || trendGrouped.series.length === 0) return null;
     return trendGrouped;
-  }, [metric, trendGrouped]);
+  }, [groupBy, metric, trendGrouped]);
+  const groupedSeriesByKey = useMemo(() => {
+    const map = new Map<string, DatabaseExplorerTrendGrouped["series"][number]>();
+    if (!activeGrouped) return map;
+    for (const series of activeGrouped.series) {
+      const key = String(series.key ?? "").trim();
+      if (key.length > 0) map.set(key, series);
+    }
+    return map;
+  }, [activeGrouped]);
+  const groupedSeriesByLabel = useMemo(() => {
+    const map = new Map<string, DatabaseExplorerTrendGrouped["series"][number] | null>();
+    if (!activeGrouped) return map;
+    for (const series of activeGrouped.series) {
+      const label = String(series.label ?? "").trim();
+      if (!label) continue;
+      if (!map.has(label)) {
+        map.set(label, series);
+        continue;
+      }
+      // Duplicate labels are ambiguous for drilldown; mark as unusable.
+      map.set(label, null);
+    }
+    return map;
+  }, [activeGrouped]);
+  const groupedSeriesByNormalizedLabel = useMemo(() => {
+    const map = new Map<string, DatabaseExplorerTrendGrouped["series"][number] | null>();
+    if (!activeGrouped) return map;
+    for (const series of activeGrouped.series) {
+      const label = String(series.label ?? "").trim().toLowerCase();
+      if (!label) continue;
+      if (!map.has(label)) {
+        map.set(label, series);
+        continue;
+      }
+      map.set(label, null);
+    }
+    return map;
+  }, [activeGrouped]);
   const labels = useMemo(() => activeTrend.map((item) => item.date), [activeTrend]);
   const groupedLabels = useMemo(() => {
     if (!activeGrouped) return [];
@@ -92,6 +137,7 @@ export function DatabaseExplorerTrend({
         tooltip: {
           trigger: "axis",
           valueFormatter: (value: unknown) => {
+            if (value === null || typeof value === "undefined") return "N/A";
             const numeric = asFiniteOrZero(value);
             if (metric === "cost") return currencyFormatter.format(numeric);
             return numberFormatter.format(numeric);
@@ -134,9 +180,10 @@ export function DatabaseExplorerTrend({
         dataZoom: groupedLabels.length > 45 ? [{ type: "inside", start: 0, end: 100 }] : undefined,
         series: activeGrouped.series.map((series) => {
           const valueByDate = new Map(
-            (Array.isArray(series.data) ? series.data : []).map((point) => [point.date, asFiniteOrZero(point.value)]),
+            (Array.isArray(series.data) ? series.data : []).map((point) => [point.date, point.value ?? null]),
           );
           return {
+            id: series.key,
             name: series.label || series.key,
             type: metric === "cost" ? "bar" : "line",
             smooth: metric === "usage",
@@ -144,7 +191,7 @@ export function DatabaseExplorerTrend({
             showSymbol: metric === "usage" ? groupedLabels.length <= 35 : false,
             symbolSize: metric === "usage" ? 5 : undefined,
             barMaxWidth: metric === "cost" ? 28 : undefined,
-            data: groupedLabels.map((date) => valueByDate.get(date) ?? 0),
+            data: groupedLabels.map((date) => (valueByDate.has(date) ? (valueByDate.get(date) ?? null) : (metric === "usage" ? null : 0))),
           };
         }),
       };
@@ -190,7 +237,7 @@ export function DatabaseExplorerTrend({
         dataZoom: labels.length > 45 ? [{ type: "inside", start: 0, end: 100 }] : undefined,
         series: [
           {
-            name: "Load",
+            name: usageTrend[0]?.usageMetric ? `${usageTrend[0].usageMetric}` : "Selected Metric",
             type: "line",
             smooth: true,
             showSymbol: labels.length <= 35,
@@ -295,8 +342,12 @@ export function DatabaseExplorerTrend({
     };
   }, [activeGrouped, activeTrend, groupedLabels, labels, metric]);
 
+  const usageLabel = activeGrouped?.usageMetric ?? (activeTrend.filter(isUsageTrendItem)[0]?.usageMetric ?? "usage metric");
+  const usageUnit = activeGrouped?.unit ?? (activeTrend.filter(isUsageTrendItem)[0]?.unit ?? "");
   const title = metric === "usage" ? "Database Usage Trend" : "Database Cost Trend";
-  const subtitle = `Daily ${metric === "usage" ? "load" : "cost"} segmented by ${toGroupByLabel(groupBy)}`;
+  const subtitle = metric === "usage"
+    ? `Daily ${usageLabel}${usageUnit ? ` (${usageUnit})` : ""} segmented by ${toGroupByLabel(groupBy)}`
+    : `Daily cost segmented by ${toGroupByLabel(groupBy)}`;
   const chartReady = activeGrouped ? groupedLabels.length > 0 && activeGrouped.series.length > 0 : activeTrend.length > 0;
   const chartRenderKey = useMemo(() => {
     const groupedSignature = activeGrouped
@@ -317,16 +368,31 @@ export function DatabaseExplorerTrend({
           option={option}
           height={420}
           onPointClick={
-            activeGrouped && onDrilldown
+            onDrilldown
               ? (event) => {
-                  const point = event as { seriesIndex?: number; seriesName?: string };
-                  const series = typeof point.seriesIndex === "number" ? activeGrouped.series[point.seriesIndex] : null;
+                  const point = event as EChartClickEvent;
+                  if (point.componentType && point.componentType !== "series") return;
+                  const seriesId = String(point.seriesId ?? "").trim();
+                  if (!activeGrouped) return;
+                  const byId = seriesId.length > 0 ? groupedSeriesByKey.get(seriesId) : undefined;
+                  const byIndex = !byId && activeGrouped && typeof point.seriesIndex === "number"
+                    ? activeGrouped.series[point.seriesIndex]
+                    : undefined;
+                  const byExactName = !byId && !byIndex && typeof point.seriesName === "string"
+                    ? groupedSeriesByLabel.get(point.seriesName.trim()) ?? null
+                    : null;
+                  const byNormalizedName = !byId && !byIndex && !byExactName && typeof point.seriesName === "string"
+                    ? groupedSeriesByNormalizedLabel.get(point.seriesName.trim().toLowerCase()) ?? null
+                    : null;
+                  const series = byId ?? byIndex ?? byExactName ?? byNormalizedName ?? null;
                   if (!series) return;
+
+                  const rawValue = String(series.key ?? "").trim();
+                  const clickedLabel = String(series.label ?? "").trim();
+                  if (!rawValue && !clickedLabel) return;
                   onDrilldown({
-                    rawValue: series.key,
-                    clickedLabel: typeof point.seriesName === "string" && point.seriesName.trim().length > 0
-                      ? point.seriesName
-                      : series.label,
+                    rawValue,
+                    clickedLabel,
                   });
                 }
               : undefined

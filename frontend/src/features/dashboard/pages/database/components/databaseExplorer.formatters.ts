@@ -1,4 +1,4 @@
-const CURRENCY = new Intl.NumberFormat("en-US", {
+﻿const CURRENCY = new Intl.NumberFormat("en-US", {
   style: "currency",
   currency: "USD",
   maximumFractionDigits: 2,
@@ -73,3 +73,5 @@ export const asFiniteOrZero = (value: unknown): number => {
   const parsed = toFiniteNumber(value);
   return parsed ?? 0;
 };
+
+

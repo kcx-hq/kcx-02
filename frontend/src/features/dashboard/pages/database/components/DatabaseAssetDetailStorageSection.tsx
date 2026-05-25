@@ -5,7 +5,9 @@ import type { DatabaseAssetDetail } from "../../../api/dashboardTypes";
 import { BaseEChart } from "../../../common/charts/BaseEChart";
 import { WidgetShell } from "../../../common/components";
 import {
-  DETAIL_EMPTY_NOTE,
+  DETAIL_SECTION_EMPTY_NOTE,
+  hasMetricValue,
+  isRdsAuroraService,
   formatNumber,
   formatPercent,
 } from "./database-asset-detail.formatters";
@@ -15,6 +17,18 @@ type DatabaseAssetDetailStorageSectionProps = {
 };
 
 export function DatabaseAssetDetailStorageSection({ detail }: DatabaseAssetDetailStorageSectionProps) {
+  const isRelationalDepth = isRdsAuroraService(detail.identity.dbService, detail.identity.dbEngine);
+  const hasStorageSummary = hasMetricValue(
+    detail.storageSummary.allocatedStorageGb,
+    detail.storageSummary.storageUsedGb,
+    detail.storageSummary.dataFootprintGb,
+    detail.storageSummary.storageUtilizationPct,
+  );
+  const hasStorageTrend = detail.trends.storage.some((point) =>
+    hasMetricValue(point.allocatedStorageGb, point.storageUsedGb, point.dataFootprintGb, point.storageUtilizationPct),
+  );
+  const showStorageData = hasStorageSummary || hasStorageTrend;
+
   const chartOption = useMemo<EChartsOption>(
     () => ({
       tooltip: { trigger: "axis", confine: true },
@@ -33,6 +47,15 @@ export function DatabaseAssetDetailStorageSection({ detail }: DatabaseAssetDetai
 
   return (
     <WidgetShell title="Storage Profile" subtitle="Allocated, used, and footprint storage signals">
+      {!showStorageData ? (
+        <p className="dashboard-note">
+          {isRelationalDepth
+            ? "No storage telemetry available for this resource in the selected range."
+            : "Storage telemetry is limited for this service/resource in the selected range."}
+        </p>
+      ) : null}
+      {showStorageData ? (
+        <>
       <div className="database-asset-detail__mini-kpis">
         <div className="database-asset-detail__mini-kpi">
           <span>Allocated Storage</span>
@@ -51,11 +74,13 @@ export function DatabaseAssetDetailStorageSection({ detail }: DatabaseAssetDetai
           <strong>{formatPercent(detail.storageSummary.storageUtilizationPct)}</strong>
         </div>
       </div>
-      {detail.trends.storage.length > 0 ? (
+      {hasStorageTrend ? (
         <BaseEChart option={chartOption} height={300} />
       ) : (
-        <p className="dashboard-note">{DETAIL_EMPTY_NOTE}</p>
+        <p className="dashboard-note">{DETAIL_SECTION_EMPTY_NOTE}</p>
       )}
+        </>
+      ) : null}
     </WidgetShell>
   );
 }

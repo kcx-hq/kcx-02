@@ -5648,7 +5648,8 @@
 }
 
 .database-explorer-page__metric-switch {
-  min-width: 220px;
+  min-width: 0;
+  width: max-content;
 }
 
 .database-explorer-page__metric-title {
@@ -5668,7 +5669,8 @@
 }
 
 .database-explorer-page__metric-switch {
-  min-width: 220px;
+  min-width: 0;
+  width: max-content;
 }
 
 .database-explorer-page__metric-title {

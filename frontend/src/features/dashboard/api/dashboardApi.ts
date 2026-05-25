@@ -56,6 +56,8 @@ import type {
   DatabaseAssetsFilters,
   DatabaseAssetsResponse,
   DatabaseAssetDetail,
+  DatabaseOptimizationActionsFilters,
+  DatabaseOptimizationActionsResponse,
   DatabaseRecommendationFilters,
   DatabaseRecommendationListResponse,
   DatabaseRecommendationSummary,
@@ -223,7 +225,25 @@ function withDatabaseExplorerFilters(
   if (scope.from) params.set("start_date", scope.from);
   if (scope.to) params.set("end_date", scope.to);
   if (filters.metric) params.set("metric", filters.metric);
+  if (filters.metric === "usage" && filters.capabilityFamily) {
+    params.set("capability_family", filters.capabilityFamily);
+  }
+  if (filters.metric === "usage" && filters.usageMetric) {
+    params.set("usage_metric", filters.usageMetric);
+  }
+  if (filters.costBasis) params.set("cost_basis", filters.costBasis);
   if (filters.groupBy) params.set("group_by", filters.groupBy);
+  if (Array.isArray(filters.groupValues) && filters.groupValues.length > 0) {
+    params.set("group_values", filters.groupValues.join(","));
+  }
+  if (Array.isArray(filters.resourceTypeValues) && filters.resourceTypeValues.length > 0) {
+    params.set("resource_type_values", filters.resourceTypeValues.join(","));
+    params.set("resource_type", filters.resourceTypeValues[0]);
+  }
+  if (Array.isArray(filters.costCategoryValues) && filters.costCategoryValues.length > 0) {
+    params.set("cost_category_values", filters.costCategoryValues.join(","));
+    params.set("cost_category", filters.costCategoryValues[0]);
+  }
   if (typeof filters.databaseScope === "string" && filters.databaseScope.trim().length > 0 && filters.databaseScope !== "all") {
     params.set("database_scope", filters.databaseScope.trim());
   }
@@ -268,8 +288,14 @@ function withDatabaseAssetsFilters(
   if (typeof filters?.dbEngine === "string" && filters.dbEngine.trim().length > 0) {
     params.set("db_engine", filters.dbEngine.trim());
   }
+  if (typeof filters?.resourceType === "string" && filters.resourceType.trim().length > 0) {
+    params.set("resource_type", filters.resourceType.trim());
+  }
   if (typeof filters?.instanceClass === "string" && filters.instanceClass.trim().length > 0) {
     params.set("instance_class", filters.instanceClass.trim());
+  }
+  if (typeof filters?.cluster === "string" && filters.cluster.trim().length > 0) {
+    params.set("cluster", filters.cluster.trim());
   }
   if (typeof filters?.status === "string" && filters.status.trim().length > 0) {
     params.set("status", filters.status.trim());
@@ -299,6 +325,30 @@ function withDatabaseAssetDetailQuery(
   query.set("end_date", params.endDate ?? scope.to);
   const queryString = query.toString();
   return queryString.length > 0 ? `${path}?${queryString}` : path;
+}
+
+function withDatabaseOptimizationActionsFilters(
+  path: string,
+  scope: DashboardResolvedScope,
+  filters?: DatabaseOptimizationActionsFilters,
+): string {
+  const params = new URLSearchParams();
+  if (scope.from) params.set("start_date", scope.from);
+  if (scope.to) params.set("end_date", scope.to);
+  if (typeof filters?.search === "string" && filters.search.trim().length > 0) params.set("search", filters.search.trim());
+  if (typeof filters?.regionKey === "string" && filters.regionKey.trim().length > 0) params.set("region_key", filters.regionKey.trim());
+  if (typeof filters?.dbService === "string" && filters.dbService.trim().length > 0) params.set("db_service", filters.dbService.trim());
+  if (typeof filters?.dbEngine === "string" && filters.dbEngine.trim().length > 0) params.set("db_engine", filters.dbEngine.trim());
+  if (typeof filters?.resourceType === "string" && filters.resourceType.trim().length > 0) params.set("resource_type", filters.resourceType.trim());
+  if (typeof filters?.status === "string" && filters.status.trim().length > 0) params.set("status", filters.status.trim());
+  if (typeof filters?.hasActions === "boolean") params.set("has_actions", String(filters.hasActions));
+  if (typeof filters?.recommendationType === "string" && filters.recommendationType.trim().length > 0) {
+    params.set("recommendation_type", filters.recommendationType.trim());
+  }
+  if (typeof filters?.page === "number") params.set("page", String(filters.page));
+  if (typeof filters?.pageSize === "number") params.set("page_size", String(filters.pageSize));
+  const query = params.toString();
+  return query.length > 0 ? `${path}?${query}` : path;
 }
 
 function withDatabaseRecommendationsFilters(path: string, filters?: DatabaseRecommendationFilters): string {
@@ -761,6 +811,11 @@ export const dashboardApi = {
       withDatabaseAssetDetailQuery(`/services/database/assets/${encodeURIComponent(resourceId)}/details`, scope, params),
     );
   },
+  getDatabaseOptimizationActions(scope: DashboardResolvedScope, filters?: DatabaseOptimizationActionsFilters) {
+    return apiGet<DatabaseOptimizationActionsResponse>(
+      withDatabaseOptimizationActionsFilters("/services/database/optimization/actions", scope, filters),
+    );
+  },
   listDatabaseRecommendations(_scope: DashboardResolvedScope, filters?: DatabaseRecommendationFilters) {
     return apiGet<DatabaseRecommendationListResponse>(withDatabaseRecommendationsFilters("/services/database/recommendations", filters));
   },
@@ -1182,6 +1237,9 @@ export type {
   DatabaseAssetsFilters,
   DatabaseAssetDetail,
   DatabaseAssetsResponse,
+  DatabaseOptimizationActionsFilters,
+  DatabaseOptimizationActionsResponse,
+  DatabaseOptimizationActionRow,
   DatabaseRecommendationFilters,
   DatabaseRecommendationType,
   DatabaseRecommendationConfidence,

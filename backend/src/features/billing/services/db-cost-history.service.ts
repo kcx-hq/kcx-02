@@ -64,11 +64,109 @@ CASE
   WHEN LOWER(COALESCE(f.line_item_type, '')) = 'tax' THEN 'tax'
   WHEN LOWER(COALESCE(f.line_item_type, '')) = 'credit' THEN 'credit'
   WHEN LOWER(COALESCE(f.line_item_type, '')) = 'refund' THEN 'refund'
+  -- Redis/ElastiCache storage guardrail (regression-safe):
+  -- CachedData and Redis data-storage line items are storage semantics, not compute/other.
+  -- Keep this branch above generic compute/io/other fallbacks so ingestion cannot drift.
+  WHEN (
+    COALESCE(ds.service_name, '') IN ('AmazonElastiCache')
+    OR LOWER(COALESCE(ds.service_name, '')) LIKE '%elasticache%'
+    OR LOWER(COALESCE(f.usage_type, '')) LIKE '%elasticache%'
+    OR LOWER(COALESCE(f.product_usage_type, '')) LIKE '%elasticache%'
+    OR LOWER(COALESCE(f.operation, '')) LIKE '%elasticache%'
+    OR LOWER(COALESCE(f.line_item_description, '')) LIKE '%elasticache%'
+    OR LOWER(COALESCE(f.usage_type, '')) LIKE '%redis%'
+    OR LOWER(COALESCE(f.product_usage_type, '')) LIKE '%redis%'
+    OR LOWER(COALESCE(f.operation, '')) LIKE '%redis%'
+    OR LOWER(COALESCE(f.line_item_description, '')) LIKE '%redis%'
+  ) AND (
+    LOWER(COALESCE(f.usage_type, '')) LIKE '%cacheddata%'
+    OR LOWER(COALESCE(f.product_usage_type, '')) LIKE '%cacheddata%'
+    OR LOWER(COALESCE(f.line_item_description, '')) LIKE '%redis data storage%'
+    OR LOWER(COALESCE(f.line_item_description, '')) LIKE '%data storage%'
+  ) THEN 'storage'
+  WHEN (
+    COALESCE(ds.service_name, '') IN ('AmazonElastiCache', 'AmazonMemoryDB')
+    OR LOWER(COALESCE(f.usage_type, '')) LIKE '%elasticache%'
+    OR LOWER(COALESCE(f.product_usage_type, '')) LIKE '%elasticache%'
+    OR LOWER(COALESCE(f.usage_type, '')) LIKE '%memorydb%'
+    OR LOWER(COALESCE(f.product_usage_type, '')) LIKE '%memorydb%'
+    OR LOWER(COALESCE(f.usage_type, '')) LIKE '%cacheddata:%'
+    OR LOWER(COALESCE(f.product_usage_type, '')) LIKE '%cacheddata:%'
+    OR LOWER(COALESCE(f.usage_type, '')) LIKE '%redis%'
+    OR LOWER(COALESCE(f.product_usage_type, '')) LIKE '%redis%'
+    OR LOWER(COALESCE(f.line_item_description, '')) LIKE '%redis%'
+  ) AND (
+    LOWER(COALESCE(f.usage_type, '')) LIKE '%storage%'
+    OR LOWER(COALESCE(f.product_usage_type, '')) LIKE '%storage%'
+    OR LOWER(COALESCE(f.usage_type, '')) LIKE '%bytehr%'
+    OR LOWER(COALESCE(f.product_usage_type, '')) LIKE '%bytehr%'
+    OR LOWER(COALESCE(f.usage_type, '')) LIKE '%byte-hr%'
+    OR LOWER(COALESCE(f.product_usage_type, '')) LIKE '%byte-hr%'
+    OR LOWER(COALESCE(f.usage_type, '')) LIKE '%bytesusedforcache%'
+    OR LOWER(COALESCE(f.product_usage_type, '')) LIKE '%bytesusedforcache%'
+    OR LOWER(COALESCE(f.line_item_description, '')) LIKE '%gb-hour%'
+    OR LOWER(COALESCE(f.line_item_description, '')) LIKE '%data storage%'
+  ) AND (
+    LOWER(COALESCE(f.usage_type, '')) NOT LIKE '%nodeusage%'
+    AND LOWER(COALESCE(f.product_usage_type, '')) NOT LIKE '%nodeusage%'
+    AND LOWER(COALESCE(f.usage_type, '')) NOT LIKE '%ecpuusage%'
+    AND LOWER(COALESCE(f.product_usage_type, '')) NOT LIKE '%ecpuusage%'
+    AND LOWER(COALESCE(f.usage_type, '')) NOT LIKE '%request%'
+    AND LOWER(COALESCE(f.product_usage_type, '')) NOT LIKE '%request%'
+    AND LOWER(COALESCE(f.usage_type, '')) NOT LIKE '%io%'
+    AND LOWER(COALESCE(f.product_usage_type, '')) NOT LIKE '%io%'
+    AND LOWER(COALESCE(f.usage_type, '')) NOT LIKE '%storageio%'
+    AND LOWER(COALESCE(f.product_usage_type, '')) NOT LIKE '%storageio%'
+    AND LOWER(COALESCE(f.usage_type, '')) NOT LIKE '%snapshot%'
+    AND LOWER(COALESCE(f.product_usage_type, '')) NOT LIKE '%snapshot%'
+    AND LOWER(COALESCE(f.usage_type, '')) NOT LIKE '%backup%'
+    AND LOWER(COALESCE(f.product_usage_type, '')) NOT LIKE '%backup%'
+  ) THEN 'storage'
+  WHEN (
+    COALESCE(ds.service_name, '') IN ('AmazonElastiCache', 'AmazonMemoryDB')
+    OR LOWER(COALESCE(f.usage_type, '')) LIKE '%cacheddata:%'
+    OR LOWER(COALESCE(f.product_usage_type, '')) LIKE '%cacheddata:%'
+  ) AND (
+    LOWER(COALESCE(f.usage_type, '')) LIKE '%nodeusage%'
+    OR LOWER(COALESCE(f.product_usage_type, '')) LIKE '%nodeusage%'
+    OR LOWER(COALESCE(f.usage_type, '')) LIKE '%ecpuusage%'
+    OR LOWER(COALESCE(f.product_usage_type, '')) LIKE '%ecpuusage%'
+  ) AND (
+    LOWER(COALESCE(f.usage_type, '')) NOT LIKE '%storage%'
+    AND LOWER(COALESCE(f.product_usage_type, '')) NOT LIKE '%storage%'
+    AND LOWER(COALESCE(f.line_item_description, '')) NOT LIKE '%storage%'
+    AND LOWER(COALESCE(f.line_item_description, '')) NOT LIKE '%gb-hour%'
+    AND LOWER(COALESCE(f.line_item_description, '')) NOT LIKE '%redis data storage%'
+  ) THEN 'compute'
   WHEN LOWER(COALESCE(f.usage_type, '')) LIKE '%instanceusage:db.%'
     OR LOWER(COALESCE(f.product_usage_type, '')) LIKE '%instanceusage:db.%'
     OR LOWER(COALESCE(f.usage_type, '')) LIKE '%aurora:serverlessv2usage%'
     OR LOWER(COALESCE(f.product_usage_type, '')) LIKE '%aurora:serverlessv2usage%'
     THEN 'compute'
+  WHEN (
+    COALESCE(ds.service_name, '') IN ('AmazonElastiCache', 'AmazonMemoryDB')
+    OR LOWER(COALESCE(f.usage_type, '')) LIKE '%cacheddata:%'
+    OR LOWER(COALESCE(f.product_usage_type, '')) LIKE '%cacheddata:%'
+  ) AND (
+    LOWER(COALESCE(f.usage_type, '')) LIKE '%cacheddata%'
+    OR LOWER(COALESCE(f.product_usage_type, '')) LIKE '%cacheddata%'
+    OR LOWER(COALESCE(f.usage_type, '')) LIKE '%bytesusedforcache%'
+    OR LOWER(COALESCE(f.product_usage_type, '')) LIKE '%bytesusedforcache%'
+    OR LOWER(COALESCE(f.usage_type, '')) LIKE '%storageusage%'
+    OR LOWER(COALESCE(f.product_usage_type, '')) LIKE '%storageusage%'
+    OR LOWER(COALESCE(f.line_item_description, '')) LIKE '%gb-hour%'
+    OR LOWER(COALESCE(f.line_item_description, '')) LIKE '%redis data storage%'
+    OR LOWER(COALESCE(f.operation, '')) LIKE '%createserverlesscache%'
+  ) AND (
+    LOWER(COALESCE(f.usage_type, '')) NOT LIKE '%nodeusage%'
+    AND LOWER(COALESCE(f.product_usage_type, '')) NOT LIKE '%nodeusage%'
+    AND LOWER(COALESCE(f.usage_type, '')) NOT LIKE '%ecpuusage%'
+    AND LOWER(COALESCE(f.product_usage_type, '')) NOT LIKE '%ecpuusage%'
+    AND LOWER(COALESCE(f.usage_type, '')) NOT LIKE '%request%'
+    AND LOWER(COALESCE(f.product_usage_type, '')) NOT LIKE '%request%'
+    AND LOWER(COALESCE(f.usage_type, '')) NOT LIKE '%io%'
+    AND LOWER(COALESCE(f.product_usage_type, '')) NOT LIKE '%io%'
+  ) THEN 'storage'
   WHEN LOWER(COALESCE(f.usage_type, '')) LIKE '%rds:gp2-storage%'
     OR LOWER(COALESCE(f.product_usage_type, '')) LIKE '%rds:gp2-storage%'
     OR LOWER(COALESCE(f.usage_type, '')) LIKE '%aurora:storageusage%'
@@ -80,6 +178,16 @@ CASE
     AND LOWER(COALESCE(f.usage_type, '')) NOT LIKE '%storageio%'
     AND LOWER(COALESCE(f.product_usage_type, '')) NOT LIKE '%storageio%'
     THEN 'storage'
+  WHEN (
+    COALESCE(ds.service_name, '') IN ('AmazonElastiCache', 'AmazonMemoryDB')
+    OR LOWER(COALESCE(f.usage_type, '')) LIKE '%cacheddata:%'
+    OR LOWER(COALESCE(f.product_usage_type, '')) LIKE '%cacheddata:%'
+  ) AND (
+    LOWER(COALESCE(f.usage_type, '')) LIKE '%request%'
+    OR LOWER(COALESCE(f.product_usage_type, '')) LIKE '%request%'
+    OR LOWER(COALESCE(f.usage_type, '')) LIKE '%io%'
+    OR LOWER(COALESCE(f.product_usage_type, '')) LIKE '%io%'
+  ) THEN 'io'
   WHEN LOWER(COALESCE(f.usage_type, '')) LIKE '%aurora:storageiousage%'
     OR LOWER(COALESCE(f.product_usage_type, '')) LIKE '%aurora:storageiousage%'
     OR LOWER(COALESCE(f.usage_type, '')) LIKE '%storageio%'
@@ -101,9 +209,34 @@ END
 
 const DB_ENGINE_SQL = `
 CASE
+  WHEN COALESCE(ds.service_name, '') = 'AmazonDynamoDB' THEN 'DynamoDB'
+  WHEN COALESCE(ds.service_name, '') = 'AmazonElastiCache' THEN 'Redis'
   WHEN LOWER(COALESCE(f.usage_type, '')) LIKE '%aurora%' OR LOWER(COALESCE(f.product_usage_type, '')) LIKE '%aurora%' THEN 'Aurora PostgreSQL'
-  WHEN LOWER(COALESCE(f.usage_type, '')) LIKE '%instanceusage:db.%' OR LOWER(COALESCE(f.product_usage_type, '')) LIKE '%instanceusage:db.%' THEN 'RDS MySQL'
   WHEN LOWER(COALESCE(f.usage_type, '')) LIKE '%cacheddata:redis%' OR LOWER(COALESCE(f.product_usage_type, '')) LIKE '%cacheddata:redis%' THEN 'Redis'
+  WHEN LOWER(COALESCE(f.line_item_description, '')) LIKE '%running mysql%'
+    OR LOWER(COALESCE(f.line_item_description, '')) LIKE '%aurora mysql%'
+    OR LOWER(COALESCE(f.operation, '')) LIKE '%mysql%'
+    OR LOWER(COALESCE(f.usage_type, '')) LIKE '%mysql%'
+    OR LOWER(COALESCE(f.product_usage_type, '')) LIKE '%mysql%' THEN 'RDS MySQL'
+  WHEN LOWER(COALESCE(f.line_item_description, '')) LIKE '%running mariadb%'
+    OR LOWER(COALESCE(f.operation, '')) LIKE '%mariadb%'
+    OR LOWER(COALESCE(f.usage_type, '')) LIKE '%mariadb%'
+    OR LOWER(COALESCE(f.product_usage_type, '')) LIKE '%mariadb%' THEN 'RDS MariaDB'
+  WHEN LOWER(COALESCE(f.line_item_description, '')) LIKE '%running postgresql%'
+    OR LOWER(COALESCE(f.line_item_description, '')) LIKE '%running postgres%'
+    OR LOWER(COALESCE(f.operation, '')) LIKE '%postgres%'
+    OR LOWER(COALESCE(f.usage_type, '')) LIKE '%postgres%'
+    OR LOWER(COALESCE(f.product_usage_type, '')) LIKE '%postgres%' THEN 'RDS PostgreSQL'
+  WHEN LOWER(COALESCE(f.line_item_description, '')) LIKE '%running oracle%'
+    OR LOWER(COALESCE(f.operation, '')) LIKE '%oracle%'
+    OR LOWER(COALESCE(f.usage_type, '')) LIKE '%oracle%'
+    OR LOWER(COALESCE(f.product_usage_type, '')) LIKE '%oracle%' THEN 'RDS Oracle'
+  WHEN LOWER(COALESCE(f.line_item_description, '')) LIKE '%running sql server%'
+    OR LOWER(COALESCE(f.line_item_description, '')) LIKE '%sqlserver%'
+    OR LOWER(COALESCE(f.operation, '')) LIKE '%sqlserver%'
+    OR LOWER(COALESCE(f.usage_type, '')) LIKE '%sqlserver%'
+    OR LOWER(COALESCE(f.product_usage_type, '')) LIKE '%sqlserver%' THEN 'RDS SQL Server'
+  WHEN LOWER(COALESCE(f.usage_type, '')) LIKE '%instanceusage:db.%' OR LOWER(COALESCE(f.product_usage_type, '')) LIKE '%instanceusage:db.%' THEN 'RDS MySQL'
   ELSE 'Unknown'
 END
 `;
@@ -684,7 +817,7 @@ SELECT
   END AS resource_arn,
   MAX(COALESCE(NULLIF(dr.resource_name, ''), d.resource_id)) AS resource_name,
   MAX(d.db_service) AS db_service,
-  MAX(d.db_engine) AS db_engine,
+  COALESCE(MIN(NULLIF(d.db_engine, 'Unknown')), 'Unknown') AS db_engine,
   CASE
     WHEN d.resource_id LIKE 'db-scope:%' THEN 'scoped'
     WHEN LOWER(d.resource_id) LIKE 'arn:aws:rds:%:db:%' THEN 'instance'
